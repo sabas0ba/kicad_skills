@@ -6,7 +6,9 @@ build-backend = "setuptools.build_meta"
 name = "eda-toolkit"
 version = "0.1.0"
 description = "Container-based toolkit for circuit design: datasheets, SPICE simulation and KiCad review"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
+# Loose bounds for library use. The container - and CI - install the exact,
+# hash-pinned set from requirements.txt instead.
 dependencies = [
     "requests>=2.31",
     "beautifulsoup4>=4.12",

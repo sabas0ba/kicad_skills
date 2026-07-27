@@ -48,9 +48,18 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
         echo "error: image $IMAGE is missing (build it with: make build)" >&2
         exit 1
     fi
+    # The base image is pinned by manifest digest, never by tag alone.
+    DIGEST="$(awk -v v="$KICAD_VERSION" '$1 == v {print $2; exit}' \
+        "$REPO_ROOT/docker/kicad-digests.txt")"
+    if [ -z "$DIGEST" ]; then
+        echo "error: no pinned digest for KiCad $KICAD_VERSION." >&2
+        echo "       Add it to docker/kicad-digests.txt (the file explains how)." >&2
+        exit 1
+    fi
     echo "==> building $IMAGE (first run only, this takes a few minutes)" >&2
     docker build \
         --build-arg "KICAD_VERSION=${KICAD_VERSION}" \
+        --build-arg "KICAD_DIGEST=${DIGEST}" \
         -f "$REPO_ROOT/docker/Dockerfile" \
         -t "$IMAGE" \
         "$REPO_ROOT" >&2

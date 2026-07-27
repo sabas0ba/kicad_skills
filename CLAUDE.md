@@ -38,6 +38,16 @@ Add the rule, then add a test in `tests/test_sch_review.py` /
 Keep severities honest: `error` = the design is broken, `warning` = a human must
 judge it, `info` = context.
 
+## Pinning rules (enforced by tests/test_pinning.py)
+
+* Python dependencies: edit `requirements.in`, then `make lock`. Never hand-edit
+  `requirements.txt` — it carries hashes and is installed with `--require-hashes`.
+* KiCad releases: add `<version> <sha256 digest>` to `docker/kicad-digests.txt`
+  before building with a new `KICAD_VERSION`. Keep the Dockerfile's default
+  `KICAD_VERSION`/`KICAD_DIGEST`, the `Makefile` and `bin/eda` in agreement.
+* GitHub Actions: `uses: owner/action@<40-char-sha> # vX.Y.Z`. No tag-only refs,
+  no `ubuntu-latest`.
+
 ## Test fixtures
 
 `tests/fixtures/example_project` is a small, DRC-clean KiCad project (RC filter

@@ -1,54 +1,62 @@
 #!/usr/bin/env python3
-"""Bootstrap pip into a virtualenv without relying on distribution packages.
+"""Install one exact, hash-verified pip into a virtualenv.
 
-The KiCad base image ships a Python interpreter but no ``ensurepip`` and no
-``python3-pip``.  Rather than depending on a Debian mirror being reachable at
-build time, this script tries ``ensurepip`` first and falls back to fetching the
-pip wheel straight from PyPI (a wheel is a zip, so it can be executed in place).
+The KiCad base image ships a Python interpreter but neither ``pip`` nor
+``ensurepip``.  Rather than depending on a Debian mirror at build time (or on
+whatever pip version happens to be bundled), this fetches a pinned pip wheel
+from PyPI, verifies its SHA-256, and installs it by running the wheel in place
+(a wheel is a zip, so it can bootstrap itself).
 
-Usage: bootstrap-pip.py /path/to/venv/bin/python
+Usage:
+    bootstrap-pip.py <venv-python> --url <wheel-url> --sha256 <digest>
 """
 
 from __future__ import annotations
 
-import json
+import argparse
+import hashlib
 import os
 import subprocess
 import sys
 import tempfile
+import urllib.parse
 import urllib.request
-
-PYPI_JSON = "https://pypi.org/pypi/pip/json"
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: bootstrap-pip.py <venv-python>", file=sys.stderr)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("python", help="interpreter of the target virtualenv")
+    parser.add_argument("--url", required=True, help="pinned pip wheel URL")
+    parser.add_argument("--sha256", required=True, help="expected wheel digest")
+    args = parser.parse_args()
+
+    filename = os.path.basename(urllib.parse.urlparse(args.url).path)
+    if not filename.endswith(".whl"):
+        print(f"bootstrap-pip: {args.url} is not a wheel", file=sys.stderr)
         return 2
-    python = sys.argv[1]
 
-    if subprocess.call([python, "-m", "ensurepip", "--upgrade"]) == 0:
-        print("bootstrap-pip: installed via ensurepip")
-        return 0
+    with urllib.request.urlopen(args.url, timeout=180) as response:
+        payload = response.read()
 
-    print("bootstrap-pip: ensurepip unavailable, fetching the pip wheel from PyPI")
-    with urllib.request.urlopen(PYPI_JSON, timeout=120) as response:
-        release = json.load(response)
-    wheels = [u for u in release["urls"] if u["packagetype"] == "bdist_wheel"]
-    if not wheels:
-        print("bootstrap-pip: no pip wheel on PyPI?!", file=sys.stderr)
+    digest = hashlib.sha256(payload).hexdigest()
+    if digest != args.sha256:
+        print(
+            "bootstrap-pip: hash mismatch for the pip wheel\n"
+            f"  expected {args.sha256}\n  got      {digest}",
+            file=sys.stderr,
+        )
         return 1
-    wheel = wheels[0]
 
     tmp = tempfile.mkdtemp(prefix="pip-bootstrap-")
-    path = os.path.join(tmp, wheel["filename"])
-    urllib.request.urlretrieve(wheel["url"], path)
-    print(f"bootstrap-pip: downloaded {wheel['filename']}")
+    path = os.path.join(tmp, filename)
+    with open(path, "wb") as fh:
+        fh.write(payload)
+    print(f"bootstrap-pip: verified {filename} ({len(payload)} bytes)")
 
-    # A wheel on sys.path exposes the pip package, which can install itself.
+    # The wheel on sys.path exposes the pip package, which installs itself.
     subprocess.check_call(
-        [python, os.path.join(path, "pip"), "install", "--no-index",
-         "--find-links", tmp, "pip"]
+        [args.python, os.path.join(path, "pip"), "install", "--no-index",
+         "--find-links", tmp, "--no-cache-dir", "pip"]
     )
     return 0
 

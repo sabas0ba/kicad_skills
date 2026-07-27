@@ -1,0 +1,31 @@
+# Direct dependencies of the toolkit and of its test-suite.
+#
+# This file is the source of truth; requirements.txt is the fully pinned,
+# hash-verified lock generated from it:
+#
+#   make lock       # uv pip compile --generate-hashes (python 3.13, linux)
+#
+# Never install from this file - the image installs requirements.txt with
+# --require-hashes, so every byte that lands in it is pinned by digest.
+
+# -- build backend: the image installs the toolkit with --no-build-isolation,
+#    so the backend must be part of the locked set instead of being fetched
+#    on the fly by pip.
+setuptools
+wheel
+
+# -- runtime
+requests
+beautifulsoup4
+pdfplumber
+pypdfium2
+pytesseract
+Pillow
+numpy
+matplotlib
+
+# -- test tooling (the image doubles as the test environment)
+pytest
+pytest-cov
+responses
+reportlab

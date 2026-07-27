@@ -34,6 +34,22 @@ KICAD_VERSION=9.0.9 ./bin/eda pcb review hardware/board.kicad_pcb
 
 Each version gets its own image tag (`eda-toolkit:<version>`), so several KiCad
 releases can coexist. Available tags: https://hub.docker.com/r/kicad/kicad/tags.
+
+**The base image is always pinned by manifest digest**, never by tag alone. A
+version can only be built once its digest is listed in
+`docker/kicad-digests.txt`; otherwise the build stops with an error. To add one:
+
+```bash
+docker buildx imagetools inspect kicad/kicad:9.0.10 --format '{{.Manifest.Digest}}'
+# or, without docker:
+curl -s https://hub.docker.com/v2/repositories/kicad/kicad/tags/9.0.10 | jq -r .digest
+# then append "9.0.10 sha256:..." to docker/kicad-digests.txt
+```
+
+The same applies to everything else in the image: pip is fetched by wheel
+SHA-256, and the python packages come from the hash-pinned `requirements.txt`
+(regenerate it with `make lock` after editing `requirements.in`).
+`tests/test_pinning.py` enforces all of this.
 Never open a project with an older KiCad than it was saved with — KiCad upgrades
 files in place and that is not reversible. Check first:
 

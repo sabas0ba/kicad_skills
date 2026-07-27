@@ -147,13 +147,44 @@ Design notes:
   and every rule is a small function registered in a list — adding a check is a
   dozen lines plus a test.
 
+## Reproducibility
+
+Every external input is pinned, and the pins are enforced by
+`tests/test_pinning.py` (which runs in CI):
+
+| Input | Pin |
+| --- | --- |
+| KiCad base image | manifest digest, per version, in [`docker/kicad-digests.txt`](docker/kicad-digests.txt) |
+| pip | exact version + wheel SHA-256 (`ARG PIP_*` in the Dockerfile) |
+| Python packages | exact versions + hashes in [`requirements.txt`](requirements.txt), installed with `--require-hashes --no-deps --no-build-isolation` |
+| GitHub Actions | 40 character commit SHA, with the tag in a trailing comment |
+| CI runner | `ubuntu-24.04`, never `-latest`; Python `3.13.5` |
+
+To change a dependency, edit `requirements.in` and regenerate the lock:
+
+```bash
+make lock          # uv pip compile --generate-hashes (python 3.13, linux)
+make rebuild
+```
+
+To use another KiCad release, add its digest to `docker/kicad-digests.txt`
+(the file documents the one-liner) and build with `KICAD_VERSION=<version>`.
+The build fails loudly if a version has no pinned digest.
+
 ## Testing
 
 ```bash
-make test          # everything, inside the container (147 tests)
+make test          # everything, inside the container (158 tests)
 make test-host     # pure-python subset on the host (needs a local venv)
 make smoke         # end-to-end: every skill's main command
 ```
+
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs two jobs on
+every push and pull request: the pure-python suite against the hash-pinned
+dependency set, and the full suite plus the smoke test inside the freshly built
+container (which also uploads the rendered example artwork as an artifact).
+Nothing in CI touches the network beyond pulling the pinned base image and the
+locked wheels — the datasheet search tests use mocked HTTP.
 
 The suite covers the s-expression parser, schematic and board models, every
 review rule, the ngspice raw-file parser (ASCII/binary, real/complex), the
