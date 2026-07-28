@@ -142,8 +142,14 @@ $ ./bin/eda.sh sim montecarlo sim/rc.cir -o sim/mc \
 {"metric": "ac.v(out).f_minus_3db_hz", "nominal_metric": 997.7,
  "statistics": {"samples": 200, "mean": 1001.1, "stdev": 35.5,
                 "p05": 940.1, "median": 1000.7, "p95": 1064.0, "spread_pct": 20.4},
+ "sensitivity": {"explained_pct": 99.7, "parameters": [
+     {"parameter": "C1", "contribution_pct": 99.3, "elasticity": -0.99},
+     {"parameter": "R1", "contribution_pct":  0.7, "elasticity": -0.96}]},
  "failures": [], "histogram": "sim/mc/histogram.png", "csv": "sim/mc/trials.csv"}
 ```
+
+The 10 % capacitor is the entire spread; the 1 % resistor is noise. That is the
+line item worth changing, and it came out of the trials that were already run.
 
 **Read a datasheet without opening a viewer** — page images for the curves,
 tables for the numbers.

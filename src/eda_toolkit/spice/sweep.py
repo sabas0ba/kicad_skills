@@ -217,6 +217,119 @@ def _statistics(values: Sequence[float]) -> dict[str, Any]:
     }
 
 
+def sensitivity(
+    nominal_values: dict[str, float],
+    results: Sequence[dict[str, Any]],
+) -> dict[str, Any]:
+    """Rank the varied components by how much each one moves the metric.
+
+    The trials are already there - this is the same data the histogram is drawn
+    from, read column-wise instead of as one distribution, so it costs no extra
+    simulation. Everything is in relative terms (a part's deviation from its own
+    nominal, the metric's from its own mean) so parts with different units and
+    magnitudes are comparable:
+
+        elasticity        a 1 % change in this part moves the metric by this %
+        contribution_pct  this part's share of the observed spread
+
+    Fitted with one least-squares solve over all parameters at once rather than
+    one regression per part. Fitting them separately looks equivalent and is not:
+    a part with a narrow tolerance sits underneath the swing of a wider one, and
+    on its own its slope comes back off by 30 % or more. Solving together gives
+    each part its own slope with the others held straight.
+
+    ``explained_pct`` is the fit quality. Well under 100 means the metric does
+    not respond linearly over this tolerance range, and the per-part split should
+    be read as indicative rather than exact.
+    """
+    import numpy as np
+
+    trials = [r for r in results if r["trial"] != "nominal" and r.get("values")]
+    if len(trials) < 3:
+        return {}
+    metrics = [float(r["metric"]) for r in trials]
+    metric_mean = statistics.fmean(metrics)
+    if not metric_mean or statistics.pstdev(metrics) == 0.0:
+        return {}
+    y = np.array([(m - metric_mean) / metric_mean for m in metrics], dtype=float)
+
+    names: list[str] = []
+    columns: list[list[float]] = []
+    for name in sorted(nominal_values):
+        nominal = nominal_values[name]
+        if not nominal:
+            continue
+        values = [r["values"].get(name) for r in trials]
+        if any(v is None for v in values):
+            continue
+        column = [(float(v) - nominal) / nominal for v in values]
+        if max(column) == min(column):  # a part that was never actually varied
+            continue
+        names.append(name)
+        columns.append(column)
+    if not names or len(trials) <= len(names):
+        return {}
+
+    x = np.array(columns, dtype=float).T
+    design = np.column_stack([x, np.ones(len(y))])
+    try:
+        coefficients, *_ = np.linalg.lstsq(design, y, rcond=None)
+    except np.linalg.LinAlgError:  # pragma: no cover - singular design matrix
+        return {}
+    slopes = coefficients[:-1]
+
+    residual = y - design @ coefficients
+    total_variance = float(np.var(y))
+    explained = 1.0 - float(np.var(residual)) / total_variance if total_variance else 0.0
+
+    # Variance decomposition: with independent parameters, each part contributes
+    # (slope * its own spread) squared.
+    shares = [float(slope**2 * np.var(column)) for slope, column in zip(slopes, x.T, strict=True)]
+    total_share = sum(shares)
+
+    parameters = [
+        {
+            "parameter": name,
+            "nominal": nominal_values[name],
+            "elasticity": float(slope),
+            "contribution_pct": (share / total_share * 100.0) if total_share else None,
+        }
+        for name, slope, share in zip(names, slopes, shares, strict=True)
+    ]
+    parameters.sort(key=lambda row: row["contribution_pct"] or 0.0, reverse=True)
+    return {"parameters": parameters, "explained_pct": explained * 100.0}
+
+
+def _sensitivity_plot(rows: Sequence[dict[str, Any]], dest: Path, *, metric: str) -> Path:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    names = [row["parameter"] for row in rows][::-1]
+    shares = [row["contribution_pct"] or 0.0 for row in rows][::-1]
+    fig, ax = plt.subplots(figsize=(7, 0.5 * len(names) + 1.6))
+    bars = ax.barh(names, shares, color="#2c6fbb")
+    ax.set_xlabel("share of the spread [%]")
+    ax.set_title(f"What moves {metric}")
+    # Headroom so the label past the end of the longest bar still fits.
+    ax.set_xlim(0, max(shares or [1.0]) * 1.35)
+    for bar, row in zip(bars, list(rows)[::-1], strict=True):
+        ax.text(
+            bar.get_width() + 1.0,
+            bar.get_y() + bar.get_height() / 2,
+            f"{row['contribution_pct']:.0f}%  ({row['elasticity']:+.2f} %/%)",
+            va="center",
+            fontsize=9,
+        )
+    ax.grid(axis="x", alpha=0.3)
+    fig.tight_layout()
+    ensure_dir(dest.parent)
+    fig.savefig(dest, dpi=130)
+    plt.close(fig)
+    return dest
+
+
 def _histogram(values: Iterable[float], dest: Path, *, metric: str, nominal: float | None) -> Path:
     import matplotlib
 
@@ -328,6 +441,15 @@ def monte_carlo(
             )
         except Exception as exc:  # plotting must not sink the analysis
             report["histogram_error"] = f"{type(exc).__name__}: {exc}"
+    ranked = sensitivity({k: nominal_values[k] for k in tolerances}, results)
+    if ranked.get("parameters"):
+        report["sensitivity"] = ranked
+        try:
+            report["sensitivity_plot"] = str(
+                _sensitivity_plot(ranked["parameters"], out / "sensitivity.png", metric=metric)
+            )
+        except Exception as exc:  # plotting must not sink the analysis
+            report["sensitivity_plot_error"] = f"{type(exc).__name__}: {exc}"
     _write_csv(out / "trials.csv", results, sorted(tolerances))
     report["csv"] = str(out / "trials.csv")
     report["ok"] = bool(samples) and not failures

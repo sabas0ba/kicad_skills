@@ -1,5 +1,6 @@
 """Monte Carlo / temperature sweep helpers. The pure parts need no ngspice."""
 
+import math
 import random
 
 import pytest
@@ -132,3 +133,75 @@ def test_statistics():
 
 def test_statistics_of_nothing():
     assert sweep._statistics([])["samples"] == 0
+
+
+# -- sensitivity ranking ---------------------------------------------------
+
+
+def _trials(values_by_trial, metric_of):
+    """Build the same shape monte_carlo() collects, so the maths is tested alone."""
+    rows = [{"trial": "nominal", "metric": metric_of({}), "values": {}}]
+    for index, values in enumerate(values_by_trial):
+        rows.append({"trial": f"{index:04d}", "metric": metric_of(values), "values": values})
+    return rows
+
+
+def test_the_part_with_the_wider_tolerance_dominates():
+    """An RC corner: fc = 1/(2 pi R C). 10% on C swamps 1% on R."""
+    rng = random.Random(7)
+    nominal = {"R1": 1000.0, "C1": 159.155e-9}
+    trials = []
+    for _ in range(300):
+        trials.append(
+            {
+                "R1": nominal["R1"] * (1 + rng.gauss(0, 0.01 / 3)),
+                "C1": nominal["C1"] * (1 + rng.gauss(0, 0.10 / 3)),
+            }
+        )
+    results = _trials(trials, lambda v: 1.0 / (2 * math.pi * v["R1"] * v["C1"]) if v else 1000.0)
+
+    ranked = sweep.sensitivity(nominal, results)
+    rows = ranked["parameters"]
+    assert [row["parameter"] for row in rows] == ["C1", "R1"]
+    assert rows[0]["contribution_pct"] > 95
+    # fc is inversely proportional to each: a 1% rise gives a ~1% fall, and the
+    # joint fit recovers that for R1 too, despite C1 swamping it ten to one
+    assert rows[0]["elasticity"] == pytest.approx(-1.0, abs=0.05)
+    assert rows[1]["elasticity"] == pytest.approx(-1.0, abs=0.05)
+    assert ranked["explained_pct"] == pytest.approx(100, abs=1)
+
+
+def test_a_part_the_metric_ignores_ranks_last():
+    rng = random.Random(3)
+    nominal = {"R1": 1000.0, "R2": 1000.0}
+    trials = [
+        {"R1": 1000.0 * (1 + rng.gauss(0, 0.05)), "R2": 1000.0 * (1 + rng.gauss(0, 0.05))}
+        for _ in range(200)
+    ]
+    results = _trials(trials, lambda v: v["R1"] if v else 1000.0)  # R2 does nothing
+
+    rows = sweep.sensitivity(nominal, results)["parameters"]
+    assert rows[0]["parameter"] == "R1"
+    assert rows[0]["contribution_pct"] > 99
+    assert rows[1]["parameter"] == "R2"
+    assert rows[1]["elasticity"] == pytest.approx(0.0, abs=0.02)
+
+
+def test_sensitivity_needs_something_to_measure():
+    nominal = {"R1": 1000.0}
+    # too few trials
+    assert sweep.sensitivity(nominal, _trials([{"R1": 1000.0}], lambda v: 1.0)) == {}
+    # a metric that never moves
+    flat = _trials([{"R1": 1000.0 + i} for i in range(10)], lambda v: 5.0)
+    assert sweep.sensitivity(nominal, flat) == {}
+    # a parameter that never moves
+    fixed = _trials([{"R1": 1000.0} for _ in range(10)], lambda v: 5.0 + len(v))
+    assert sweep.sensitivity(nominal, fixed) == {}
+
+
+def test_a_nonlinear_response_is_flagged_as_only_partly_explained():
+    """A metric that swings quadratically is not a straight line, and says so."""
+    nominal = {"R1": 1000.0}
+    trials = [{"R1": 1000.0 * (1 + d / 100)} for d in range(-30, 31)]
+    results = _trials(trials, lambda v: (v["R1"] / 1000.0) ** 2 if v else 1.0)
+    assert sweep.sensitivity(nominal, results)["explained_pct"] < 99.9
