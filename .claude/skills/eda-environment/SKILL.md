@@ -15,6 +15,10 @@ Nothing (KiCad, ngspice, python packages) is installed on the host.
 ./bin/eda.sh doctor               # prints the versions actually available
 ```
 
+In a project that uses this repository as a **submodule**, `bin/eda.sh` is the
+one-line shim written by `bin/install-skills.sh`; it behaves identically. If it
+is missing, re-run `./<submodule>/bin/install-skills.sh` from the project root.
+
 `bin/eda.sh` mounts the git repository root at `/work` and runs as your uid/gid,
 so generated files are not root owned. Paths passed to it are interpreted
 **inside** `/work`, so use paths that are relative to the repository (absolute
@@ -33,6 +37,12 @@ KICAD_VERSION=9.0.9 ./bin/eda.sh pcb review hardware/board.kicad_pcb
 
 Each version gets its own image tag (`eda-toolkit:<version>`), so several KiCad
 releases can coexist. Available tags: https://hub.docker.com/r/kicad/kicad/tags.
+CI runs the full suite against both 10.0.4 and 9.0.9.
+
+Not every `kicad-cli` flag exists in every release, so the wrapper asks the
+binary (`kicad_cli.supports`) rather than assuming. On KiCad 9 that means DRC
+does not refill zones (`layout.unfilled_zone` becomes load-bearing - fill and
+commit your pours), and `pcb export stats` returns nothing.
 
 **The base image is always pinned by manifest digest**, never by tag alone. A
 version can only be built once its digest is listed in

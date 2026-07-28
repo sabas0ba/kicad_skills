@@ -262,37 +262,62 @@ def rule_unrouted(ctx: PcbContext) -> list[Finding]:
 
 @rule
 def rule_edge_clearance(ctx: PcbContext) -> list[Finding]:
-    """Copper too close to the board edge (bounding-box approximation)."""
-    bbox = ctx.board.outline_bbox()
-    if not bbox:
+    """Copper too close to (or past) the real Edge.Cuts geometry.
+
+    Measured against the flattened outline, not its bounding box: a round board,
+    a notch or a mounting-hole cutout all change the answer, and the bounding
+    box gets every one of them wrong in both directions.
+    """
+    board = ctx.board
+    if not board.edge_segments():
         return []
-    min_x, min_y, max_x, max_y = bbox
-    clearance = ctx.thresholds["min_edge_clearance_mm"]
-    offenders: list[str] = []
-    for track in ctx.board.tracks:
+    limit = ctx.thresholds["min_edge_clearance_mm"]
+    closed = board.outline_closed()
+
+    close: list[dict[str, Any]] = []
+    outside: list[dict[str, Any]] = []
+
+    def check(x: float, y: float, half_extent: float, label: str) -> None:
+        signed = board.edge_clearance_at(x, y)
+        margin = round(signed - half_extent, 4)
+        if margin >= limit:
+            return
+        entry = {"item": label, "at": [round(x, 3), round(y, 3)], "margin_mm": margin}
+        # Sitting outside the outline and merely overhanging it are different
+        # problems: the first is misplaced copper, the second is a clearance call.
+        (outside if signed < 0 and closed else close).append(entry)
+
+    for track in board.tracks:
         for x, y in (track.start, track.end):
-            margin = min(x - min_x, max_x - x, y - min_y, max_y - y) - track.width / 2
-            if margin < clearance:
-                offenders.append(f"{track.net or 'track'}@({round(x, 2)},{round(y, 2)})")
-                break
-    for fp in ctx.board.footprints:
+            check(x, y, track.width / 2, f"track {track.net or '(no net)'}")
+    for via in board.vias:
+        check(via.x, via.y, via.size / 2, f"via {via.net or '(no net)'}")
+    for fp in board.footprints:
         for pad in fp.pads:
-            margin = (
-                min(pad.x - min_x, max_x - pad.x, pad.y - min_y, max_y - pad.y) - max(pad.size) / 2
+            check(pad.x, pad.y, max(pad.size) / 2, f"{fp.ref}.{pad.number}")
+
+    findings: list[Finding] = []
+    if outside:
+        findings.append(
+            Finding(
+                "board.copper_outside_outline",
+                "error",
+                f"{len(outside)} copper item(s) lie outside the board outline "
+                "(they would be milled away)",
+                details={"items": outside[:20], "count": len(outside)},
             )
-            if margin < clearance:
-                offenders.append(f"{fp.ref}.{pad.number}")
-    if offenders:
-        return [
+        )
+    if close:
+        findings.append(
             Finding(
                 "board.edge_clearance",
                 "warning",
-                f"{len(offenders)} copper item(s) within {clearance} mm of the board "
-                "outline bounding box",
-                details={"items": offenders[:20]},
+                f"{len(close)} copper item(s) within {limit} mm of the board outline"
+                + ("" if closed else "; the outline is not closed, so only distance was checked"),
+                details={"items": close[:20], "count": len(close), "outline_closed": closed},
             )
-        ]
-    return []
+        )
+    return findings
 
 
 @rule
@@ -397,10 +422,15 @@ def rule_placement(ctx: PcbContext) -> list[Finding]:
     bbox = ctx.board.outline_bbox()
     if bbox:
         min_x, min_y, max_x, max_y = bbox
+        exact = ctx.board.outline_closed()
         outside = [
             fp.ref
             for fp in ctx.board.footprints
-            if not (min_x <= fp.x <= max_x and min_y <= fp.y <= max_y)
+            if (
+                ctx.board.edge_clearance_at(fp.x, fp.y) < 0
+                if exact
+                else not (min_x <= fp.x <= max_x and min_y <= fp.y <= max_y)
+            )
         ]
         if outside:
             findings.append(

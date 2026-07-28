@@ -12,11 +12,24 @@ def test_version():
     assert kicad_cli.version().split(".")[0].isdigit()
 
 
+# The fixture embeds one snapshot of KiCad's symbol library. A different KiCad
+# release ships slightly different symbols, so `lib_symbol_mismatch` says the
+# fixture is older than the installed library - not that the design is wrong.
+# It is the schematic-side twin of the `lib_footprint_mismatch` the simplified
+# footprints produce in DRC.
+LIBRARY_SNAPSHOT_TYPES = {"lib_symbol_mismatch", "lib_footprint_mismatch"}
+
+
+def design_violations(violations):
+    return [v for v in violations if v.get("type") not in LIBRARY_SNAPSHOT_TYPES]
+
+
 def test_erc_report_shape(project_copy):
     report = kicad_cli.erc(project_copy / "example.kicad_sch")
     assert "sheets" in report
     violations = [v for sheet in report["sheets"] for v in sheet.get("violations", [])]
-    assert violations == [], f"the example schematic should be ERC clean: {violations}"
+    real = design_violations(violations)
+    assert real == [], f"the example schematic should be ERC clean: {real}"
 
 
 def test_netlist_from_kicad_cli_matches_the_fallback(project_copy):
@@ -41,7 +54,9 @@ def test_schematic_review_is_clean(project_copy):
     assert report["statistics"]["erc_available"] is True
     assert report["statistics"]["netlist_source"] == "kicad-cli"
     assert report["summary"]["error"] == 0
-    assert report["summary"]["warning"] == 0
+    noise = {f"erc.{t}" for t in LIBRARY_SNAPSHOT_TYPES}
+    warnings = [f for f in report["findings"] if f["severity"] == "warning"]
+    assert [f for f in warnings if f["rule"] not in noise] == []
 
 
 def test_board_review_has_no_errors(project_copy):
@@ -59,8 +74,8 @@ def test_drc_detects_a_real_short(project_copy):
     board_file = project_copy / "example.kicad_pcb"
     text = board_file.read_text()
     shorted = text.replace(
-        '(segment (start 105 92) (end 111.0875 92) (width 0.25) (layer "F.Cu") (net 3)',
-        '(segment (start 105 92) (end 117.9125 92) (width 0.25) (layer "F.Cu") (net 3)',
+        "(segment\n\t\t(start 105 92)\n\t\t(end 111.0875 92)",
+        "(segment\n\t\t(start 105 92)\n\t\t(end 117.9125 92)",
     )
     assert shorted != text
     board_file.write_text(shorted)

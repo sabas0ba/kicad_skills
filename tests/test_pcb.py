@@ -8,7 +8,8 @@ from eda_toolkit.util import EdaError
 
 def test_parse_board(example_pcb):
     board = pcb.parse(example_pcb)
-    assert board.version == 20240108
+    # the fixture is written by KiCad 9 pcbnew: readable by 9 and 10 alike
+    assert board.version == 20241229
     assert board.copper_layers == ["F.Cu", "B.Cu"]
     assert board.size_mm() == (40.0, 30.0)
     assert {fp.ref for fp in board.footprints} == {"J1", "R1", "C1", "U1", "C2"}
@@ -57,7 +58,7 @@ def test_zone_is_recognised(example_pcb):
     assert zone.net == "GND"
     assert zone.layers == ["B.Cu"]
     assert zone.fill_enabled
-    assert not zone.filled  # the fixture stores no computed fill polygons
+    assert zone.filled  # the fixture ships the zone filled, as a real project would
 
 
 def test_silkscreen_texts_are_collected(example_pcb):

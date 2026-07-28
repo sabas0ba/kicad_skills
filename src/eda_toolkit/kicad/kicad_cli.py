@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import tempfile
@@ -40,6 +41,24 @@ def version() -> str:
         result = run([KICAD_CLI, "version"], timeout=60, check=False, env=_home_env())
         _VERSION_CACHE = result.stdout.strip()
     return _VERSION_CACHE
+
+
+@functools.cache
+def _help_text(command: tuple[str, ...]) -> str:
+    result = run([KICAD_CLI, *command, "--help"], timeout=60, check=False, env=_home_env())
+    return result.stdout + result.stderr
+
+
+def supports(command: Sequence[str], token: str) -> bool:
+    """Does this kicad-cli build accept ``token`` for ``command``?
+
+    KiCad moves flags between releases - ``pcb export pdf --scale`` and
+    ``pcb export gerbers --check-zones`` are KiCad 10 additions, and
+    ``pcb export stats`` does not exist before it. Asking the binary is more
+    honest than a version table, and it keeps working on releases nobody has
+    tested yet.
+    """
+    return token in _help_text(tuple(command))
 
 
 def ensure_library_tables(env: dict[str, str] | None = None) -> list[str]:
@@ -175,10 +194,13 @@ def drc(
             "--units",
             units,
             "--severity-all",
-            "--refill-zones",
             "-o",
             str(out),
         ]
+        if supports(["pcb", "drc"], "--refill-zones"):
+            # KiCad 10 only. Without it, zones keep whatever fill the file has,
+            # which is what rule_unfilled_zone warns about.
+            args.append("--refill-zones")
         if schematic_parity:
             args.append("--schematic-parity")
         if all_track_errors:
@@ -193,6 +215,8 @@ def drc(
 
 
 def board_stats(board: str | os.PathLike[str]) -> str:
+    if not supports(["pcb", "export"], "stats"):
+        return ""  # added in KiCad 10
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "stats.txt"
         invoke(["pcb", "export", "stats", "-o", str(out), str(board)], check=False)
@@ -214,18 +238,10 @@ def export_pcb_pdf(
     """
     out = Path(dest)
     ensure_dir(out.parent)
-    args = [
-        "pcb",
-        "export",
-        "pdf",
-        "--mode-single",
-        "--scale",
-        "0",
-        "--layers",
-        ",".join(layers),
-        "-o",
-        str(out),
-    ]
+    args = ["pcb", "export", "pdf", "--mode-single"]
+    if supports(["pcb", "export", "pdf"], "--scale"):
+        args += ["--scale", "0"]  # fit to page; KiCad 9 has no such option
+    args += ["--layers", ",".join(layers), "-o", str(out)]
     if mirror:
         args.append("--mirror")
     if black_and_white:
@@ -322,10 +338,11 @@ def export_gerbers(
         ",".join(layers),
         "--precision",
         str(precision),
-        "--check-zones",
         "-o",
         str(out),
     ]
+    if supports(["pcb", "export", "gerbers"], "--check-zones"):
+        args.append("--check-zones")  # KiCad 10 only
     if subtract_soldermask:
         args.append("--subtract-soldermask")
     args.append(str(board))
@@ -418,4 +435,24 @@ def export_ipc2581(board: str | os.PathLike[str], dest: str | os.PathLike[str]) 
     out = Path(dest)
     ensure_dir(out.parent)
     invoke(["pcb", "export", "ipc2581", "-o", str(out), str(board)])
+    return out
+
+
+def export_glb(
+    board: str | os.PathLike[str],
+    dest: str | os.PathLike[str],
+    *,
+    include_tracks: bool = True,
+    include_zones: bool = True,
+) -> Path:
+    """Binary glTF: a 3D model any browser (and GitHub) can display."""
+    out = Path(dest)
+    ensure_dir(out.parent)
+    args = ["pcb", "export", "glb", "--force", "--no-dnp", "--subst-models"]
+    if include_tracks:
+        args.append("--include-tracks")
+    if include_zones:
+        args.append("--include-zones")
+    args += ["-o", str(out), str(board)]
+    invoke(args, timeout=1800)
     return out

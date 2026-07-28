@@ -180,6 +180,58 @@ def test_edge_clearance():
     assert "board.edge_clearance" in rules_of(pcb_review.rule_edge_clearance(ctx))
 
 
+OUTLINE_WITH_CUTOUT = [
+    {"type": "gr_rect", "start": (0, 0), "end": (50, 40)},
+    {"type": "gr_circle", "centre": (25, 20), "radius": 5},
+]
+
+
+def test_edge_clearance_sees_a_cutout_the_bounding_box_hides():
+    """Copper hugging a mounting hole is 15 mm from every bounding-box side."""
+    ctx = ctx_for(
+        board_from(tracks=[track(25, 25.1, 40, 25.1, net="SIG")], edges=OUTLINE_WITH_CUTOUT)
+    )
+    findings = pcb_review.rule_edge_clearance(ctx)
+    assert "board.edge_clearance" in rules_of(findings)
+
+
+def test_copper_inside_a_cutout_is_reported_as_outside_the_board():
+    ctx = ctx_for(board_from(tracks=[track(25, 20, 26, 20, net="SIG")], edges=OUTLINE_WITH_CUTOUT))
+    findings = pcb_review.rule_edge_clearance(ctx)
+    assert "board.copper_outside_outline" in rules_of(findings)
+    assert [f.severity for f in findings if f.rule == "board.copper_outside_outline"] == ["error"]
+
+
+def test_copper_well_clear_of_a_curved_edge_is_quiet():
+    round_board = [{"type": "gr_circle", "centre": (25, 25), "radius": 25}]
+    ctx = ctx_for(board_from(tracks=[track(20, 25, 30, 25, net="SIG")], edges=round_board))
+    assert pcb_review.rule_edge_clearance(ctx) == []
+
+
+def test_a_corner_of_the_bounding_box_is_not_the_board_on_a_round_outline():
+    """(4,4) is 4 mm from the bbox corner but outside a circle of radius 25."""
+    round_board = [{"type": "gr_circle", "centre": (25, 25), "radius": 25}]
+    ctx = ctx_for(board_from(tracks=[track(4, 4, 6, 6, net="SIG")], edges=round_board))
+    assert "board.copper_outside_outline" in rules_of(pcb_review.rule_edge_clearance(ctx))
+
+
+def test_open_outline_only_checks_distance():
+    open_edges = [
+        {"type": "gr_line", "start": (0, 0), "end": (50, 0)},
+        {"type": "gr_line", "start": (50, 0), "end": (50, 40)},
+    ]
+    ctx = ctx_for(board_from(tracks=[track(10, 0.05, 20, 0.05, net="SIG")], edges=open_edges))
+    findings = pcb_review.rule_edge_clearance(ctx)
+    assert rules_of(findings) == {"board.edge_clearance"}
+    assert findings[0].details["outline_closed"] is False
+
+
+def test_vias_are_checked_against_the_edge_too():
+    via = pcb.Via(x=0.2, y=20, size=0.8, drill=0.4, layers=[], net_code=1, net="A")
+    ctx = ctx_for(board_from(vias=[via]))
+    assert "board.edge_clearance" in rules_of(pcb_review.rule_edge_clearance(ctx))
+
+
 def test_drill_variety():
     vias = [
         pcb.Via(x=0, y=0, size=0.8, drill=0.3 + i * 0.05, layers=[], net_code=1, net="A")

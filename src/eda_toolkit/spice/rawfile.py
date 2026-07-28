@@ -203,7 +203,13 @@ def _parse_one(blob: bytes, pos: int) -> tuple[Plot, int]:
 
     for var in variables:
         column = columns[:, var["index"]]
-        if not is_complex:
+        if not is_complex or var["index"] == 0:
+            # ngspice never initialises the imaginary half of the sweep variable
+            # in a complex plot: for an AC sweep the frequency column carries
+            # whatever was on the heap. ngspice 44 usually leaves a denormal
+            # there and abs() still looks right; ngspice 39 left -1.8e199 and
+            # every frequency measurement became nonsense. The real part is the
+            # only defined half, so that is what the sweep axis is.
             column = column.real.astype(np.float64)
         plot.data[var["name"]] = np.ascontiguousarray(column)
 

@@ -50,6 +50,70 @@ def pdf_to_png(
     return written
 
 
+def contact_sheet(
+    images: Sequence[tuple[str, str]],
+    dest: str | os.PathLike[str],
+    *,
+    columns: int = 3,
+    cell: int = 700,
+    background: str = "#ffffff",
+) -> Path:
+    """Tile labelled images into one sheet.
+
+    Twelve separate PNGs is twelve things to open; one sheet is a glance. Used
+    for the per-layer plots, where the question is usually "is anything on the
+    wrong layer" rather than "what exactly is at 12.7 mm".
+    """
+    from PIL import Image, ImageDraw
+
+    entries = [(label, Path(path)) for label, path in images if Path(path).exists()]
+    if not entries:
+        raise EdaError("no images to tile")
+
+    columns = max(1, min(columns, len(entries)))
+    rows = (len(entries) + columns - 1) // columns
+    label_height = 28
+
+    # Rows are as tall as their tallest tile: board plots are landscape, so a
+    # square grid would leave a third of the sheet empty.
+    thumbs = []
+    for label, path in entries:
+        image = Image.open(path)
+        image.thumbnail((cell, cell))
+        thumbs.append((label, image))
+    row_heights = [
+        max(img.height for _, img in thumbs[row * columns : (row + 1) * columns])
+        for row in range(rows)
+    ]
+    row_offsets = []
+    offset = 0
+    for height in row_heights:
+        row_offsets.append(offset)
+        offset += height + label_height
+    sheet = Image.new("RGB", (columns * cell, offset), background)
+    draw = ImageDraw.Draw(sheet)
+
+    for index, (label, image) in enumerate(thumbs):
+        row = index // columns
+        x = (index % columns) * cell + (cell - image.width) // 2
+        y = row_offsets[row] + label_height + (row_heights[row] - image.height) // 2
+        if image.mode in ("RGBA", "LA", "P"):
+            image = image.convert("RGBA")
+            sheet.paste(image, (x, y), image)
+        else:
+            sheet.paste(image, (x, y))
+        draw.text(
+            ((index % columns) * cell + 8, row_offsets[row] + 7),
+            label,
+            fill="#222222",
+        )
+
+    out = Path(dest)
+    ensure_dir(out.parent)
+    sheet.save(out)
+    return out
+
+
 def render_board(
     target: str | os.PathLike[str],
     out_dir: str | os.PathLike[str],
@@ -58,8 +122,10 @@ def render_board(
     dpi: int = 300,
     three_d: bool = True,
     per_layer: bool = False,
+    glb: bool = False,
+    sheet: bool = True,
 ) -> dict[str, Any]:
-    """Plot the requested 2D views (PNG + SVG) and optional 3D renders."""
+    """Plot the requested 2D views, the 3D renders, and tile them into a sheet."""
     board_path = pcb.find_board(target)
     out = ensure_dir(out_dir)
     board = pcb.parse(board_path)
@@ -123,6 +189,23 @@ def render_board(
             except Exception as exc:
                 result["errors"].append({"view": label, "error": _short(exc)})
 
+    if glb:
+        try:
+            result["glb"] = str(kicad_cli.export_glb(board_path, out / "board.glb"))
+        except Exception as exc:
+            result["errors"].append({"view": "glb", "error": _short(exc)})
+
+    if sheet and len(result["images"]) > 1:
+        try:
+            result["contact_sheet"] = str(
+                contact_sheet(
+                    [(i["view"], i["path"]) for i in result["images"]],
+                    out / "contact-sheet.png",
+                )
+            )
+        except Exception as exc:
+            result["errors"].append({"view": "contact-sheet", "error": _short(exc)})
+
     write_json(out / "images.json", result)
     return result
 
@@ -138,6 +221,15 @@ def render_schematic(
     if not pdf_path.exists():
         raise EdaError(f"schematic PDF export failed: {pdf_path}")
     pages = pdf_to_png(pdf_path, out / "sheet", dpi=dpi)
-    result = {"schematic": str(sch), "pdf": str(pdf_path), "images": pages}
+    result: dict[str, Any] = {"schematic": str(sch), "pdf": str(pdf_path), "images": pages}
+    if len(pages) > 1:
+        try:
+            result["contact_sheet"] = str(
+                contact_sheet(
+                    [(Path(p).stem, p) for p in pages], out / "contact-sheet.png", columns=2
+                )
+            )
+        except Exception as exc:
+            result["contact_sheet_error"] = _short(exc)
     write_json(out / "images.json", result)
     return result

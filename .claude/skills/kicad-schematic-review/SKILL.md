@@ -8,12 +8,14 @@ description: Read a KiCad schematic (.kicad_sch) to extract components, nets and
 Reads `.kicad_sch` files and reviews them. Runs in the container
 (`eda-environment` skill); pass paths relative to the repository root.
 
-## The three commands
+## The commands
 
 ```bash
 ./bin/eda.sh sch info    hardware/               # structure: components, nets, hierarchy
 ./bin/eda.sh sch review  hardware/ --text        # ERC + design heuristics
-./bin/eda.sh sch render  hardware/ -o /tmp/sch   # PNG of each sheet, to look at
+./bin/eda.sh sch render  hardware/ -o /tmp/sch   # PDF + a PNG per sheet + contact sheet
+./bin/eda.sh sch pdf     hardware/ -o /tmp/sch.pdf
+./bin/eda.sh report      hardware/ -o /tmp/report  # review + images + BOM on one page
 ```
 
 The target may be a `.kicad_sch`, a `.kicad_pro`, or the project directory
@@ -25,7 +27,9 @@ The target may be a `.kicad_sch`, a `.kicad_pro`, or the project directory
    Note the supply rails, the ICs and anything unfamiliar.
 2. **`sch review --text`** — machine findings. Every `error` must be explained
    or fixed; every `warning` must be judged, not blindly reported.
-3. **`sch render` + Read the PNG** — the machine cannot see intent. Look at the
+3. **`sch render` + Read the PNG** — the machine cannot see intent. On a
+   multi-sheet schematic start with `contact-sheet.png`, then the individual
+   sheets; `schematic.pdf` is the thing to hand to a human. Look at the
    drawing to check signal flow, that the topology is what the user described,
    and that nothing important is drawn but disconnected.
 4. **Datasheets** — for each IC, get its datasheet (the part number and the
