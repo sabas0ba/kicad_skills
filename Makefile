@@ -13,8 +13,13 @@ RUN_IN_IMAGE   = $(DOCKER) run --rm -u $(shell id -u):$(shell id -g) \
                    -v "$(CURDIR):/work" -w /work -e HOME=/tmp/eda-home \
                    -e PYTHONPATH=/work/src --network none $(IMAGE)
 
+# The GitHub Pages gem set, pinned like everything else. Only used by `make
+# site`, which renders the docs exactly as Pages will so link, title and Liquid
+# problems surface before pushing rather than after.
+PAGES_IMAGE = jekyll/jekyll@sha256:b49c58a6b9b6490eba9016f0ce9d965f2583d62af7191a4d3f3855b1c2cceb99
+
 .PHONY: help build rebuild lock lint test test-host test-docker test-coverage smoke shell doctor clean \
-        check-digest check-pins refresh-pins skills
+        check-digest check-pins refresh-pins skills site
 
 help:  ## show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -40,6 +45,13 @@ check-pins:  ## report container pins that upstream has moved past
 
 refresh-pins:  ## rewrite the container pins (add --set-default-kicad by hand to bump KiCad)
 	python3 tools/refresh_pins.py --write
+
+site:  ## build the GitHub Pages site into _site/ (needs network on first run)
+	@rm -rf _site && mkdir -p _site && chmod 777 _site
+	docker run --rm -v "$(PWD):/srv/jekyll" -v "$(PWD)/_site:/out" \
+	    $(if $(wildcard /root/.ccr/ca-bundle.crt),-v /root/.ccr/ca-bundle.crt:/ca.crt:ro -e SSL_CERT_FILE=/ca.crt,) \
+	    $(PAGES_IMAGE) jekyll build --destination /out
+	@echo "==> open _site/index.html, or: python3 -m http.server -d _site"
 
 skills:  ## mirror docs/guides/ into .claude/skills (generated, git-ignored)
 	./bin/install-skills.sh --force

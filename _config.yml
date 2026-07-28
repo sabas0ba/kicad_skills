@@ -1,0 +1,65 @@
+# GitHub Pages configuration.
+#
+# The site is the Markdown that is already in the repository: README.md is the
+# landing page, docs/guides/ are the guides, docs/examples/ is the sample output.
+# Nothing is generated and there is no build workflow - Settings -> Pages ->
+# "Deploy from a branch" -> main -> / (root) is the whole setup.
+#
+# tests/test_docs.py checks that every link still resolves under these settings.
+
+title: kicad_skills
+description: >-
+  A containerised circuit-design toolkit: datasheets, SPICE simulation,
+  KiCad schematic and board review, fabrication output.
+
+# Project site, so the pages live under /<repo>/. Both are needed for the theme
+# to build correct asset and page URLs.
+url: https://sabas0ba.github.io
+baseurl: /kicad_skills
+# Supplied automatically by GitHub Pages; needed for a local `jekyll build`,
+# because the theme's header links back to the repository.
+repository: sabas0ba/kicad_skills
+
+# Renders Markdown the way GitHub does, which is what the existing files were
+# written against - tables, task lists, fenced code and all.
+theme: jekyll-theme-primer
+
+# GitHub Pages turns these on for every site, so listing them is a no-op there.
+# It is not a no-op for a plain `jekyll build`, which is how the site gets
+# checked before pushing - without the list, nothing renders. What each one does
+# here:
+#   default-layout         - wraps the Markdown in the theme; without it the
+#                            output is bare HTML fragments with no <head>
+#   optional-front-matter  - docs/**/README.md carry none
+#   readme-index           - README.md becomes the index of its directory
+#   relative-links         - [text](docs/guides/x.md) resolves to the built page
+#   titles-from-headings   - the page title comes from its first heading
+plugins:
+  - jekyll-default-layout
+  - jekyll-optional-front-matter
+  - jekyll-readme-index
+  - jekyll-relative-links
+  - jekyll-titles-from-headings
+
+# The site is documentation, not a copy of the repository. Anything excluded
+# here must not be the target of a relative link from a published page - link to
+# it on github.com instead, which is what tests/test_docs.py enforces.
+exclude:
+  - bin/
+  - docker/
+  - src/
+  - tests/
+  - tools/
+  - CLAUDE.md
+  - LICENSE
+  - Makefile
+  - pyproject.toml
+  - uv.lock
+  - .venv/
+  - README.md.orig
+
+# Markdown fences say ```mermaid; GitHub renders those natively and Jekyll does
+# not, so _includes/head-custom.html turns them into diagrams client side.
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge

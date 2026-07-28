@@ -98,6 +98,26 @@ by accident — no KiCad 10 only tokens, and the ground pour stays filled.
 When behaviour changes, update the guide that covers it in the same commit. A
 guide that describes a flag the CLI no longer has is worse than no guide.
 
+These same files are the website: GitHub Pages serves `main` / `(root)` with the
+settings in `_config.yml` — no build workflow, no `gh-pages` branch, nothing
+generated. That puts three constraints on anything published (README.md,
+AGENTS.md, docs/**), all enforced by `tests/test_docs.py`:
+
+* **Start the file with its `#` heading.** The page title comes from the first
+  heading, and only if nothing precedes it.
+* **Never write Liquid delimiters** — a doubled curly brace, or a curly brace
+  followed by a percent sign. Jekyll expands Liquid inside fenced code blocks
+  too, and silently deletes what it cannot parse: a documented command lost its
+  `--format` argument that way. There is no per-file opt-out on the Jekyll that
+  Pages runs, and the escape hatch would itself show up verbatim on github.com,
+  so far every case has had a clean alternative.
+* **Link to source files on github.com, not by relative path.** `src/`, `tests/`,
+  `docker/` and friends are excluded from the site, so a relative link to them
+  resolves on github.com and 404s on the site.
+
+`make site` renders it locally with the same pinned gem set Pages uses, which is
+how those three were found in the first place.
+
 `bin/install-skills.sh` renders `docs/guides/` into Claude Code's skill layout
 (`.claude/skills/<name>/SKILL.md`, symlinks, git-ignored). Never edit that copy:
 it is generated, and `make skills` regenerates it.
