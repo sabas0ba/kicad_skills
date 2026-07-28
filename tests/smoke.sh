@@ -64,9 +64,11 @@ cp -r "$PROJECT" "$OUT/revised"
 # retag R1, so the diff has something real to find
 sed -i 's/(property "Value" "10k"/(property "Value" "4k7"/' "$OUT/revised/example.kicad_sch"
 grep -q '"4k7"' "$OUT/revised/example.kicad_sch"  # the fixture still had a 10k to change
-eda diff "$PROJECT" "$OUT/revised" -o "$OUT/diff" --no-images > "$OUT/diff.json"
+eda diff "$PROJECT" "$OUT/revised" -o "$OUT/diff" --dpi 100 > "$OUT/diff.json"
 have "$OUT/diff.json" "not d['identical'] and d['sections']['schematic']['components']['changed']"
+have "$OUT/diff.json" "d['sections']['schematic_drawing']['pages'][0]['changed_pixels'] > 0"
 grep -q "4k7" "$OUT/diff/diff.md"
+test -s "$OUT/diff/diff/sheet-diff.png"
 
 step "copper: current capacity, resistance, impedance"
 eda pcb electrical "$PROJECT" > "$OUT/electrical.json"

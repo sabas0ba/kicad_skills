@@ -376,9 +376,15 @@ rerouted net.
 * `copper-front`: 0.28% of pixels changed
 ```
 
-The artwork section renders both revisions and compares pixels, which is the only
-one of the four that notices a reshaped pour. Changed pixels are drawn in red over
-a faded copy of the new board, so the change is readable in place.
+Both drawings are rendered and compared too — the schematic sheets and the board
+plots. What only the old revision had is drawn in **red**, what only the new one
+has in **green**, over a faded copy of the new drawing, so a part that moved reads
+as red where it was and green where it is now. Where the change is a speck on an
+A4 sheet, a zoomed crop is written alongside the full page:
+
+| schematic: C2 moved, R1 re-valued | board: the same R1 move |
+| --- | --- |
+| ![schematic diff](docs/examples/diff-schematic.jpg) | ![board diff](docs/examples/diff-board.jpg) |
 
 Exit `0` clean, `1` on a usage error, `2` when a review found errors. Loosen or
 tighten what counts as an error with `--threshold KEY=VALUE`, or post-process

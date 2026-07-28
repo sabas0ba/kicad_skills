@@ -32,6 +32,13 @@ A net whose connections survived under a new name is reported as a rename rather
 than as one deletion and one addition. Components are compared by reference, with
 value, footprint, DNP and library changes named.
 
+It also renders both revisions of every sheet and compares them: **red** is what
+the old revision had and the new one does not, **green** is the other way round.
+A symbol that moved is red where it was and green where it is now, over a faded
+copy of the sheet for context. Because a moved part is a speck on an A4 page, a
+zoomed crop of the changed region is written next to the full sheet - read that
+one first. `--no-images` skips the rendering when only the connectivity matters.
+
 ## How to actually review a schematic
 
 1. **`sch info`** — get the parts list, the net list and the sheet hierarchy.

@@ -11,8 +11,11 @@ identical to a re-ordered file. So compare the meaning instead.
   removal.
 * **Components** by reference, with value, footprint and DNP changes named.
 * **The board** by its own numbers, plus which footprints moved and how far.
-* **The artwork** by rendering both and comparing pixels, which is the only one
-  of the four that catches "the pour changed shape".
+* **The drawings** - both the schematic sheets and the board plots - by rendering
+  each revision and comparing what is inked. What only the old revision had is
+  drawn in red, what only the new one has in green, so a part that moved reads as
+  red where it was and green where it is now. This is the only one of the four
+  that catches "the pour changed shape" or "somebody redrew that wire".
 
 Every section is independent: a project with no schematic still gets a board
 diff, and a failed render still leaves the connectivity answer intact.
@@ -168,9 +171,42 @@ def compare_boards(old: Any, new: Any, *, moved_threshold_mm: float = 0.01) -> d
     }
 
 
+# Anything this far from white counts as drawn-on. Catches dark schematic line
+# art and saturated copper alike, while leaving paper alone.
+INK_THRESHOLD = 24
+REMOVED_COLOUR = (214, 39, 40)
+ADDED_COLOUR = (44, 160, 44)
+
+
+def _ink(image, threshold: int = INK_THRESHOLD):
+    """Mask of the pixels that have something drawn on them."""
+    from PIL import ImageChops
+
+    red, green, blue = image.split()
+    darkest = ImageChops.darker(ImageChops.darker(red, green), blue)
+    return darkest.point(lambda v: 255 if (255 - v) > threshold else 0)
+
+
+def _grew(mask):
+    """One pixel of dilation, to absorb anti-aliased edges.
+
+    Renderers anti-alias, so a shape that did not move still lands on slightly
+    different subpixels between two runs. Without this, every outline in the
+    drawing is fringed in red and green and the real change is lost in it.
+    """
+    from PIL import ImageFilter
+
+    return mask.filter(ImageFilter.MaxFilter(3))
+
+
 def compare_images(old_dir: Path, new_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
-    """Pixel diff of matching renders: the only check that sees a reshaped pour."""
-    from PIL import Image, ImageChops
+    """Directional pixel diff of matching renders.
+
+    What is only in the old revision is drawn in red, what is only in the new one
+    in green, over a faded copy of the new drawing. A part that moved shows up as
+    both: red where it was, green where it is now.
+    """
+    from PIL import Image
 
     out = ensure_dir(out_dir)
     results: list[dict[str, Any]] = []
@@ -181,9 +217,9 @@ def compare_images(old_dir: Path, new_dir: Path, out_dir: Path) -> list[dict[str
         if not new_image.exists():
             results.append({"view": old_image.stem, "error": "only in the old revision"})
             continue
-        with Image.open(old_image) as before, Image.open(new_image) as after:
-            before = before.convert("RGB")
-            after = after.convert("RGB")
+        with Image.open(old_image) as before_raw, Image.open(new_image) as after_raw:
+            before = before_raw.convert("RGB")
+            after = after_raw.convert("RGB")
             if before.size != after.size:
                 results.append(
                     {
@@ -192,27 +228,86 @@ def compare_images(old_dir: Path, new_dir: Path, out_dir: Path) -> list[dict[str
                     }
                 )
                 continue
-            difference = ImageChops.difference(before, after).convert("L")
-            changed = sum(1 for pixel in difference.getdata() if pixel > 16)
-            total = difference.width * difference.height
-            entry: dict[str, Any] = {
-                "view": old_image.stem,
-                "changed_pixels": changed,
-                "changed_pct": round(changed / total * 100.0, 4) if total else 0.0,
-            }
-            if changed:
-                # Faded original underneath, the difference in red on top, so the
-                # change is readable in place rather than as two images to flick
-                # between.
-                base = after.convert("L").point(lambda v: 190 + v // 6).convert("RGB")
-                mask = difference.point(lambda v: 255 if v > 16 else 0)
-                overlay = Image.new("RGB", after.size, (220, 30, 30))
-                base.paste(overlay, (0, 0), mask)
-                dest = out / f"{old_image.stem}-diff.png"
-                base.save(dest)
-                entry["image"] = str(dest)
-            results.append(entry)
+            results.append(_compare_one(old_image.stem, before, after, out))
+    for new_image in sorted(new_dir.glob("*.png")):
+        if new_image.name == "contact-sheet.png" or (old_dir / new_image.name).exists():
+            continue
+        results.append({"view": new_image.stem, "error": "only in the new revision"})
     return results
+
+
+def _compare_one(view: str, before, after, out: Path) -> dict[str, Any]:
+    from PIL import Image, ImageChops
+
+    old_ink, new_ink = _ink(before), _ink(after)
+    removed = ImageChops.subtract(old_ink, _grew(new_ink))
+    added = ImageChops.subtract(new_ink, _grew(old_ink))
+
+    removed_pixels = sum(removed.point(lambda v: 1 if v else 0).getdata())
+    added_pixels = sum(added.point(lambda v: 1 if v else 0).getdata())
+    total = before.width * before.height
+    entry: dict[str, Any] = {
+        "view": view,
+        "removed_pixels": removed_pixels,
+        "added_pixels": added_pixels,
+        "changed_pixels": removed_pixels + added_pixels,
+        "changed_pct": round((removed_pixels + added_pixels) / total * 100.0, 4) if total else 0.0,
+    }
+    if entry["changed_pixels"]:
+        base = after.convert("L").point(lambda v: 200 + v // 5).convert("RGB")
+        for mask, colour in ((removed, REMOVED_COLOUR), (added, ADDED_COLOUR)):
+            base.paste(Image.new("RGB", before.size, colour), (0, 0), mask)
+        dest = out / f"{view}-diff.png"
+        base.save(dest)
+        entry["image"] = str(dest)
+
+        detail = _detail_crop(base, ImageChops.lighter(removed, added))
+        if detail is not None:
+            dest = out / f"{view}-diff-detail.png"
+            detail.save(dest)
+            entry["detail_image"] = str(dest)
+    return entry
+
+
+# Below this share of the page, the change is a speck on an otherwise empty sheet
+# and the full view is not worth looking at on its own.
+DETAIL_MAX_AREA_FRACTION = 0.4
+DETAIL_TARGET_WIDTH = 900
+DETAIL_MAX_ZOOM = 4
+
+
+def _detail_crop(rendered, mask, *, margin_fraction: float = 0.25, min_margin: int = 24):
+    """Zoom on where the change is, when the change is small on a big sheet.
+
+    A moved part on an A4 schematic is a few hundred pixels of a two-megapixel
+    page. The full view says where it is; this says what it looks like.
+    """
+    box = mask.getbbox()
+    if box is None:
+        return None
+    left, top, right, bottom = box
+    width, height = right - left, bottom - top
+    if width * height > DETAIL_MAX_AREA_FRACTION * rendered.width * rendered.height:
+        return None  # the change is most of the drawing; the full view is the detail
+
+    margin = max(int(max(width, height) * margin_fraction), min_margin)
+    crop = rendered.crop(
+        (
+            max(0, left - margin),
+            max(0, top - margin),
+            min(rendered.width, right + margin),
+            min(rendered.height, bottom + margin),
+        )
+    )
+    if crop.width < DETAIL_TARGET_WIDTH:  # small crops are worth enlarging
+        from PIL import Image as _Image
+
+        # Nearest neighbour, and never past DETAIL_MAX_ZOOM: this is evidence, so
+        # it should look like enlarged pixels rather than invent smooth edges.
+        scale = min(DETAIL_MAX_ZOOM, max(1, DETAIL_TARGET_WIDTH // max(crop.width, 1)))
+        if scale > 1:
+            crop = crop.resize((crop.width * scale, crop.height * scale), _Image.Resampling.NEAREST)
+    return crop
 
 
 def build(
@@ -266,6 +361,20 @@ def build(
             }
 
         attempt("schematic", connectivity)
+        if images:
+
+            def sheets():
+                old_render = render.render_schematic(old_target, out / "old-sch", dpi=dpi)
+                new_render = render.render_schematic(new_target, out / "new-sch", dpi=dpi)
+                return {
+                    "pages": compare_images(out / "old-sch", out / "new-sch", out / "diff"),
+                    "rendered": {
+                        "old": len(old_render["images"]),
+                        "new": len(new_render["images"]),
+                    },
+                }
+
+            attempt("schematic_drawing", sheets)
 
     if _exists(pcb.find_board, old_target) and _exists(pcb.find_board, new_target):
         attempt(
@@ -289,11 +398,12 @@ def build(
 
             attempt("artwork", artwork)
 
+    drawn = {"artwork", "schematic_drawing"}
     result["identical"] = all(
         section.get("identical", True)
         for name, section in result["sections"].items()
-        if name != "artwork"
-    ) and not any(view.get("changed_pixels") for view in _views(result))
+        if name not in drawn
+    ) and not any(image.get("changed_pixels") for image in _images(result))
 
     markdown = render_markdown(result)
     (out / "diff.md").write_text(markdown, encoding="utf-8")
@@ -302,8 +412,12 @@ def build(
     return result
 
 
-def _views(result: dict[str, Any]) -> list[dict[str, Any]]:
-    return result["sections"].get("artwork", {}).get("views", [])
+def _images(result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every rendered comparison, schematic pages and board views alike."""
+    sections = result["sections"]
+    return list(sections.get("schematic_drawing", {}).get("pages", [])) + list(
+        sections.get("artwork", {}).get("views", [])
+    )
 
 
 def _exists(finder, target) -> bool:
@@ -396,20 +510,37 @@ def render_markdown(result: dict[str, Any]) -> str:
                 lines.append(f"* moved: {moved}" + (f", and {more} more" if more > 0 else ""))
             lines.append("")
 
-    views = _views(result)
-    if views:
-        lines += ["## Artwork", ""]
-        for view in views:
-            if view.get("error"):
-                lines.append(f"* `{view['view']}`: {view['error']}")
-            elif not view["changed_pixels"]:
-                lines.append(f"* `{view['view']}`: identical")
+    for title, images in (
+        ("Schematic drawing", sections.get("schematic_drawing", {}).get("pages", [])),
+        ("Artwork", sections.get("artwork", {}).get("views", [])),
+    ):
+        if not images:
+            continue
+        lines += [
+            f"## {title}",
+            "",
+            "Red is what the old revision had and the new one does not; green is "
+            "the other way round. A part that moved appears as both.",
+            "",
+        ]
+        for image in images:
+            if image.get("error"):
+                lines.append(f"* `{image['view']}`: {image['error']}")
+            elif not image["changed_pixels"]:
+                lines.append(f"* `{image['view']}`: identical")
             else:
-                lines.append(f"* `{view['view']}`: {view['changed_pct']}% of pixels changed")
+                lines.append(
+                    f"* `{image['view']}`: {image['changed_pct']}% of pixels changed "
+                    f"({image['removed_pixels']} removed, {image['added_pixels']} added)"
+                )
         lines.append("")
-        for view in views:
-            if view.get("image"):
-                lines.append(f"![{view['view']}]({_relative(view['image'], root)})")
+        for image in images:
+            if image.get("detail_image"):
+                lines.append(
+                    f"![{image['view']} (detail)]({_relative(image['detail_image'], root)})"
+                )
+            if image.get("image"):
+                lines.append(f"![{image['view']}]({_relative(image['image'], root)})")
         lines.append("")
 
     if result["errors"]:

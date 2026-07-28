@@ -160,19 +160,94 @@ def test_identical_renders_produce_no_diff_image(tmp_path):
     _png(tmp_path / "old" / "front.png", (255, 255, 255))
     _png(tmp_path / "new" / "front.png", (255, 255, 255))
     result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")
-    assert result == [{"view": "front", "changed_pixels": 0, "changed_pct": 0.0}]
+    assert result == [
+        {
+            "view": "front",
+            "removed_pixels": 0,
+            "added_pixels": 0,
+            "changed_pixels": 0,
+            "changed_pct": 0.0,
+        }
+    ]
+    assert not (tmp_path / "diff" / "front-diff.png").exists()
 
 
-def test_a_changed_render_is_measured_and_drawn(tmp_path):
-    _png(tmp_path / "old" / "front.png", (255, 255, 255))
-    _png(tmp_path / "new" / "front.png", (255, 255, 255))
-    with Image.open(tmp_path / "new" / "front.png") as image:
-        image.paste((0, 0, 0), (0, 0, 30, 40))  # blacken half of it
-        image.save(tmp_path / "new" / "front.png")
+def _blank(path, size=(60, 40)):
+    _png(path, (255, 255, 255), size=size)
+
+
+def _draw(path, box, colour=(0, 0, 0)):
+    with Image.open(path) as image:
+        image.paste(colour, box)
+        image.save(path)
+
+
+def test_ink_that_only_the_old_revision_had_counts_as_removed(tmp_path):
+    _blank(tmp_path / "old" / "front.png")
+    _blank(tmp_path / "new" / "front.png")
+    _draw(tmp_path / "old" / "front.png", (0, 0, 20, 40))  # 800 px, gone in the new one
 
     result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")[0]
-    assert result["changed_pct"] == pytest.approx(50.0, abs=1.0)
+    assert result["removed_pixels"] > 700  # dilation trims the border
+    assert result["added_pixels"] == 0
     assert (tmp_path / "diff" / "front-diff.png").exists()
+
+
+def test_ink_that_only_the_new_revision_has_counts_as_added(tmp_path):
+    _blank(tmp_path / "old" / "front.png")
+    _blank(tmp_path / "new" / "front.png")
+    _draw(tmp_path / "new" / "front.png", (0, 0, 20, 40))
+
+    result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")[0]
+    assert result["added_pixels"] > 700
+    assert result["removed_pixels"] == 0
+
+
+def test_something_that_moved_is_red_where_it_was_and_green_where_it_is(tmp_path):
+    """The case the colours exist for: one shape, two places."""
+    _blank(tmp_path / "old" / "front.png")
+    _blank(tmp_path / "new" / "front.png")
+    _draw(tmp_path / "old" / "front.png", (0, 0, 10, 10))
+    _draw(tmp_path / "new" / "front.png", (40, 20, 50, 30))
+
+    result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")[0]
+    assert result["removed_pixels"] > 50 and result["added_pixels"] > 50
+
+    with Image.open(tmp_path / "diff" / "front-diff.png") as image:
+        assert image.getpixel((5, 5)) == diff.REMOVED_COLOUR  # where it was
+        assert image.getpixel((45, 25)) == diff.ADDED_COLOUR  # where it is now
+
+
+def test_a_shape_that_did_not_move_is_left_alone(tmp_path):
+    _blank(tmp_path / "old" / "front.png")
+    _blank(tmp_path / "new" / "front.png")
+    _draw(tmp_path / "old" / "front.png", (10, 10, 30, 30))
+    _draw(tmp_path / "new" / "front.png", (10, 10, 30, 30))
+
+    result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")[0]
+    assert result["changed_pixels"] == 0
+
+
+def test_a_one_pixel_antialiasing_fringe_does_not_light_up_the_drawing(tmp_path):
+    """A grey halo around unchanged ink must not read as a change."""
+    _blank(tmp_path / "old" / "front.png")
+    _blank(tmp_path / "new" / "front.png")
+    _draw(tmp_path / "old" / "front.png", (10, 10, 30, 30))
+    _draw(tmp_path / "new" / "front.png", (10, 10, 30, 30))
+    _draw(tmp_path / "new" / "front.png", (9, 9, 31, 10), colour=(120, 120, 120))
+
+    result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")[0]
+    assert result["changed_pixels"] == 0
+
+
+def test_colour_counts_as_ink_so_copper_is_compared(tmp_path):
+    """Board plots are saturated colour on white, not dark line art."""
+    _blank(tmp_path / "old" / "front.png")
+    _blank(tmp_path / "new" / "front.png")
+    _draw(tmp_path / "new" / "front.png", (0, 0, 20, 40), colour=(200, 30, 30))
+
+    result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")[0]
+    assert result["added_pixels"] > 700
 
 
 def test_a_plot_that_changed_size_is_reported_rather_than_compared(tmp_path):
@@ -187,6 +262,15 @@ def test_a_view_only_one_revision_has_is_reported(tmp_path):
     (tmp_path / "new").mkdir()
     result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")
     assert result[0]["error"] == "only in the old revision"
+
+
+def test_a_sheet_the_new_revision_added_is_not_silently_dropped(tmp_path):
+    """A schematic that gained a page: the extra page has nothing to compare to."""
+    _png(tmp_path / "old" / "sheet-1.png", (255, 255, 255))
+    _png(tmp_path / "new" / "sheet-1.png", (255, 255, 255))
+    _png(tmp_path / "new" / "sheet-2.png", (255, 255, 255))
+    result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")
+    assert [entry.get("error") for entry in result] == [None, "only in the new revision"]
 
 
 # -- the whole thing -------------------------------------------------------
@@ -276,3 +360,52 @@ def test_a_value_change_alone_makes_the_diff_not_identical(tmp_path, example_pro
     assert result["sections"]["schematic"]["nets"]["identical"]  # nothing moved
     assert not result["sections"]["schematic"]["identical"]
     assert not result["identical"]
+
+
+def test_a_small_change_on_a_big_sheet_gets_a_zoomed_crop(tmp_path):
+    """A moved part on an A4 schematic is a speck; the crop is what you read."""
+    _blank(tmp_path / "old" / "sheet.png", size=(1200, 900))
+    _blank(tmp_path / "new" / "sheet.png", size=(1200, 900))
+    _draw(tmp_path / "old" / "sheet.png", (600, 400, 620, 420))
+
+    result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")[0]
+    assert result["detail_image"]
+    with Image.open(result["detail_image"]) as detail, Image.open(result["image"]) as full:
+        assert detail.width < full.width  # it is a crop of the page
+        assert detail.width > 68  # and enlarged from the 20 px change plus margin
+        assert detail.width <= 68 * diff.DETAIL_MAX_ZOOM  # but not absurdly
+
+
+def test_a_change_covering_the_drawing_gets_no_crop(tmp_path):
+    """Nothing to zoom in on when the whole page changed."""
+    _blank(tmp_path / "old" / "front.png", size=(200, 200))
+    _blank(tmp_path / "new" / "front.png", size=(200, 200))
+    _draw(tmp_path / "new" / "front.png", (0, 0, 200, 200))
+
+    result = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")[0]
+    assert "detail_image" not in result
+
+
+@pytest.mark.kicad
+def test_a_moved_symbol_is_drawn_red_then_green(tmp_path, example_project):
+    """End to end: render both schematics and check the colours land."""
+    changed = tmp_path / "changed"
+    shutil.copytree(example_project, changed)
+    sch_file = changed / "example.kicad_sch"
+    text = sch_file.read_text()
+    moved = text.replace(
+        '(symbol (lib_id "Device:C") (at 147.32 60.96 0)',
+        '(symbol (lib_id "Device:C") (at 154.94 66.04 0)',
+        1,
+    )
+    assert moved != text, "the fixture moved; C2 is no longer at that position"
+    sch_file.write_text(moved)
+
+    result = diff.build(example_project, changed, tmp_path / "out", dpi=100)
+
+    pages = result["sections"]["schematic_drawing"]["pages"]
+    assert pages and pages[0]["removed_pixels"] > 0 and pages[0]["added_pixels"] > 0
+    assert not result["identical"]
+    with Image.open(pages[0]["image"]) as image:
+        colours = set(image.getdata())
+    assert diff.REMOVED_COLOUR in colours and diff.ADDED_COLOUR in colours
