@@ -8,9 +8,10 @@ Quoted strings keep their value; bare atoms keep their text unless numeric.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 _NUM_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
 
@@ -27,13 +28,13 @@ class SNode:
     args: list[Any] = field(default_factory=list)
 
     # -- navigation helpers -------------------------------------------------
-    def children(self, name: str | None = None) -> list["SNode"]:
+    def children(self, name: str | None = None) -> list[SNode]:
         out = [a for a in self.args if isinstance(a, SNode)]
         if name is not None:
             out = [a for a in out if a.name == name]
         return out
 
-    def child(self, name: str) -> "SNode | None":
+    def child(self, name: str) -> SNode | None:
         for a in self.args:
             if isinstance(a, SNode) and a.name == name:
                 return a
@@ -55,7 +56,7 @@ class SNode:
         atoms = self.atoms()
         return atoms[index] if index < len(atoms) else default
 
-    def walk(self, name: str | None = None) -> Iterator["SNode"]:
+    def walk(self, name: str | None = None) -> Iterator[SNode]:
         """Depth-first traversal over this node and all descendants."""
         if name is None or self.name == name:
             yield self
@@ -103,7 +104,7 @@ def loads(text: str) -> SNode:
             while pos < length and text[pos].isspace():
                 pos += 1
             start = pos
-            while pos < length and not text[pos].isspace() and text[pos] not in "()\"":
+            while pos < length and not text[pos].isspace() and text[pos] not in '()"':
                 pos += 1
             node = SNode(text[start:pos])
             if stack:

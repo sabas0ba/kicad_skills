@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import csv
-import io
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from ..util import EdaError, ensure_dir, parse_page_range, write_json
 
@@ -101,7 +101,9 @@ def _ocr_page(path: Path, index: int, dpi: int = 300) -> str:
         pdf.close()
 
 
-def extract_tables(pdf_path: str | os.PathLike[str], pages: str | None = None) -> list[dict[str, Any]]:
+def extract_tables(
+    pdf_path: str | os.PathLike[str], pages: str | None = None
+) -> list[dict[str, Any]]:
     """Extract tables (parameter tables, absolute maximum ratings, ...)."""
     path = Path(pdf_path)
     tables: list[dict[str, Any]] = []
@@ -109,7 +111,10 @@ def extract_tables(pdf_path: str | os.PathLike[str], pages: str | None = None) -
         for idx in parse_page_range(pages, len(pdf.pages)):
             page = pdf.pages[idx]
             for t_i, table in enumerate(page.extract_tables()):
-                rows = [["" if c is None else re.sub(r"\s+", " ", c).strip() for c in row] for row in table]
+                rows = [
+                    ["" if c is None else re.sub(r"\s+", " ", c).strip() for c in row]
+                    for row in table
+                ]
                 rows = [r for r in rows if any(c for c in r)]
                 if len(rows) < 2:
                     continue
@@ -170,7 +175,9 @@ def extract_images(
         for idx in parse_page_range(pages, len(pdf)):
             page = pdf[idx]
             try:
-                objects = list(page.get_objects(filter=(pdfium.raw.FPDF_PAGEOBJ_IMAGE,), max_depth=6))
+                objects = list(
+                    page.get_objects(filter=(pdfium.raw.FPDF_PAGEOBJ_IMAGE,), max_depth=6)
+                )
             except Exception:  # pragma: no cover - malformed PDFs
                 continue
             for n, obj in enumerate(objects, start=1):
@@ -220,8 +227,14 @@ SECTION_HINTS = (
 )
 
 
-def find(pdf_path: str | os.PathLike[str], queries: Iterable[str], *, context: int = 200,
-         regex: bool = False, max_hits: int = 50) -> list[dict[str, Any]]:
+def find(
+    pdf_path: str | os.PathLike[str],
+    queries: Iterable[str],
+    *,
+    context: int = 200,
+    regex: bool = False,
+    max_hits: int = 50,
+) -> list[dict[str, Any]]:
     """Locate text in the PDF - the fast way to jump to the relevant page."""
     hits: list[dict[str, Any]] = []
     pattern_list = []
@@ -285,7 +298,10 @@ def parse_all(
         result["text"] = {
             "dir": str(text_dir),
             "full_text": str(out / "full-text.txt"),
-            "pages": [{"page": p["page"], "chars": len(p["text"]), "source": p["source"]} for p in pages_text],
+            "pages": [
+                {"page": p["page"], "chars": len(p["text"]), "source": p["source"]}
+                for p in pages_text
+            ],
         }
 
     if want_tables:
@@ -296,8 +312,15 @@ def parse_all(
             dest = table_dir / f"page-{t['page']:03d}-table-{t['index']}.csv"
             with dest.open("w", newline="", encoding="utf-8") as fh:
                 csv.writer(fh).writerows(t["rows"])
-            entries.append({"page": t["page"], "index": t["index"], "path": str(dest),
-                            "rows": len(t["rows"]), "header": t["rows"][0][:8]})
+            entries.append(
+                {
+                    "page": t["page"],
+                    "index": t["index"],
+                    "path": str(dest),
+                    "rows": len(t["rows"]),
+                    "header": t["rows"][0][:8],
+                }
+            )
         result["tables"] = {"dir": str(table_dir), "count": len(entries), "items": entries}
 
     if want_images:

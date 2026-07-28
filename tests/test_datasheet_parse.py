@@ -11,24 +11,26 @@ reportlab = pytest.importorskip("reportlab")
 @pytest.fixture(scope="module")
 def fake_datasheet(tmp_path_factory):
     """A two page 'datasheet' with text, a table and an embedded bitmap."""
+    from PIL import Image
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfgen import canvas
-    from PIL import Image
 
     path = tmp_path_factory.mktemp("pdf") / "fake-datasheet.pdf"
     c = canvas.Canvas(str(path), pagesize=A4)
-    width, height = A4
+    _width, height = A4
 
     c.setFont("Helvetica-Bold", 18)
     c.drawString(60, height - 70, "EDA1234 Low Noise Operational Amplifier")
     c.setFont("Helvetica", 11)
     c.drawString(60, height - 100, "Supply voltage range 2.7 V to 5.5 V")
     c.drawString(60, height - 120, "Absolute Maximum Ratings")
-    rows = [("Parameter", "Min", "Max", "Unit"),
-            ("Supply voltage VDD", "-0.3", "6.0", "V"),
-            ("Input current", "-10", "10", "mA"),
-            ("Junction temperature", "-40", "150", "degC")]
+    rows = [
+        ("Parameter", "Min", "Max", "Unit"),
+        ("Supply voltage VDD", "-0.3", "6.0", "V"),
+        ("Input current", "-10", "10", "mA"),
+        ("Junction temperature", "-40", "150", "degC"),
+    ]
     y = height - 150
     for row in rows:
         x = 60

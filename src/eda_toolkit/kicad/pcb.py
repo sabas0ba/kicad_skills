@@ -139,8 +139,11 @@ class Board:
     # -- derived -----------------------------------------------------------
     @property
     def copper_layers(self) -> list[str]:
-        return [layer["name"] for layer in self.layers if layer.get("type") == "signal"
-                or layer["name"].endswith(".Cu")]
+        return [
+            layer["name"]
+            for layer in self.layers
+            if layer.get("type") == "signal" or layer["name"].endswith(".Cu")
+        ]
 
     def outline_bbox(self) -> tuple[float, float, float, float] | None:
         xs: list[float] = []
@@ -230,7 +233,11 @@ def parse(path: str | os.PathLike[str]) -> Board:
 
     setup = root.child("setup")
     if setup:
-        for key in ("pad_to_mask_clearance", "solder_mask_min_width", "allow_soldermask_bridges_in_footprints"):
+        for key in (
+            "pad_to_mask_clearance",
+            "solder_mask_min_width",
+            "allow_soldermask_bridges_in_footprints",
+        ):
             val = setup.value(key)
             if val is not None:
                 board.setup[key] = val
@@ -301,7 +308,10 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     x=gx,
                     y=gy,
                     angle=pangle,
-                    size=(float(size_atoms[0]), float(size_atoms[1]) if len(size_atoms) > 1 else float(size_atoms[0])),
+                    size=(
+                        float(size_atoms[0]),
+                        float(size_atoms[1]) if len(size_atoms) > 1 else float(size_atoms[0]),
+                    ),
                     drill=drill,
                     layers=_layer_list(pad_node.child("layers")),
                     net=str(net_node.atom(1, "")) if net_node else "",
@@ -316,16 +326,26 @@ def parse(path: str | os.PathLike[str]) -> Board:
             if is_silk_layer(layer):
                 tx, ty, _ = _xy(text_node.child("at"))
                 board.silk_texts.append(
-                    {"text": str(text_node.atom(1, "")), "layer": layer,
-                     "x": fp.x + tx, "y": fp.y + ty, "footprint": fp.ref}
+                    {
+                        "text": str(text_node.atom(1, "")),
+                        "layer": layer,
+                        "x": fp.x + tx,
+                        "y": fp.y + ty,
+                        "footprint": fp.ref,
+                    }
                 )
         for prop_node in fp_node.children("property"):
             layer = str(prop_node.value("layer", default=""))
             if is_silk_layer(layer):
                 tx, ty, _ = _xy(prop_node.child("at"))
                 board.silk_texts.append(
-                    {"text": str(prop_node.atom(1, "")), "layer": layer,
-                     "x": fp.x + tx, "y": fp.y + ty, "footprint": fp.ref}
+                    {
+                        "text": str(prop_node.atom(1, "")),
+                        "layer": layer,
+                        "x": fp.x + tx,
+                        "y": fp.y + ty,
+                        "footprint": fp.ref,
+                    }
                 )
 
     for seg in root.children("segment"):
@@ -333,16 +353,29 @@ def parse(path: str | os.PathLike[str]) -> Board:
         ex, ey, _ = _xy(seg.child("end"))
         code = int(seg.value("net", default=0) or 0)
         board.tracks.append(
-            Track((sx, sy), (ex, ey), float(seg.value("width", default=0) or 0),
-                  str(seg.value("layer", default="")), code, board.nets.get(code, ""))
+            Track(
+                (sx, sy),
+                (ex, ey),
+                float(seg.value("width", default=0) or 0),
+                str(seg.value("layer", default="")),
+                code,
+                board.nets.get(code, ""),
+            )
         )
     for arc in root.children("arc"):
         sx, sy, _ = _xy(arc.child("start"))
         ex, ey, _ = _xy(arc.child("end"))
         code = int(arc.value("net", default=0) or 0)
         board.tracks.append(
-            Track((sx, sy), (ex, ey), float(arc.value("width", default=0) or 0),
-                  str(arc.value("layer", default="")), code, board.nets.get(code, ""), kind="arc")
+            Track(
+                (sx, sy),
+                (ex, ey),
+                float(arc.value("width", default=0) or 0),
+                str(arc.value("layer", default="")),
+                code,
+                board.nets.get(code, ""),
+                kind="arc",
+            )
         )
 
     for via in root.children("via"):
@@ -353,9 +386,16 @@ def parse(path: str | os.PathLike[str]) -> Board:
             if via.child(candidate) is not None or candidate in [str(a) for a in via.atoms()]:
                 via_type = candidate
         board.vias.append(
-            Via(vx, vy, float(via.value("size", default=0) or 0),
+            Via(
+                vx,
+                vy,
+                float(via.value("size", default=0) or 0),
                 float(via.value("drill", default=0) or 0),
-                _layer_list(via.child("layers")), code, board.nets.get(code, ""), via_type)
+                _layer_list(via.child("layers")),
+                code,
+                board.nets.get(code, ""),
+                via_type,
+            )
         )
 
     for zone in root.children("zone"):
@@ -429,8 +469,10 @@ def find_board(target: str | os.PathLike[str]) -> Path:
 def summary(board: Board) -> dict[str, Any]:
     size = board.size_mm()
     track_widths = sorted({round(t.width, 4) for t in board.tracks})
-    drills = sorted({round(v.drill, 4) for v in board.vias}
-                    | {round(p.drill, 4) for fp in board.footprints for p in fp.pads if p.drill})
+    drills = sorted(
+        {round(v.drill, 4) for v in board.vias}
+        | {round(p.drill, 4) for fp in board.footprints for p in fp.pads if p.drill}
+    )
     return {
         "board": str(board.path),
         "version": board.version,
@@ -441,7 +483,9 @@ def summary(board: Board) -> dict[str, Any]:
         "stackup": board.stackup,
         "footprints": len(board.footprints),
         "smd_footprints": len([f for f in board.footprints if "smd" in f.attributes]),
-        "through_hole_footprints": len([f for f in board.footprints if "through_hole" in f.attributes]),
+        "through_hole_footprints": len(
+            [f for f in board.footprints if "through_hole" in f.attributes]
+        ),
         "top_side": len([f for f in board.footprints if f.side == "top"]),
         "bottom_side": len([f for f in board.footprints if f.side == "bottom"]),
         "pads": sum(len(f.pads) for f in board.footprints),

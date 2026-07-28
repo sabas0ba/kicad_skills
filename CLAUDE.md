@@ -49,6 +49,15 @@ judge it, `info` = context.
 * GitHub Actions: `uses: owner/action@<40-char-sha> # vX.Y.Z`. No tag-only refs,
   no `ubuntu-latest`.
 
+## Tuning a rule
+
+`tools/review_demos.py` runs both reviews over the 18 KiCad demo projects in the
+image and aggregates the findings per rule. Use it before and after changing a
+rule: a rule that fires thousands of times across that corpus is noise, however
+correct each instance is. Findings that repeat more than `COLLAPSE_LIMIT` times
+are folded into one entry by `util.collapse_findings`, so prefer grading a rule
+(`warning` vs `info`) over deleting it.
+
 ## Test fixtures
 
 `tests/fixtures/example_project` is a small, DRC-clean KiCad project (RC filter

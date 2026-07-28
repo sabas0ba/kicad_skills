@@ -5,16 +5,18 @@ from __future__ import annotations
 import os
 import re
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from ..util import Finding, sort_findings, summarize
-from . import kicad_cli, netlist as netlist_mod, schematic
+from ..util import COLLAPSE_LIMIT, Finding, collapse_findings, sort_findings, summarize
+from . import kicad_cli, schematic
+from . import netlist as netlist_mod
 
-RULES: list[Callable[["ReviewContext"], list[Finding]]] = []
+RULES: list[Callable[[ReviewContext], list[Finding]]] = []
 
 
-def rule(func: Callable[["ReviewContext"], list[Finding]]):
+def rule(func: Callable[[ReviewContext], list[Finding]]):
     RULES.append(func)
     return func
 
@@ -44,9 +46,14 @@ class ReviewContext:
                 self.net_by_ref_pin[(node["ref"], node["pin"])] = net["name"]
 
     @classmethod
-    def from_netlist(cls, netlist: dict[str, Any], *, symbols: list[schematic.Symbol] | None = None,
-                     erc: dict[str, Any] | None = None,
-                     docs: list[schematic.SchematicDoc] | None = None) -> "ReviewContext":
+    def from_netlist(
+        cls,
+        netlist: dict[str, Any],
+        *,
+        symbols: list[schematic.Symbol] | None = None,
+        erc: dict[str, Any] | None = None,
+        docs: list[schematic.SchematicDoc] | None = None,
+    ) -> ReviewContext:
         """Build a context from an in-memory netlist.
 
         Useful for reviewing a netlist that was produced elsewhere, and for
@@ -97,11 +104,15 @@ def rule_erc(ctx: ReviewContext) -> list[Finding]:
     """Surface kicad-cli ERC violations as findings."""
     if not ctx.erc or "error" in ctx.erc:
         if ctx.erc and "error" in ctx.erc:
-            return [Finding("erc.unavailable", "info",
-                            f"ERC could not be run: {ctx.erc['error']}")]
-        return [Finding("erc.unavailable", "info",
-                        "kicad-cli is not available, ERC was skipped "
-                        "(run inside the container for full coverage)")]
+            return [Finding("erc.unavailable", "info", f"ERC could not be run: {ctx.erc['error']}")]
+        return [
+            Finding(
+                "erc.unavailable",
+                "info",
+                "kicad-cli is not available, ERC was skipped "
+                "(run inside the container for full coverage)",
+            )
+        ]
     findings: list[Finding] = []
     for sheet in ctx.erc.get("sheets", []):
         sheet_path = sheet.get("path", "/")
@@ -133,16 +144,23 @@ def rule_annotation(ctx: ReviewContext) -> list[Finding]:
     for ref, count in counts.items():
         if count > 1 and not _is_multi_unit(ctx, ref):
             findings.append(
-                Finding("schematic.duplicate_reference", "error",
-                        f"reference {ref} is used by {count} symbols", location=ref)
+                Finding(
+                    "schematic.duplicate_reference",
+                    "error",
+                    f"reference {ref} is used by {count} symbols",
+                    location=ref,
+                )
             )
     for sym in ctx.parts:
         if sym.unannotated:
             findings.append(
-                Finding("schematic.unannotated", "error",
-                        f"symbol {sym.lib_id} at ({sym.x}, {sym.y}) is not annotated "
-                        f"(reference {sym.reference!r})",
-                        location=f"{sym.sheet}:{sym.reference or sym.lib_id}")
+                Finding(
+                    "schematic.unannotated",
+                    "error",
+                    f"symbol {sym.lib_id} at ({sym.x}, {sym.y}) is not annotated "
+                    f"(reference {sym.reference!r})",
+                    location=f"{sym.sheet}:{sym.reference or sym.lib_id}",
+                )
             )
     return findings
 
@@ -159,35 +177,74 @@ def rule_fields(ctx: ReviewContext) -> list[Finding]:
     for sym in ctx.parts:
         where = f"{sym.sheet}:{sym.reference}"
         if not sym.value.strip():
-            findings.append(Finding("schematic.missing_value", "warning",
-                                    f"{sym.reference} has no Value", location=where))
+            findings.append(
+                Finding(
+                    "schematic.missing_value",
+                    "warning",
+                    f"{sym.reference} has no Value",
+                    location=where,
+                )
+            )
         if not sym.footprint.strip() and sym.on_board and not sym.dnp:
-            findings.append(Finding("schematic.missing_footprint", "warning",
-                                    f"{sym.reference} ({sym.value}) has no footprint assigned",
-                                    location=where))
-        if not sym.datasheet.strip() or sym.datasheet.strip() == "~":
-            if ctx.prefix(sym.reference) in ("U", "IC", "Q", "D", "Y", "L"):
-                findings.append(Finding("schematic.missing_datasheet", "info",
-                                        f"{sym.reference} ({sym.value}) has no datasheet link",
-                                        location=where))
+            findings.append(
+                Finding(
+                    "schematic.missing_footprint",
+                    "warning",
+                    f"{sym.reference} ({sym.value}) has no footprint assigned",
+                    location=where,
+                )
+            )
+        needs_datasheet = ctx.prefix(sym.reference) in ("U", "IC", "Q", "D", "Y", "L")
+        if needs_datasheet and sym.datasheet.strip() in ("", "~"):
+            findings.append(
+                Finding(
+                    "schematic.missing_datasheet",
+                    "info",
+                    f"{sym.reference} ({sym.value}) has no datasheet link",
+                    location=where,
+                )
+            )
         if sym.dnp:
-            findings.append(Finding("schematic.dnp", "info",
-                                    f"{sym.reference} ({sym.value}) is marked DNP", location=where))
+            findings.append(
+                Finding(
+                    "schematic.dnp",
+                    "info",
+                    f"{sym.reference} ({sym.value}) is marked DNP",
+                    location=where,
+                )
+            )
     return findings
+
+
+AUTO_NET_NAME = re.compile(r"^(/.*)?(unconnected-|Net-\(|N\$\d)", re.IGNORECASE)
 
 
 @rule
 def rule_single_pin_nets(ctx: ReviewContext) -> list[Finding]:
-    """A net with a single pin is almost always a wiring mistake."""
+    """A net that reaches exactly one pin.
+
+    An auto-named one (``unconnected-(U1-Pad3)``) is a dangling wire and worth a
+    warning. A net the designer named is usually a deliberate stub - a spare
+    module pin brought out to a label - so it is reported as context, not as a
+    defect. Running this over KiCad's demo projects, the labelled kind
+    outnumbered the real ones by more than 20:1.
+    """
     findings = []
     for net in ctx.nets:
-        if net["pin_count"] == 1:
-            node = net["nodes"][0]
-            findings.append(
-                Finding("net.single_pin", "warning",
-                        f"net {net['name']} only connects {node['ref']}.{node['pin']}",
-                        location=net["name"], details={"node": node})
+        if net["pin_count"] != 1:
+            continue
+        node = net["nodes"][0]
+        auto_named = bool(AUTO_NET_NAME.match(net["name"]))
+        findings.append(
+            Finding(
+                "net.single_pin",
+                "warning" if auto_named else "info",
+                f"net {net['name']} only connects {node['ref']}.{node['pin']}"
+                + ("" if auto_named else " (named net, so probably a deliberate stub)"),
+                location=net["name"],
+                details={"node": node, "auto_named": auto_named},
             )
+        )
     return findings
 
 
@@ -195,8 +252,17 @@ def rule_single_pin_nets(ctx: ReviewContext) -> list[Finding]:
 def rule_floating_inputs(ctx: ReviewContext) -> list[Finding]:
     """Input pins that see no driver."""
     findings = []
-    driver_types = {"output", "power_out", "bidirectional", "tri_state", "open_collector",
-                    "open_emitter", "passive", "unspecified", "free"}
+    driver_types = {
+        "output",
+        "power_out",
+        "bidirectional",
+        "tri_state",
+        "open_collector",
+        "open_emitter",
+        "passive",
+        "unspecified",
+        "free",
+    }
     for net in ctx.nets:
         types = [n.get("type", "") for n in net["nodes"]]
         if not any(t in driver_types for t in types):
@@ -204,9 +270,12 @@ def rule_floating_inputs(ctx: ReviewContext) -> list[Finding]:
             if inputs and len(net["nodes"]) > 1:
                 pin_list = ", ".join("{}.{}".format(n["ref"], n["pin"]) for n in inputs)
                 findings.append(
-                    Finding("net.no_driver", "warning",
-                            f"net {net['name']} only has input pins ({pin_list})",
-                            location=net["name"])
+                    Finding(
+                        "net.no_driver",
+                        "warning",
+                        f"net {net['name']} only has input pins ({pin_list})",
+                        location=net["name"],
+                    )
                 )
     return findings
 
@@ -220,9 +289,9 @@ def rule_decoupling(ctx: ReviewContext) -> list[Finding]:
         for pin in ctx.pins_by_ref[ref]:
             net_name = pin["net"]
             kind = netlist_mod.classify_net(net_name)
-            if pin.get("type") == "power_in" or kind == "power":
-                if kind != "ground":
-                    supply_nets.add(net_name)
+            is_supply = pin.get("type") == "power_in" or kind == "power"
+            if is_supply and kind != "ground":
+                supply_nets.add(net_name)
         for net_name in sorted(supply_nets):
             caps = [r for r in ctx.refs_on_net(net_name) if ctx.is_capacitor(r)]
             decouplers = []
@@ -232,9 +301,12 @@ def rule_decoupling(ctx: ReviewContext) -> list[Finding]:
                     decouplers.append(cap)
             if not decouplers:
                 findings.append(
-                    Finding("analog.missing_decoupling", "warning",
-                            f"supply net {net_name} of {ref} has no capacitor to ground",
-                            location=f"{ref} / {net_name}")
+                    Finding(
+                        "analog.missing_decoupling",
+                        "warning",
+                        f"supply net {net_name} of {ref} has no capacitor to ground",
+                        location=f"{ref} / {net_name}",
+                    )
                 )
     return findings
 
@@ -246,14 +318,21 @@ def rule_power_nets(ctx: ReviewContext) -> list[Finding]:
     power_nets = {n["name"] for n in ctx.nets if netlist_mod.classify_net(n["name"]) == "power"}
     ground_nets = {n["name"] for n in ctx.nets if netlist_mod.classify_net(n["name"]) == "ground"}
     if not ground_nets:
-        findings.append(Finding("power.no_ground", "error",
-                                "no ground net found (expected GND/VSS/AGND...)"))
+        findings.append(
+            Finding("power.no_ground", "error", "no ground net found (expected GND/VSS/AGND...)")
+        )
     if not power_nets:
-        findings.append(Finding("power.no_supply", "warning",
-                                "no power net found (expected +3V3/VCC/VDD...)"))
+        findings.append(
+            Finding("power.no_supply", "warning", "no power net found (expected +3V3/VCC/VDD...)")
+        )
     if len(power_nets) > 6:
-        findings.append(Finding("power.many_supplies", "info",
-                                f"{len(power_nets)} distinct supply nets: {', '.join(sorted(power_nets))}"))
+        findings.append(
+            Finding(
+                "power.many_supplies",
+                "info",
+                f"{len(power_nets)} distinct supply nets: {', '.join(sorted(power_nets))}",
+            )
+        )
     return findings
 
 
@@ -263,13 +342,16 @@ def rule_i2c_pullups(ctx: ReviewContext) -> list[Finding]:
     findings = []
     for net in ctx.nets:
         base = net["name"].split("/")[-1].upper()
-        if re.fullmatch(r"(I2C\d?_)?(SDA|SCL)(\d)?", base):
-            if not any(ctx.is_resistor(r) for r in ctx.refs_on_net(net["name"])):
-                findings.append(
-                    Finding("analog.i2c_pullup", "warning",
-                            f"{net['name']} looks like an I2C line but has no resistor on it",
-                            location=net["name"])
+        looks_like_i2c = re.fullmatch(r"(I2C\d?_)?(SDA|SCL)(\d)?", base)
+        if looks_like_i2c and not any(ctx.is_resistor(r) for r in ctx.refs_on_net(net["name"])):
+            findings.append(
+                Finding(
+                    "analog.i2c_pullup",
+                    "warning",
+                    f"{net['name']} looks like an I2C line but has no resistor on it",
+                    location=net["name"],
                 )
+            )
     return findings
 
 
@@ -287,9 +369,12 @@ def rule_led_series_resistor(ctx: ReviewContext) -> list[Finding]:
             neighbours |= ctx.refs_on_net(pin["net"])
         if not any(ctx.is_resistor(r) for r in neighbours):
             findings.append(
-                Finding("analog.led_no_series_resistor", "warning",
-                        f"{sym.reference} ({sym.value}) has no series resistor on either terminal",
-                        location=sym.reference)
+                Finding(
+                    "analog.led_no_series_resistor",
+                    "warning",
+                    f"{sym.reference} ({sym.value}) has no series resistor on either terminal",
+                    location=sym.reference,
+                )
             )
     return findings
 
@@ -302,9 +387,12 @@ def rule_unconnected_power_symbols(ctx: ReviewContext) -> list[Finding]:
         kind = netlist_mod.classify_net(net["name"])
         if kind in ("power", "ground") and net["pin_count"] == 0:
             findings.append(
-                Finding("power.unused_rail", "warning",
-                        f"rail {net['name']} is declared but reaches no component pin",
-                        location=net["name"])
+                Finding(
+                    "power.unused_rail",
+                    "warning",
+                    f"rail {net['name']} is declared but reaches no component pin",
+                    location=net["name"],
+                )
             )
     return findings
 
@@ -324,16 +412,21 @@ def statistics(ctx: ReviewContext) -> dict[str, Any]:
     }
 
 
-def review(target: str | os.PathLike[str], *, use_cli: bool = True) -> dict[str, Any]:
+def review(
+    target: str | os.PathLike[str], *, use_cli: bool = True, collapse: int = COLLAPSE_LIMIT
+) -> dict[str, Any]:
     ctx = ReviewContext(target, use_cli=use_cli)
     findings: list[Finding] = []
     for func in RULES:
         try:
             findings.extend(func(ctx))
         except Exception as exc:  # a broken rule must not kill the report
-            findings.append(Finding(f"internal.{func.__name__}", "info",
-                                    f"rule failed: {type(exc).__name__}: {exc}"))
-    findings = sort_findings(findings)
+            findings.append(
+                Finding(
+                    f"internal.{func.__name__}", "info", f"rule failed: {type(exc).__name__}: {exc}"
+                )
+            )
+    findings = sort_findings(collapse_findings(findings, collapse))
     return {
         "schematic": str(ctx.root_sch),
         "statistics": statistics(ctx),
@@ -362,9 +455,12 @@ def info(target: str | os.PathLike[str], *, use_cli: bool = True) -> dict[str, A
         "components": [s.to_dict() for doc in docs for s in doc.symbols if not s.is_power],
         "netlist_source": nl.get("source"),
         "nets": [
-            {"name": n["name"], "pin_count": n["pin_count"],
-             "class": netlist_mod.classify_net(n["name"]),
-             "nodes": [f"{x['ref']}.{x['pin']}" for x in n["nodes"]]}
+            {
+                "name": n["name"],
+                "pin_count": n["pin_count"],
+                "class": netlist_mod.classify_net(n["name"]),
+                "nodes": [f"{x['ref']}.{x['pin']}" for x in n["nodes"]],
+            }
             for n in sorted(nl.get("nets", []), key=lambda n: n["name"])
         ],
     }

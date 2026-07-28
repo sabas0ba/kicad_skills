@@ -55,6 +55,12 @@ references, library symbol mismatches, off-grid endpoints, bus errors.
 | `schematic.missing_footprint` / `missing_value` / `missing_datasheet` | field completeness |
 | `schematic.dnp` | DNP parts, listed so they are not forgotten in a BOM |
 
+`net.single_pin` is graded: an auto-named net (`unconnected-(U1-Pad3)`) is a
+dangling wire and warns, a net the designer named is reported as `info` because
+it is usually a deliberate spare. A rule that fires more than six times is
+folded into one finding with the count and the first examples; `--collapse N`
+changes the limit, `--collapse 0` prints every occurrence.
+
 Exit code is `2` when there is at least one error, `0` otherwise — usable in CI.
 
 ## Things the tool cannot check (do these by hand)
@@ -78,3 +84,5 @@ Exit code is `2` when there is at least one error, `0` otherwise — usable in C
   review uses.
 * `./bin/eda.sh sch erc <target>` returns KiCad's raw ERC JSON when the details of
   a violation are needed.
+* `./bin/eda.sh sch bom <target> -o bom.csv` exports a grouped bill of materials
+  (see the `kicad-fabrication-output` skill).

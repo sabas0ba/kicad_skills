@@ -18,9 +18,13 @@ def _db(values: np.ndarray) -> np.ndarray:
 def measure_ac(plot: Plot) -> dict[str, Any]:
     """Bode style figures for every signal in an AC sweep."""
     freq = np.abs(plot.data[plot.sweep])
-    out: dict[str, Any] = {"analysis": "ac", "points": len(freq),
-                           "f_start": float(freq[0]), "f_stop": float(freq[-1]),
-                           "signals": {}}
+    out: dict[str, Any] = {
+        "analysis": "ac",
+        "points": len(freq),
+        "f_start": float(freq[0]),
+        "f_stop": float(freq[-1]),
+        "signals": {},
+    }
     for name in plot.signals():
         values = plot.data[name]
         mag_db = _db(values)
@@ -35,21 +39,24 @@ def measure_ac(plot: Plot) -> dict[str, Any]:
             "phase_deg_at_f_stop": float(phase[-1]),
         }
         entry["f_minus_3db_hz"] = _crossing(freq, mag_db, mag_db[peak] - 3.0, start=peak)
-        entry["f_minus_3db_low_hz"] = _crossing(freq, mag_db, mag_db[peak] - 3.0,
-                                                start=peak, backwards=True)
+        entry["f_minus_3db_low_hz"] = _crossing(
+            freq, mag_db, mag_db[peak] - 3.0, start=peak, backwards=True
+        )
         if entry["f_minus_3db_hz"] and entry["f_minus_3db_low_hz"]:
             entry["bandwidth_hz"] = entry["f_minus_3db_hz"] - entry["f_minus_3db_low_hz"]
         unity = _crossing(freq, mag_db, 0.0, start=peak)
         if unity is not None:
             entry["unity_gain_hz"] = unity
-            entry["phase_margin_deg"] = float(180.0 + np.interp(unity, freq, np.unwrap(
-                np.radians(phase)) * 180.0 / np.pi))
+            entry["phase_margin_deg"] = float(
+                180.0 + np.interp(unity, freq, np.unwrap(np.radians(phase)) * 180.0 / np.pi)
+            )
         out["signals"][name] = entry
     return out
 
 
-def _crossing(x: np.ndarray, y: np.ndarray, level: float, *, start: int = 0,
-              backwards: bool = False) -> float | None:
+def _crossing(
+    x: np.ndarray, y: np.ndarray, level: float, *, start: int = 0, backwards: bool = False
+) -> float | None:
     """First crossing of ``level`` walking away from ``start``; log-interpolated in x."""
     indices = range(start, 0, -1) if backwards else range(start, len(y) - 1)
     for i in indices:
@@ -65,9 +72,13 @@ def _crossing(x: np.ndarray, y: np.ndarray, level: float, *, start: int = 0,
 def measure_tran(plot: Plot) -> dict[str, Any]:
     """Time domain statistics: levels, edges, overshoot and settling."""
     time = np.real(plot.data[plot.sweep])
-    out: dict[str, Any] = {"analysis": "tran", "points": len(time),
-                           "t_start": float(time[0]), "t_stop": float(time[-1]),
-                           "signals": {}}
+    out: dict[str, Any] = {
+        "analysis": "tran",
+        "points": len(time),
+        "t_start": float(time[0]),
+        "t_stop": float(time[-1]),
+        "signals": {},
+    }
     for name in plot.signals():
         values = np.real(plot.data[name])
         low, high = float(np.min(values)), float(np.max(values))
@@ -98,8 +109,7 @@ def measure_tran(plot: Plot) -> dict[str, Any]:
     return out
 
 
-def _interpolate_crossing(time: np.ndarray, values: np.ndarray, index: int,
-                          level: float) -> float:
+def _interpolate_crossing(time: np.ndarray, values: np.ndarray, index: int, level: float) -> float:
     """Sub-sample time at which the signal crosses ``level`` between index and index+1."""
     y0, y1 = values[index], values[index + 1]
     if y1 == y0:
@@ -138,8 +148,12 @@ def _time_at(time: np.ndarray, values: np.ndarray, level: float) -> float | None
 
 def measure_dc(plot: Plot) -> dict[str, Any]:
     sweep = np.real(plot.data[plot.sweep])
-    out: dict[str, Any] = {"analysis": "dc", "points": len(sweep),
-                           "sweep": plot.sweep, "signals": {}}
+    out: dict[str, Any] = {
+        "analysis": "dc",
+        "points": len(sweep),
+        "sweep": plot.sweep,
+        "signals": {},
+    }
     for name in plot.signals():
         values = np.real(plot.data[name])
         gradient = np.gradient(values, sweep) if len(sweep) > 1 else np.array([0.0])
@@ -149,7 +163,9 @@ def measure_dc(plot: Plot) -> dict[str, Any]:
             "at_sweep_start": float(values[0]),
             "at_sweep_end": float(values[-1]),
             "max_slope": float(np.max(np.abs(gradient))),
-            "monotonic": bool(np.all(np.diff(values) >= -1e-12) or np.all(np.diff(values) <= 1e-12)),
+            "monotonic": bool(
+                np.all(np.diff(values) >= -1e-12) or np.all(np.diff(values) <= 1e-12)
+            ),
         }
     return out
 
@@ -161,8 +177,14 @@ def measure_op(plot: Plot) -> dict[str, Any]:
     }
 
 
-def thd(plot: Plot, signal: str, fundamental_hz: float, *, harmonics: int = 7,
-        skip_seconds: float | None = None) -> dict[str, Any]:
+def thd(
+    plot: Plot,
+    signal: str,
+    fundamental_hz: float,
+    *,
+    harmonics: int = 7,
+    skip_seconds: float | None = None,
+) -> dict[str, Any]:
     """Total harmonic distortion of a transient signal (uniform resampling + FFT)."""
     time = np.real(plot.data[plot.sweep])
     values = np.real(plot.data[signal])
@@ -179,7 +201,7 @@ def thd(plot: Plot, signal: str, fundamental_hz: float, *, harmonics: int = 7,
     uniform_v = np.interp(uniform_t, time, values)
     spectrum = np.abs(np.fft.rfft(uniform_v)) * 2.0 / n
     bin_width = 1.0 / window
-    fundamental_bin = int(round(fundamental_hz / bin_width))
+    fundamental_bin = round(fundamental_hz / bin_width)
     if fundamental_bin >= len(spectrum):
         raise ValueError("fundamental is above the sampled bandwidth")
     fundamental_amp = float(spectrum[fundamental_bin])
@@ -210,7 +232,14 @@ def measure(plot: Plot) -> dict[str, Any]:
         return measure_dc(plot)
     if kind == "op":
         return measure_op(plot)
-    return {"analysis": kind, "points": plot.points,
-            "signals": {name: {"min": float(np.min(np.abs(plot.data[name]))),
-                               "max": float(np.max(np.abs(plot.data[name])))}
-                        for name in plot.signals()}}
+    return {
+        "analysis": kind,
+        "points": plot.points,
+        "signals": {
+            name: {
+                "min": float(np.min(np.abs(plot.data[name]))),
+                "max": float(np.max(np.abs(plot.data[name]))),
+            }
+            for name in plot.signals()
+        },
+    }

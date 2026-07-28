@@ -13,7 +13,8 @@ RUN_IN_IMAGE   = $(DOCKER) run --rm -u $(shell id -u):$(shell id -g) \
                    -v "$(CURDIR):/work" -w /work -e HOME=/tmp/eda-home \
                    -e PYTHONPATH=/work/src --network none $(IMAGE)
 
-.PHONY: help build rebuild lock test test-host test-docker smoke shell doctor clean check-digest
+.PHONY: help build rebuild lock lint test test-host test-docker test-coverage smoke shell doctor clean \
+        check-digest check-pins refresh-pins
 
 help:  ## show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -34,6 +35,16 @@ rebuild: check-digest  ## rebuild without the layer cache
 lock:  ## regenerate uv.lock from pyproject.toml (exact versions + hashes)
 	$(UV) lock
 
+check-pins:  ## report container pins that upstream has moved past
+	python3 tools/refresh_pins.py
+
+refresh-pins:  ## rewrite the container pins (add --set-default-kicad by hand to bump KiCad)
+	python3 tools/refresh_pins.py --write
+
+lint:  ## ruff (lint + format check) over the whole tree
+	$(UV) run --frozen --extra test ruff check .
+	$(UV) run --frozen --extra test ruff format --check .
+
 doctor:  ## report tool versions inside the image
 	./bin/eda.sh doctor
 
@@ -41,6 +52,10 @@ test: test-docker  ## default test target: the full suite inside the container
 
 test-docker: build  ## run the whole suite (unit + kicad + ngspice) in the container
 	$(RUN_IN_IMAGE) pytest -q -p no:cacheprovider tests
+
+test-coverage: build  ## the full suite plus a coverage report
+	$(RUN_IN_IMAGE) pytest -q -p no:cacheprovider \
+	  --cov --cov-report=term --cov-report=xml:coverage.xml tests
 
 test-host:  ## run only the pure-python unit tests on the host (needs a local venv)
 	python -m pytest -q -m "not kicad and not ngspice" tests

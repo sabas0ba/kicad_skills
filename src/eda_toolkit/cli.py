@@ -8,8 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__
-from .util import EdaError, ensure_dir, emit, write_json
-
+from .util import COLLAPSE_LIMIT, EdaError, emit, ensure_dir, write_json
 
 # ---------------------------------------------------------------- rendering
 
@@ -27,7 +26,9 @@ def _render_findings(payload: dict[str, Any]) -> None:
     print("\n## findings")
     for finding in payload.get("findings", []):
         location = f" [{finding['location']}]" if finding.get("location") else ""
-        print(f"  {finding['severity'].upper():7s} {finding['rule']}{location}: {finding['message']}")
+        print(
+            f"  {finding['severity'].upper():7s} {finding['rule']}{location}: {finding['message']}"
+        )
 
 
 # ---------------------------------------------------------------- doctor
@@ -141,8 +142,9 @@ def cmd_datasheet_parse(args: argparse.Namespace) -> int:
 def cmd_sim_run(args: argparse.Namespace) -> int:
     from .spice import runner
 
-    payload = runner.run_netlist(args.netlist, args.output, timeout=args.timeout,
-                                 make_plots=not args.no_plots)
+    payload = runner.run_netlist(
+        args.netlist, args.output, timeout=args.timeout, make_plots=not args.no_plots
+    )
     emit(payload, as_json=True)
     return 0 if payload.get("ok") else 2
 
@@ -166,8 +168,7 @@ def cmd_sim_measure(args: argparse.Namespace) -> int:
         entry["measurements"] = measure.measure(plot)
         if args.thd and plot.analysis == "tran":
             try:
-                entry["thd"] = measure.thd(plot, args.thd, args.fundamental,
-                                           skip_seconds=args.skip)
+                entry["thd"] = measure.thd(plot, args.thd, args.fundamental, skip_seconds=args.skip)
             except Exception as exc:
                 entry["thd_error"] = str(exc)
         payload.append(entry)
@@ -210,7 +211,7 @@ def cmd_sch_info(args: argparse.Namespace) -> int:
 def cmd_sch_review(args: argparse.Namespace) -> int:
     from .kicad import sch_review
 
-    payload = sch_review.review(args.target, use_cli=not args.no_cli)
+    payload = sch_review.review(args.target, use_cli=not args.no_cli, collapse=args.collapse)
     emit(payload, as_json=args.json, text_renderer=_render_findings)
     if args.output:
         write_json(args.output, payload)
@@ -271,7 +272,9 @@ def cmd_pcb_review(args: argparse.Namespace) -> int:
         if not value:
             raise EdaError(f"--threshold expects key=value, got {item!r}")
         thresholds[key.strip()] = float(value)
-    payload = pcb_review.review(args.target, use_cli=not args.no_cli, thresholds=thresholds)
+    payload = pcb_review.review(
+        args.target, use_cli=not args.no_cli, thresholds=thresholds, collapse=args.collapse
+    )
     emit(payload, as_json=args.json, text_renderer=_render_findings)
     if args.output:
         write_json(args.output, payload)
@@ -301,12 +304,84 @@ def cmd_pcb_render(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pcb_fab(args: argparse.Namespace) -> int:
+    from .kicad import fab
+
+    payload = fab.export_package(
+        args.target,
+        args.output,
+        include_fab_layers=args.fab_layers,
+        pos_format=args.pos_format,
+        step=args.step,
+        ipc2581=args.ipc2581,
+        exclude_dnp=not args.include_dnp,
+        make_zip=not args.no_zip,
+    )
+    emit(payload, as_json=True)
+    return 0 if payload.get("ok") else 2
+
+
+def cmd_sch_bom(args: argparse.Namespace) -> int:
+    from .kicad import fab
+
+    payload = fab.bom(
+        args.target,
+        args.output,
+        group_by=args.group_by,
+        exclude_dnp=not args.include_dnp,
+        fields=args.fields.split(",") if args.fields else None,
+    )
+    if not args.rows:
+        payload.pop("rows", None)
+    emit(payload, as_json=True)
+    return 0
+
+
+def cmd_sim_montecarlo(args: argparse.Namespace) -> int:
+    from .spice import sweep
+
+    tolerances = dict(sweep.parse_tolerance(spec) for spec in args.vary)
+    payload = sweep.monte_carlo(
+        args.netlist,
+        args.output,
+        tolerances=tolerances,
+        metric=args.metric,
+        trials=args.trials,
+        distribution=args.distribution,
+        seed=args.seed,
+        timeout=args.timeout,
+        keep_runs=args.keep_runs,
+    )
+    emit(payload, as_json=True)
+    return 0 if payload.get("ok") else 2
+
+
+def cmd_sim_temperature(args: argparse.Namespace) -> int:
+    from .spice import sweep
+
+    payload = sweep.temperature_sweep(
+        args.netlist,
+        args.output,
+        temperatures=args.temperatures,
+        metric=args.metric,
+        timeout=args.timeout,
+    )
+    emit(payload, as_json=True)
+    return 0 if payload.get("ok") else 2
+
+
 def cmd_pcb_stats(args: argparse.Namespace) -> int:
     from .kicad import kicad_cli, pcb
 
     board = pcb.find_board(args.target)
-    emit({"board": str(board), "kicad_stats": kicad_cli.board_stats(board),
-          "parsed": pcb.summary(pcb.parse(board))}, as_json=True)
+    emit(
+        {
+            "board": str(board),
+            "kicad_stats": kicad_cli.board_stats(board),
+            "parsed": pcb.summary(pcb.parse(board)),
+        },
+        as_json=True,
+    )
     return 0
 
 
@@ -321,9 +396,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=f"eda-toolkit {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
-    sub.add_parser("doctor", help="report the tool versions available in this environment").set_defaults(
-        func=cmd_doctor
-    )
+    sub.add_parser(
+        "doctor", help="report the tool versions available in this environment"
+    ).set_defaults(func=cmd_doctor)
 
     # -- datasheet --------------------------------------------------------
     ds = sub.add_parser("datasheet", help="read datasheet PDFs").add_subparsers(
@@ -409,6 +484,34 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--signals", nargs="*")
     p.set_defaults(func=cmd_sim_plot)
 
+    p = sim.add_parser("montecarlo", help="component tolerance analysis")
+    p.add_argument("netlist")
+    p.add_argument("-o", "--output", required=True)
+    p.add_argument(
+        "--vary",
+        action="append",
+        required=True,
+        metavar="NAME=TOL",
+        help="component or .param to vary, e.g. R1=1%% (repeatable)",
+    )
+    p.add_argument(
+        "--metric", required=True, help="measurement to collect, e.g. ac.v(out).f_minus_3db_hz"
+    )
+    p.add_argument("--trials", type=int, default=100)
+    p.add_argument("--distribution", default="normal", choices=["normal", "uniform", "worst"])
+    p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--timeout", type=int, default=600)
+    p.add_argument("--keep-runs", action="store_true", help="keep every trial's raw output")
+    p.set_defaults(func=cmd_sim_montecarlo)
+
+    p = sim.add_parser("temperature", help="run the deck at several temperatures")
+    p.add_argument("netlist")
+    p.add_argument("-o", "--output", required=True)
+    p.add_argument("--temperatures", type=float, nargs="+", default=[-40, 25, 85], metavar="C")
+    p.add_argument("--metric", help="measurement to collect at each temperature")
+    p.add_argument("--timeout", type=int, default=600)
+    p.set_defaults(func=cmd_sim_temperature)
+
     p = sim.add_parser("netlist", help="export a SPICE netlist from a KiCad schematic")
     p.add_argument("schematic")
     p.add_argument("-o", "--output", required=True)
@@ -428,6 +531,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sch.add_parser("review", help="ERC plus design heuristics")
     p.add_argument("target")
     p.add_argument("--no-cli", action="store_true")
+    p.add_argument(
+        "--collapse",
+        type=int,
+        default=COLLAPSE_LIMIT,
+        metavar="N",
+        help="fold a rule that fires more than N times into one finding "
+        "(0 disables, default: %(default)s)",
+    )
     p.add_argument("-o", "--output", help="also write the JSON report here")
     p.add_argument("--json", action="store_true", default=True)
     p.add_argument("--text", dest="json", action="store_false")
@@ -440,10 +551,22 @@ def build_parser() -> argparse.ArgumentParser:
     p = sch.add_parser("netlist", help="export the netlist")
     p.add_argument("target")
     p.add_argument("-o", "--output")
-    p.add_argument("--format", default="json",
-                   choices=["json", "kicadxml", "kicadsexpr", "spice", "orcadpcb2", "cadstar"])
+    p.add_argument(
+        "--format",
+        default="json",
+        choices=["json", "kicadxml", "kicadsexpr", "spice", "orcadpcb2", "cadstar"],
+    )
     p.add_argument("--no-cli", action="store_true")
     p.set_defaults(func=cmd_sch_netlist)
+
+    p = sch.add_parser("bom", help="grouped bill of materials as CSV")
+    p.add_argument("target")
+    p.add_argument("-o", "--output", required=True)
+    p.add_argument("--group-by", default="Value,Footprint")
+    p.add_argument("--fields", help="comma separated field list to export")
+    p.add_argument("--include-dnp", action="store_true", help="keep DNP parts")
+    p.add_argument("--rows", action="store_true", help="include every row in the JSON")
+    p.set_defaults(func=cmd_sch_bom)
 
     p = sch.add_parser("render", help="plot the schematic to PNG")
     p.add_argument("target")
@@ -463,8 +586,20 @@ def build_parser() -> argparse.ArgumentParser:
     p = pcb_p.add_parser("review", help="DRC plus layout heuristics")
     p.add_argument("target")
     p.add_argument("--no-cli", action="store_true")
-    p.add_argument("--threshold", action="append", metavar="KEY=VALUE",
-                   help="override a review threshold, e.g. min_track_mm=0.2")
+    p.add_argument(
+        "--collapse",
+        type=int,
+        default=COLLAPSE_LIMIT,
+        metavar="N",
+        help="fold a rule that fires more than N times into one finding "
+        "(0 disables, default: %(default)s)",
+    )
+    p.add_argument(
+        "--threshold",
+        action="append",
+        metavar="KEY=VALUE",
+        help="override a review threshold, e.g. min_track_mm=0.2",
+    )
     p.add_argument("-o", "--output")
     p.add_argument("--json", action="store_true", default=True)
     p.add_argument("--text", dest="json", action="store_false")
@@ -483,6 +618,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-3d", action="store_true")
     p.add_argument("--per-layer", action="store_true")
     p.set_defaults(func=cmd_pcb_render)
+
+    p = pcb_p.add_parser("fab", help="gerbers, drill, pick-and-place, BOM and a zip")
+    p.add_argument("target")
+    p.add_argument("-o", "--output", required=True)
+    p.add_argument("--pos-format", default="csv", choices=["csv", "ascii", "gerber"])
+    p.add_argument("--fab-layers", action="store_true", help="also plot F.Fab/B.Fab")
+    p.add_argument("--step", action="store_true", help="also export a STEP model")
+    p.add_argument("--ipc2581", action="store_true", help="also export IPC-2581")
+    p.add_argument("--include-dnp", action="store_true", help="keep DNP parts")
+    p.add_argument("--no-zip", action="store_true")
+    p.set_defaults(func=cmd_pcb_fab)
 
     p = pcb_p.add_parser("stats", help="board statistics")
     p.add_argument("target")

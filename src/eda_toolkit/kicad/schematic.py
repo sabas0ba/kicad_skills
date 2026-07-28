@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from ..util import EdaError
 from . import s_expression as sexp
@@ -52,13 +53,31 @@ class Symbol:
 
     @property
     def is_power(self) -> bool:
-        return self.lib_id.lower().startswith("power:")
+        """Power / flag symbols, which are not real components.
+
+        The ``power:`` library is only the modern spelling. KiCad's real
+        invariant is the ``#`` reference prefix: every symbol that is excluded
+        from the BOM and the board gets one, and older projects (and project
+        specific libraries) rely on exactly that. Classifying them as parts
+        makes them show up as components with no footprint - which is how the
+        KiCad demo projects produced dozens of false "missing footprint"
+        findings.
+        """
+        if self.lib_id.lower().startswith("power:"):
+            return True
+        if self.reference.startswith("#"):
+            return True
+        return not self.in_bom and not self.on_board
 
     @property
     def is_power_flag(self) -> bool:
         """PWR_FLAG marks a net as driven; unlike other power symbols it does
         not give the net its name."""
-        return self.lib_id.upper().endswith(":PWR_FLAG") or self.value.upper() == "PWR_FLAG"
+        return (
+            self.lib_id.upper().endswith(":PWR_FLAG")
+            or self.value.upper() == "PWR_FLAG"
+            or self.reference.upper().startswith("#FLG")
+        )
 
     @property
     def library(self) -> str:
@@ -134,8 +153,9 @@ class SchematicDoc:
         return None
 
 
-def transform_pin(px: float, py: float, sym_x: float, sym_y: float, angle: float,
-                  mirror: str) -> tuple[float, float]:
+def transform_pin(
+    px: float, py: float, sym_x: float, sym_y: float, angle: float, mirror: str
+) -> tuple[float, float]:
     """Library coordinates -> sheet coordinates.
 
     KiCad stores library symbols with Y pointing up and sheets with Y pointing
@@ -266,20 +286,27 @@ def parse(path: str | Path) -> SchematicDoc:
         for source_unit in (0, unit):
             for pin in units.get(source_unit, []):
                 ax, ay = transform_pin(pin.x, pin.y, sym.x, sym.y, sym.angle, sym.mirror)
-                sym.pins.append(
-                    Pin(pin.number, pin.name, pin.electrical_type, ax, ay, unit)
-                )
+                sym.pins.append(Pin(pin.number, pin.name, pin.electrical_type, ax, ay, unit))
         doc.symbols.append(sym)
 
-    kinds = {"label": "local", "global_label": "global", "hierarchical_label": "hierarchical",
-             "netclass_flag": "netclass"}
+    kinds = {
+        "label": "local",
+        "global_label": "global",
+        "hierarchical_label": "hierarchical",
+        "netclass_flag": "netclass",
+    }
     for tag, kind in kinds.items():
         for node in root.children(tag):
             at = node.child("at")
             coords = at.atoms() if at else [0, 0]
             doc.labels.append(
-                Label(text=str(node.atom(0, "")), kind=kind,
-                      x=float(coords[0]), y=float(coords[1]), sheet=p.name)
+                Label(
+                    text=str(node.atom(0, "")),
+                    kind=kind,
+                    x=float(coords[0]),
+                    y=float(coords[1]),
+                    sheet=p.name,
+                )
             )
 
     for tag, kind in (("wire", "wire"), ("bus", "bus")):
@@ -423,7 +450,7 @@ def build_netlist(docs: Iterable[SchematicDoc]) -> dict[str, Any]:
         for wire in doc.wires:
             if wire.kind != "wire":
                 continue
-            for a, b in zip(wire.points, wire.points[1:]):
+            for a, b in zip(wire.points, wire.points[1:], strict=False):
                 uf.union((doc.path.name, _key(a)), (doc.path.name, _key(b)))
                 segments.append((a, b))
                 endpoints.append((a, (doc.path.name, _key(a))))
@@ -444,7 +471,9 @@ def build_netlist(docs: Iterable[SchematicDoc]) -> dict[str, Any]:
                     if current is None or prio < current[0]:
                         named[key] = (prio, net_name)
                 else:
-                    pin_nodes.append((key, sym.reference, pin.number, pin.name, pin.electrical_type))
+                    pin_nodes.append(
+                        (key, sym.reference, pin.number, pin.name, pin.electrical_type)
+                    )
 
         for label in doc.labels:
             if label.kind == "netclass":
@@ -496,7 +525,9 @@ def build_netlist(docs: Iterable[SchematicDoc]) -> dict[str, Any]:
             first = sorted(entry["nodes"], key=lambda n: (n["ref"], n["pin"]))[0]
             auto += 1
             name = f"Net-({first['ref']}-Pad{first['pin']})"
-        nets.append({"name": name, "nodes": sorted(entry["nodes"], key=lambda n: (n["ref"], n["pin"]))})
+        nets.append(
+            {"name": name, "nodes": sorted(entry["nodes"], key=lambda n: (n["ref"], n["pin"]))}
+        )
 
     # nets with the same resolved name are the same net
     merged: dict[str, list[dict[str, str]]] = {}

@@ -69,8 +69,20 @@ class Plot:
         }
 
 
-_HEADER_KEYS = ("title", "date", "plotname", "flags", "no. variables", "no. points",
-                "command", "option", "variables", "binary", "values", "backannotation")
+_HEADER_KEYS = (
+    "title",
+    "date",
+    "plotname",
+    "flags",
+    "no. variables",
+    "no. points",
+    "command",
+    "option",
+    "variables",
+    "binary",
+    "values",
+    "backannotation",
+)
 
 
 def parse(path: str | os.PathLike[str]) -> list[Plot]:
@@ -122,8 +134,9 @@ def _parse_one(blob: bytes, pos: int) -> tuple[Plot, int]:
                 parts = var_line.split()
                 if len(parts) < 3:
                     raise RawFileError(f"malformed variable line: {var_line!r}")
-                variables.append({"index": int(parts[0]), "name": parts[1], "type": parts[2],
-                                  "extra": parts[3:]})
+                variables.append(
+                    {"index": int(parts[0]), "name": parts[1], "type": parts[2], "extra": parts[3:]}
+                )
             continue
         if lower.startswith("binary:"):
             mode, pos = "binary", next_pos
@@ -217,8 +230,12 @@ def to_csv(plot: Plot, dest: str | os.PathLike[str]) -> Path:
     for var in plot.variables:
         column = plot.data[var["name"]]
         if np.iscomplexobj(column):
-            names += [f"{var['name']}_re", f"{var['name']}_im", f"{var['name']}_mag",
-                      f"{var['name']}_deg"]
+            names += [
+                f"{var['name']}_re",
+                f"{var['name']}_im",
+                f"{var['name']}_mag",
+                f"{var['name']}_deg",
+            ]
             columns += [column.real, column.imag, np.abs(column), np.angle(column, deg=True)]
         else:
             names.append(var["name"])
@@ -226,6 +243,6 @@ def to_csv(plot: Plot, dest: str | os.PathLike[str]) -> Path:
     with out.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(names)
-        for row in zip(*columns):
+        for row in zip(*columns, strict=True):
             writer.writerow([f"{v:.10g}" for v in row])
     return out

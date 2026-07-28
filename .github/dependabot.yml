@@ -1,0 +1,30 @@
+version: 2
+
+# Dependabot covers the two ecosystems it understands. The remaining pins - the
+# KiCad base image digest and the pip/uv bootstrap wheels - are hand-rolled, so
+# tools/refresh_pins.py and .github/workflows/pins.yml keep those current.
+#
+# The Dockerfile is deliberately not listed: its FROM line is
+# `kicad/kicad:${KICAD_VERSION}@${KICAD_DIGEST}`, which Dependabot cannot parse.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    commit-message:
+      prefix: "deps"
+    groups:
+      python:
+        patterns: ["*"]

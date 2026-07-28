@@ -23,10 +23,7 @@ def parse_kicadxml(path: str | os.PathLike[str]) -> dict[str, Any]:
     for comp in root.findall("./components/comp"):
         libsource = comp.find("libsource")
         sheetpath = comp.find("sheetpath")
-        props = {
-            p.get("name", ""): p.get("value", "")
-            for p in comp.findall("property")
-        }
+        props = {p.get("name", ""): p.get("value", "") for p in comp.findall("property")}
         components.append(
             {
                 "reference": comp.get("ref", ""),
@@ -35,7 +32,9 @@ def parse_kicadxml(path: str | os.PathLike[str]) -> dict[str, Any]:
                 "datasheet": (comp.findtext("datasheet") or "").strip(),
                 "description": (comp.findtext("description") or "").strip(),
                 "lib_id": (
-                    f"{libsource.get('lib', '')}:{libsource.get('part', '')}" if libsource is not None else ""
+                    f"{libsource.get('lib', '')}:{libsource.get('part', '')}"
+                    if libsource is not None
+                    else ""
                 ),
                 "sheet": sheetpath.get("names", "/") if sheetpath is not None else "/",
                 "dnp": props.get("dnp", "").lower() in ("1", "yes", "true") or "dnp" in props,
@@ -80,9 +79,7 @@ def get(target: str | os.PathLike[str], *, prefer_cli: bool = True) -> dict[str,
     docs = schematic.parse_project(sch)
     data = schematic.build_netlist(docs)
     data["schematic"] = str(sch)
-    data["components"] = [
-        s.to_dict() for doc in docs for s in doc.symbols if not s.is_power
-    ]
+    data["components"] = [s.to_dict() for doc in docs for s in doc.symbols if not s.is_power]
     return data
 
 
@@ -96,7 +93,9 @@ def nets_of(netlist: dict[str, Any], reference: str) -> dict[str, str]:
     return out
 
 
-POWER_NET_RE = r"^(\+?\d+(\.\d+)?V\d*|VCC|VDD|VBUS|VIN|VOUT|VBAT|AVDD|DVDD|VDDA|VDDIO|PWR|\+?V[A-Z0-9_]*)$"
+POWER_NET_RE = (
+    r"^(\+?\d+(\.\d+)?V\d*|VCC|VDD|VBUS|VIN|VOUT|VBAT|AVDD|DVDD|VDDA|VDDIO|PWR|\+?V[A-Z0-9_]*)$"
+)
 GROUND_NET_RE = r"^(GND|GNDA|AGND|DGND|PGND|VSS|VSSA|EARTH|0)$"
 
 

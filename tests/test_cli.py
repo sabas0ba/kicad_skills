@@ -34,15 +34,18 @@ def test_sch_review_text_mode(capsys, example_project):
 
 def test_sch_review_writes_report(capsys, example_project, tmp_path):
     dest = tmp_path / "report.json"
-    code, out, _ = run(["sch", "review", str(example_project), "--no-cli",
-                        "-o", str(dest)], capsys)
+    code, _out, _ = run(
+        ["sch", "review", str(example_project), "--no-cli", "-o", str(dest)], capsys
+    )
     assert code == 0
     assert json.loads(dest.read_text())["summary"]["error"] == 0
 
 
 def test_pcb_review_threshold_override(capsys, example_project):
-    code, out, _ = run(["pcb", "review", str(example_project), "--no-cli",
-                        "--threshold", "min_track_mm=0.5"], capsys)
+    code, out, _ = run(
+        ["pcb", "review", str(example_project), "--no-cli", "--threshold", "min_track_mm=0.5"],
+        capsys,
+    )
     payload = json.loads(out)
     assert payload["thresholds"]["min_track_mm"] == 0.5
     assert code == 2  # tracks are now considered too thin -> errors
@@ -50,8 +53,9 @@ def test_pcb_review_threshold_override(capsys, example_project):
 
 
 def test_pcb_review_bad_threshold(capsys, example_project):
-    code, _, err = run(["pcb", "review", str(example_project), "--no-cli",
-                        "--threshold", "nonsense"], capsys)
+    code, _, err = run(
+        ["pcb", "review", str(example_project), "--no-cli", "--threshold", "nonsense"], capsys
+    )
     assert code == 1
     assert "key=value" in err
 
@@ -59,6 +63,7 @@ def test_pcb_review_bad_threshold(capsys, example_project):
 def test_pcb_info(capsys, example_project):
     code, out, _ = run(["pcb", "info", str(example_project)], capsys)
     payload = json.loads(out)
+    assert code == 0
     assert payload["layer_count"] == 2
     assert payload["size_mm"] == [40.0, 30.0]
 

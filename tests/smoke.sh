@@ -44,6 +44,15 @@ step "board render (layers + 3D)"
 eda pcb render "$PROJECT" -o "$OUT/art" --dpi 120 --views front copper-front > "$OUT/art.json"
 have "$OUT/art.json" "len(d['images']) >= 5 and not d['errors']"
 
+step "bill of materials"
+eda sch bom "$PROJECT" -o "$OUT/bom.csv" > "$OUT/bom.json"
+have "$OUT/bom.json" "d['total_parts'] == 5 and d['line_items'] >= 3"
+
+step "fabrication package"
+eda pcb fab "$PROJECT" -o "$OUT/fab" > "$OUT/fab.json"
+have "$OUT/fab.json" "d['ok'] and {s['step'] for s in d['steps']} >= {'gerbers','drill','position','bom'}"
+test -s "$OUT/fab/gerbers/drill-report.txt"
+
 step "spice simulation"
 eda sim run tests/fixtures/spice/rc_lowpass.cir -o "$OUT/sim" > "$OUT/sim.json"
 have "$OUT/sim.json" "d['ok'] and len(d['plots']) == 2"
@@ -55,6 +64,23 @@ fc = ac["measurements"]["signals"]["v(out)"]["f_minus_3db_hz"]
 assert 950 < fc < 1050, f"RC corner frequency is off: {fc}"
 print(f"-3 dB corner = {fc:.1f} Hz (expected 1000 Hz)")
 PY
+
+step "monte carlo tolerance analysis"
+eda sim montecarlo tests/fixtures/spice/rc_lowpass.cir -o "$OUT/mc" \
+    --vary R1=1% --vary C1=1% --metric "ac.v(out).f_minus_3db_hz" \
+    --trials 20 --distribution uniform --seed 5 > "$OUT/mc.json"
+have "$OUT/mc.json" "d['ok'] and d['statistics']['samples'] == 20 and 0 < d['statistics']['spread_pct'] < 6"
+python3 -c "
+import json,sys
+d = json.load(open('$OUT/mc.json'))
+s = d['statistics']
+print(f\"fc = {s['mean']:.1f} Hz mean, {s['min']:.1f}..{s['max']:.1f} Hz over {s['samples']} trials\")
+"
+
+step "temperature sweep"
+eda sim temperature tests/fixtures/spice/rc_lowpass.cir -o "$OUT/temp" \
+    --temperatures 0 25 85 --metric "ac.v(out).f_minus_3db_hz" > "$OUT/temp.json"
+have "$OUT/temp.json" "d['ok'] and len(d['points']) == 3"
 
 step "datasheet parsing (locally generated PDF, no network)"
 python3 - "$OUT/fake.pdf" <<'PY'

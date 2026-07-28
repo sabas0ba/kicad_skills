@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from ..util import EdaError, ensure_dir, write_json
 from . import kicad_cli, pcb, schematic
@@ -28,8 +29,9 @@ def _short(exc: Exception, limit: int = 400) -> str:
     return message[:limit] + (" ..." if len(message) > limit else "")
 
 
-def pdf_to_png(pdf_path: str | os.PathLike[str], out_prefix: str | os.PathLike[str],
-               dpi: int = 300) -> list[str]:
+def pdf_to_png(
+    pdf_path: str | os.PathLike[str], out_prefix: str | os.PathLike[str], dpi: int = 300
+) -> list[str]:
     """Rasterise every page of a PDF next to ``out_prefix``."""
     import pypdfium2 as pdfium
 
@@ -67,12 +69,18 @@ def render_board(
         if layer.get("user_name"):
             available_layers.add(layer["user_name"])
 
-    wanted = list(views) if views else ["front", "back", "copper-front", "copper-back", "silk-front"]
+    wanted = (
+        list(views) if views else ["front", "back", "copper-front", "copper-back", "silk-front"]
+    )
     if per_layer:
         wanted += [f"layer:{name}" for name in board.copper_layers]
 
-    result: dict[str, Any] = {"board": str(board_path), "out_dir": str(out),
-                              "images": [], "errors": []}
+    result: dict[str, Any] = {
+        "board": str(board_path),
+        "out_dir": str(out),
+        "images": [],
+        "errors": [],
+    }
 
     for view in wanted:
         if view.startswith("layer:"):
@@ -97,12 +105,17 @@ def render_board(
             result["errors"].append({"view": view, "error": _short(exc)})
             continue
         for png in pngs:
-            result["images"].append({"view": name, "layers": layers, "mirrored": mirror,
-                                     "path": png, "kind": "plot"})
+            result["images"].append(
+                {"view": name, "layers": layers, "mirrored": mirror, "path": png, "kind": "plot"}
+            )
 
     if three_d:
         for side, extra in (("top", {}), ("bottom", {}), ("top", {"rotate": "-45,0,45"})):
-            label = "3d-top" if side == "top" and not extra else ("3d-bottom" if side == "bottom" else "3d-iso")
+            label = (
+                "3d-top"
+                if side == "top" and not extra
+                else ("3d-bottom" if side == "bottom" else "3d-iso")
+            )
             dest = out / f"{label}.png"
             try:
                 kicad_cli.render(board_path, dest, side=side, **extra)
@@ -114,8 +127,9 @@ def render_board(
     return result
 
 
-def render_schematic(target: str | os.PathLike[str], out_dir: str | os.PathLike[str],
-                     *, dpi: int = 200) -> dict[str, Any]:
+def render_schematic(
+    target: str | os.PathLike[str], out_dir: str | os.PathLike[str], *, dpi: int = 200
+) -> dict[str, Any]:
     """Plot the schematic to PDF and rasterise every sheet."""
     sch = schematic.find_root_schematic(target)
     out = ensure_dir(out_dir)

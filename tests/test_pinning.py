@@ -18,8 +18,9 @@ SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 def workflows() -> list[Path]:
-    return sorted((ROOT / ".github" / "workflows").glob("*.yml")) + \
-           sorted((ROOT / ".github" / "workflows").glob("*.yaml"))
+    return sorted((ROOT / ".github" / "workflows").glob("*.yml")) + sorted(
+        (ROOT / ".github" / "workflows").glob("*.yaml")
+    )
 
 
 def test_there_is_a_workflow():
@@ -105,7 +106,7 @@ def test_uv_lock_pins_every_package_with_a_hash():
         assert re.search(r'^version = "', block, re.MULTILINE), f"{name} has no pinned version"
         if "source = { virtual" in block or "source = { editable" in block:
             continue  # the project itself
-        assert "hash = \"sha256:" in block, f"{name} has no artifact hash"
+        assert 'hash = "sha256:' in block, f"{name} has no artifact hash"
 
 
 def test_dockerfile_installs_from_the_lock_file():
