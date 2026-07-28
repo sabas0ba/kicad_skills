@@ -14,7 +14,7 @@ RUN_IN_IMAGE   = $(DOCKER) run --rm -u $(shell id -u):$(shell id -g) \
                    -e PYTHONPATH=/work/src --network none $(IMAGE)
 
 .PHONY: help build rebuild lock lint test test-host test-docker test-coverage smoke shell doctor clean \
-        check-digest check-pins refresh-pins
+        check-digest check-pins refresh-pins skills
 
 help:  ## show this help
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -40,6 +40,9 @@ check-pins:  ## report container pins that upstream has moved past
 
 refresh-pins:  ## rewrite the container pins (add --set-default-kicad by hand to bump KiCad)
 	python3 tools/refresh_pins.py --write
+
+skills:  ## mirror docs/guides/ into .claude/skills (generated, git-ignored)
+	./bin/install-skills.sh --force
 
 lint:  ## ruff (lint + format check) over the whole tree
 	$(UV) run --frozen --extra test ruff check .

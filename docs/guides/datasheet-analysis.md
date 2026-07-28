@@ -3,13 +3,16 @@ name: datasheet-analysis
 description: Extract text, parameter tables, embedded figures and page images from a datasheet PDF so its contents (absolute maximum ratings, electrical characteristics, pinout, typical application circuits, curves) can be read and quoted. Use when a datasheet PDF has to be read, when a specific parameter or pin function has to be looked up, or when a figure/graph in a PDF needs to be viewed.
 ---
 
+> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
+> `eda` CLI. Plain Markdown: read it directly, or hand it to whatever assistant you use.
+
 # Datasheet analysis
 
 Turns a datasheet PDF into things that can actually be read: per-page text,
 CSV parameter tables, extracted figures and rendered page images. Everything
-runs in the container (`eda-environment` skill), offline.
+runs in the container (see the `eda-environment` guide), offline.
 
-Getting hold of the PDF is not part of this skill - download it however you
+Getting hold of the PDF is out of scope here - download it however you
 normally would (the manufacturer's site is the authoritative copy) and keep it
 in the repository, e.g. under `docs/datasheets/`, so later sessions can read it
 without network access.

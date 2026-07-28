@@ -3,10 +3,13 @@ name: kicad-schematic-review
 description: Read a KiCad schematic (.kicad_sch) to extract components, nets and hierarchy, and review it - ERC plus design checks for decoupling, floating inputs, single-pin nets, annotation, missing footprints, I2C pull-ups and LED series resistors. Use when asked to review, check, understand or summarise a schematic or circuit design in a KiCad project.
 ---
 
+> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
+> `eda` CLI. Plain Markdown: read it directly, or hand it to whatever assistant you use.
+
 # KiCad schematic review
 
 Reads `.kicad_sch` files and reviews them. Runs in the container
-(`eda-environment` skill); pass paths relative to the repository root.
+(see the `eda-environment` guide); pass paths relative to the repository root.
 
 ## The commands
 
@@ -33,7 +36,7 @@ The target may be a `.kicad_sch`, a `.kicad_pro`, or the project directory
    drawing to check signal flow, that the topology is what the user described,
    and that nothing important is drawn but disconnected.
 4. **Datasheets** — for each IC, get its datasheet (the part number and the
-   `Datasheet` field are in `sch info`) and use the `datasheet-analysis` skill
+   `Datasheet` field are in `sch info`) and use the `datasheet-analysis` guide
    to check the actual part against its ratings: supply range, input
    common-mode range, required external components, pins that must not float.
 5. Report findings grouped by severity, each with the reference designator or
@@ -71,7 +74,7 @@ Exit code is `2` when there is at least one error, `0` otherwise — usable in C
 
 * Whether the *topology* implements the intended function.
 * Component values: gain, cut-off frequency, current limits, divider ratios,
-  time constants. Compute them, or verify with the `spice-simulation` skill.
+  time constants. Compute them, or verify with the `spice-simulation` guide.
 * Power budget and thermal dissipation.
 * Whether a part's operating conditions are respected (needs the datasheet).
 * Reset/boot strapping, protection against reverse polarity and ESD,
@@ -89,4 +92,4 @@ Exit code is `2` when there is at least one error, `0` otherwise — usable in C
 * `./bin/eda.sh sch erc <target>` returns KiCad's raw ERC JSON when the details of
   a violation are needed.
 * `./bin/eda.sh sch bom <target> -o bom.csv` exports a grouped bill of materials
-  (see the `kicad-fabrication-output` skill).
+  (see the `kicad-fabrication-output` guide).

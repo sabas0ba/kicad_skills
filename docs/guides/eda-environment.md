@@ -1,11 +1,14 @@
 ---
 name: eda-environment
-description: Set up, pin, verify and troubleshoot the containerised EDA toolchain (KiCad + ngspice + PDF tooling) used by the circuit design skills. Use when `./bin/eda.sh` fails, when the KiCad version has to be changed or pinned, or when a circuit-design skill reports that a tool is unavailable.
+description: Set up, pin, verify and troubleshoot the containerised EDA toolchain (KiCad + ngspice + PDF tooling) behind the `eda` CLI. Use when `./bin/eda.sh` fails, when the KiCad version has to be changed or pinned, or when a circuit-design command reports that a tool is unavailable.
 ---
+
+> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
+> `eda` CLI. Plain Markdown: read it directly, or hand it to whatever assistant you use.
 
 # EDA environment
 
-Every circuit design skill in this repository runs its work **inside a container**.
+Every command in this toolkit does its work **inside a container**.
 Nothing (KiCad, ngspice, python packages) is installed on the host.
 
 ## The one entry point
