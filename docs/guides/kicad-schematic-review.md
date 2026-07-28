@@ -39,6 +39,14 @@ copy of the sheet for context. Because a moved part is a speck on an A4 page, a
 zoomed crop of the changed region is written next to the full sheet - read that
 one first. `--no-images` skips the rendering when only the connectivity matters.
 
+The drawing diff answers "what moved, what appeared, what went away". It is not
+the channel for "what was re-labelled". Suppressing anti-aliasing means ink that
+lands within a pixel of where ink already was is treated as the renderer wobbling
+rather than as a change — and text redrawn in place is largely that. Retagging a
+resistor 10k → 4k7 registers zero changed pixels at 100 dpi, 13 at 150 and 130 at
+300. Read the **Components** table for that: it compares the field rather than
+the picture of it, so it catches the change at any dpi.
+
 ## How to actually review a schematic
 
 1. **`sch info`** — get the parts list, the net list and the sheet hierarchy.

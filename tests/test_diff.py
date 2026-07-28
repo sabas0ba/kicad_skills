@@ -409,3 +409,26 @@ def test_a_moved_symbol_is_drawn_red_then_green(tmp_path, example_project):
     with Image.open(pages[0]["image"]) as image:
         colours = set(image.getdata())
     assert diff.REMOVED_COLOUR in colours and diff.ADDED_COLOUR in colours
+
+
+def test_a_change_that_stays_under_the_old_ink_is_absorbed(tmp_path):
+    """The documented cost of suppressing anti-aliasing fringes.
+
+    Ink that lands within a pixel of where ink already was cannot be told from a
+    subpixel wobble, so it is dropped. Redrawing "10k" as "4k7" in the same place
+    is mostly that, which is why a re-labelled part is reported by the component
+    table rather than by the drawing.
+    """
+    _blank(tmp_path / "old" / "sheet.png")
+    _blank(tmp_path / "new" / "sheet.png")
+    _draw(tmp_path / "old" / "sheet.png", (10, 10, 16, 16))
+    _draw(tmp_path / "new" / "sheet.png", (11, 10, 17, 16))  # the same mark, one pixel over
+
+    nudged = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")[0]
+    assert nudged["changed_pixels"] == 0
+
+    # Far enough to be a real move, and it registers as one.
+    _blank(tmp_path / "new" / "sheet.png")
+    _draw(tmp_path / "new" / "sheet.png", (40, 10, 46, 16))
+    moved = diff.compare_images(tmp_path / "old", tmp_path / "new", tmp_path / "diff")[0]
+    assert moved["removed_pixels"] > 0 and moved["added_pixels"] > 0

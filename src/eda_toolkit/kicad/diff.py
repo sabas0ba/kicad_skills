@@ -193,6 +193,13 @@ def _grew(mask):
     Renderers anti-alias, so a shape that did not move still lands on slightly
     different subpixels between two runs. Without this, every outline in the
     drawing is fringed in red and green and the real change is lost in it.
+
+    The cost is that a change landing within a pixel of the old ink cannot be
+    told from that wobble, so it is dropped too. Redrawing "10k" as "4k7" in the
+    same place is largely that: zero changed pixels at 100 dpi, 130 at 300. Right
+    trade for a picture - a re-labelled field belongs in the component table,
+    which compares the value instead of the rendering of it - but it does mean
+    the drawing is not where to look for one.
     """
     from PIL import ImageFilter
 

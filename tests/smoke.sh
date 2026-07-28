@@ -61,12 +61,17 @@ test -s "$OUT/report/report.md"
 
 step "diff between two revisions"
 cp -r "$PROJECT" "$OUT/revised"
-# retag R1, so the diff has something real to find
+# Two kinds of change, because they surface through different channels: a
+# re-valued part shows in the component table, a moved one in the drawing.
 sed -i 's/(property "Value" "10k"/(property "Value" "4k7"/' "$OUT/revised/example.kicad_sch"
 grep -q '"4k7"' "$OUT/revised/example.kicad_sch"  # the fixture still had a 10k to change
+sed -i 's/(symbol (lib_id "Device:C") (at 147.32 60.96 0)/(symbol (lib_id "Device:C") (at 154.94 66.04 0)/' \
+    "$OUT/revised/example.kicad_sch"
+grep -q "154.94 66.04" "$OUT/revised/example.kicad_sch"  # C2 was still where we expected
 eda diff "$PROJECT" "$OUT/revised" -o "$OUT/diff" --dpi 100 > "$OUT/diff.json"
 have "$OUT/diff.json" "not d['identical'] and d['sections']['schematic']['components']['changed']"
-have "$OUT/diff.json" "d['sections']['schematic_drawing']['pages'][0]['changed_pixels'] > 0"
+have "$OUT/diff.json" "d['sections']['schematic_drawing']['pages'][0]['removed_pixels'] > 0"
+have "$OUT/diff.json" "d['sections']['schematic_drawing']['pages'][0]['added_pixels'] > 0"
 grep -q "4k7" "$OUT/diff/diff.md"
 test -s "$OUT/diff/diff/sheet-diff.png"
 
