@@ -1,4 +1,4 @@
-# kicad_skills — containerised circuit design skills
+# kicad_skills — a containerised circuit-design toolkit
 
 [![CI](https://github.com/sabas0ba/kicad_skills/actions/workflows/ci.yml/badge.svg)](https://github.com/sabas0ba/kicad_skills/actions/workflows/ci.yml)
 [![pins](https://github.com/sabas0ba/kicad_skills/actions/workflows/pins.yml/badge.svg)](https://github.com/sabas0ba/kicad_skills/actions/workflows/pins.yml)
@@ -6,14 +6,20 @@
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue)](pyproject.toml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
-A set of Claude Code skills, and the toolkit behind them, for doing real circuit
-design work: reading datasheets, simulating analog circuits, reviewing KiCad
-schematics and PCB artwork, and shipping the fabrication package.
+`eda` is a command-line toolkit for circuit design work: reading datasheets,
+simulating analog circuits with ngspice, reviewing KiCad schematics and PCB
+artwork, and producing the fabrication package.
 
 **Everything runs inside a container.** KiCad, ngspice and the Python
 dependencies are never installed on the host — the only host requirements are
 `docker` and `bash`. The KiCad release is a build argument, so it can be pinned
 per project.
+
+It is an ordinary CLI that prints JSON and exits non-zero on errors, so it works
+the same from a terminal, a `Makefile`, a CI job, or a coding assistant. The
+repository also ships [usage guides](docs/guides/README.md) for each area —
+plain Markdown, worth reading on their own, and picked up automatically as
+skills if you happen to use Claude Code.
 
 ```bash
 ./bin/eda.sh doctor                                   # builds the image on first use
@@ -26,7 +32,7 @@ per project.
 
 ## Install
 
-### As a submodule (no clone of your own needed)
+### Into an existing board project, as a submodule
 
 ```bash
 cd ~/projects/my-board
@@ -34,22 +40,28 @@ git submodule add https://github.com/sabas0ba/kicad_skills tools/kicad_skills
 ./tools/kicad_skills/bin/install-skills.sh
 ```
 
-That symlinks every skill into your project's `.claude/skills/` and drops a
-one-line `bin/eda.sh` shim, so the `./bin/eda.sh …` commands in the skill docs
-work verbatim from your project root:
+That drops a one-line `bin/eda.sh` shim so the `./bin/eda.sh …` commands work
+verbatim from your project root, and links the usage guides into
+`.claude/skills/`:
 
 ```
 my-board/
-├── .claude/skills/kicad-pcb-review -> ../../tools/kicad_skills/.claude/skills/kicad-pcb-review
 ├── bin/eda.sh                          shim -> tools/kicad_skills/bin/eda.sh
+├── .claude/skills/kicad-pcb-review ->  ../../tools/kicad_skills/.claude/skills/kicad-pcb-review
 ├── hardware/my-board.kicad_pro
 └── tools/kicad_skills/                 the submodule
 ```
 
-Commit `.claude/skills/` and `bin/eda.sh`; everyone who clones the project gets
-the skills. Upgrading is `git submodule update --remote` — the symlinks follow,
-with no re-install. `--copy` vendors the skills instead of symlinking,
-`--uninstall` reverses it, `--force` replaces what is already there.
+Commit `bin/eda.sh` (and the guides, if you want them) so everyone who clones the
+project gets them. Upgrading is `git submodule update --remote` — the symlinks
+follow, with no re-install.
+
+| Flag | Effect |
+| --- | --- |
+| `--no-guides` | just the CLI shim, nothing else |
+| `--dest DIR` | put the guides somewhere else (e.g. `--dest docs/circuit-design`) |
+| `--copy` | vendor the guides instead of symlinking (Windows checkouts) |
+| `--force` / `--uninstall` | replace what is already there / reverse the install |
 
 Then, from your project root:
 
@@ -58,44 +70,43 @@ Then, from your project root:
 ./bin/eda.sh report hardware/ -o build/report
 ```
 
-### Or work on the toolkit itself
+### Or standalone
+
+No install step is needed to try it — clone and run:
 
 ```bash
 git clone https://github.com/sabas0ba/kicad_skills && cd kicad_skills
-make build                     # ~5 min, downloads the KiCad image (about 4 GB)
 ./bin/eda.sh doctor            # {"kicad_cli": "10.0.4", "ngspice": "...", "ok": true}
-make test                      # full test-suite inside the container
-make smoke                     # end-to-end run against the example project
+./bin/eda.sh report ~/projects/my-board/hardware -o /tmp/report
 ```
 
 `bin/eda.sh` mounts the git repository root that contains the current directory
 at `/work`, runs as your uid/gid (no root-owned files), and gives the container
-no network.
+no network. To work on the toolkit itself, see [AGENTS.md](AGENTS.md).
 
-## What the skills do
+## What it does
 
 ```mermaid
 flowchart LR
-    PDF[datasheet PDF] --> DS[datasheet-analysis]
-    DS -->|part values| SIM[spice-simulation]
-    SIM -->|verified circuit| SCH[kicad-schematic-review]
-    SCH -->|netlist + ERC| PCB[kicad-pcb-review]
-    PCB -->|DRC clean| FAB[kicad-fabrication-output]
+    PDF[datasheet PDF] --> DS[eda datasheet]
+    DS -->|part values| SIM[eda sim]
+    SIM -->|verified circuit| SCH[eda sch review]
+    SCH -->|netlist + ERC| PCB[eda pcb review]
+    PCB -->|DRC clean| FAB[eda pcb fab]
     SCH --> REP[eda report]
     PCB --> REP
     SIM --> REP
     REP --> HTML[report.html + PNG + PDF + GLB]
-    ENV[eda-environment] -.->|container, pins, troubleshooting| DS & SIM & SCH & PCB & FAB
 ```
 
-| Skill | What it does | One command |
-| --- | --- | --- |
-| [`datasheet-analysis`](.claude/skills/datasheet-analysis/SKILL.md) | Text, parameter tables, embedded figures and rendered page images from a datasheet PDF | `eda datasheet parse lm321.pdf -o out/` |
-| [`spice-simulation`](.claude/skills/spice-simulation/SKILL.md) | ngspice op/dc/ac/tran/noise, THD, Monte Carlo tolerance analysis, temperature sweeps — with measurements and plots | `eda sim run filter.cir -o out/` |
-| [`kicad-schematic-review`](.claude/skills/kicad-schematic-review/SKILL.md) | Components, nets and hierarchy from `.kicad_sch`; ERC plus decoupling / floating-input / annotation / pull-up checks | `eda sch review hardware/ --text` |
-| [`kicad-pcb-review`](.claude/skills/kicad-pcb-review/SKILL.md) | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen; layer plots and 3D renders | `eda pcb review hardware/ --text` |
-| [`kicad-fabrication-output`](.claude/skills/kicad-fabrication-output/SKILL.md) | Gerbers, Excellon drill, pick-and-place, BOM, STEP/IPC-2581, zipped with a manifest | `eda pcb fab hardware/ -o fab/` |
-| [`eda-environment`](.claude/skills/eda-environment/SKILL.md) | Build, pin, verify and troubleshoot the container | `eda doctor` |
+| Area | What it does | One command | Guide |
+| --- | --- | --- | --- |
+| Datasheets | Text, parameter tables, embedded figures and rendered page images from a PDF | `eda datasheet parse lm321.pdf -o out/` | [guide](.claude/skills/datasheet-analysis/SKILL.md) |
+| Simulation | ngspice op/dc/ac/tran/noise, THD, Monte Carlo tolerance analysis, temperature sweeps — with measurements and plots | `eda sim run filter.cir -o out/` | [guide](.claude/skills/spice-simulation/SKILL.md) |
+| Schematic review | Components, nets and hierarchy from `.kicad_sch`; ERC plus decoupling / floating-input / annotation / pull-up checks | `eda sch review hardware/ --text` | [guide](.claude/skills/kicad-schematic-review/SKILL.md) |
+| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen; layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](.claude/skills/kicad-pcb-review/SKILL.md) |
+| Fabrication | Gerbers, Excellon drill, pick-and-place, BOM, STEP/IPC-2581, zipped with a manifest | `eda pcb fab hardware/ -o fab/` | [guide](.claude/skills/kicad-fabrication-output/SKILL.md) |
+| The container | Build, pin, verify and troubleshoot the toolchain | `eda doctor` | [guide](.claude/skills/eda-environment/SKILL.md) |
 
 ### Examples
 
@@ -294,8 +305,7 @@ eda pcb stats    TARGET
 
 `TARGET` accepts a `.kicad_sch`/`.kicad_pcb` file, a `.kicad_pro`, or a project
 directory. All commands print JSON by default (the review commands also take
-`--text` for a human readable digest) and exit `2` when a review found errors,
-so they drop straight into CI.
+`--text` for a human readable digest) and exit `2` when a review found errors.
 
 ### Environment variables
 
@@ -307,6 +317,58 @@ so they drop straight into CI.
 | `EDA_MOUNT` | host directory to mount at `/work` (default: git root or `$PWD`) |
 | `EDA_ENV_PASSTHROUGH` | extra environment variable names to forward |
 | `EDA_DOCKER_ARGS` | extra arguments for `docker run` |
+
+## Using it in CI
+
+The reviews are exit-code gates, so a board can be checked on every push the way
+code is. In a project that added this as a submodule:
+
+```yaml
+# .github/workflows/hardware.yml
+- uses: actions/checkout@... # with: submodules: true
+- name: Review the board
+  run: |
+    ./bin/eda.sh sch review hardware/ --text
+    ./bin/eda.sh pcb review hardware/ --text
+- name: Build the report
+  if: always()
+  run: ./bin/eda.sh report hardware/ -o build/report
+- uses: actions/upload-artifact@...
+  if: always()
+  with: { name: hardware-report, path: build/report }
+```
+
+Exit `0` clean, `1` on a usage error, `2` when a review found errors. Loosen or
+tighten what counts as an error with `--threshold KEY=VALUE`, or post-process
+`report.json` if you want your own policy. This repository's own CI reviews its test
+fixture and uploads the report the same way — see
+[`ci.yml`](.github/workflows/ci.yml).
+
+Nothing needs the network at run time, so the container stays offline unless you
+ask for `EDA_NETWORK=1`.
+
+## Using it with a coding assistant
+
+The toolkit is a CLI: any assistant that can run a shell command can drive it,
+and the JSON output is meant to be parsed rather than screen-scraped. What makes
+the difference in practice is not the commands but knowing how to *use* them —
+which is what [`docs/guides/`](docs/guides/README.md) is for. Those guides cover
+the review methodology, what each finding means, and what the tool cannot judge
+for you.
+
+* **Claude Code** discovers them automatically: they live at
+  `.claude/skills/<name>/SKILL.md`, and `bin/install-skills.sh` links them into
+  a parent project for you.
+* **Anything else** — point it at `docs/guides/`, or copy them where your tool
+  looks: `./bin/install-skills.sh --dest .cursor/rules --copy`.
+* **No assistant at all** — they are ordinary Markdown, written to be read.
+
+Contributor and agent instructions for this repository itself live in
+[`AGENTS.md`](AGENTS.md) (`CLAUDE.md` is a pointer to it, not a second copy).
+
+`eda report` exists largely for this use case: an assistant working headlessly
+can produce one page — renders, findings, BOM, simulation plots — that a human
+can check at a glance instead of taking a summary on trust.
 
 ## How it fits together
 
@@ -323,8 +385,10 @@ src/eda_toolkit/
                            outline geometry, kicad-cli wrapper, review rules,
                            renderers, fabrication package
 tests/                     pytest suite + fixtures + smoke test
+docs/guides/               index of the usage guides
 docs/examples/             committed output, so the README shows rather than tells
-.claude/skills/            the skills themselves
+.claude/skills/            the guides themselves, where Claude Code finds them
+AGENTS.md                  contributor / agent instructions (CLAUDE.md points here)
 ```
 
 Design notes:
@@ -337,9 +401,9 @@ Design notes:
 * **Review = rules + pictures.** The rule engine produces structured findings;
   the renderers produce PNGs so the parts a rule cannot judge (placement,
   routing quality, silkscreen legibility, signal flow) can be looked at. This
-  matters most when the work is headless: `eda report` exists so an agent - and
-  whoever reads the transcript afterwards - can *see* the design instead of
-  taking a JSON summary on faith.
+  matters most when the work is headless: `eda report` exists so whoever is
+  driving - a person on a CI artifact, or an assistant mid-task - can *see* the
+  design instead of taking a JSON summary on faith.
 * **Geometry is measured, not approximated.** Board-edge clearance is computed
   against the flattened Edge.Cuts geometry, arcs and circles included, with an
   inside/outside test that survives cutouts and the seams where two outlines
@@ -348,6 +412,10 @@ Design notes:
 * **Findings are typed** (`rule`, `severity`, `message`, `location`, `details`)
   and every rule is a small function registered in a list — adding a check is a
   dozen lines plus a test.
+* **The knowledge is in Markdown, not in prompts.** The judgement calls that make
+  a review useful live in [`docs/guides/`](docs/guides/README.md) as prose, so
+  they are reviewable in a diff and usable by a person, a script or any
+  assistant — not baked into one vendor's format.
 
 ## Review quality
 
@@ -382,6 +450,7 @@ Every external input is pinned, and the pins are enforced by
 | --- | --- |
 | KiCad base image | manifest digest, per version, in [`docker/kicad-digests.txt`](docker/kicad-digests.txt) |
 | pip / uv | exact version + wheel SHA-256 (`ARG PIP_*`, [`docker/uv-bootstrap.txt`](docker/uv-bootstrap.txt)) |
+| Build backend | exact version in `[build-system] requires` + wheel SHA-256 in [`docker/build-backend.txt`](docker/build-backend.txt) — `uv.lock` cannot cover it, so the image installs it separately and builds with `--no-build-isolation-package` |
 | Python packages | [`uv.lock`](uv.lock) - exact versions + artifact hashes for the whole tree, installed with `uv sync --frozen` |
 | GitHub Actions | 40 character commit SHA, with the tag in a trailing comment |
 | CI runner | `ubuntu-24.04`, never `-latest`; Python `3.13.5` |
@@ -413,7 +482,7 @@ make test          # everything, inside the container
 make test-coverage # the same, with a coverage report
 make test-host     # pure-python subset on the host (needs a local venv)
 make lint          # ruff
-make smoke         # end-to-end: every skill's main command
+make smoke         # end-to-end: every top-level command
 ```
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push

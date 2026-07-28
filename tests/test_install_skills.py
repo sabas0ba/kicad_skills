@@ -1,4 +1,9 @@
-"""bin/install-skills.sh is how most people will adopt this repo - test it."""
+"""bin/install-skills.sh is how most people will adopt this repo - test it.
+
+The guides ship under `.claude/skills/` because that is where Claude Code finds
+them, but nothing about the script assumes that: --dest puts them anywhere and
+--no-guides skips them entirely, for people who only want the CLI.
+"""
 
 import os
 import shutil
@@ -88,6 +93,33 @@ def test_copy_mode_vendors_the_skills(project):
     assert (link / "SKILL.md").exists()
 
 
+def test_guides_can_be_installed_anywhere(project):
+    target, submodule = project
+    install(submodule, target, "--dest", "docs/circuit-design", "--copy")
+
+    guide = target / "docs" / "circuit-design" / SKILLS[0] / "SKILL.md"
+    assert guide.exists()
+    assert not (target / ".claude").exists()
+
+
+def test_a_nested_destination_still_gets_relative_symlinks(project):
+    target, submodule = project
+    install(submodule, target, "--dest", "a/b/c")
+
+    link = target / "a" / "b" / "c" / SKILLS[0]
+    assert link.is_symlink()
+    assert not os.path.isabs(os.readlink(link))
+    assert (link / "SKILL.md").exists(), os.readlink(link)
+
+
+def test_the_cli_can_be_installed_without_any_guides(project):
+    target, submodule = project
+    install(submodule, target, "--no-guides")
+
+    assert (target / "bin" / "eda.sh").exists()
+    assert not (target / ".claude").exists()
+
+
 def test_uninstall_removes_what_it_installed(project):
     target, submodule = project
     install(submodule, target)
@@ -96,6 +128,7 @@ def test_uninstall_removes_what_it_installed(project):
 
     install(submodule, target, "--uninstall")
     assert not (target / ".claude" / "skills").exists()
+    assert not (target / ".claude").exists()  # and the directory it created
     assert not (target / "bin" / "eda.sh").exists()
     assert keep.exists()
     assert (submodule / ".claude" / "skills" / SKILLS[0] / "SKILL.md").exists()

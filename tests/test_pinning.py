@@ -91,6 +91,49 @@ def test_uv_is_pinned_by_version_and_hash():
     assert requirement.count("==") == 1
 
 
+def _build_requires() -> list[str]:
+    pyproject = (ROOT / "pyproject.toml").read_text()
+    block = re.search(r"^requires = \[(.*?)\]", pyproject, re.MULTILINE | re.DOTALL).group(1)
+    return re.findall(r'"([^"]+)"', block)
+
+
+def test_build_backend_is_pinned_exactly():
+    """uv resolves [build-system] requires outside uv.lock, so a floor is not a pin."""
+    requires = _build_requires()
+    assert requires, "pyproject has no build-system requires"
+    for requirement in requires:
+        assert "==" in requirement, (
+            f"{requirement} is a floor, not a pin: uv would fetch whatever PyPI serves today"
+        )
+
+
+def test_build_backend_hashes_match_pyproject():
+    hashed = (ROOT / "docker" / "build-backend.txt").read_text()
+    requirement_lines = " ".join(
+        ln.strip().rstrip("\\")
+        for ln in hashed.splitlines()
+        if ln.strip() and not ln.lstrip().startswith("#")
+    )
+    for requirement in _build_requires():
+        assert requirement in requirement_lines, (
+            f"{requirement} is in pyproject.toml but not in docker/build-backend.txt"
+        )
+    names = {r.split("==")[0] for r in _build_requires()}
+    pinned = set(re.findall(r"^([A-Za-z0-9_.-]+)==", requirement_lines.replace(" ", "\n"), re.M))
+    assert pinned == names, f"build-backend.txt pins {pinned}, pyproject pins {names}"
+    assert requirement_lines.count("--hash=sha256:") >= len(names), (
+        "every build backend wheel needs a hash"
+    )
+
+
+def test_the_image_does_not_resolve_the_build_backend_itself():
+    dockerfile = (ROOT / "docker" / "Dockerfile").read_text()
+    assert "build-backend.txt" in dockerfile, "the image must install the pinned build backend"
+    assert "--no-build-isolation-package eda-toolkit" in dockerfile, (
+        "without this uv builds the project against an unpinned setuptools"
+    )
+
+
 def test_uv_lock_is_the_single_lock_file():
     assert (ROOT / "uv.lock").exists(), "uv.lock is the lock file for this project"
     assert not (ROOT / "requirements.txt").exists(), "requirements.txt would duplicate uv.lock"

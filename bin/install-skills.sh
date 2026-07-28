@@ -1,21 +1,27 @@
 #!/usr/bin/env bash
-# Wire this repository's skills into the project that contains it as a submodule.
+# Wire this repository into the project that contains it as a submodule.
 #
 #   git submodule add https://github.com/sabas0ba/kicad_skills tools/kicad_skills
 #   ./tools/kicad_skills/bin/install-skills.sh
 #
 # It creates two things in the parent project:
 #
-#   .claude/skills/<skill>   -> symlink into the submodule (so `git submodule
-#                               update` upgrades the skills with no re-install)
 #   bin/eda.sh               -> a shim that runs the submodule's wrapper, so the
-#                               `./bin/eda.sh ...` commands in the skill docs
-#                               work verbatim from the parent project root
+#                               `./bin/eda.sh ...` commands in the docs work
+#                               verbatim from the parent project root
+#   <dest>/<guide>           -> symlink to each usage guide (so `git submodule
+#                               update` upgrades them with no re-install)
+#
+# <dest> defaults to .claude/skills, where Claude Code discovers skills. The
+# guides are plain Markdown, so --dest puts them wherever another assistant
+# looks - or nowhere at all, with --no-guides, if you only want the CLI.
 #
 # Options:
-#   --copy         copy the skills instead of symlinking (vendoring, Windows)
+#   --dest DIR     where to install the guides (default: .claude/skills)
+#   --copy         copy the guides instead of symlinking (vendoring, Windows)
 #   --force        overwrite entries that already exist
 #   --no-shim      skip bin/eda.sh
+#   --no-guides    install only the shim
 #   --uninstall    remove what this script installed
 #   --target DIR   install into DIR (default: the git root above the submodule)
 set -euo pipefail
@@ -24,17 +30,21 @@ SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MODE=symlink
 FORCE=0
 SHIM=1
+GUIDES=1
 ACTION=install
 TARGET=""
+DEST=".claude/skills"
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --copy) MODE=copy ;;
         --force) FORCE=1 ;;
         --no-shim) SHIM=0 ;;
+        --no-guides) GUIDES=0 ;;
+        --dest) DEST="${2:?--dest needs a directory}"; shift ;;
         --uninstall) ACTION=uninstall ;;
         --target) TARGET="${2:?--target needs a directory}"; shift ;;
-        -h|--help) sed -n '2,20p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,26p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "error: unknown option $1" >&2; exit 2 ;;
     esac
     shift
@@ -55,9 +65,14 @@ if [ "$TARGET" = "$SOURCE_ROOT" ]; then
     exit 1
 fi
 
-SKILL_SRC="$SOURCE_ROOT/.claude/skills"
-SKILL_DST="$TARGET/.claude/skills"
-[ -d "$SKILL_SRC" ] || { echo "error: no skills in $SKILL_SRC" >&2; exit 1; }
+# The guides live where Claude Code discovers them; DEST is where they go in
+# the parent project, which is that same path unless --dest says otherwise.
+GUIDE_SRC="$SOURCE_ROOT/.claude/skills"
+DEST="${DEST#/}"; DEST="${DEST%/}"
+GUIDE_DST="$TARGET/$DEST"
+[ -d "$GUIDE_SRC" ] || { echo "error: no guides in $GUIDE_SRC" >&2; exit 1; }
+# How many levels up from GUIDE_DST back to TARGET, for relative symlinks.
+UP=""; for _ in $(printf '%s\n' "$DEST" | tr '/' ' '); do UP="../$UP"; done
 
 # Path of the submodule relative to the parent, for relocatable symlinks.
 case "$SOURCE_ROOT" in
@@ -67,40 +82,48 @@ esac
 
 # ---- uninstall -------------------------------------------------------------
 if [ "$ACTION" = uninstall ]; then
-    for skill in "$SKILL_SRC"/*/; do
-        name="$(basename "$skill")"
-        rm -rf "${SKILL_DST:?}/$name"
-        echo "removed .claude/skills/$name"
+    for guide in "$GUIDE_SRC"/*/; do
+        name="$(basename "$guide")"
+        rm -rf "${GUIDE_DST:?}/$name"
+        echo "removed $DEST/$name"
     done
     if [ -f "$TARGET/bin/eda.sh" ] && grep -q "install-skills.sh" "$TARGET/bin/eda.sh" 2>/dev/null; then
         rm -f "$TARGET/bin/eda.sh"
         echo "removed bin/eda.sh"
     fi
-    rmdir "$SKILL_DST" "$TARGET/.claude" 2>/dev/null || true
+    # Clean up the directories we may have created, innermost first, but only
+    # while they are empty - never take anything else with them.
+    dir="$GUIDE_DST"
+    while [ "$dir" != "$TARGET" ] && [ -d "$dir" ]; do
+        rmdir "$dir" 2>/dev/null || break
+        dir="$(dirname "$dir")"
+    done
     exit 0
 fi
 
 # ---- install ---------------------------------------------------------------
-mkdir -p "$SKILL_DST"
-for skill in "$SKILL_SRC"/*/; do
-    name="$(basename "$skill")"
-    dst="$SKILL_DST/$name"
-    if [ -e "$dst" ] || [ -L "$dst" ]; then
-        if [ "$FORCE" != 1 ]; then
-            echo "skip .claude/skills/$name (already exists; --force to replace)"
-            continue
+if [ "$GUIDES" = 1 ]; then
+    mkdir -p "$GUIDE_DST"
+    for guide in "$GUIDE_SRC"/*/; do
+        name="$(basename "$guide")"
+        dst="$GUIDE_DST/$name"
+        if [ -e "$dst" ] || [ -L "$dst" ]; then
+            if [ "$FORCE" != 1 ]; then
+                echo "skip $DEST/$name (already exists; --force to replace)"
+                continue
+            fi
+            rm -rf "$dst"
         fi
-        rm -rf "$dst"
-    fi
-    if [ "$MODE" = copy ]; then
-        cp -R "$skill" "$dst"
-    elif [ -n "$SUB_REL" ]; then
-        ln -s "../../$SUB_REL/.claude/skills/$name" "$dst"
-    else
-        ln -s "$skill" "$dst"
-    fi
-    echo "installed .claude/skills/$name ($MODE)"
-done
+        if [ "$MODE" = copy ]; then
+            cp -RL "$guide" "$dst"
+        elif [ -n "$SUB_REL" ]; then
+            ln -s "$UP$SUB_REL/.claude/skills/$name" "$dst"
+        else
+            ln -s "$guide" "$dst"
+        fi
+        echo "installed $DEST/$name ($MODE)"
+    done
+fi
 
 if [ "$SHIM" = 1 ]; then
     mkdir -p "$TARGET/bin"
@@ -132,5 +155,5 @@ Done. Next:
   ./bin/eda.sh doctor          builds the image on first use, then reports versions
   ./bin/eda.sh report . -o build/report
 
-Commit .claude/skills and bin/eda.sh so the rest of the team gets them too.
+Commit bin/eda.sh${GUIDES:+ and $DEST} so the rest of the team gets them too.
 EOF

@@ -80,10 +80,22 @@ ENV VIRTUAL_ENV=/opt/eda-venv \
     UV_LINK_MODE=copy \
     UV_NO_CACHE=1
 COPY pyproject.toml uv.lock /opt/eda/
+COPY docker/build-backend.txt /tmp/build-backend.txt
 COPY src /opt/eda/src
 # --system-certs makes uv use the OS trust store (rustls bundles its own by
 # default), which is what picks up any certificate added from docker/certs.
-RUN uv sync --frozen --system-certs --extra test --project /opt/eda
+#
+# The build backend goes in first, by hash: uv.lock cannot cover
+# [build-system] requires, so without this uv would fetch an unpinned
+# setuptools to build the project. --no-build-isolation-package then makes it
+# use this one, and --inexact stops the sync from pruning it mid-build.
+RUN set -eu; \
+    uv venv "$VIRTUAL_ENV"; \
+    uv pip install --python "$VIRTUAL_ENV/bin/python" --system-certs \
+        --require-hashes -r /tmp/build-backend.txt; \
+    uv sync --frozen --system-certs --extra test --inexact \
+        --no-build-isolation-package eda-toolkit --project /opt/eda; \
+    rm -f /tmp/build-backend.txt
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 COPY docker/entrypoint.sh /usr/local/bin/eda-entrypoint

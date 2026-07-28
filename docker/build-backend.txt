@@ -1,0 +1,19 @@
+# Build backend pin - NOT a dependency list.
+#
+# `[build-system] requires` in pyproject.toml is resolved *outside* uv.lock: uv
+# builds the project in an isolated environment and fetches whatever setuptools
+# PyPI serves at that moment. That was the one external input the lock file did
+# not cover, so the image installs the backend from here instead, by version and
+# wheel hash, and then syncs with --no-build-isolation-package so uv uses it.
+#
+# Keep the versions identical to `[build-system] requires` in pyproject.toml -
+# tests/test_pinning.py fails if they drift apart.
+#
+# setuptools has no runtime dependencies, which is what keeps this file to one
+# line: --require-hashes needs every transitive requirement pinned as well.
+#
+# To bump:
+#   curl -s https://pypi.org/pypi/setuptools/<version>/json | \
+#     jq -r '.urls[] | select(.packagetype=="bdist_wheel") | "\(.filename) \(.digests.sha256)"'
+setuptools==83.0.0 \
+    --hash=sha256:29b23c360f22f414dc7336bb39178cc7bcbf6021ed2733cde173f09dba19abb3

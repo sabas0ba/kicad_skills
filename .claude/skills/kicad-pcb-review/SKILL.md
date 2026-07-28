@@ -3,10 +3,13 @@ name: kicad-pcb-review
 description: Read a KiCad board (.kicad_pcb) and review the artwork - DRC, schematic parity, unrouted nets, track widths, vias and drills, edge clearance, decoupling placement, ground pour, silkscreen, placement - and render the layers and 3D views as PNGs for visual inspection. Use when asked to review, check or look at a PCB layout, artwork, routing, stackup or fabrication readiness.
 ---
 
+> Part of [kicad_skills](https://github.com/sabas0ba/kicad_skills) — plain-Markdown usage
+> guides for the `eda` CLI. Readable on its own; Claude Code loads it as a skill.
+
 # KiCad PCB / artwork review
 
 Reads `.kicad_pcb` files, runs KiCad's DRC and renders the artwork so it can be
-looked at. Runs in the container (`eda-environment` skill).
+looked at. Runs in the container (see the `eda-environment` guide).
 
 ## The commands
 
@@ -105,7 +108,7 @@ prints everything.
 * `./bin/eda.sh pcb drc <target>` gives KiCad's raw DRC JSON.
 * `./bin/eda.sh pcb stats <target>` adds KiCad's own board statistics report.
 * Reviewing the board is not a substitute for reviewing the schematic — run the
-  `kicad-schematic-review` skill as well; parity only proves they match, not
+  `kicad-schematic-review` guide as well; parity only proves they match, not
   that either is right.
-* Once the board is clean, the `kicad-fabrication-output` skill produces the
+* Once the board is clean, the `kicad-fabrication-output` guide covers producing the
   manufacturing package.

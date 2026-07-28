@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end smoke test: runs every skill's main command against the example
+# End-to-end smoke test: runs every top-level command against the example
 # project. Meant to be executed INSIDE the container (make smoke).
 set -euo pipefail
 

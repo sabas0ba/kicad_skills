@@ -1,5 +1,11 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+# Pinned exactly, and mirrored with hashes in docker/build-backend.txt. uv
+# resolves build-system requires outside uv.lock, so a ">=" floor here means
+# "whatever PyPI serves today" - the one input the lock file cannot cover.
+# tests/test_pinning.py enforces both the == and the agreement between the two.
+# `wheel` is deliberately absent: setuptools has built wheels itself since 70.1,
+# and listing it drags in packaging, which would need pinning too.
+requires = ["setuptools==83.0.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
