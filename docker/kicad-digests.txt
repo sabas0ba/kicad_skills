@@ -1,0 +1,13 @@
+# KiCad base image pins: <version> <manifest digest>
+#
+# Every build resolves its digest here, so `KICAD_VERSION=10.0.4 make build`
+# always produces a bit-identical base layer even if the tag is re-pushed.
+#
+# To add a release:
+#   docker buildx imagetools inspect kicad/kicad:<version> --format '{{.Manifest.Digest}}'
+# or, without docker:
+#   curl -s https://hub.docker.com/v2/repositories/kicad/kicad/tags/<version> | jq -r .digest
+#
+# Tags: https://hub.docker.com/r/kicad/kicad/tags
+10.0.4 sha256:770e2fa006695077b5ba218742d5c3137896af91257b2ca971243fa56b01bb86
+9.0.9  sha256:e638b79b0321f29395a5b783e94bb9f3c73303e8da15da27b8f5cb4b67a37729

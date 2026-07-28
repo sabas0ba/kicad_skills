@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+# Host-side wrapper: run the `eda` CLI inside the eda-toolkit container.
+#
+#   ./bin/eda.sh doctor
+#   ./bin/eda.sh sch review hardware/board.kicad_sch
+#   ./bin/eda.sh pcb render hardware/board.kicad_pcb -o /tmp/artwork
+#
+# Nothing is installed on the host: KiCad, ngspice and the python dependencies
+# all live in the image. The current directory (or the git repository root that
+# contains it) is bind mounted at /work, and the container has no network.
+#
+# Environment:
+#   KICAD_VERSION        KiCad release to use          (default: 10.0.4)
+#   EDA_IMAGE            image name                    (default: eda-toolkit:$KICAD_VERSION)
+#   EDA_NETWORK          1 = give the container network access (default: offline)
+#   EDA_MOUNT            host directory mounted at /work (default: git root or $PWD)
+#   EDA_ENV_PASSTHROUGH  env var names to forward, comma separated
+#   EDA_DOCKER_ARGS      extra arguments for `docker run`
+#   EDA_NO_AUTOBUILD     1 = fail instead of building the image on demand
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+KICAD_VERSION="${KICAD_VERSION:-10.0.4}"
+IMAGE="${EDA_IMAGE:-eda-toolkit:${KICAD_VERSION}}"
+
+command -v docker >/dev/null 2>&1 || {
+    echo "error: docker is required but not installed" >&2
+    exit 127
+}
+
+# ---- where to mount -------------------------------------------------------
+if [ -n "${EDA_MOUNT:-}" ]; then
+    MOUNT_ROOT="$(cd "$EDA_MOUNT" && pwd)"
+elif git rev-parse --show-toplevel >/dev/null 2>&1; then
+    MOUNT_ROOT="$(git rev-parse --show-toplevel)"
+else
+    MOUNT_ROOT="$PWD"
+fi
+REL_DIR="${PWD#"$MOUNT_ROOT"}"
+REL_DIR="${REL_DIR#/}"
+WORKDIR="/work${REL_DIR:+/$REL_DIR}"
+
+# ---- build on demand ------------------------------------------------------
+if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
+    if [ "${EDA_NO_AUTOBUILD:-0}" = "1" ]; then
+        echo "error: image $IMAGE is missing (build it with: make build)" >&2
+        exit 1
+    fi
+    # The base image is pinned by manifest digest, never by tag alone.
+    DIGEST="$(awk -v v="$KICAD_VERSION" '$1 == v {print $2; exit}' \
+        "$REPO_ROOT/docker/kicad-digests.txt")"
+    if [ -z "$DIGEST" ]; then
+        echo "error: no pinned digest for KiCad $KICAD_VERSION." >&2
+        echo "       Add it to docker/kicad-digests.txt (the file explains how)." >&2
+        exit 1
+    fi
+    echo "==> building $IMAGE (first run only, this takes a few minutes)" >&2
+    docker build \
+        --build-arg "KICAD_VERSION=${KICAD_VERSION}" \
+        --build-arg "KICAD_DIGEST=${DIGEST}" \
+        -f "$REPO_ROOT/docker/Dockerfile" \
+        -t "$IMAGE" \
+        "$REPO_ROOT" >&2
+fi
+
+# ---- network policy -------------------------------------------------------
+# Nothing the toolkit does needs the internet, so the container runs offline.
+NETWORK_ARGS=(--network none)
+case "${EDA_NETWORK:-0}" in
+    1|yes|true) NETWORK_ARGS=() ;;
+esac
+
+# ---- env passthrough ------------------------------------------------------
+ENV_ARGS=()
+DEFAULT_PASSTHROUGH="HTTP_PROXY,HTTPS_PROXY,NO_PROXY,http_proxy,https_proxy,no_proxy"
+IFS=',' read -r -a PASS_VARS <<< "${DEFAULT_PASSTHROUGH},${EDA_ENV_PASSTHROUGH:-}"
+for var in "${PASS_VARS[@]}"; do
+    [ -z "$var" ] && continue
+    if [ -n "${!var:-}" ]; then
+        ENV_ARGS+=(-e "$var=${!var}")
+    fi
+done
+
+# ---- rewrite absolute host paths that live under the mount ----------------
+ARGS=()
+for arg in "$@"; do
+    case "$arg" in
+        "$MOUNT_ROOT"/*) ARGS+=("/work${arg#"$MOUNT_ROOT"}") ;;
+        *) ARGS+=("$arg") ;;
+    esac
+done
+
+TTY_ARGS=()
+[ -t 0 ] && [ -t 1 ] && TTY_ARGS=(-t)
+
+# shellcheck disable=SC2206
+EXTRA_ARGS=(${EDA_DOCKER_ARGS:-})
+
+exec docker run --rm -i "${TTY_ARGS[@]}" \
+    --user "$(id -u):$(id -g)" \
+    -v "$MOUNT_ROOT:/work" \
+    -w "$WORKDIR" \
+    -e "HOME=/tmp/eda-home" \
+    "${ENV_ARGS[@]}" \
+    "${NETWORK_ARGS[@]}" \
+    "${EXTRA_ARGS[@]}" \
+    "$IMAGE" "${ARGS[@]}"

@@ -1,0 +1,14 @@
+docker/certs/*.crt
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+tests/_out/
+build/
+dist/
+*.egg-info/
+
+# KiCad local state
+*.kicad_prl
+*-backups/
+fp-info-cache
