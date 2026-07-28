@@ -30,17 +30,6 @@ def _render_findings(payload: dict[str, Any]) -> None:
         print(f"  {finding['severity'].upper():7s} {finding['rule']}{location}: {finding['message']}")
 
 
-def _render_search(payload: dict[str, Any]) -> None:
-    print(f"# datasheet candidates for {payload['part']} "
-          f"(providers: {', '.join(payload['providers'])})")
-    for cand in payload["candidates"]:
-        print(f"  [{cand['score']:.1f}] {cand['url']}")
-        if cand.get("manufacturer") or cand.get("title"):
-            print(f"         {cand.get('manufacturer', '')} {cand.get('title', '')}".rstrip())
-    for err in payload.get("errors", []):
-        print(f"  ! {err['provider']}: {err['error']}")
-
-
 # ---------------------------------------------------------------- doctor
 
 
@@ -54,49 +43,20 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     report["ngspice"] = spice_runner.version() if spice_runner.available() else None
     report["tesseract"] = bool(util.which("tesseract"))
     modules = {}
-    for name in ("pdfplumber", "pypdfium2", "numpy", "matplotlib", "requests", "bs4", "PIL"):
+    for name in ("pdfplumber", "pypdfium2", "numpy", "matplotlib", "PIL"):
         try:
             __import__(name)
             modules[name] = True
         except ImportError:
             modules[name] = False
     report["python_modules"] = modules
-    report["cache_dir"] = str(_cache_dir())
     report["in_container"] = Path("/.dockerenv").exists()
     report["ok"] = bool(report["kicad_cli"] and report["ngspice"] and all(modules.values()))
     emit(report, as_json=True)
     return 0 if report["ok"] else 1
 
 
-def _cache_dir():
-    from .datasheet.fetch import cache_dir
-
-    return cache_dir()
-
-
 # ---------------------------------------------------------------- datasheet
-
-
-def cmd_datasheet_search(args: argparse.Namespace) -> int:
-    from .datasheet import providers
-
-    payload = providers.search(args.part, limit=args.limit, providers=args.provider)
-    emit(payload, as_json=args.json, text_renderer=_render_search)
-    return 0
-
-
-def cmd_datasheet_fetch(args: argparse.Namespace) -> int:
-    from .datasheet import fetch
-
-    if args.url:
-        payload = fetch.download(args.url, dest=args.output, force=args.force)
-    else:
-        if not args.part:
-            raise EdaError("give a part number or --url")
-        payload = fetch.fetch_part(args.part, dest=args.output, limit=args.limit,
-                                   provider_names=args.provider, force=args.force)
-    emit(payload, as_json=True)
-    return 0
 
 
 def cmd_datasheet_info(args: argparse.Namespace) -> int:
@@ -366,27 +326,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # -- datasheet --------------------------------------------------------
-    ds = sub.add_parser("datasheet", help="find, download and parse datasheets").add_subparsers(
+    ds = sub.add_parser("datasheet", help="read datasheet PDFs").add_subparsers(
         dest="subcommand", required=True
     )
-
-    p = ds.add_parser("search", help="search datasheet URLs for a part number")
-    p.add_argument("part")
-    p.add_argument("--limit", type=int, default=5)
-    p.add_argument("--provider", action="append",
-                   help="restrict to a provider (mouser/digikey/nexar/searxng/duckduckgo)")
-    p.add_argument("--json", action="store_true", default=True)
-    p.add_argument("--text", dest="json", action="store_false")
-    p.set_defaults(func=cmd_datasheet_search)
-
-    p = ds.add_parser("fetch", help="download the datasheet PDF for a part (or a URL)")
-    p.add_argument("part", nargs="?")
-    p.add_argument("--url")
-    p.add_argument("-o", "--output", help="output file or directory (default: cache)")
-    p.add_argument("--limit", type=int, default=5)
-    p.add_argument("--provider", action="append")
-    p.add_argument("--force", action="store_true", help="ignore the cache")
-    p.set_defaults(func=cmd_datasheet_fetch)
 
     p = ds.add_parser("info", help="page count, metadata and text density")
     p.add_argument("pdf")

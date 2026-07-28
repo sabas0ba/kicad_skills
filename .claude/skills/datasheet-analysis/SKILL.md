@@ -1,6 +1,6 @@
 ---
 name: datasheet-analysis
-description: Extract text, parameter tables, embedded figures and page images from a datasheet PDF so its contents (absolute maximum ratings, electrical characteristics, pinout, typical application circuits, curves) can be read and quoted. Use after downloading a datasheet, when a specific parameter or pin function has to be looked up, or when a figure/graph in a PDF needs to be viewed.
+description: Extract text, parameter tables, embedded figures and page images from a datasheet PDF so its contents (absolute maximum ratings, electrical characteristics, pinout, typical application circuits, curves) can be read and quoted. Use when a datasheet PDF has to be read, when a specific parameter or pin function has to be looked up, or when a figure/graph in a PDF needs to be viewed.
 ---
 
 # Datasheet analysis
@@ -8,6 +8,11 @@ description: Extract text, parameter tables, embedded figures and page images fr
 Turns a datasheet PDF into things that can actually be read: per-page text,
 CSV parameter tables, extracted figures and rendered page images. Everything
 runs in the container (`eda-environment` skill), offline.
+
+Getting hold of the PDF is not part of this skill - download it however you
+normally would (the manufacturer's site is the authoritative copy) and keep it
+in the repository, e.g. under `docs/datasheets/`, so later sessions can read it
+without network access.
 
 ## Start by locating, not by dumping
 
@@ -17,9 +22,9 @@ then read only that page.
 ```bash
 pdf=docs/datasheets/lm321.pdf
 
-./bin/eda datasheet info  "$pdf"                    # pages, metadata, is it scanned?
-./bin/eda datasheet find  "$pdf" "absolute maximum" "electrical characteristics"
-./bin/eda datasheet text  "$pdf" --pages 3-4        # only what matters
+./bin/eda.sh datasheet info  "$pdf"                    # pages, metadata, is it scanned?
+./bin/eda.sh datasheet find  "$pdf" "absolute maximum" "electrical characteristics"
+./bin/eda.sh datasheet text  "$pdf" --pages 3-4        # only what matters
 ```
 
 `find` returns `page`, `match` and a text `snippet` for each hit; `--regex`
@@ -45,8 +50,8 @@ pinout drawing or a package outline gets reviewed.
 ## Reading a curve or a pinout
 
 ```bash
-./bin/eda datasheet find  "$pdf" "typical performance"      # -> page 9
-./bin/eda datasheet pages "$pdf" -o /tmp/ds --pages 9 --dpi 220
+./bin/eda.sh datasheet find  "$pdf" "typical performance"      # -> page 9
+./bin/eda.sh datasheet pages "$pdf" -o /tmp/ds --pages 9 --dpi 220
 # then: Read /tmp/ds/page-009.png
 ```
 

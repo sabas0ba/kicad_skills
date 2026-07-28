@@ -2,7 +2,6 @@ KICAD_VERSION ?= 10.0.4
 IMAGE         ?= eda-toolkit:$(KICAD_VERSION)
 DOCKER        ?= docker
 UV            ?= uv
-PYTHON_TARGET ?= 3.13
 
 # The base image is pinned by manifest digest, looked up per version.
 KICAD_DIGEST   = $(shell awk '$$1 == "$(KICAD_VERSION)" {print $$2; exit}' docker/kicad-digests.txt)
@@ -32,12 +31,11 @@ build: check-digest  ## build the container image (KICAD_VERSION=x.y.z to pin a 
 rebuild: check-digest  ## rebuild without the layer cache
 	$(DOCKER) build --no-cache $(BUILD_ARGS) -f docker/Dockerfile -t $(IMAGE) .
 
-lock:  ## regenerate requirements.txt (exact versions + hashes) from requirements.in
-	$(UV) pip compile requirements.in --generate-hashes --no-header \
-	  --python-version $(PYTHON_TARGET) --python-platform linux -o requirements.txt
+lock:  ## regenerate uv.lock from pyproject.toml (exact versions + hashes)
+	$(UV) lock
 
 doctor:  ## report tool versions inside the image
-	./bin/eda doctor
+	./bin/eda.sh doctor
 
 test: test-docker  ## default test target: the full suite inside the container
 
@@ -45,7 +43,7 @@ test-docker: build  ## run the whole suite (unit + kicad + ngspice) in the conta
 	$(RUN_IN_IMAGE) pytest -q -p no:cacheprovider tests
 
 test-host:  ## run only the pure-python unit tests on the host (needs a local venv)
-	python -m pytest -q -m "not kicad and not ngspice and not network" tests
+	python -m pytest -q -m "not kicad and not ngspice" tests
 
 smoke: build  ## end-to-end check against the example project
 	$(RUN_IN_IMAGE) bash tests/smoke.sh

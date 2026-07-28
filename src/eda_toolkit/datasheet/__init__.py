@@ -1,1 +1,1 @@
-"""Datasheet search, download and parsing."""
+"""Datasheet PDF parsing: text, tables, embedded images and page renders."""

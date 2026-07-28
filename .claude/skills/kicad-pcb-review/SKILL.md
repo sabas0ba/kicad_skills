@@ -11,9 +11,9 @@ looked at. Runs in the container (`eda-environment` skill).
 ## The three commands
 
 ```bash
-./bin/eda pcb info   hardware/                      # stackup, footprints, nets, routing stats
-./bin/eda pcb review hardware/ --text               # DRC + layout heuristics
-./bin/eda pcb render hardware/ -o /tmp/art --dpi 300
+./bin/eda.sh pcb info   hardware/                      # stackup, footprints, nets, routing stats
+./bin/eda.sh pcb review hardware/ --text               # DRC + layout heuristics
+./bin/eda.sh pcb render hardware/ -o /tmp/art --dpi 300
 ```
 
 `pcb render` writes PNGs (plus the intermediate PDFs) and an `images.json`
@@ -82,8 +82,8 @@ Exit code is `2` when there is at least one error.
 * `--no-cli` parses the board without KiCad (no DRC, no zone refill); the
   fallback `route.unrouted_net` rule then reports nets with pads on several
   footprints and no copper at all.
-* `./bin/eda pcb drc <target>` gives KiCad's raw DRC JSON.
-* `./bin/eda pcb stats <target>` adds KiCad's own board statistics report.
+* `./bin/eda.sh pcb drc <target>` gives KiCad's raw DRC JSON.
+* `./bin/eda.sh pcb stats <target>` adds KiCad's own board statistics report.
 * Reviewing the board is not a substitute for reviewing the schematic — run the
   `kicad-schematic-review` skill as well; parity only proves they match, not
   that either is right.

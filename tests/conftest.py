@@ -25,13 +25,6 @@ def pytest_collection_modifyitems(config, items):
         for marker, is_missing in missing.items():
             if marker in item.keywords and is_missing:
                 item.add_marker(pytest.mark.skip(reason=reasons[marker]))
-        if "network" in item.keywords and not config.getoption("--run-network"):
-            item.add_marker(pytest.mark.skip(reason="needs --run-network"))
-
-
-def pytest_addoption(parser):
-    parser.addoption("--run-network", action="store_true", default=False,
-                     help="also run tests that hit the real internet")
 
 
 @pytest.fixture(scope="session")

@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from ..util import EdaError
-from . import sexpr
-from .sexpr import SNode
+from . import s_expression as sexp
+from .s_expression import SNode
 
 
 @dataclass
@@ -199,7 +199,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
     p = Path(path)
     if not p.exists():
         raise EdaError(f"no such board: {p}")
-    root = sexpr.load(p)
+    root = sexp.load(p)
     if root.name != "kicad_pcb":
         raise EdaError(f"{p} is not a kicad_pcb document (root: {root.name})")
 

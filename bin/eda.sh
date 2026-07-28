@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 # Host-side wrapper: run the `eda` CLI inside the eda-toolkit container.
 #
-#   ./bin/eda doctor
-#   ./bin/eda sch review hardware/board.kicad_sch
-#   ./bin/eda datasheet fetch OPA2340 -o docs/
+#   ./bin/eda.sh doctor
+#   ./bin/eda.sh sch review hardware/board.kicad_sch
+#   ./bin/eda.sh pcb render hardware/board.kicad_pcb -o /tmp/artwork
 #
 # Nothing is installed on the host: KiCad, ngspice and the python dependencies
 # all live in the image. The current directory (or the git repository root that
-# contains it) is bind mounted at /work.
+# contains it) is bind mounted at /work, and the container has no network.
 #
 # Environment:
 #   KICAD_VERSION        KiCad release to use          (default: 10.0.4)
 #   EDA_IMAGE            image name                    (default: eda-toolkit:$KICAD_VERSION)
-#   EDA_NETWORK          1 = always allow network, 0 = never (default: only for `datasheet`)
+#   EDA_NETWORK          1 = give the container network access (default: offline)
 #   EDA_MOUNT            host directory mounted at /work (default: git root or $PWD)
-#   EDA_CACHE_VOLUME     docker volume for the datasheet cache (default: eda-cache)
-#   EDA_ENV_PASSTHROUGH  extra env var names to forward, comma separated
+#   EDA_ENV_PASSTHROUGH  env var names to forward, comma separated
 #   EDA_DOCKER_ARGS      extra arguments for `docker run`
 #   EDA_NO_AUTOBUILD     1 = fail instead of building the image on demand
 set -euo pipefail
@@ -23,7 +22,6 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 KICAD_VERSION="${KICAD_VERSION:-10.0.4}"
 IMAGE="${EDA_IMAGE:-eda-toolkit:${KICAD_VERSION}}"
-CACHE_VOLUME="${EDA_CACHE_VOLUME:-eda-cache}"
 
 command -v docker >/dev/null 2>&1 || {
     echo "error: docker is required but not installed" >&2
@@ -66,21 +64,15 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
 fi
 
 # ---- network policy -------------------------------------------------------
-# Only datasheet search/fetch need the internet; everything else runs offline.
+# Nothing the toolkit does needs the internet, so the container runs offline.
 NETWORK_ARGS=(--network none)
-case "${EDA_NETWORK:-auto}" in
+case "${EDA_NETWORK:-0}" in
     1|yes|true) NETWORK_ARGS=() ;;
-    0|no|false) NETWORK_ARGS=(--network none) ;;
-    *)
-        if [ "${1:-}" = "datasheet" ] && { [ "${2:-}" = "search" ] || [ "${2:-}" = "fetch" ]; }; then
-            NETWORK_ARGS=()
-        fi
-        ;;
 esac
 
 # ---- env passthrough ------------------------------------------------------
 ENV_ARGS=()
-DEFAULT_PASSTHROUGH="MOUSER_API_KEY,DIGIKEY_CLIENT_ID,DIGIKEY_CLIENT_SECRET,DIGIKEY_SITE,NEXAR_TOKEN,SEARXNG_URL,HTTP_PROXY,HTTPS_PROXY,NO_PROXY,http_proxy,https_proxy,no_proxy"
+DEFAULT_PASSTHROUGH="HTTP_PROXY,HTTPS_PROXY,NO_PROXY,http_proxy,https_proxy,no_proxy"
 IFS=',' read -r -a PASS_VARS <<< "${DEFAULT_PASSTHROUGH},${EDA_ENV_PASSTHROUGH:-}"
 for var in "${PASS_VARS[@]}"; do
     [ -z "$var" ] && continue
@@ -107,10 +99,8 @@ EXTRA_ARGS=(${EDA_DOCKER_ARGS:-})
 exec docker run --rm -i "${TTY_ARGS[@]}" \
     --user "$(id -u):$(id -g)" \
     -v "$MOUNT_ROOT:/work" \
-    -v "$CACHE_VOLUME:/cache" \
     -w "$WORKDIR" \
     -e "HOME=/tmp/eda-home" \
-    -e "EDA_CACHE_DIR=/cache" \
     "${ENV_ARGS[@]}" \
     "${NETWORK_ARGS[@]}" \
     "${EXTRA_ARGS[@]}" \

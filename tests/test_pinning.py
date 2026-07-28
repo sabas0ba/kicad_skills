@@ -77,51 +77,56 @@ def test_pip_is_pinned_by_version_and_hash():
     assert f"pip-{version.group(1)}-" in url.group(1), "PIP_URL and PIP_VERSION disagree"
 
 
-def test_requirements_are_fully_pinned_with_hashes():
-    text = (ROOT / "requirements.txt").read_text()
-    # join the backslash continuations so each requirement is one logical line
-    logical = text.replace("\\\n", " ")
-    requirements = [ln for ln in logical.splitlines()
-                    if ln.strip() and not ln.lstrip().startswith("#")]
-    assert len(requirements) >= 10, "the lock file looks truncated"
-    for line in requirements:
-        name = line.split()[0]
-        assert "==" in name, f"{name} is not pinned to an exact version"
-        assert "--hash=sha256:" in line, f"{name} has no hash"
+def test_uv_is_pinned_by_version_and_hash():
+    text = (ROOT / "docker" / "uv-bootstrap.txt").read_text()
+    requirement = " ".join(
+        ln.strip().rstrip("\\")
+        for ln in text.splitlines()
+        if ln.strip() and not ln.lstrip().startswith("#")
+    )
+    assert re.match(r"^uv==\d+\.\d+\.\d+", requirement), "uv must be pinned to an exact version"
+    assert requirement.count("--hash=sha256:") >= 1, "uv must be pinned by wheel hash"
+    # it is a bootstrap pin, not a dependency list
+    assert requirement.count("==") == 1
 
 
-def test_requirements_lock_covers_every_direct_dependency():
-    locked = {
-        line.split("==")[0].lower().replace("_", "-")
-        for line in (ROOT / "requirements.txt").read_text().splitlines()
-        if line and not line.startswith((" ", "#", "\t"))
-    }
-    for raw in (ROOT / "requirements.in").read_text().splitlines():
-        name = raw.split("#")[0].strip()
-        if not name:
-            continue
-        assert name.lower().replace("_", "-") in locked, f"{name} is missing from requirements.txt"
+def test_uv_lock_is_the_single_lock_file():
+    assert (ROOT / "uv.lock").exists(), "uv.lock is the lock file for this project"
+    assert not (ROOT / "requirements.txt").exists(), "requirements.txt would duplicate uv.lock"
+    assert not (ROOT / "requirements.in").exists(), "requirements.in would duplicate pyproject.toml"
 
 
-def test_dockerfile_installs_with_require_hashes():
+def test_uv_lock_pins_every_package_with_a_hash():
+    text = (ROOT / "uv.lock").read_text()
+    packages = re.findall(r"\[\[package\]\]\n(.*?)(?=\n\[\[package\]\]|\Z)", text, re.DOTALL)
+    assert len(packages) >= 10, "the lock file looks truncated"
+    for block in packages:
+        name = re.search(r'^name = "(.+)"', block, re.MULTILINE).group(1)
+        assert re.search(r'^version = "', block, re.MULTILINE), f"{name} has no pinned version"
+        if "source = { virtual" in block or "source = { editable" in block:
+            continue  # the project itself
+        assert "hash = \"sha256:" in block, f"{name} has no artifact hash"
+
+
+def test_dockerfile_installs_from_the_lock_file():
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text()
-    assert "--require-hashes" in dockerfile
-    # build isolation would silently fetch an unpinned build backend
-    assert "--no-build-isolation" in dockerfile
+    assert "--require-hashes" in dockerfile, "the uv bootstrap must verify hashes"
+    assert "uv sync --frozen" in dockerfile, "--frozen keeps uv from re-resolving uv.lock"
+    assert "UV_PYTHON_DOWNLOADS=never" in dockerfile, "uv must not fetch its own interpreter"
 
 
 def test_kicad_version_defaults_agree():
     digests = _kicad_digests()
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text()
     makefile = (ROOT / "Makefile").read_text()
-    wrapper = (ROOT / "bin" / "eda").read_text()
+    wrapper = (ROOT / "bin" / "eda.sh").read_text()
 
     docker_version = re.search(r"^ARG KICAD_VERSION=(\S+)", dockerfile, re.MULTILINE).group(1)
     make_version = re.search(r"^KICAD_VERSION \?= (\S+)", makefile, re.MULTILINE).group(1)
     wrapper_version = re.search(r'KICAD_VERSION="\$\{KICAD_VERSION:-(\S+?)\}"', wrapper).group(1)
 
     assert docker_version == make_version == wrapper_version, (
-        "the default KiCad version differs between the Dockerfile, the Makefile and bin/eda"
+        "the default KiCad version differs between the Dockerfile, the Makefile and bin/eda.sh"
     )
     assert docker_version in digests, "the default version has no pinned digest"
 

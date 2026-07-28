@@ -11,9 +11,9 @@ Reads `.kicad_sch` files and reviews them. Runs in the container
 ## The three commands
 
 ```bash
-./bin/eda sch info    hardware/               # structure: components, nets, hierarchy
-./bin/eda sch review  hardware/ --text        # ERC + design heuristics
-./bin/eda sch render  hardware/ -o /tmp/sch   # PNG of each sheet, to look at
+./bin/eda.sh sch info    hardware/               # structure: components, nets, hierarchy
+./bin/eda.sh sch review  hardware/ --text        # ERC + design heuristics
+./bin/eda.sh sch render  hardware/ -o /tmp/sch   # PNG of each sheet, to look at
 ```
 
 The target may be a `.kicad_sch`, a `.kicad_pro`, or the project directory
@@ -28,10 +28,10 @@ The target may be a `.kicad_sch`, a `.kicad_pro`, or the project directory
 3. **`sch render` + Read the PNG** — the machine cannot see intent. Look at the
    drawing to check signal flow, that the topology is what the user described,
    and that nothing important is drawn but disconnected.
-4. **Datasheets** — for each IC, use the `datasheet-lookup` /
-   `datasheet-analysis` skills to check the actual part against its ratings:
-   supply range, input common-mode range, required external components,
-   pins that must not float.
+4. **Datasheets** — for each IC, get its datasheet (the part number and the
+   `Datasheet` field are in `sch info`) and use the `datasheet-analysis` skill
+   to check the actual part against its ratings: supply range, input
+   common-mode range, required external components, pins that must not float.
 5. Report findings grouped by severity, each with the reference designator or
    net name, why it matters, and the concrete fix.
 
@@ -73,8 +73,8 @@ Exit code is `2` when there is at least one error, `0` otherwise — usable in C
   connectivity extractor (`netlist_source: geometry-fallback`). It agrees with
   KiCad on ordinary sheets but resolves cross-sheet connections only through
   power symbols and global labels, and it cannot run ERC. Prefer the container.
-* `./bin/eda sch netlist <target> --format kicadxml -o out.net` exports the
+* `./bin/eda.sh sch netlist <target> --format kicadxml -o out.net` exports the
   netlist for other tools; `--format json` gives the normalised structure the
   review uses.
-* `./bin/eda sch erc <target>` returns KiCad's raw ERC JSON when the details of
+* `./bin/eda.sh sch erc <target>` returns KiCad's raw ERC JSON when the details of
   a violation are needed.

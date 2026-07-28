@@ -9,8 +9,8 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from ..util import EdaError
-from . import sexpr
-from .sexpr import SNode
+from . import s_expression as sexp
+from .s_expression import SNode
 
 TOL = 0.01  # mm - KiCad schematic grid is 1.27 mm, so this is generous
 
@@ -209,7 +209,7 @@ def parse(path: str | Path) -> SchematicDoc:
     p = Path(path)
     if not p.exists():
         raise EdaError(f"no such schematic: {p}")
-    root = sexpr.load(p)
+    root = sexp.load(p)
     if root.name != "kicad_sch":
         raise EdaError(f"{p} is not a kicad_sch document (root: {root.name})")
 

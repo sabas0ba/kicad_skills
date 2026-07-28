@@ -15,7 +15,7 @@ from typing import Any, Iterator
 _NUM_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
 
 
-class SexprError(ValueError):
+class SExpressionError(ValueError):
     pass
 
 
@@ -111,12 +111,12 @@ def loads(text: str) -> SNode:
             elif root is None:
                 root = node
             else:
-                raise SexprError("multiple root expressions")
+                raise SExpressionError("multiple root expressions")
             stack.append(node)
             continue
         if ch == ")":
             if not stack:
-                raise SexprError(f"unbalanced ')' at offset {pos}")
+                raise SExpressionError(f"unbalanced ')' at offset {pos}")
             stack.pop()
             pos += 1
             continue
@@ -136,9 +136,9 @@ def loads(text: str) -> SNode:
                 buf.append(c)
                 pos += 1
             else:
-                raise SexprError("unterminated string")
+                raise SExpressionError("unterminated string")
             if not stack:
-                raise SexprError("string outside of a list")
+                raise SExpressionError("string outside of a list")
             stack[-1].args.append("".join(buf))
             continue
         # bare atom
@@ -147,13 +147,13 @@ def loads(text: str) -> SNode:
             pos += 1
         token = text[start:pos]
         if not stack:
-            raise SexprError(f"atom {token!r} outside of a list")
+            raise SExpressionError(f"atom {token!r} outside of a list")
         stack[-1].args.append(_atom(token))
 
     if stack:
-        raise SexprError(f"unbalanced '(' - {len(stack)} list(s) still open")
+        raise SExpressionError(f"unbalanced '(' - {len(stack)} list(s) still open")
     if root is None:
-        raise SexprError("empty document")
+        raise SExpressionError("empty document")
     return root
 
 

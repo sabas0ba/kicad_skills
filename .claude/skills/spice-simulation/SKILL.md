@@ -14,9 +14,9 @@ Eeschema.
 ```bash
 # 1. write the deck (plain SPICE, any editor/tool)
 # 2. cheap syntax check before burning a run
-./bin/eda sim lint sim/rc.cir
+./bin/eda.sh sim lint sim/rc.cir
 # 3. run it: writes raw + CSV + measurements + PNG plots
-./bin/eda sim run sim/rc.cir -o sim/out
+./bin/eda.sh sim run sim/rc.cir -o sim/out
 ```
 
 `sim run` returns JSON: `ok`, `errors` (parsed from the ngspice log), and one
@@ -56,14 +56,14 @@ C1 out 0 159.155n
 THD needs the fundamental, so it is a separate call:
 
 ```bash
-./bin/eda sim measure sim/out/work/sim.raw --thd "v(out)" --fundamental 1000 --skip 1m
+./bin/eda.sh sim measure sim/out/work/sim.raw --thd "v(out)" --fundamental 1000 --skip 1m
 ```
 
 ## Simulating a KiCad schematic
 
 ```bash
-./bin/eda sim netlist hardware/amp.kicad_sch -o sim/amp.cir   # kicad-cli export
-./bin/eda sim run sim/amp.cir -o sim/out
+./bin/eda.sh sim netlist hardware/amp.kicad_sch -o sim/amp.cir   # kicad-cli export
+./bin/eda.sh sim run sim/amp.cir -o sim/out
 ```
 
 The export only produces a usable deck when the symbols carry Spice model

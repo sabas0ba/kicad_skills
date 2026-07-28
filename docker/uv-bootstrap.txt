@@ -1,0 +1,12 @@
+# Bootstrap pin for uv itself - NOT a dependency list.
+#
+# uv installs everything else from uv.lock, so it is the one tool that has to be
+# obtained before a lock file can be honoured. It is pinned by version and wheel
+# hash (linux x86_64 and aarch64), and installed with pip --require-hashes.
+#
+# To bump:
+#   curl -s https://pypi.org/pypi/uv/json | \
+#     jq -r '.info.version, (.urls[] | select(.filename | test("manylinux.*(x86_64|aarch64)") and (test("musl") | not)) | "\(.filename) \(.digests.sha256)")'
+uv==0.11.32 \
+    --hash=sha256:3da76cd4e2697de30928b8a8524bd39183ac1e08cb7e72833807c022b7cba6c4 \
+    --hash=sha256:be0799f1ad70c755d10de5aaf46af94199d4f16a992f90278f2662350cd3f4fe
