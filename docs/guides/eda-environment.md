@@ -3,10 +3,11 @@ name: eda-environment
 description: Set up, pin, verify and troubleshoot the containerised EDA toolchain (KiCad + ngspice + PDF tooling) behind the `eda` CLI. Use when `./bin/eda.sh` fails, when the KiCad version has to be changed or pinned, or when a circuit-design command reports that a tool is unavailable.
 ---
 
-> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI. Plain Markdown: read it directly, or hand it to whatever assistant you use.
-
 # EDA environment
+
+> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
+> `eda` CLI — [all six](README.md). Plain Markdown: read it directly, or hand it to
+> whatever assistant you use.
 
 Every command in this toolkit does its work **inside a container**.
 Nothing (KiCad, ngspice, python packages) is installed on the host.
@@ -52,7 +53,7 @@ version can only be built once its digest is listed in
 `docker/kicad-digests.txt`; otherwise the build stops with an error. To add one:
 
 ```bash
-docker buildx imagetools inspect kicad/kicad:9.0.10 --format '{{.Manifest.Digest}}'
+docker buildx imagetools inspect kicad/kicad:9.0.10 | awk '/^Digest:/ {print $2}'
 # or, without docker:
 curl -s https://hub.docker.com/v2/repositories/kicad/kicad/tags/9.0.10 | jq -r .digest
 # then append "9.0.10 sha256:..." to docker/kicad-digests.txt

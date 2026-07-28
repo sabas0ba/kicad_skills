@@ -2,9 +2,9 @@
 
 [![CI](https://github.com/sabas0ba/kicad_skills/actions/workflows/ci.yml/badge.svg)](https://github.com/sabas0ba/kicad_skills/actions/workflows/ci.yml)
 [![pins](https://github.com/sabas0ba/kicad_skills/actions/workflows/pins.yml/badge.svg)](https://github.com/sabas0ba/kicad_skills/actions/workflows/pins.yml)
-[![KiCad 10.0.4 | 9.0.9](https://img.shields.io/badge/KiCad-10.0.4%20%7C%209.0.9-blue)](docker/kicad-digests.txt)
-[![Python 3.13](https://img.shields.io/badge/python-3.13-blue)](pyproject.toml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
+[![KiCad 10.0.4 | 9.0.9](https://img.shields.io/badge/KiCad-10.0.4%20%7C%209.0.9-blue)](https://github.com/sabas0ba/kicad_skills/blob/main/docker/kicad-digests.txt)
+[![Python 3.13](https://img.shields.io/badge/python-3.13-blue)](https://github.com/sabas0ba/kicad_skills/blob/main/pyproject.toml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](https://github.com/sabas0ba/kicad_skills/blob/main/LICENSE)
 
 `eda` is a command-line toolkit for circuit design work: reading datasheets,
 simulating analog circuits with ngspice, reviewing KiCad schematics and PCB
@@ -348,7 +348,7 @@ Exit `0` clean, `1` on a usage error, `2` when a review found errors. Loosen or
 tighten what counts as an error with `--threshold KEY=VALUE`, or post-process
 `report.json` if you want your own policy. This repository's own CI reviews its test
 fixture and uploads the report the same way — see
-[`ci.yml`](.github/workflows/ci.yml).
+[`ci.yml`](https://github.com/sabas0ba/kicad_skills/blob/main/.github/workflows/ci.yml).
 
 Nothing needs the network at run time, so the container stays offline unless you
 ask for `EDA_NETWORK=1`.
@@ -456,18 +456,18 @@ Every external input is pinned, and the pins are enforced by
 
 | Input | Pin |
 | --- | --- |
-| KiCad base image | manifest digest, per version, in [`docker/kicad-digests.txt`](docker/kicad-digests.txt) |
-| pip / uv | exact version + wheel SHA-256 (`ARG PIP_*`, [`docker/uv-bootstrap.txt`](docker/uv-bootstrap.txt)) |
-| Build backend | exact version in `[build-system] requires` + wheel SHA-256 in [`docker/build-backend.txt`](docker/build-backend.txt) — `uv.lock` cannot cover it, so the image installs it separately and builds with `--no-build-isolation-package` |
-| Python packages | [`uv.lock`](uv.lock) - exact versions + artifact hashes for the whole tree, installed with `uv sync --frozen` |
+| KiCad base image | manifest digest, per version, in [`docker/kicad-digests.txt`](https://github.com/sabas0ba/kicad_skills/blob/main/docker/kicad-digests.txt) |
+| pip / uv | exact version + wheel SHA-256 (`ARG PIP_*`, [`docker/uv-bootstrap.txt`](https://github.com/sabas0ba/kicad_skills/blob/main/docker/uv-bootstrap.txt)) |
+| Build backend | exact version in `[build-system] requires` + wheel SHA-256 in [`docker/build-backend.txt`](https://github.com/sabas0ba/kicad_skills/blob/main/docker/build-backend.txt) — `uv.lock` cannot cover it, so the image installs it separately and builds with `--no-build-isolation-package` |
+| Python packages | [`uv.lock`](https://github.com/sabas0ba/kicad_skills/blob/main/uv.lock) - exact versions + artifact hashes for the whole tree, installed with `uv sync --frozen` |
 | GitHub Actions | 40 character commit SHA, with the tag in a trailing comment |
 | CI runner | `ubuntu-24.04`, never `-latest`; Python `3.13.5` |
 
 Keeping them current:
 
-* Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml)) opens weekly
+* Dependabot ([`.github/dependabot.yml`](https://github.com/sabas0ba/kicad_skills/blob/main/.github/dependabot.yml)) opens weekly
   PRs for `uv.lock` and the actions.
-* `make check-pins` (and the weekly [`pins.yml`](.github/workflows/pins.yml)
+* `make check-pins` (and the weekly [`pins.yml`](https://github.com/sabas0ba/kicad_skills/blob/main/.github/workflows/pins.yml)
   workflow) covers what Dependabot cannot parse: the KiCad image digest and the
   pip/uv bootstrap wheels. It opens a PR when upstream moved. The default KiCad
   release is never bumped automatically.
@@ -492,9 +492,10 @@ make test-host     # pure-python subset on the host (needs a local venv)
 make lint          # ruff
 make smoke         # end-to-end: every top-level command
 make skills        # mirror docs/guides/ into .claude/skills (generated)
+make site          # render the GitHub Pages site into _site/
 ```
 
-CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push
+CI ([`.github/workflows/ci.yml`](https://github.com/sabas0ba/kicad_skills/blob/main/.github/workflows/ci.yml)) runs on every push
 and pull request:
 
 | Job | What it proves |

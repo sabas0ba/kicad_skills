@@ -1,0 +1,35 @@
+{%- comment -%}
+  Rendered into <head> by the pages-themes layouts.
+
+  GitHub renders ```mermaid fences natively; Jekyll leaves them as a code block.
+  This turns them back into diagrams in the browser. If a theme ever drops the
+  head-custom hook, the include is simply never used and the diagram degrades to
+  the code block it already is - nothing else on the page depends on it.
+{%- endcomment -%}
+<script type="module">
+  const blocks = document.querySelectorAll(
+    'pre > code.language-mermaid, pre.highlight > code.language-mermaid, div.language-mermaid'
+  );
+  if (blocks.length) {
+    const { default: mermaid } = await import(
+      'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'
+    );
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+    });
+    blocks.forEach((block, index) => {
+      const source = block.textContent;
+      const host = document.createElement('div');
+      host.className = 'mermaid';
+      host.textContent = source;
+      const replaced = block.closest('div.highlighter-rouge') || block.closest('pre');
+      replaced.replaceWith(host);
+    });
+    await mermaid.run({ querySelector: '.mermaid' });
+  }
+</script>
+<style>
+  .mermaid { text-align: center; margin: 1.5rem 0; }
+  .mermaid svg { max-width: 100%; height: auto; }
+</style>

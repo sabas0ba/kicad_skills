@@ -30,7 +30,7 @@ docker run --rm -v "$PWD:/work" -w /work -e PYTHONPATH=/work/src \
 
 ## RC low-pass reference circuit
 
-`rc-lowpass-*.jpg` come from [`tests/fixtures/spice/rc_lowpass.cir`](../../tests/fixtures/spice/rc_lowpass.cir),
+`rc-lowpass-*.jpg` come from [`tests/fixtures/spice/rc_lowpass.cir`](https://github.com/sabas0ba/kicad_skills/blob/main/tests/fixtures/spice/rc_lowpass.cir),
 which is part of this repository (Apache-2.0). Its corner frequency is
 1/(2πRC) = 1000 Hz by construction, which is what the test-suite checks against.
 

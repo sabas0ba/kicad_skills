@@ -3,10 +3,11 @@ name: kicad-schematic-review
 description: Read a KiCad schematic (.kicad_sch) to extract components, nets and hierarchy, and review it - ERC plus design checks for decoupling, floating inputs, single-pin nets, annotation, missing footprints, I2C pull-ups and LED series resistors. Use when asked to review, check, understand or summarise a schematic or circuit design in a KiCad project.
 ---
 
-> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI. Plain Markdown: read it directly, or hand it to whatever assistant you use.
-
 # KiCad schematic review
+
+> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
+> `eda` CLI — [all six](README.md). Plain Markdown: read it directly, or hand it to
+> whatever assistant you use.
 
 Reads `.kicad_sch` files and reviews them. Runs in the container
 (see the `eda-environment` guide); pass paths relative to the repository root.

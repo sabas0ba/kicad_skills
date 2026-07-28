@@ -4,7 +4,7 @@
 # always produces a bit-identical base layer even if the tag is re-pushed.
 #
 # To add a release:
-#   docker buildx imagetools inspect kicad/kicad:<version> --format '{{.Manifest.Digest}}'
+#   docker buildx imagetools inspect kicad/kicad:<version> | awk '/^Digest:/ {print $2}'
 # or, without docker:
 #   curl -s https://hub.docker.com/v2/repositories/kicad/kicad/tags/<version> | jq -r .digest
 #
