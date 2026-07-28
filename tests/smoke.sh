@@ -59,6 +59,16 @@ have "$OUT/report.json" "not d['errors'] and {'schematic_review','board_review',
 test -s "$OUT/report/report.html"
 test -s "$OUT/report/report.md"
 
+step "copper: current capacity, resistance, impedance"
+eda pcb electrical "$PROJECT" > "$OUT/electrical.json"
+have "$OUT/electrical.json" "d['nets'] and all(n['current_a'] > 0 for n in d['nets'])"
+python3 -c "
+import json
+d = json.load(open('$OUT/electrical.json'))
+tight = d['nets'][0]
+print(f\"tightest net {tight['net']}: {tight['narrowest_mm']} mm -> {tight['current_a']} A\")
+"
+
 step "bill of materials"
 eda sch bom "$PROJECT" -o "$OUT/bom.csv" > "$OUT/bom.json"
 have "$OUT/bom.json" "d['total_parts'] == 5 and d['line_items'] >= 3"

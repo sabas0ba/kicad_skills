@@ -9,7 +9,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..util import COLLAPSE_LIMIT, Finding, collapse_findings, sort_findings, summarize
-from . import kicad_cli, pcb
+from . import electrical, kicad_cli, pcb
 from . import netlist as netlist_mod
 
 RULES: list[Callable[[PcbContext], list[Finding]]] = []
@@ -173,12 +173,33 @@ def rule_track_width(ctx: PcbContext) -> list[Finding]:
         narrow = [t for t in power_tracks if t.width < 0.4]
         if narrow:
             by_net = Counter(t.net for t in narrow)
+            # Say what the width actually buys rather than only that it is thin:
+            # the same 0.25 mm is fine for a sensor rail and hopeless for a motor.
+            thinnest = min(narrow, key=lambda t: t.width)
+            thickness, source = electrical.copper_thickness(ctx.board, thinnest.layer)
+            external = (
+                thinnest.layer
+                in (ctx.board.copper_layers or [None])[:1]
+                + (ctx.board.copper_layers or [None])[-1:]
+            )
+            amps = electrical.current_capacity(
+                thinnest.width, thickness, temperature_rise_c=10.0, external=external
+            )
             findings.append(
                 Finding(
                     "track.thin_power",
                     "warning",
-                    "power/ground tracks narrower than 0.4 mm - check the current rating",
-                    details={"nets": dict(by_net.most_common(10))},
+                    f"power/ground tracks narrower than 0.4 mm - the thinnest is "
+                    f"{thinnest.width} mm on {thinnest.layer}, good for {amps:.2f} A "
+                    f"at a 10 C rise (IPC-2221)",
+                    details={
+                        "nets": dict(by_net.most_common(10)),
+                        "thinnest_mm": thinnest.width,
+                        "thinnest_layer": thinnest.layer,
+                        "current_a_at_10c": round(amps, 3),
+                        "copper_thickness_mm": thickness,
+                        "copper_thickness_source": source,
+                    },
                 )
             )
     return findings

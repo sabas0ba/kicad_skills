@@ -19,6 +19,7 @@ looked at. Runs in the container (see the `eda-environment` guide).
 ./bin/eda.sh pcb review hardware/ --text               # DRC + layout heuristics
 ./bin/eda.sh pcb render hardware/ -o /tmp/art --dpi 300
 ./bin/eda.sh pcb glb    hardware/ -o /tmp/board.glb    # 3D model for a browser
+./bin/eda.sh pcb electrical hardware/                  # current, resistance, impedance
 ./bin/eda.sh report     hardware/ -o /tmp/report       # all of the above, one page
 ```
 
@@ -31,6 +32,25 @@ image per copper layer, `--views outline assembly-front ...` to choose,
 Whenever there is more than one image it also writes **`contact-sheet.png`**,
 every view tiled and labelled. Read that first: one image answers "is anything
 on the wrong layer" without opening a dozen files. `--no-sheet` turns it off.
+
+`pcb electrical` does the arithmetic the width checks only gesture at, using the
+board's own stackup:
+
+* **per net, sorted by the tightest first** — the narrowest segment, the current
+  it carries at a 10 K rise (`--temperature-rise` to change that), the total
+  track length, and the resistance of all of it in series. That last one is an
+  upper bound on the resistance between any two points on the net, because
+  parallel paths only lower it.
+* **per layer** — whether it is microstrip or stripline on this stackup, and the
+  trace width that gives 50 Ω, 75 Ω, and 90/100 Ω differential. The differential
+  numbers take the gap equal to the width, because one target cannot fix two
+  unknowns; move from there once the router has an opinion.
+
+Copper thickness comes from the stackup when the board has one and falls back to
+1 oz otherwise — the output says which, so a number resting on an assumption is
+visible as one. The formulas are the IPC-2221 and IPC-2141 closed forms: good for
+sizing and for catching mistakes, worth about ±10 % on impedance, and not a
+substitute for your fab's own stackup calculator.
 
 `eda report TARGET -o DIR` runs the schematic review, the board review, every
 render, the BOM and (with `--simulation deck.cir`) a SPICE run, then writes

@@ -110,7 +110,7 @@ flowchart LR
 | Datasheets | Text, parameter tables, embedded figures and rendered page images from a PDF | `eda datasheet parse lm321.pdf -o out/` | [guide](docs/guides/datasheet-analysis.md) |
 | Simulation | ngspice op/dc/ac/tran/noise, THD, Monte Carlo tolerance analysis, temperature sweeps — with measurements and plots | `eda sim run filter.cir -o out/` | [guide](docs/guides/spice-simulation.md) |
 | Schematic review | Components, nets and hierarchy from `.kicad_sch`; ERC plus decoupling / floating-input / annotation / pull-up checks | `eda sch review hardware/ --text` | [guide](docs/guides/kicad-schematic-review.md) |
-| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen; layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](docs/guides/kicad-pcb-review.md) |
+| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen; current capacity, resistance and impedance from the stackup; layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](docs/guides/kicad-pcb-review.md) |
 | Fabrication | Gerbers, Excellon drill, pick-and-place, BOM, STEP/IPC-2581, zipped with a manifest | `eda pcb fab hardware/ -o fab/` | [guide](docs/guides/kicad-fabrication-output.md) |
 | The container | Build, pin, verify and troubleshoot the toolchain | `eda doctor` | [guide](docs/guides/eda-environment.md) |
 
@@ -312,6 +312,7 @@ eda pcb drc      TARGET [--no-parity]        raw KiCad DRC JSON
 eda pcb render   TARGET -o DIR [--views ...] [--per-layer] [--no-3d] [--no-sheet]
                               [--glb] [--dpi 300]
 eda pcb glb      TARGET -o FILE              3D model a browser can display
+eda pcb electrical TARGET [--temperature-rise K] [--top N]
 eda pcb stats    TARGET
 ```
 
