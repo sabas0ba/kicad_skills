@@ -59,6 +59,15 @@ have "$OUT/report.json" "not d['errors'] and {'schematic_review','board_review',
 test -s "$OUT/report/report.html"
 test -s "$OUT/report/report.md"
 
+step "diff between two revisions"
+cp -r "$PROJECT" "$OUT/revised"
+# retag R1, so the diff has something real to find
+sed -i 's/(property "Value" "10k"/(property "Value" "4k7"/' "$OUT/revised/example.kicad_sch"
+grep -q '"4k7"' "$OUT/revised/example.kicad_sch"  # the fixture still had a 10k to change
+eda diff "$PROJECT" "$OUT/revised" -o "$OUT/diff" --no-images > "$OUT/diff.json"
+have "$OUT/diff.json" "not d['identical'] and d['sections']['schematic']['components']['changed']"
+grep -q "4k7" "$OUT/diff/diff.md"
+
 step "copper: current capacity, resistance, impedance"
 eda pcb electrical "$PROJECT" > "$OUT/electrical.json"
 have "$OUT/electrical.json" "d['nets'] and all(n['current_a'] > 0 for n in d['nets'])"

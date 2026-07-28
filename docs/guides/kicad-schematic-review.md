@@ -20,10 +20,17 @@ Reads `.kicad_sch` files and reviews them. Runs in the container
 ./bin/eda.sh sch render  hardware/ -o /tmp/sch   # PDF + a PNG per sheet + contact sheet
 ./bin/eda.sh sch pdf     hardware/ -o /tmp/sch.pdf
 ./bin/eda.sh report      hardware/ -o /tmp/report  # review + images + BOM on one page
+./bin/eda.sh diff        old/ hardware/ -o /tmp/diff  # what changed between revisions
 ```
 
 The target may be a `.kicad_sch`, a `.kicad_pro`, or the project directory
 (the root sheet is found automatically, sub-sheets are followed).
+
+`eda diff` compares connectivity by which pins each net joins, so a net that
+gained or lost a pin shows up and one that was only moved on the sheet does not.
+A net whose connections survived under a new name is reported as a rename rather
+than as one deletion and one addition. Components are compared by reference, with
+value, footprint, DNP and library changes named.
 
 ## How to actually review a schematic
 

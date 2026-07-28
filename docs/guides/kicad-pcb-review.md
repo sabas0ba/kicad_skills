@@ -52,6 +52,11 @@ visible as one. The formulas are the IPC-2221 and IPC-2141 closed forms: good fo
 sizing and for catching mistakes, worth about ±10 % on impedance, and not a
 substitute for your fab's own stackup calculator.
 
+`eda diff OLD NEW -o DIR` compares two revisions: which footprints moved and how
+far, what the board statistics did, and a pixel diff of the plots with the changes
+drawn in red over a faded copy of the new board. Use it when reviewing somebody
+else's change, or against `git worktree add /tmp/base <ref>` to see your own.
+
 `eda report TARGET -o DIR` runs the schematic review, the board review, every
 render, the BOM and (with `--simulation deck.cir`) a SPICE run, then writes
 `report.md`, a self-contained `report.html` and a machine-readable

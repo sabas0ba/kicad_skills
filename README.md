@@ -278,6 +278,7 @@ Provenance and licensing of these images: [`docs/examples/README.md`](docs/examp
 
 ```
 eda doctor                                    tool versions in the environment
+eda diff         OLD NEW -o DIR [--dpi 150] [--no-images]
 eda report       TARGET -o DIR [--dpi 200] [--glb] [--simulation NETLIST]
                               [--no-3d] [--no-per-layer] [--no-bom] [--title T]
 
@@ -350,6 +351,34 @@ code is. In a project that added this as a submodule:
   if: always()
   with: { name: hardware-report, path: build/report }
 ```
+
+On a pull request the more useful question is what changed. `eda diff` answers it
+against the design rather than the file: a moved component rewrites thousands of
+coordinates in the `.kicad_pcb`, and a text diff cannot tell that apart from a
+rerouted net.
+
+```yaml
+- name: What changed
+  run: |
+    git worktree add /tmp/base "$GITHUB_BASE_REF"
+    ./bin/eda.sh diff /tmp/base/hardware hardware/ -o build/diff
+    cat build/diff/diff.md >> "$GITHUB_STEP_SUMMARY"
+```
+
+```markdown
+## Connectivity
+* **VCC**: gained U3.14, lost -
+## Components
+* **R7**: value '10k' -> '4k7'
+## Board
+* moved: U3 (5.0 mm), C12 (1.2 mm)
+## Artwork
+* `copper-front`: 0.28% of pixels changed
+```
+
+The artwork section renders both revisions and compares pixels, which is the only
+one of the four that notices a reshaped pour. Changed pixels are drawn in red over
+a faded copy of the new board, so the change is readable in place.
 
 Exit `0` clean, `1` on a usage error, `2` when a review found errors. Loosen or
 tighten what counts as an error with `--threshold KEY=VALUE`, or post-process
