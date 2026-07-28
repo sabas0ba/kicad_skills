@@ -104,7 +104,7 @@ def loads(text: str) -> SNode:
             while pos < length and text[pos].isspace():
                 pos += 1
             start = pos
-            while pos < length and not text[pos].isspace() and text[pos] not in "()\"":
+            while pos < length and not text[pos].isspace() and text[pos] not in '()"':
                 pos += 1
             node = SNode(text[start:pos])
             if stack:

@@ -5,7 +5,7 @@ from eda_toolkit.kicad.s_expression import SExpressionError, SNode
 
 
 def test_parses_nested_lists_and_types():
-    node = sexp.loads('(root (version 20231120) (flag yes) (off no) (pos 1.5 -2 3))')
+    node = sexp.loads("(root (version 20231120) (flag yes) (off no) (pos 1.5 -2 3))")
     assert node.name == "root"
     assert node.value("version") == 20231120
     assert isinstance(node.value("version"), int)
@@ -32,7 +32,7 @@ def test_children_filtering_and_missing_values():
     assert node.child("missing") is None
 
 
-@pytest.mark.parametrize("text", ["(a", "a)", "", "(a \"unterminated"])
+@pytest.mark.parametrize("text", ["(a", "a)", "", '(a "unterminated'])
 def test_malformed_documents_raise(text):
     with pytest.raises(SExpressionError):
         sexp.loads(text)

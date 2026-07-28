@@ -25,10 +25,12 @@ def fake_datasheet(tmp_path_factory):
     c.setFont("Helvetica", 11)
     c.drawString(60, height - 100, "Supply voltage range 2.7 V to 5.5 V")
     c.drawString(60, height - 120, "Absolute Maximum Ratings")
-    rows = [("Parameter", "Min", "Max", "Unit"),
-            ("Supply voltage VDD", "-0.3", "6.0", "V"),
-            ("Input current", "-10", "10", "mA"),
-            ("Junction temperature", "-40", "150", "degC")]
+    rows = [
+        ("Parameter", "Min", "Max", "Unit"),
+        ("Supply voltage VDD", "-0.3", "6.0", "V"),
+        ("Input current", "-10", "10", "mA"),
+        ("Junction temperature", "-40", "150", "degC"),
+    ]
     y = height - 150
     for row in rows:
         x = 60

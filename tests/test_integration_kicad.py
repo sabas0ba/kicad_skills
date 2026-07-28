@@ -29,7 +29,8 @@ def test_netlist_from_kicad_cli_matches_the_fallback(project_copy):
     def topology(data):
         return {
             frozenset(f"{n['ref']}.{n['pin']}" for n in net["nodes"])
-            for net in data["nets"] if net["nodes"]
+            for net in data["nets"]
+            if net["nodes"]
         }
 
     assert topology(official) == topology(fallback)
@@ -71,8 +72,9 @@ def test_drc_detects_a_real_short(project_copy):
 
 
 def test_pcb_render_produces_images(project_copy, tmp_path):
-    result = render.render_board(project_copy, tmp_path / "img",
-                                 views=["front", "copper-front"], dpi=100, three_d=False)
+    result = render.render_board(
+        project_copy, tmp_path / "img", views=["front", "copper-front"], dpi=100, three_d=False
+    )
     assert result["errors"] == []
     paths = [i["path"] for i in result["images"]]
     assert len(paths) == 2
@@ -123,7 +125,7 @@ def test_fab_package(project_copy, tmp_path):
     gerbers = list((tmp_path / "fab" / "gerbers").glob("*"))
     names = " ".join(p.name for p in gerbers)
     assert ".gbr" in names or ".gtl" in names, names
-    assert any(p.suffix == ".drl" for p in gerbers), names   # excellon
+    assert any(p.suffix == ".drl" for p in gerbers), names  # excellon
     assert (tmp_path / "fab" / "example-pos.csv").exists()
     assert (tmp_path / "fab" / "example-bom.csv").exists()
 
@@ -144,7 +146,7 @@ def test_bom_is_grouped(project_copy, tmp_path):
     from eda_toolkit.kicad import fab
 
     result = fab.bom(project_copy, tmp_path / "bom.csv")
-    assert result["line_items"] >= 3          # R, C (x2 grouped), U, J
-    assert result["total_parts"] == 5         # J1 R1 C1 C2 U1
+    assert result["line_items"] >= 3  # R, C (x2 grouped), U, J
+    assert result["total_parts"] == 5  # J1 R1 C1 C2 U1
     values = " ".join(str(row) for row in result["rows"])
     assert "LM321" in values

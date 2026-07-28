@@ -48,6 +48,9 @@ jobs:
       - name: Lint
         run: uv run --frozen --extra test ruff check --output-format=github .
 
+      - name: Check formatting
+        run: uv run --frozen --extra test ruff format --check .
+
       # Nothing here needs the internet - the toolkit itself never goes online.
       - name: Run tests
         run: uv run --frozen --extra test pytest -q -m "not kicad and not ngspice" tests

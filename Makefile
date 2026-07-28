@@ -41,8 +41,9 @@ check-pins:  ## report container pins that upstream has moved past
 refresh-pins:  ## rewrite the container pins (add --set-default-kicad by hand to bump KiCad)
 	python3 tools/refresh_pins.py --write
 
-lint:  ## ruff over the whole tree
+lint:  ## ruff (lint + format check) over the whole tree
 	$(UV) run --frozen --extra test ruff check .
+	$(UV) run --frozen --extra test ruff format --check .
 
 doctor:  ## report tool versions inside the image
 	./bin/eda.sh doctor

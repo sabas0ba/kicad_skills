@@ -75,7 +75,7 @@ def require_tool(name: str, hint: str = "") -> str:
     if not path:
         raise EdaError(
             f"required tool '{name}' is not available in this environment. "
-            + (hint or "Run the command inside the eda-toolkit container (see ./bin/eda).")
+            + (hint or "Run the command inside the eda-toolkit container (see ./bin/eda.sh).")
         )
     return path
 
@@ -146,10 +146,7 @@ def collapse_findings(findings: Sequence[Finding], limit: int = COLLAPSE_LIMIT) 
             Finding(
                 rule=rule,
                 severity=severity,
-                message=(
-                    f"{len(group)} occurrences of {rule}. "
-                    f"First: {examples[0].message}"
-                ),
+                message=(f"{len(group)} occurrences of {rule}. First: {examples[0].message}"),
                 location=f"{len(group)} locations",
                 details={
                     "count": len(group),
@@ -190,7 +187,9 @@ def ensure_dir(path: str | os.PathLike[str]) -> Path:
 def write_json(path: str | os.PathLike[str], payload: Any) -> Path:
     p = Path(path)
     ensure_dir(p.parent)
-    p.write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=_default), encoding="utf-8")
+    p.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False, default=_default), encoding="utf-8"
+    )
     return p
 
 

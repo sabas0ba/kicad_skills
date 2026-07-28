@@ -33,7 +33,9 @@ MAKEFILE = ROOT / "Makefile"
 WRAPPER = ROOT / "bin" / "eda.sh"
 WORKFLOWS = ROOT / ".github" / "workflows"
 
-HUB_TAGS = "https://hub.docker.com/v2/repositories/kicad/kicad/tags?page_size=100&ordering=last_updated"
+HUB_TAGS = (
+    "https://hub.docker.com/v2/repositories/kicad/kicad/tags?page_size=100&ordering=last_updated"
+)
 PYPI = "https://pypi.org/pypi/{}/json"
 TIMEOUT = 60
 STABLE_TAG = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
@@ -105,11 +107,15 @@ def is_linux_wheel(filename: str) -> bool:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--write", action="store_true", help="rewrite the files in place")
-    parser.add_argument("--set-default-kicad", action="store_true",
-                        help="also move the default KICAD_VERSION to the newest release")
+    parser.add_argument(
+        "--set-default-kicad",
+        action="store_true",
+        help="also move the default KICAD_VERSION to the newest release",
+    )
     args = parser.parse_args()
 
     changes: list[str] = []
@@ -121,8 +127,7 @@ def main() -> int:
     # only releases newer than everything we already pin are interesting; the
     # historical ones are simply not supported and never will be
     floor = max((version_key(v) for v in known), default=(0,))
-    missing = {v: d for v, d in available.items()
-               if v not in known and version_key(v) > floor}
+    missing = {v: d for v, d in available.items() if v not in known and version_key(v) > floor}
     for version, digest in sorted(missing.items(), key=lambda kv: version_key(kv[0])):
         changes.append(f"kicad {version} released ({digest[:19]}...), not pinned yet")
     for version, digest in sorted(known.items()):
@@ -143,13 +148,24 @@ def main() -> int:
         changes.append(f"default KiCad {current_default} -> {newest} available")
         if args.write and args.set_default_kicad:
             digest = available[newest]
-            dockerfile = re.sub(r"^ARG KICAD_VERSION=\S+", f"ARG KICAD_VERSION={newest}",
-                                dockerfile, flags=re.MULTILINE)
-            dockerfile = re.sub(r"^ARG KICAD_DIGEST=\S+", f"ARG KICAD_DIGEST={digest}",
-                                dockerfile, flags=re.MULTILINE)
+            dockerfile = re.sub(
+                r"^ARG KICAD_VERSION=\S+",
+                f"ARG KICAD_VERSION={newest}",
+                dockerfile,
+                flags=re.MULTILINE,
+            )
+            dockerfile = re.sub(
+                r"^ARG KICAD_DIGEST=\S+",
+                f"ARG KICAD_DIGEST={digest}",
+                dockerfile,
+                flags=re.MULTILINE,
+            )
             _sub_file(MAKEFILE, r"^KICAD_VERSION \?= \S+", f"KICAD_VERSION ?= {newest}")
-            _sub_file(WRAPPER, r'KICAD_VERSION="\$\{KICAD_VERSION:-[^}]+\}"',
-                      f'KICAD_VERSION="${{KICAD_VERSION:-{newest}}}"')
+            _sub_file(
+                WRAPPER,
+                r'KICAD_VERSION="\$\{KICAD_VERSION:-[^}]+\}"',
+                f'KICAD_VERSION="${{KICAD_VERSION:-{newest}}}"',
+            )
             for workflow in sorted(WORKFLOWS.glob("*.yml")):
                 _sub_file(workflow, r"KICAD_VERSION: \S+", f"KICAD_VERSION: {newest}")
 
@@ -160,12 +176,18 @@ def main() -> int:
     if current_pip != pip_version:
         changes.append(f"pip {current_pip} -> {pip_version}")
         if args.write:
-            dockerfile = re.sub(r"^ARG PIP_VERSION=\S+", f"ARG PIP_VERSION={pip_version}",
-                                dockerfile, flags=re.MULTILINE)
-            dockerfile = re.sub(r"^ARG PIP_URL=\S+", f"ARG PIP_URL={pip_url}",
-                                dockerfile, flags=re.MULTILINE)
-            dockerfile = re.sub(r"^ARG PIP_SHA256=\S+", f"ARG PIP_SHA256={pip_sha}",
-                                dockerfile, flags=re.MULTILINE)
+            dockerfile = re.sub(
+                r"^ARG PIP_VERSION=\S+",
+                f"ARG PIP_VERSION={pip_version}",
+                dockerfile,
+                flags=re.MULTILINE,
+            )
+            dockerfile = re.sub(
+                r"^ARG PIP_URL=\S+", f"ARG PIP_URL={pip_url}", dockerfile, flags=re.MULTILINE
+            )
+            dockerfile = re.sub(
+                r"^ARG PIP_SHA256=\S+", f"ARG PIP_SHA256={pip_sha}", dockerfile, flags=re.MULTILINE
+            )
 
     if args.write:
         DOCKERFILE.write_text(dockerfile)

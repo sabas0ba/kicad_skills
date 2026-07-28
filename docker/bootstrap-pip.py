@@ -55,8 +55,16 @@ def main() -> int:
 
     # The wheel on sys.path exposes the pip package, which installs itself.
     subprocess.check_call(
-        [args.python, os.path.join(path, "pip"), "install", "--no-index",
-         "--find-links", tmp, "--no-cache-dir", "pip"]
+        [
+            args.python,
+            os.path.join(path, "pip"),
+            "install",
+            "--no-index",
+            "--find-links",
+            tmp,
+            "--no-cache-dir",
+            "pip",
+        ]
     )
     return 0
 

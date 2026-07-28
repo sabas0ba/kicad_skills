@@ -19,10 +19,14 @@ from . import kicad_cli, pcb, schematic
 
 # The layer set a two-sided board needs; extra copper layers are added per board.
 BASE_LAYERS = (
-    "F.Cu", "B.Cu",
-    "F.Paste", "B.Paste",
-    "F.Silkscreen", "B.Silkscreen",
-    "F.Mask", "B.Mask",
+    "F.Cu",
+    "B.Cu",
+    "F.Paste",
+    "B.Paste",
+    "F.Silkscreen",
+    "B.Silkscreen",
+    "F.Mask",
+    "B.Mask",
     "Edge.Cuts",
 )
 FAB_LAYERS = ("F.Fab", "B.Fab")
@@ -76,32 +80,53 @@ def export_package(
         manifest["steps"].append({"step": name, "output": produced})
 
     layers = gerber_layers(board, include_fab=include_fab_layers)
-    step_run("gerbers", lambda: [
-        str(p) for p in _sorted_files(
-            kicad_cli.export_gerbers(board_path, gerber_dir, layers))
-    ])
-    step_run("drill", lambda: [
-        str(p) for p in _sorted_files(kicad_cli.export_drill(board_path, gerber_dir))
-    ])
-    step_run("position", lambda: str(
-        kicad_cli.export_pos(board_path, out / f"{board_path.stem}-pos.{pos_format}",
-                             fmt=pos_format, exclude_dnp=exclude_dnp)
-    ))
+    step_run(
+        "gerbers",
+        lambda: [
+            str(p) for p in _sorted_files(kicad_cli.export_gerbers(board_path, gerber_dir, layers))
+        ],
+    )
+    step_run(
+        "drill",
+        lambda: [str(p) for p in _sorted_files(kicad_cli.export_drill(board_path, gerber_dir))],
+    )
+    step_run(
+        "position",
+        lambda: str(
+            kicad_cli.export_pos(
+                board_path,
+                out / f"{board_path.stem}-pos.{pos_format}",
+                fmt=pos_format,
+                exclude_dnp=exclude_dnp,
+            )
+        ),
+    )
 
     sch_path = _schematic_next_to(board_path)
     if sch_path is not None:
-        step_run("bom", lambda: str(
-            kicad_cli.export_bom(sch_path, out / f"{board_path.stem}-bom.csv",
-                                 group_by="Value,Footprint", exclude_dnp=exclude_dnp)
-        ))
+        step_run(
+            "bom",
+            lambda: str(
+                kicad_cli.export_bom(
+                    sch_path,
+                    out / f"{board_path.stem}-bom.csv",
+                    group_by="Value,Footprint",
+                    exclude_dnp=exclude_dnp,
+                )
+            ),
+        )
     else:
         manifest["errors"].append({"step": "bom", "error": "no schematic next to the board"})
 
     if step:
-        step_run("step", lambda: str(kicad_cli.export_step(board_path, out / f"{board_path.stem}.step")))
+        step_run(
+            "step", lambda: str(kicad_cli.export_step(board_path, out / f"{board_path.stem}.step"))
+        )
     if ipc2581:
-        step_run("ipc2581", lambda: str(
-            kicad_cli.export_ipc2581(board_path, out / f"{board_path.stem}.xml")))
+        step_run(
+            "ipc2581",
+            lambda: str(kicad_cli.export_ipc2581(board_path, out / f"{board_path.stem}.xml")),
+        )
 
     if make_zip:
         archive = out / f"{board_path.stem}-fab.zip"
@@ -135,9 +160,14 @@ def _short(exc: Exception, limit: int = 300) -> str:
     return message[:limit] + (" ..." if len(message) > limit else "")
 
 
-def bom(target: str | os.PathLike[str], dest: str | os.PathLike[str], *,
-        group_by: str = "Value,Footprint", exclude_dnp: bool = True,
-        fields: Sequence[str] | None = None) -> dict[str, Any]:
+def bom(
+    target: str | os.PathLike[str],
+    dest: str | os.PathLike[str],
+    *,
+    group_by: str = "Value,Footprint",
+    exclude_dnp: bool = True,
+    fields: Sequence[str] | None = None,
+) -> dict[str, Any]:
     """Grouped bill of materials as CSV, plus a parsed summary."""
     import csv
 

@@ -29,15 +29,25 @@ from . import runner
 
 # SPICE engineering suffixes. Order matters: "meg" must beat "m".
 SUFFIXES: tuple[tuple[str, float], ...] = (
-    ("meg", 1e6), ("mil", 25.4e-6),
-    ("t", 1e12), ("g", 1e9), ("k", 1e3),
-    ("m", 1e-3), ("u", 1e-6), ("n", 1e-9), ("p", 1e-12), ("f", 1e-15),
+    ("meg", 1e6),
+    ("mil", 25.4e-6),
+    ("t", 1e12),
+    ("g", 1e9),
+    ("k", 1e3),
+    ("m", 1e-3),
+    ("u", 1e-6),
+    ("n", 1e-9),
+    ("p", 1e-12),
+    ("f", 1e-15),
 )
 VALUE_RE = re.compile(r"^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Z]*)$")
 # R1 n+ n- 10k   /   C3 out 0 100n
-PASSIVE_LINE = re.compile(r"^(?P<ref>[RCLrcl]\w*)(?P<mid>\s+\S+\s+\S+\s+)(?P<value>\S+)(?P<rest>.*)$")
-PARAM_LINE = re.compile(r"^(?P<head>\s*\.param\s+)(?P<name>\w+)(?P<eq>\s*=\s*)(?P<value>\S+)",
-                        re.IGNORECASE)
+PASSIVE_LINE = re.compile(
+    r"^(?P<ref>[RCLrcl]\w*)(?P<mid>\s+\S+\s+\S+\s+)(?P<value>\S+)(?P<rest>.*)$"
+)
+PARAM_LINE = re.compile(
+    r"^(?P<head>\s*\.param\s+)(?P<name>\w+)(?P<eq>\s*=\s*)(?P<value>\S+)", re.IGNORECASE
+)
 
 
 def parse_value(text: str) -> float:
@@ -59,8 +69,16 @@ def format_value(value: float) -> str:
     if value == 0:
         return "0"
     magnitude = abs(value)
-    for name, factor in (("meg", 1e6), ("k", 1e3), ("", 1.0),
-                         ("m", 1e-3), ("u", 1e-6), ("n", 1e-9), ("p", 1e-12), ("f", 1e-15)):
+    for name, factor in (
+        ("meg", 1e6),
+        ("k", 1e3),
+        ("", 1.0),
+        ("m", 1e-3),
+        ("u", 1e-6),
+        ("n", 1e-9),
+        ("p", 1e-12),
+        ("f", 1e-15),
+    ):
         if magnitude >= factor:
             return f"{value / factor:.6g}{name}"
     return f"{value:.6g}"
@@ -105,7 +123,9 @@ def apply_values(text: str, overrides: dict[str, float]) -> str:
             value = format_value(wanted[name.lower()])
             out.append(f"{param.group('head')}{name}{param.group('eq')}{value}")
             continue
-        passive = PASSIVE_LINE.match(stripped) if stripped and not stripped.startswith("*") else None
+        passive = (
+            PASSIVE_LINE.match(stripped) if stripped and not stripped.startswith("*") else None
+        )
         if passive and passive.group("ref").lower() in wanted:
             ref = passive.group("ref")
             seen.add(ref.lower())
@@ -146,8 +166,9 @@ def parse_tolerance(spec: str) -> tuple[str, float]:
     return name.strip(), fraction
 
 
-def sample(nominal: float, tolerance: float, rng: random.Random,
-           distribution: str = "normal") -> float:
+def sample(
+    nominal: float, tolerance: float, rng: random.Random, distribution: str = "normal"
+) -> float:
     """One component value. Normal: tolerance is +-3 sigma, clipped to the band."""
     if distribution == "uniform":
         return rng.uniform(nominal * (1 - tolerance), nominal * (1 + tolerance))
@@ -250,24 +271,35 @@ def monte_carlo(
     # trial 0 is the nominal circuit, so the spread has a reference
     runs: list[tuple[str, dict[str, float]]] = [("nominal", {})]
     for index in range(trials):
-        runs.append((f"{index:04d}", {
-            name: sample(nominal_values[name], tol, rng, distribution)
-            for name, tol in tolerances.items()
-        }))
+        runs.append(
+            (
+                f"{index:04d}",
+                {
+                    name: sample(nominal_values[name], tol, rng, distribution)
+                    for name, tol in tolerances.items()
+                },
+            )
+        )
 
     for label, overrides in runs:
         trial_deck = work / f"{label}.cir"
         trial_deck.write_text(apply_values(text, overrides), encoding="utf-8")
         try:
-            summary = runner.run_netlist(trial_deck, work / label, timeout=timeout,
-                                         make_plots=False)
+            summary = runner.run_netlist(
+                trial_deck, work / label, timeout=timeout, make_plots=False
+            )
         except EdaError as exc:
             failures.append({"trial": label, "error": str(exc)[:200], "values": overrides})
             continue
         value = read_metric(summary, metric)
         if value is None:
-            failures.append({"trial": label, "error": f"metric {metric} not in the results",
-                             "values": overrides})
+            failures.append(
+                {
+                    "trial": label,
+                    "error": f"metric {metric} not in the results",
+                    "values": overrides,
+                }
+            )
             continue
         results.append({"trial": label, "metric": value, "values": overrides})
         if not keep_runs:
@@ -323,12 +355,14 @@ def temperature_sweep(
         trial_deck = out / f"{label}.cir"
         trial_deck.write_text(set_temperature(text, celsius), encoding="utf-8")
         try:
-            summary = runner.run_netlist(trial_deck, out / label, timeout=timeout,
-                                         make_plots=False)
+            summary = runner.run_netlist(trial_deck, out / label, timeout=timeout, make_plots=False)
         except EdaError as exc:
             failures.append({"temperature_c": celsius, "error": str(exc)[:200]})
             continue
-        entry: dict[str, Any] = {"temperature_c": celsius, "summary": str(out / label / "summary.json")}
+        entry: dict[str, Any] = {
+            "temperature_c": celsius,
+            "summary": str(out / label / "summary.json"),
+        }
         if metric:
             entry["metric"] = read_metric(summary, metric)
         points.append(entry)
@@ -361,9 +395,16 @@ def _write_csv(dest: Path, results: Sequence[dict[str, Any]], names: Sequence[st
         writer = csv.writer(fh)
         writer.writerow(["trial", "metric", *names])
         for row in results:
-            writer.writerow([row["trial"], f"{row['metric']:.10g}",
-                             *[f"{row['values'].get(n, ''):.10g}" if n in row["values"] else ""
-                               for n in names]])
+            writer.writerow(
+                [
+                    row["trial"],
+                    f"{row['metric']:.10g}",
+                    *[
+                        f"{row['values'].get(n, ''):.10g}" if n in row["values"] else ""
+                        for n in names
+                    ],
+                ]
+            )
     return dest
 
 

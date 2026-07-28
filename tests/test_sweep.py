@@ -19,8 +19,17 @@ C1 out 0 159.155n
 
 @pytest.mark.parametrize(
     "text,expected",
-    [("1k", 1000.0), ("4.7k", 4700.0), ("100n", 1e-7), ("1meg", 1e6), ("2.2", 2.2),
-     ("1e3", 1000.0), ("10m", 0.01), ("5p", 5e-12), ("3u", 3e-6)],
+    [
+        ("1k", 1000.0),
+        ("4.7k", 4700.0),
+        ("100n", 1e-7),
+        ("1meg", 1e6),
+        ("2.2", 2.2),
+        ("1e3", 1000.0),
+        ("10m", 0.01),
+        ("5p", 5e-12),
+        ("3u", 3e-6),
+    ],
 )
 def test_parse_value(text, expected):
     assert sweep.parse_value(text) == pytest.approx(expected)

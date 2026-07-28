@@ -67,9 +67,7 @@ def main() -> int:
             data, elapsed, error = run(["eda", "sch", "review", str(project)])
             entry["sch"] = {"seconds": round(elapsed, 1), "error": error}
             if data:
-                entry["sch"].update(
-                    {"summary": data["summary"], "stats": data["statistics"]}
-                )
+                entry["sch"].update({"summary": data["summary"], "stats": data["statistics"]})
                 for f in data["findings"]:
                     sch_rules[(f["rule"], f["severity"])] += 1
                 (OUT / f"{demo.name.replace(' ', '_')}-sch.json").write_text(
@@ -81,10 +79,22 @@ def main() -> int:
             entry["pcb"] = {"seconds": round(elapsed, 1), "error": error}
             if data:
                 entry["pcb"].update(
-                    {"summary": data["summary"], "stats": {
-                        k: data["statistics"][k] for k in
-                        ("size_mm", "layer_count", "footprints", "nets", "tracks", "vias", "zones")
-                        if k in data["statistics"]}}
+                    {
+                        "summary": data["summary"],
+                        "stats": {
+                            k: data["statistics"][k]
+                            for k in (
+                                "size_mm",
+                                "layer_count",
+                                "footprints",
+                                "nets",
+                                "tracks",
+                                "vias",
+                                "zones",
+                            )
+                            if k in data["statistics"]
+                        },
+                    }
                 )
                 for f in data["findings"]:
                     pcb_rules[(f["rule"], f["severity"])] += 1

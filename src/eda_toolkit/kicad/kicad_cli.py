@@ -73,8 +73,9 @@ def ensure_library_tables(env: dict[str, str] | None = None) -> list[str]:
     return seeded
 
 
-def invoke(args: Sequence[str], *, timeout: int = 900, check: bool = True,
-           seed_libraries: bool = True) -> CommandResult:
+def invoke(
+    args: Sequence[str], *, timeout: int = 900, check: bool = True, seed_libraries: bool = True
+) -> CommandResult:
     require_tool(
         KICAD_CLI,
         "Run this command through ./bin/eda.sh so it executes inside the eda-toolkit container.",
@@ -88,8 +89,9 @@ def invoke(args: Sequence[str], *, timeout: int = 900, check: bool = True,
 # -- schematic ------------------------------------------------------------
 
 
-def erc(schematic: str | os.PathLike[str], *, severity_all: bool = True,
-        units: str = "mm") -> dict[str, Any]:
+def erc(
+    schematic: str | os.PathLike[str], *, severity_all: bool = True, units: str = "mm"
+) -> dict[str, Any]:
     """Run ERC and return the JSON report."""
     sch = Path(schematic)
     with tempfile.TemporaryDirectory() as tmp:
@@ -100,12 +102,15 @@ def erc(schematic: str | os.PathLike[str], *, severity_all: bool = True,
         args.append(str(sch))
         result = invoke(args, check=False)
         if not out.exists():
-            raise EdaError(f"kicad-cli sch erc produced no report:\n{result.stderr or result.stdout}")
+            raise EdaError(
+                f"kicad-cli sch erc produced no report:\n{result.stderr or result.stdout}"
+            )
         return json.loads(out.read_text(encoding="utf-8"))
 
 
-def export_netlist(schematic: str | os.PathLike[str], dest: str | os.PathLike[str],
-                   fmt: str = "kicadxml") -> Path:
+def export_netlist(
+    schematic: str | os.PathLike[str], dest: str | os.PathLike[str], fmt: str = "kicadxml"
+) -> Path:
     out = Path(dest)
     ensure_dir(out.parent)
     invoke(["sch", "export", "netlist", "--format", fmt, "-o", str(out), str(schematic)])
@@ -114,9 +119,14 @@ def export_netlist(schematic: str | os.PathLike[str], dest: str | os.PathLike[st
     return out
 
 
-def export_bom(schematic: str | os.PathLike[str], dest: str | os.PathLike[str], *,
-               group_by: str = "", exclude_dnp: bool = False,
-               fields: Sequence[str] | None = None) -> Path:
+def export_bom(
+    schematic: str | os.PathLike[str],
+    dest: str | os.PathLike[str],
+    *,
+    group_by: str = "",
+    exclude_dnp: bool = False,
+    fields: Sequence[str] | None = None,
+) -> Path:
     out = Path(dest)
     ensure_dir(out.parent)
     args = ["sch", "export", "bom", "-o", str(out)]
@@ -147,13 +157,28 @@ def export_sch_svg(schematic: str | os.PathLike[str], out_dir: str | os.PathLike
 # -- board ----------------------------------------------------------------
 
 
-def drc(board: str | os.PathLike[str], *, schematic_parity: bool = True,
-        all_track_errors: bool = True, units: str = "mm") -> dict[str, Any]:
+def drc(
+    board: str | os.PathLike[str],
+    *,
+    schematic_parity: bool = True,
+    all_track_errors: bool = True,
+    units: str = "mm",
+) -> dict[str, Any]:
     """Run DRC (with zone refill) and return the JSON report."""
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "drc.json"
-        args = ["pcb", "drc", "--format", "json", "--units", units, "--severity-all",
-                "--refill-zones", "-o", str(out)]
+        args = [
+            "pcb",
+            "drc",
+            "--format",
+            "json",
+            "--units",
+            units,
+            "--severity-all",
+            "--refill-zones",
+            "-o",
+            str(out),
+        ]
         if schematic_parity:
             args.append("--schematic-parity")
         if all_track_errors:
@@ -161,7 +186,9 @@ def drc(board: str | os.PathLike[str], *, schematic_parity: bool = True,
         args.append(str(board))
         result = invoke(args, check=False)
         if not out.exists():
-            raise EdaError(f"kicad-cli pcb drc produced no report:\n{result.stderr or result.stdout}")
+            raise EdaError(
+                f"kicad-cli pcb drc produced no report:\n{result.stderr or result.stdout}"
+            )
         return json.loads(out.read_text(encoding="utf-8"))
 
 
@@ -172,9 +199,14 @@ def board_stats(board: str | os.PathLike[str]) -> str:
         return out.read_text(encoding="utf-8") if out.exists() else ""
 
 
-def export_pcb_pdf(board: str | os.PathLike[str], dest: str | os.PathLike[str],
-                   layers: Sequence[str], *, mirror: bool = False,
-                   black_and_white: bool = False) -> Path:
+def export_pcb_pdf(
+    board: str | os.PathLike[str],
+    dest: str | os.PathLike[str],
+    layers: Sequence[str],
+    *,
+    mirror: bool = False,
+    black_and_white: bool = False,
+) -> Path:
     """Single-file PDF plot of the given layer list, scaled to fill the page.
 
     ``pcb export pdf`` has no --page-size-mode (that is an SVG only option) and
@@ -183,8 +215,16 @@ def export_pcb_pdf(board: str | os.PathLike[str], dest: str | os.PathLike[str],
     out = Path(dest)
     ensure_dir(out.parent)
     args = [
-        "pcb", "export", "pdf", "--mode-single", "--scale", "0",
-        "--layers", ",".join(layers), "-o", str(out),
+        "pcb",
+        "export",
+        "pdf",
+        "--mode-single",
+        "--scale",
+        "0",
+        "--layers",
+        ",".join(layers),
+        "-o",
+        str(out),
     ]
     if mirror:
         args.append("--mirror")
@@ -195,13 +235,27 @@ def export_pcb_pdf(board: str | os.PathLike[str], dest: str | os.PathLike[str],
     return out
 
 
-def export_pcb_svg(board: str | os.PathLike[str], dest: str | os.PathLike[str],
-                   layers: Sequence[str], *, mirror: bool = False) -> Path:
+def export_pcb_svg(
+    board: str | os.PathLike[str],
+    dest: str | os.PathLike[str],
+    layers: Sequence[str],
+    *,
+    mirror: bool = False,
+) -> Path:
     out = Path(dest)
     ensure_dir(out.parent)
     args = [
-        "pcb", "export", "svg", "--mode-single", "--exclude-drawing-sheet",
-        "--page-size-mode", "2", "--layers", ",".join(layers), "-o", str(out),
+        "pcb",
+        "export",
+        "svg",
+        "--mode-single",
+        "--exclude-drawing-sheet",
+        "--page-size-mode",
+        "2",
+        "--layers",
+        ",".join(layers),
+        "-o",
+        str(out),
     ]
     if mirror:
         args.append("--mirror")
@@ -210,14 +264,34 @@ def export_pcb_svg(board: str | os.PathLike[str], dest: str | os.PathLike[str],
     return out
 
 
-def render(board: str | os.PathLike[str], dest: str | os.PathLike[str], *, side: str = "top",
-           width: int = 1600, height: int = 1200, quality: str = "basic",
-           rotate: str | None = None, zoom: float | None = None) -> Path:
+def render(
+    board: str | os.PathLike[str],
+    dest: str | os.PathLike[str],
+    *,
+    side: str = "top",
+    width: int = 1600,
+    height: int = 1200,
+    quality: str = "basic",
+    rotate: str | None = None,
+    zoom: float | None = None,
+) -> Path:
     """3D render to PNG. Works headless but needs the 3D models from the image."""
     out = Path(dest)
     ensure_dir(out.parent)
-    args = ["pcb", "render", "--side", side, "-w", str(width), "-h", str(height),
-            "--quality", quality, "--background", "opaque"]
+    args = [
+        "pcb",
+        "render",
+        "--side",
+        side,
+        "-w",
+        str(width),
+        "-h",
+        str(height),
+        "--quality",
+        quality,
+        "--background",
+        "opaque",
+    ]
     if rotate:
         args += ["--rotate", rotate]
     if zoom:
@@ -230,13 +304,28 @@ def render(board: str | os.PathLike[str], dest: str | os.PathLike[str], *, side:
 # -- fabrication outputs ---------------------------------------------------
 
 
-def export_gerbers(board: str | os.PathLike[str], out_dir: str | os.PathLike[str],
-                   layers: Sequence[str], *, precision: int = 6,
-                   subtract_soldermask: bool = True) -> Path:
+def export_gerbers(
+    board: str | os.PathLike[str],
+    out_dir: str | os.PathLike[str],
+    layers: Sequence[str],
+    *,
+    precision: int = 6,
+    subtract_soldermask: bool = True,
+) -> Path:
     """Plot the Gerber set (X2 with netlist attributes, as fabs expect today)."""
     out = ensure_dir(out_dir)
-    args = ["pcb", "export", "gerbers", "--layers", ",".join(layers),
-            "--precision", str(precision), "--check-zones", "-o", str(out)]
+    args = [
+        "pcb",
+        "export",
+        "gerbers",
+        "--layers",
+        ",".join(layers),
+        "--precision",
+        str(precision),
+        "--check-zones",
+        "-o",
+        str(out),
+    ]
     if subtract_soldermask:
         args.append("--subtract-soldermask")
     args.append(str(board))
@@ -244,14 +333,33 @@ def export_gerbers(board: str | os.PathLike[str], out_dir: str | os.PathLike[str
     return out
 
 
-def export_drill(board: str | os.PathLike[str], out_dir: str | os.PathLike[str], *,
-                 fmt: str = "excellon", units: str = "mm",
-                 separate_th: bool = False) -> Path:
+def export_drill(
+    board: str | os.PathLike[str],
+    out_dir: str | os.PathLike[str],
+    *,
+    fmt: str = "excellon",
+    units: str = "mm",
+    separate_th: bool = False,
+) -> Path:
     """Excellon drill files plus a map and a hit report."""
     out = ensure_dir(out_dir)
-    args = ["pcb", "export", "drill", "--format", fmt, "--excellon-units", units,
-            "--generate-map", "--map-format", "pdf", "--generate-report",
-            "--report-path", str(Path(out) / "drill-report.txt"), "-o", str(out)]
+    args = [
+        "pcb",
+        "export",
+        "drill",
+        "--format",
+        fmt,
+        "--excellon-units",
+        units,
+        "--generate-map",
+        "--map-format",
+        "pdf",
+        "--generate-report",
+        "--report-path",
+        str(Path(out) / "drill-report.txt"),
+        "-o",
+        str(out),
+    ]
     if separate_th:
         args.append("--excellon-separate-th")
     args.append(str(board))
@@ -259,14 +367,31 @@ def export_drill(board: str | os.PathLike[str], out_dir: str | os.PathLike[str],
     return out
 
 
-def export_pos(board: str | os.PathLike[str], dest: str | os.PathLike[str], *,
-               fmt: str = "csv", side: str = "both", units: str = "mm",
-               exclude_dnp: bool = True) -> Path:
+def export_pos(
+    board: str | os.PathLike[str],
+    dest: str | os.PathLike[str],
+    *,
+    fmt: str = "csv",
+    side: str = "both",
+    units: str = "mm",
+    exclude_dnp: bool = True,
+) -> Path:
     """Pick and place file for the assembly house."""
     out = Path(dest)
     ensure_dir(out.parent)
-    args = ["pcb", "export", "pos", "--format", fmt, "--side", side,
-            "--units", units, "-o", str(out)]
+    args = [
+        "pcb",
+        "export",
+        "pos",
+        "--format",
+        fmt,
+        "--side",
+        side,
+        "--units",
+        units,
+        "-o",
+        str(out),
+    ]
     if exclude_dnp:
         args.append("--exclude-dnp")
     args.append(str(board))
@@ -274,8 +399,9 @@ def export_pos(board: str | os.PathLike[str], dest: str | os.PathLike[str], *,
     return out
 
 
-def export_step(board: str | os.PathLike[str], dest: str | os.PathLike[str], *,
-                drill_origin: bool = False) -> Path:
+def export_step(
+    board: str | os.PathLike[str], dest: str | os.PathLike[str], *, drill_origin: bool = False
+) -> Path:
     """3D model for mechanical fit checks."""
     out = Path(dest)
     ensure_dir(out.parent)

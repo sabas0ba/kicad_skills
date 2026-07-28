@@ -153,8 +153,9 @@ class SchematicDoc:
         return None
 
 
-def transform_pin(px: float, py: float, sym_x: float, sym_y: float, angle: float,
-                  mirror: str) -> tuple[float, float]:
+def transform_pin(
+    px: float, py: float, sym_x: float, sym_y: float, angle: float, mirror: str
+) -> tuple[float, float]:
     """Library coordinates -> sheet coordinates.
 
     KiCad stores library symbols with Y pointing up and sheets with Y pointing
@@ -285,20 +286,27 @@ def parse(path: str | Path) -> SchematicDoc:
         for source_unit in (0, unit):
             for pin in units.get(source_unit, []):
                 ax, ay = transform_pin(pin.x, pin.y, sym.x, sym.y, sym.angle, sym.mirror)
-                sym.pins.append(
-                    Pin(pin.number, pin.name, pin.electrical_type, ax, ay, unit)
-                )
+                sym.pins.append(Pin(pin.number, pin.name, pin.electrical_type, ax, ay, unit))
         doc.symbols.append(sym)
 
-    kinds = {"label": "local", "global_label": "global", "hierarchical_label": "hierarchical",
-             "netclass_flag": "netclass"}
+    kinds = {
+        "label": "local",
+        "global_label": "global",
+        "hierarchical_label": "hierarchical",
+        "netclass_flag": "netclass",
+    }
     for tag, kind in kinds.items():
         for node in root.children(tag):
             at = node.child("at")
             coords = at.atoms() if at else [0, 0]
             doc.labels.append(
-                Label(text=str(node.atom(0, "")), kind=kind,
-                      x=float(coords[0]), y=float(coords[1]), sheet=p.name)
+                Label(
+                    text=str(node.atom(0, "")),
+                    kind=kind,
+                    x=float(coords[0]),
+                    y=float(coords[1]),
+                    sheet=p.name,
+                )
             )
 
     for tag, kind in (("wire", "wire"), ("bus", "bus")):
@@ -463,7 +471,9 @@ def build_netlist(docs: Iterable[SchematicDoc]) -> dict[str, Any]:
                     if current is None or prio < current[0]:
                         named[key] = (prio, net_name)
                 else:
-                    pin_nodes.append((key, sym.reference, pin.number, pin.name, pin.electrical_type))
+                    pin_nodes.append(
+                        (key, sym.reference, pin.number, pin.name, pin.electrical_type)
+                    )
 
         for label in doc.labels:
             if label.kind == "netclass":
@@ -515,7 +525,9 @@ def build_netlist(docs: Iterable[SchematicDoc]) -> dict[str, Any]:
             first = sorted(entry["nodes"], key=lambda n: (n["ref"], n["pin"]))[0]
             auto += 1
             name = f"Net-({first['ref']}-Pad{first['pin']})"
-        nets.append({"name": name, "nodes": sorted(entry["nodes"], key=lambda n: (n["ref"], n["pin"]))})
+        nets.append(
+            {"name": name, "nodes": sorted(entry["nodes"], key=lambda n: (n["ref"], n["pin"]))}
+        )
 
     # nets with the same resolved name are the same net
     merged: dict[str, list[dict[str, str]]] = {}

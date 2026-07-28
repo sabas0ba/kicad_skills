@@ -15,8 +15,19 @@ from . import rawfile
 
 NGSPICE = os.environ.get("NGSPICE", "ngspice")
 
-ANALYSIS_DIRECTIVES = (".ac", ".tran", ".dc", ".op", ".noise", ".disto", ".pz", ".sens", ".tf",
-                       ".four", ".sp")
+ANALYSIS_DIRECTIVES = (
+    ".ac",
+    ".tran",
+    ".dc",
+    ".op",
+    ".noise",
+    ".disto",
+    ".pz",
+    ".sens",
+    ".tf",
+    ".four",
+    ".sp",
+)
 ERROR_PATTERNS = (
     re.compile(r"^\s*Error[: ]", re.IGNORECASE | re.MULTILINE),
     re.compile(r"fatal error", re.IGNORECASE),
@@ -78,9 +89,7 @@ def run_netlist(
     extra_args: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Simulate a SPICE deck and write raw/CSV/plots/summary into ``out_dir``."""
-    require_tool(
-        NGSPICE, "Run this command through ./bin/eda so it executes inside the container."
-    )
+    require_tool(NGSPICE, "Run this command through ./bin/eda so it executes inside the container.")
     netlist_path = Path(netlist).resolve()
     if not netlist_path.exists():
         raise EdaError(f"no such netlist: {netlist}")
@@ -89,8 +98,15 @@ def run_netlist(
 
     # relative .include/.lib paths must keep working
     for sibling in netlist_path.parent.iterdir():
-        if sibling.is_file() and sibling.suffix.lower() in {".lib", ".mod", ".sub", ".cir",
-                                                            ".inc", ".txt", ".model"}:
+        if sibling.is_file() and sibling.suffix.lower() in {
+            ".lib",
+            ".mod",
+            ".sub",
+            ".cir",
+            ".inc",
+            ".txt",
+            ".model",
+        }:
             shutil.copy2(sibling, work / sibling.name)
 
     deck = _prepare_deck(netlist_path, work, "sim.raw")
@@ -106,7 +122,9 @@ def run_netlist(
     log = (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
     (out / "ngspice.log").write_text(log, encoding="utf-8")
 
-    errors = sorted({m.group(0).strip() for pattern in ERROR_PATTERNS for m in pattern.finditer(log)})
+    errors = sorted(
+        {m.group(0).strip() for pattern in ERROR_PATTERNS for m in pattern.finditer(log)}
+    )
     summary: dict[str, Any] = {
         "netlist": str(netlist_path),
         "out_dir": str(out),
@@ -148,7 +166,9 @@ def run_netlist(
     return summary
 
 
-def plot_png(plot: rawfile.Plot, dest: str | os.PathLike[str], *, signals: Sequence[str] | None = None) -> Path:
+def plot_png(
+    plot: rawfile.Plot, dest: str | os.PathLike[str], *, signals: Sequence[str] | None = None
+) -> Path:
     """Render a plot: Bode pair for AC, linear traces otherwise."""
     import matplotlib
 
@@ -192,8 +212,9 @@ def plot_png(plot: rawfile.Plot, dest: str | os.PathLike[str], *, signals: Seque
     return out
 
 
-def netlist_from_schematic(target: str | os.PathLike[str], dest: str | os.PathLike[str],
-                           *, fmt: str = "spice") -> Path:
+def netlist_from_schematic(
+    target: str | os.PathLike[str], dest: str | os.PathLike[str], *, fmt: str = "spice"
+) -> Path:
     """Export a SPICE netlist from a KiCad schematic (needs Spice model fields)."""
     from ..kicad import kicad_cli, schematic
 

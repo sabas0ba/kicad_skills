@@ -48,14 +48,7 @@ def test_run_writes_artifacts(rc_netlist, tmp_path):
 
 def test_operating_point_of_a_divider(tmp_path):
     deck = tmp_path / "divider.cir"
-    deck.write_text(
-        "* resistive divider\n"
-        "V1 in 0 DC 10\n"
-        "R1 in out 1k\n"
-        "R2 out 0 3k\n"
-        ".op\n"
-        ".end\n"
-    )
+    deck.write_text("* resistive divider\nV1 in 0 DC 10\nR1 in out 1k\nR2 out 0 3k\n.op\n.end\n")
     summary = runner.run_netlist(deck, tmp_path / "out", make_plots=False)
     assert summary["ok"]
     values = summary["plots"][0]["measurements"]["values"]
@@ -112,10 +105,13 @@ def test_monte_carlo_spread_matches_theory(rc_netlist, tmp_path):
     from eda_toolkit.spice import sweep
 
     report = sweep.monte_carlo(
-        rc_netlist, tmp_path / "mc",
+        rc_netlist,
+        tmp_path / "mc",
         tolerances={"R1": 0.01, "C1": 0.01},
         metric="ac.v(out).f_minus_3db_hz",
-        trials=40, distribution="uniform", seed=11,
+        trials=40,
+        distribution="uniform",
+        seed=11,
     )
     assert report["ok"], report["failures"]
     assert report["nominal_metric"] == pytest.approx(1000.0, rel=0.01)
@@ -134,8 +130,13 @@ def test_monte_carlo_reports_a_bad_component_name(rc_netlist, tmp_path):
     from eda_toolkit.util import EdaError
 
     with pytest.raises(EdaError, match="no nominal value"):
-        sweep.monte_carlo(rc_netlist, tmp_path / "mc", tolerances={"R99": 0.01},
-                          metric="ac.v(out).f_minus_3db_hz", trials=2)
+        sweep.monte_carlo(
+            rc_netlist,
+            tmp_path / "mc",
+            tolerances={"R99": 0.01},
+            metric="ac.v(out).f_minus_3db_hz",
+            trials=2,
+        )
 
 
 def test_temperature_sweep_runs_every_point(tmp_path):
@@ -151,8 +152,9 @@ def test_temperature_sweep_runs_every_point(tmp_path):
         ".op\n"
         ".end\n"
     )
-    report = sweep.temperature_sweep(deck, tmp_path / "temp",
-                                     temperatures=[-40, 25, 85], metric="op.v(a)")
+    report = sweep.temperature_sweep(
+        deck, tmp_path / "temp", temperatures=[-40, 25, 85], metric="op.v(a)"
+    )
     assert report["ok"], report["failures"]
     assert [p["temperature_c"] for p in report["points"]] == [-40, 25, 85]
     values = [p["metric"] for p in report["points"]]
