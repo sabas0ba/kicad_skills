@@ -1,7 +1,7 @@
-from eda_toolkit.kicad import s_expression as sexp
-from eda_toolkit.kicad.s_expression import SNode, SExpressionError
-
 import pytest
+
+from eda_toolkit.kicad import s_expression as sexp
+from eda_toolkit.kicad.s_expression import SExpressionError, SNode
 
 
 def test_parses_nested_lists_and_types():

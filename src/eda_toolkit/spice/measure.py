@@ -179,7 +179,7 @@ def thd(plot: Plot, signal: str, fundamental_hz: float, *, harmonics: int = 7,
     uniform_v = np.interp(uniform_t, time, values)
     spectrum = np.abs(np.fft.rfft(uniform_v)) * 2.0 / n
     bin_width = 1.0 / window
-    fundamental_bin = int(round(fundamental_hz / bin_width))
+    fundamental_bin = round(fundamental_hz / bin_width)
     if fundamental_bin >= len(spectrum):
         raise ValueError("fundamental is above the sampled bandwidth")
     fundamental_amp = float(spectrum[fundamental_bin])

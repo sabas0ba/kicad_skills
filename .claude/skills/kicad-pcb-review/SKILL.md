@@ -67,6 +67,11 @@ Use the fab's real capability, not the defaults, when the fab is known.
 
 Exit code is `2` when there is at least one error.
 
+A rule that fires more than six times is folded into a single finding carrying
+the count and the first examples (`details.collapsed`), so one noisy rule cannot
+bury the rest of the report. `--collapse N` changes the limit, `--collapse 0`
+prints everything.
+
 ## Things to check visually (no rule can)
 
 * Return-current path under fast signals; splits and slots in the ground pour.
@@ -87,3 +92,5 @@ Exit code is `2` when there is at least one error.
 * Reviewing the board is not a substitute for reviewing the schematic — run the
   `kicad-schematic-review` skill as well; parity only proves they match, not
   that either is right.
+* Once the board is clean, the `kicad-fabrication-output` skill produces the
+  manufacturing package.

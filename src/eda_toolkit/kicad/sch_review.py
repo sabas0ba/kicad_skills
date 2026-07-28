@@ -5,16 +5,18 @@ from __future__ import annotations
 import os
 import re
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from ..util import Finding, sort_findings, summarize
-from . import kicad_cli, netlist as netlist_mod, schematic
+from ..util import COLLAPSE_LIMIT, Finding, collapse_findings, sort_findings, summarize
+from . import kicad_cli, schematic
+from . import netlist as netlist_mod
 
-RULES: list[Callable[["ReviewContext"], list[Finding]]] = []
+RULES: list[Callable[[ReviewContext], list[Finding]]] = []
 
 
-def rule(func: Callable[["ReviewContext"], list[Finding]]):
+def rule(func: Callable[[ReviewContext], list[Finding]]):
     RULES.append(func)
     return func
 
@@ -46,7 +48,7 @@ class ReviewContext:
     @classmethod
     def from_netlist(cls, netlist: dict[str, Any], *, symbols: list[schematic.Symbol] | None = None,
                      erc: dict[str, Any] | None = None,
-                     docs: list[schematic.SchematicDoc] | None = None) -> "ReviewContext":
+                     docs: list[schematic.SchematicDoc] | None = None) -> ReviewContext:
         """Build a context from an in-memory netlist.
 
         Useful for reviewing a netlist that was produced elsewhere, and for
@@ -165,8 +167,8 @@ def rule_fields(ctx: ReviewContext) -> list[Finding]:
             findings.append(Finding("schematic.missing_footprint", "warning",
                                     f"{sym.reference} ({sym.value}) has no footprint assigned",
                                     location=where))
-        if not sym.datasheet.strip() or sym.datasheet.strip() == "~":
-            if ctx.prefix(sym.reference) in ("U", "IC", "Q", "D", "Y", "L"):
+        needs_datasheet = ctx.prefix(sym.reference) in ("U", "IC", "Q", "D", "Y", "L")
+        if needs_datasheet and sym.datasheet.strip() in ("", "~"):
                 findings.append(Finding("schematic.missing_datasheet", "info",
                                         f"{sym.reference} ({sym.value}) has no datasheet link",
                                         location=where))
@@ -176,18 +178,31 @@ def rule_fields(ctx: ReviewContext) -> list[Finding]:
     return findings
 
 
+AUTO_NET_NAME = re.compile(r"^(/.*)?(unconnected-|Net-\(|N\$\d)", re.IGNORECASE)
+
+
 @rule
 def rule_single_pin_nets(ctx: ReviewContext) -> list[Finding]:
-    """A net with a single pin is almost always a wiring mistake."""
+    """A net that reaches exactly one pin.
+
+    An auto-named one (``unconnected-(U1-Pad3)``) is a dangling wire and worth a
+    warning. A net the designer named is usually a deliberate stub - a spare
+    module pin brought out to a label - so it is reported as context, not as a
+    defect. Running this over KiCad's demo projects, the labelled kind
+    outnumbered the real ones by more than 20:1.
+    """
     findings = []
     for net in ctx.nets:
-        if net["pin_count"] == 1:
-            node = net["nodes"][0]
-            findings.append(
-                Finding("net.single_pin", "warning",
-                        f"net {net['name']} only connects {node['ref']}.{node['pin']}",
-                        location=net["name"], details={"node": node})
-            )
+        if net["pin_count"] != 1:
+            continue
+        node = net["nodes"][0]
+        auto_named = bool(AUTO_NET_NAME.match(net["name"]))
+        findings.append(
+            Finding("net.single_pin", "warning" if auto_named else "info",
+                    f"net {net['name']} only connects {node['ref']}.{node['pin']}"
+                    + ("" if auto_named else " (named net, so probably a deliberate stub)"),
+                    location=net["name"], details={"node": node, "auto_named": auto_named})
+        )
     return findings
 
 
@@ -220,9 +235,9 @@ def rule_decoupling(ctx: ReviewContext) -> list[Finding]:
         for pin in ctx.pins_by_ref[ref]:
             net_name = pin["net"]
             kind = netlist_mod.classify_net(net_name)
-            if pin.get("type") == "power_in" or kind == "power":
-                if kind != "ground":
-                    supply_nets.add(net_name)
+            is_supply = pin.get("type") == "power_in" or kind == "power"
+            if is_supply and kind != "ground":
+                supply_nets.add(net_name)
         for net_name in sorted(supply_nets):
             caps = [r for r in ctx.refs_on_net(net_name) if ctx.is_capacitor(r)]
             decouplers = []
@@ -263,8 +278,8 @@ def rule_i2c_pullups(ctx: ReviewContext) -> list[Finding]:
     findings = []
     for net in ctx.nets:
         base = net["name"].split("/")[-1].upper()
-        if re.fullmatch(r"(I2C\d?_)?(SDA|SCL)(\d)?", base):
-            if not any(ctx.is_resistor(r) for r in ctx.refs_on_net(net["name"])):
+        looks_like_i2c = re.fullmatch(r"(I2C\d?_)?(SDA|SCL)(\d)?", base)
+        if looks_like_i2c and not any(ctx.is_resistor(r) for r in ctx.refs_on_net(net["name"])):
                 findings.append(
                     Finding("analog.i2c_pullup", "warning",
                             f"{net['name']} looks like an I2C line but has no resistor on it",
@@ -324,7 +339,8 @@ def statistics(ctx: ReviewContext) -> dict[str, Any]:
     }
 
 
-def review(target: str | os.PathLike[str], *, use_cli: bool = True) -> dict[str, Any]:
+def review(target: str | os.PathLike[str], *, use_cli: bool = True,
+           collapse: int = COLLAPSE_LIMIT) -> dict[str, Any]:
     ctx = ReviewContext(target, use_cli=use_cli)
     findings: list[Finding] = []
     for func in RULES:
@@ -333,7 +349,7 @@ def review(target: str | os.PathLike[str], *, use_cli: bool = True) -> dict[str,
         except Exception as exc:  # a broken rule must not kill the report
             findings.append(Finding(f"internal.{func.__name__}", "info",
                                     f"rule failed: {type(exc).__name__}: {exc}"))
-    findings = sort_findings(findings)
+    findings = sort_findings(collapse_findings(findings, collapse))
     return {
         "schematic": str(ctx.root_sch),
         "statistics": statistics(ctx),

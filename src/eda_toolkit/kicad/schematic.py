@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import math
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from ..util import EdaError
 from . import s_expression as sexp
@@ -52,13 +53,31 @@ class Symbol:
 
     @property
     def is_power(self) -> bool:
-        return self.lib_id.lower().startswith("power:")
+        """Power / flag symbols, which are not real components.
+
+        The ``power:`` library is only the modern spelling. KiCad's real
+        invariant is the ``#`` reference prefix: every symbol that is excluded
+        from the BOM and the board gets one, and older projects (and project
+        specific libraries) rely on exactly that. Classifying them as parts
+        makes them show up as components with no footprint - which is how the
+        KiCad demo projects produced dozens of false "missing footprint"
+        findings.
+        """
+        if self.lib_id.lower().startswith("power:"):
+            return True
+        if self.reference.startswith("#"):
+            return True
+        return not self.in_bom and not self.on_board
 
     @property
     def is_power_flag(self) -> bool:
         """PWR_FLAG marks a net as driven; unlike other power symbols it does
         not give the net its name."""
-        return self.lib_id.upper().endswith(":PWR_FLAG") or self.value.upper() == "PWR_FLAG"
+        return (
+            self.lib_id.upper().endswith(":PWR_FLAG")
+            or self.value.upper() == "PWR_FLAG"
+            or self.reference.upper().startswith("#FLG")
+        )
 
     @property
     def library(self) -> str:
@@ -423,7 +442,7 @@ def build_netlist(docs: Iterable[SchematicDoc]) -> dict[str, Any]:
         for wire in doc.wires:
             if wire.kind != "wire":
                 continue
-            for a, b in zip(wire.points, wire.points[1:]):
+            for a, b in zip(wire.points, wire.points[1:], strict=False):
                 uf.union((doc.path.name, _key(a)), (doc.path.name, _key(b)))
                 segments.append((a, b))
                 endpoints.append((a, (doc.path.name, _key(a))))

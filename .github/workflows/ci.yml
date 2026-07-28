@@ -45,6 +45,9 @@ jobs:
       - name: Show the resolved environment
         run: uv pip list
 
+      - name: Lint
+        run: uv run --frozen --extra test ruff check --output-format=github .
+
       # Nothing here needs the internet - the toolkit itself never goes online.
       - name: Run tests
         run: uv run --frozen --extra test pytest -q -m "not kicad and not ngspice" tests
@@ -63,8 +66,8 @@ jobs:
       - name: Report the toolchain
         run: ./bin/eda.sh doctor
 
-      - name: Full test-suite inside the container
-        run: make test-docker
+      - name: Full test-suite inside the container (with coverage)
+        run: make test-coverage
 
       - name: End-to-end smoke test
         run: make smoke
@@ -80,5 +83,14 @@ jobs:
         with:
           name: example-artwork
           path: artwork/**/*.png
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload the coverage report
+        if: always()
+        uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
+        with:
+          name: coverage
+          path: coverage.xml
           retention-days: 7
           if-no-files-found: warn

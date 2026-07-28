@@ -1,6 +1,7 @@
 """End-to-end simulation tests. These need the real ngspice from the container."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -104,3 +105,56 @@ def test_thd_of_a_diode_clipper(tmp_path):
     plot = rawfile.parse(summary["raw"])[0]
     result = measure.thd(plot, "v(out)", 1000.0, harmonics=9, skip_seconds=1e-3)
     assert result["thd_percent"] > 5.0  # the clipper really does distort
+
+
+def test_monte_carlo_spread_matches_theory(rc_netlist, tmp_path):
+    """fc = 1/(2 pi R C): +-1 % on both parts moves it by roughly +-2 %."""
+    from eda_toolkit.spice import sweep
+
+    report = sweep.monte_carlo(
+        rc_netlist, tmp_path / "mc",
+        tolerances={"R1": 0.01, "C1": 0.01},
+        metric="ac.v(out).f_minus_3db_hz",
+        trials=40, distribution="uniform", seed=11,
+    )
+    assert report["ok"], report["failures"]
+    assert report["nominal_metric"] == pytest.approx(1000.0, rel=0.01)
+    stats = report["statistics"]
+    assert stats["samples"] == 40
+    assert stats["mean"] == pytest.approx(1000.0, rel=0.01)
+    # worst case is 1/(0.99*0.99) .. 1/(1.01*1.01) -> about +-2 %
+    assert 960 < stats["min"] < 1000 < stats["max"] < 1045
+    assert 0 < stats["spread_pct"] < 6
+    assert Path(report["histogram"]).stat().st_size > 1000
+    assert Path(report["csv"]).exists()
+
+
+def test_monte_carlo_reports_a_bad_component_name(rc_netlist, tmp_path):
+    from eda_toolkit.spice import sweep
+    from eda_toolkit.util import EdaError
+
+    with pytest.raises(EdaError, match="no nominal value"):
+        sweep.monte_carlo(rc_netlist, tmp_path / "mc", tolerances={"R99": 0.01},
+                          metric="ac.v(out).f_minus_3db_hz", trials=2)
+
+
+def test_temperature_sweep_runs_every_point(tmp_path):
+    """A silicon diode drop moves by about -2 mV/K, so the sweep must see it."""
+    from eda_toolkit.spice import sweep
+
+    deck = tmp_path / "diode.cir"
+    deck.write_text(
+        "* forward biased diode\n"
+        "I1 0 a DC 1m\n"
+        "D1 a 0 DMOD\n"
+        ".model DMOD D(IS=1e-14 N=1)\n"
+        ".op\n"
+        ".end\n"
+    )
+    report = sweep.temperature_sweep(deck, tmp_path / "temp",
+                                     temperatures=[-40, 25, 85], metric="op.v(a)")
+    assert report["ok"], report["failures"]
+    assert [p["temperature_c"] for p in report["points"]] == [-40, 25, 85]
+    values = [p["metric"] for p in report["points"]]
+    assert values[0] > values[1] > values[2]  # forward drop falls as it heats up
+    assert report["drift_per_celsius"] == pytest.approx(-0.002, abs=0.001)

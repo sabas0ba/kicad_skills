@@ -34,7 +34,7 @@ def test_sch_review_text_mode(capsys, example_project):
 
 def test_sch_review_writes_report(capsys, example_project, tmp_path):
     dest = tmp_path / "report.json"
-    code, out, _ = run(["sch", "review", str(example_project), "--no-cli",
+    code, _out, _ = run(["sch", "review", str(example_project), "--no-cli",
                         "-o", str(dest)], capsys)
     assert code == 0
     assert json.loads(dest.read_text())["summary"]["error"] == 0
@@ -59,6 +59,7 @@ def test_pcb_review_bad_threshold(capsys, example_project):
 def test_pcb_info(capsys, example_project):
     code, out, _ = run(["pcb", "info", str(example_project)], capsys)
     payload = json.loads(out)
+    assert code == 0
     assert payload["layer_count"] == 2
     assert payload["size_mm"] == [40.0, 30.0]
 

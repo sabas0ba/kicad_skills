@@ -1,0 +1,60 @@
+name: Refresh pins
+
+# The pins Dependabot cannot see: the KiCad base image digest and the pip / uv
+# bootstrap wheels. Runs weekly, opens (or updates) a single pull request when
+# something upstream moved. The default KiCad release is never bumped
+# automatically - that changes what every review runs against, so it stays a
+# deliberate act (tools/refresh_pins.py --write --set-default-kicad).
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    name: check and propose pin updates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@e797f83bcb11b83ae66e0230d6156d7c80228e7c # v6.0.0
+        with:
+          python-version: "3.13.5"
+
+      - name: Refresh the hand-rolled pins
+        id: refresh
+        run: |
+          python tools/refresh_pins.py --write | tee /tmp/pins.txt
+          echo "report<<EOF" >> "$GITHUB_OUTPUT"
+          cat /tmp/pins.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Open a pull request when something changed
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: automation/refresh-pins
+          delete-branch: true
+          commit-message: "deps: refresh container pins"
+          title: "deps: refresh container pins"
+          body: |
+            `tools/refresh_pins.py --write` found newer upstream artefacts.
+
+            ```
+            ${{ steps.refresh.outputs.report }}
+            ```
+
+            CI rebuilds the image and runs the full suite against these pins.
+            The default `KICAD_VERSION` is not touched by automation; bump it by
+            hand (`tools/refresh_pins.py --write --set-default-kicad`) once the
+            new release has been tried.
+          labels: dependencies

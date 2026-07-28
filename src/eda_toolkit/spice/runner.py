@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 import re
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from ..util import EdaError, ensure_dir, require_tool, run, which, write_json
 from . import measure as measure_mod

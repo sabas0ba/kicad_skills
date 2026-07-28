@@ -8,8 +8,9 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any
 
 
 class EdaError(RuntimeError):
@@ -111,10 +112,54 @@ def sort_findings(findings: Iterable[Finding]) -> list[Finding]:
 
 
 def summarize(findings: Sequence[Finding]) -> dict[str, int]:
-    counts = {s: 0 for s in SEVERITIES}
+    counts = dict.fromkeys(SEVERITIES, 0)
     for f in findings:
         counts[f.severity] += 1
     return counts
+
+
+COLLAPSE_LIMIT = 6
+
+
+def collapse_findings(findings: Sequence[Finding], limit: int = COLLAPSE_LIMIT) -> list[Finding]:
+    """Fold a flood of identical-rule findings into one summary finding.
+
+    A board with 500 components can trip the same rule 500 times; a review that
+    prints all of them is unreadable and hides the single-instance findings that
+    usually matter more. Rules that fire more than ``limit`` times are replaced
+    by one finding carrying the count and the first ``limit`` examples.
+    """
+    if limit <= 0:
+        return list(findings)
+
+    grouped: dict[tuple[str, str], list[Finding]] = {}
+    for finding in findings:
+        grouped.setdefault((finding.rule, finding.severity), []).append(finding)
+
+    out: list[Finding] = []
+    for (rule, severity), group in grouped.items():
+        if len(group) <= limit:
+            out.extend(group)
+            continue
+        examples = group[:limit]
+        out.append(
+            Finding(
+                rule=rule,
+                severity=severity,
+                message=(
+                    f"{len(group)} occurrences of {rule}. "
+                    f"First: {examples[0].message}"
+                ),
+                location=f"{len(group)} locations",
+                details={
+                    "count": len(group),
+                    "collapsed": True,
+                    "examples": [f.to_dict() for f in examples],
+                    "locations": [f.location for f in group if f.location][:50],
+                },
+            )
+        )
+    return out
 
 
 def emit(payload: Any, *, as_json: bool, text_renderer=None) -> None:

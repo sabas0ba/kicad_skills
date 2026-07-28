@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any
 
 from ..util import EdaError, ensure_dir, write_json
 from . import kicad_cli, pcb, schematic

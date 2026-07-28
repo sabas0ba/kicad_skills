@@ -5,12 +5,14 @@ from __future__ import annotations
 import math
 import os
 from collections import Counter, defaultdict
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from ..util import Finding, sort_findings, summarize
-from . import kicad_cli, netlist as netlist_mod, pcb
+from ..util import COLLAPSE_LIMIT, Finding, collapse_findings, sort_findings, summarize
+from . import kicad_cli, pcb
+from . import netlist as netlist_mod
 
-RULES: list[Callable[["PcbContext"], list[Finding]]] = []
+RULES: list[Callable[[PcbContext], list[Finding]]] = []
 
 # Defaults are deliberately conservative "hobby / low-cost fab" limits.
 THRESHOLDS = {
@@ -24,7 +26,7 @@ THRESHOLDS = {
 }
 
 
-def rule(func: Callable[["PcbContext"], list[Finding]]):
+def rule(func: Callable[[PcbContext], list[Finding]]):
     RULES.append(func)
     return func
 
@@ -50,7 +52,7 @@ class PcbContext:
 
     @classmethod
     def from_board(cls, board: pcb.Board, *, thresholds: dict[str, float] | None = None,
-                   drc: dict[str, Any] | None = None) -> "PcbContext":
+                   drc: dict[str, Any] | None = None) -> PcbContext:
         """Build a context from an already parsed board (used by the tests)."""
         ctx = cls.__new__(cls)
         ctx.path = board.path
@@ -289,7 +291,7 @@ def rule_ground_plane(ctx: PcbContext) -> list[Finding]:
                         "run 'Fill all zones' (or 'eda pcb drc', which refills) before plotting")]
     return [Finding("layout.ground_plane", "info",
                     f"{len(ground_zones)} ground zone(s) on layers "
-                    f"{sorted({l for z in ground_zones for l in z.layers})}")]
+                    f"{sorted({layer for z in ground_zones for layer in z.layers})}")]
 
 
 @rule
@@ -359,7 +361,8 @@ def rule_layer_usage(ctx: PcbContext) -> list[Finding]:
 
 
 def review(target: str | os.PathLike[str], *, use_cli: bool = True,
-           thresholds: dict[str, float] | None = None) -> dict[str, Any]:
+           thresholds: dict[str, float] | None = None,
+           collapse: int = COLLAPSE_LIMIT) -> dict[str, Any]:
     ctx = PcbContext(target, use_cli=use_cli, thresholds=thresholds)
     findings: list[Finding] = []
     for func in RULES:
@@ -368,7 +371,7 @@ def review(target: str | os.PathLike[str], *, use_cli: bool = True,
         except Exception as exc:
             findings.append(Finding(f"internal.{func.__name__}", "info",
                                     f"rule failed: {type(exc).__name__}: {exc}"))
-    findings = sort_findings(findings)
+    findings = sort_findings(collapse_findings(findings, collapse))
     return {
         "board": str(ctx.path),
         "statistics": pcb.summary(ctx.board),

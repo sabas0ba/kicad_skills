@@ -30,10 +30,37 @@ def rules_of(findings):
 
 
 def test_single_pin_net_is_reported():
-    ctx = make_ctx({"SIG": [node("R1", "1")], "GND": [node("R1", "2"), node("C1", "2")]})
-    findings = sch_review.rule_single_pin_nets(ctx)
-    assert [f.location for f in findings] == ["SIG"]
-    assert findings[0].severity == "warning"
+    """An auto-named stub is a defect; a named one is context."""
+    ctx = make_ctx({
+        "unconnected-(U1-Pad7)": [node("U1", "7")],
+        "SPARE_IO": [node("U1", "8")],
+        "GND": [node("R1", "2"), node("C1", "2")],
+    })
+    findings = {f.location: f for f in sch_review.rule_single_pin_nets(ctx)}
+    assert set(findings) == {"unconnected-(U1-Pad7)", "SPARE_IO"}
+    assert findings["unconnected-(U1-Pad7)"].severity == "warning"
+    assert findings["SPARE_IO"].severity == "info"
+
+
+def test_collapsing_folds_a_noisy_rule():
+    from eda_toolkit.util import Finding, collapse_findings
+
+    findings = [Finding("net.single_pin", "warning", f"net N{i}", location=f"N{i}")
+                for i in range(20)]
+    findings.append(Finding("power.no_ground", "error", "no ground"))
+    collapsed = collapse_findings(findings, limit=6)
+    assert len(collapsed) == 2
+    folded = next(f for f in collapsed if f.rule == "net.single_pin")
+    assert folded.details["count"] == 20
+    assert len(folded.details["examples"]) == 6
+    assert next(f for f in collapsed if f.rule == "power.no_ground").details == {}
+
+
+def test_collapsing_can_be_disabled():
+    from eda_toolkit.util import Finding, collapse_findings
+
+    findings = [Finding("x.y", "info", str(i)) for i in range(10)]
+    assert len(collapse_findings(findings, limit=0)) == 10
 
 
 def test_duplicate_and_unannotated_references():
@@ -163,7 +190,7 @@ def test_review_of_the_example_project_is_clean(example_project):
 def test_info_lists_components_and_nets(example_project):
     data = sch_review.info(example_project, use_cli=False)
     assert {c["reference"] for c in data["components"]} == {"J1", "R1", "C1", "U1", "C2"}
-    ground = [n for n in data["nets"] if n["name"] == "GND"][0]
+    ground = next(n for n in data["nets"] if n["name"] == "GND")
     assert ground["class"] == "ground"
     assert ground["pin_count"] == 4
 

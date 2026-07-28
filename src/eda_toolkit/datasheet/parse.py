@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import csv
-import io
 import os
 import re
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 from ..util import EdaError, ensure_dir, parse_page_range, write_json
 

@@ -226,6 +226,6 @@ def to_csv(plot: Plot, dest: str | os.PathLike[str]) -> Path:
     with out.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
         writer.writerow(names)
-        for row in zip(*columns):
+        for row in zip(*columns, strict=True):
             writer.writerow([f"{v:.10g}" for v in row])
     return out

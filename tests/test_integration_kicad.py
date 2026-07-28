@@ -2,7 +2,8 @@
 
 import pytest
 
-from eda_toolkit.kicad import kicad_cli, netlist as netlist_mod, pcb_review, render, sch_review
+from eda_toolkit.kicad import kicad_cli, pcb_review, render, sch_review
+from eda_toolkit.kicad import netlist as netlist_mod
 
 pytestmark = pytest.mark.kicad
 
@@ -105,3 +106,45 @@ def test_unknown_view_is_reported(project_copy, tmp_path):
 def test_board_stats(project_copy):
     text = kicad_cli.board_stats(project_copy / "example.kicad_pcb")
     assert "Board" in text or "Component" in text or text == ""
+
+
+def test_fab_package(project_copy, tmp_path):
+    """The fabrication package must contain what a board house asks for."""
+    import zipfile
+    from pathlib import Path
+
+    from eda_toolkit.kicad import fab
+
+    manifest = fab.export_package(project_copy, tmp_path / "fab", pos_format="csv")
+    assert manifest["ok"], manifest["errors"]
+    steps = {s["step"] for s in manifest["steps"]}
+    assert {"gerbers", "drill", "position", "bom"} <= steps
+
+    gerbers = list((tmp_path / "fab" / "gerbers").glob("*"))
+    names = " ".join(p.name for p in gerbers)
+    assert ".gbr" in names or ".gtl" in names, names
+    assert any(p.suffix == ".drl" for p in gerbers), names   # excellon
+    assert (tmp_path / "fab" / "example-pos.csv").exists()
+    assert (tmp_path / "fab" / "example-bom.csv").exists()
+
+    with zipfile.ZipFile(manifest["zip"]) as zf:
+        assert len(zf.namelist()) >= len(gerbers)
+    assert Path(manifest["zip"]).stat().st_size > 1000
+
+
+def test_fab_layer_selection_follows_the_board(example_pcb):
+    from eda_toolkit.kicad import fab, pcb
+
+    layers = fab.gerber_layers(pcb.parse(example_pcb))
+    assert "F.Cu" in layers and "B.Cu" in layers and "Edge.Cuts" in layers
+    assert "In1.Cu" not in layers  # the example board is two layer
+
+
+def test_bom_is_grouped(project_copy, tmp_path):
+    from eda_toolkit.kicad import fab
+
+    result = fab.bom(project_copy, tmp_path / "bom.csv")
+    assert result["line_items"] >= 3          # R, C (x2 grouped), U, J
+    assert result["total_parts"] == 5         # J1 R1 C1 C2 U1
+    values = " ".join(str(row) for row in result["rows"])
+    assert "LM321" in values

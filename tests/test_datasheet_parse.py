@@ -11,14 +11,14 @@ reportlab = pytest.importorskip("reportlab")
 @pytest.fixture(scope="module")
 def fake_datasheet(tmp_path_factory):
     """A two page 'datasheet' with text, a table and an embedded bitmap."""
+    from PIL import Image
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.utils import ImageReader
     from reportlab.pdfgen import canvas
-    from PIL import Image
 
     path = tmp_path_factory.mktemp("pdf") / "fake-datasheet.pdf"
     c = canvas.Canvas(str(path), pagesize=A4)
-    width, height = A4
+    _width, height = A4
 
     c.setFont("Helvetica-Bold", 18)
     c.drawString(60, height - 70, "EDA1234 Low Noise Operational Amplifier")

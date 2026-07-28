@@ -1,6 +1,6 @@
 ---
 name: spice-simulation
-description: Simulate analog circuits with ngspice - DC operating point, DC sweep, AC/Bode, transient, noise and THD - and get measurements (gain, -3 dB bandwidth, phase margin, rise time, overshoot, ripple) plus plots. Use when a filter, amplifier, regulator, bias network or driver has to be verified, dimensioned or debugged, or when a KiCad schematic needs simulating.
+description: Simulate analog circuits with ngspice - DC operating point, DC sweep, AC/Bode, transient, noise, THD - plus Monte Carlo component tolerance analysis and temperature sweeps, with measurements (gain, -3 dB bandwidth, phase margin, rise time, overshoot, spread) and plots. Use when a filter, amplifier, regulator, bias network or driver has to be verified, dimensioned, toleranced or debugged, or when a KiCad schematic needs simulating.
 ---
 
 # Analog simulation (ngspice)
@@ -58,6 +58,50 @@ THD needs the fundamental, so it is a separate call:
 ```bash
 ./bin/eda.sh sim measure sim/out/work/sim.raw --thd "v(out)" --fundamental 1000 --skip 1m
 ```
+
+## Will it still work with real parts? (tolerance analysis)
+
+A nominal simulation is the one circuit you will never build. Vary the parts
+inside their tolerance and look at the spread of the number you actually care
+about:
+
+```bash
+./bin/eda.sh sim montecarlo sim/rc.cir -o sim/mc \
+    --vary R1=1% --vary C1=10% \
+    --metric ac.v(out).f_minus_3db_hz \
+    --trials 200
+```
+
+Returns `statistics` (mean, stdev, min/max, p05/median/p95, `spread_pct`),
+`nominal_metric` for reference, a `histogram.png` and `trials.csv`. The metric
+is a path into the usual measurements: `<analysis>.<signal>.<key>` — e.g.
+`ac.v(out).gain_db_max`, `tran.v(out).overshoot_pct`, or `op.v(out)`.
+
+* `--distribution normal` (default) treats the tolerance as ±3σ, clipped to the
+  band — how reels of parts actually behave.
+* `--distribution uniform` is the honest choice when you know nothing about the
+  distribution.
+* `--distribution worst` samples only the two extremes, which finds the corners
+  fastest.
+* `--vary` also accepts `.param` names, so anything parameterised in the deck
+  can be swept, not just R/C/L.
+* `--seed` makes a run reproducible; quote the seed when you quote the result.
+
+Judge the result against the requirement, not against the nominal: "fc =
+1000 Hz nominal, 5th–95th percentile 968–1035 Hz with 1 % parts, spec is
+±5 % → passes with margin".
+
+## Does it survive the temperature range?
+
+```bash
+./bin/eda.sh sim temperature sim/bias.cir -o sim/temp \
+    --temperatures -40 0 25 85 125 --metric op.v(out)
+```
+
+Runs the deck at each temperature (`.temp`) and reports the metric per point
+plus `drift_per_celsius`. Only models with temperature coefficients will move —
+ideal R and C do not, so a flat result means the models are ideal, not that the
+circuit is stable.
 
 ## Simulating a KiCad schematic
 

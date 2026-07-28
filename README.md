@@ -27,9 +27,10 @@ with `bin/`, `docker/`, `src/` and `Makefile`) to use them there.
 | Skill | What it does |
 | --- | --- |
 | [`datasheet-analysis`](.claude/skills/datasheet-analysis/SKILL.md) | Extract text, parameter tables, embedded figures and rendered page images from a datasheet PDF |
-| [`spice-simulation`](.claude/skills/spice-simulation/SKILL.md) | Run ngspice (op / dc / ac / tran / noise), measure gain, bandwidth, phase margin, rise time, overshoot, THD, and plot |
+| [`spice-simulation`](.claude/skills/spice-simulation/SKILL.md) | Run ngspice (op / dc / ac / tran / noise), Monte Carlo tolerance analysis and temperature sweeps, with measurements and plots |
 | [`kicad-schematic-review`](.claude/skills/kicad-schematic-review/SKILL.md) | Read `.kicad_sch`, extract components/nets/hierarchy, run ERC plus design heuristics |
 | [`kicad-pcb-review`](.claude/skills/kicad-pcb-review/SKILL.md) | Read `.kicad_pcb`, run DRC and layout heuristics, render layers and 3D views as PNG |
+| [`kicad-fabrication-output`](.claude/skills/kicad-fabrication-output/SKILL.md) | Gerbers, drill, pick-and-place, BOM, STEP/IPC-2581, zipped with a manifest |
 | [`eda-environment`](.claude/skills/eda-environment/SKILL.md) | Build, pin, verify and troubleshoot the container |
 
 ## Quick start
@@ -81,18 +82,22 @@ eda datasheet parse  PDF -o DIR [--renders] [--ocr]
 
 eda sim lint     NETLIST
 eda sim run      NETLIST -o DIR [--no-plots] [--timeout S]
+eda sim montecarlo NETLIST -o DIR --vary R1=1% --metric ac.v(out).f_minus_3db_hz [--trials N]
+eda sim temperature NETLIST -o DIR [--temperatures -40 25 85] [--metric ...]
 eda sim measure  RAW [--thd SIGNAL --fundamental HZ] [--skip S]
 eda sim plot     RAW -o DIR [--signals ...]
 eda sim netlist  SCHEMATIC -o FILE           export a SPICE deck from KiCad
 
 eda sch info     TARGET [--no-cli]
-eda sch review   TARGET [--text] [-o report.json] [--no-cli]
+eda sch review   TARGET [--text] [--collapse N] [-o report.json] [--no-cli]
+eda sch bom      TARGET -o bom.csv [--group-by ...] [--fields ...]
 eda sch erc      TARGET                      raw KiCad ERC JSON
 eda sch netlist  TARGET [--format json|kicadxml|spice|...] [-o FILE]
 eda sch render   TARGET -o DIR [--dpi 200]
 
 eda pcb info     TARGET
-eda pcb review   TARGET [--text] [--threshold KEY=VALUE] [-o report.json]
+eda pcb review   TARGET [--text] [--collapse N] [--threshold KEY=VALUE] [-o report.json]
+eda pcb fab      TARGET -o DIR [--step] [--ipc2581] [--pos-format csv]
 eda pcb drc      TARGET [--no-parity]        raw KiCad DRC JSON
 eda pcb render   TARGET -o DIR [--views ...] [--per-layer] [--no-3d] [--dpi 300]
 eda pcb stats    TARGET
@@ -143,6 +148,30 @@ Design notes:
   and every rule is a small function registered in a list — adding a check is a
   dozen lines plus a test.
 
+## Review quality
+
+The rules were tuned by running them over the 18 KiCad demo projects that ship
+with the image (`/usr/share/kicad/demos`), which is a far harsher corpus than
+the test fixture. That pass produced three fixes:
+
+* KiCad's global library tables are now seeded from Python, not only by the
+  container entrypoint. Without them every symbol reports "the current
+  configuration does not include the library ...", which was 1965 findings of
+  pure noise across the corpus.
+* Power symbols are recognised by KiCad's real invariant - the `#` reference
+  prefix - not just by a `power:` library id. Older projects were reporting
+  every GND symbol as a component with no footprint.
+* `net.single_pin` is graded by whether the net was named by the designer, and
+  any rule that fires more than six times is folded into one finding with a
+  count. On `interf_u` the review went from 113 warnings to 2.
+
+Re-run it after changing a rule:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work -e PYTHONPATH=/work/src \
+  --entrypoint python3 eda-toolkit:10.0.4 tools/review_demos.py /tmp/out
+```
+
 ## Reproducibility
 
 Every external input is pinned, and the pins are enforced by
@@ -155,6 +184,15 @@ Every external input is pinned, and the pins are enforced by
 | Python packages | [`uv.lock`](uv.lock) - exact versions + artifact hashes for the whole tree, installed with `uv sync --frozen` |
 | GitHub Actions | 40 character commit SHA, with the tag in a trailing comment |
 | CI runner | `ubuntu-24.04`, never `-latest`; Python `3.13.5` |
+
+Keeping them current:
+
+* Dependabot ([`.github/dependabot.yml`](.github/dependabot.yml)) opens weekly
+  PRs for `uv.lock` and the actions.
+* `make check-pins` (and the weekly [`pins.yml`](.github/workflows/pins.yml)
+  workflow) covers what Dependabot cannot parse: the KiCad image digest and the
+  pip/uv bootstrap wheels. It opens a PR when upstream moved. The default KiCad
+  release is never bumped automatically.
 
 To change a dependency, edit `pyproject.toml` and regenerate the lock:
 
@@ -171,7 +209,9 @@ The build fails loudly if a version has no pinned digest.
 
 ```bash
 make test          # everything, inside the container
+make test-coverage # the same, with a coverage report
 make test-host     # pure-python subset on the host (needs a local venv)
+make lint          # ruff
 make smoke         # end-to-end: every skill's main command
 ```
 
