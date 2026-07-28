@@ -18,8 +18,8 @@ per project.
 It is an ordinary CLI that prints JSON and exits non-zero on errors, so it works
 the same from a terminal, a `Makefile`, a CI job, or a coding assistant. The
 repository also ships [usage guides](docs/guides/README.md) for each area —
-plain Markdown, worth reading on their own, and picked up automatically as
-skills if you happen to use Claude Code.
+plain Markdown, worth reading on their own, and installable into whatever layout
+your assistant expects.
 
 ```bash
 ./bin/eda.sh doctor                                   # builds the image on first use
@@ -41,27 +41,29 @@ git submodule add https://github.com/sabas0ba/kicad_skills tools/kicad_skills
 ```
 
 That drops a one-line `bin/eda.sh` shim so the `./bin/eda.sh …` commands work
-verbatim from your project root, and links the usage guides into
-`.claude/skills/`:
+verbatim from your project root, and — for Claude Code users — links the
+[usage guides](docs/guides/README.md) into the layout it discovers:
 
 ```
 my-board/
-├── bin/eda.sh                          shim -> tools/kicad_skills/bin/eda.sh
-├── .claude/skills/kicad-pcb-review ->  ../../tools/kicad_skills/.claude/skills/kicad-pcb-review
+├── bin/eda.sh                                    shim -> tools/kicad_skills/bin/eda.sh
+├── .claude/skills/kicad-pcb-review/SKILL.md ->   ../../../tools/kicad_skills/docs/guides/kicad-pcb-review.md
 ├── hardware/my-board.kicad_pro
-└── tools/kicad_skills/                 the submodule
+└── tools/kicad_skills/                           the submodule
 ```
 
-Commit `bin/eda.sh` (and the guides, if you want them) so everyone who clones the
-project gets them. Upgrading is `git submodule update --remote` — the symlinks
-follow, with no re-install.
+Commit `bin/eda.sh` so everyone who clones the project gets it. Upgrading is
+`git submodule update --remote` — the symlinks follow, with no re-install.
 
 | Flag | Effect |
 | --- | --- |
 | `--no-guides` | just the CLI shim, nothing else |
-| `--dest DIR` | put the guides somewhere else (e.g. `--dest docs/circuit-design`) |
+| `--dest DIR` | another tool's directory (e.g. `--dest .cursor/rules`) |
 | `--copy` | vendor the guides instead of symlinking (Windows checkouts) |
 | `--force` / `--uninstall` | replace what is already there / reverse the install |
+
+The guides themselves need no install — they are Markdown in
+`tools/kicad_skills/docs/guides/`, readable as they are.
 
 Then, from your project root:
 
@@ -84,6 +86,10 @@ git clone https://github.com/sabas0ba/kicad_skills && cd kicad_skills
 at `/work`, runs as your uid/gid (no root-owned files), and gives the container
 no network. To work on the toolkit itself, see [AGENTS.md](AGENTS.md).
 
+If you drive this clone with Claude Code, `make skills` mirrors the guides into
+the layout it discovers. That directory is generated and git-ignored — the
+guides live in [`docs/guides/`](docs/guides/README.md).
+
 ## What it does
 
 ```mermaid
@@ -101,12 +107,12 @@ flowchart LR
 
 | Area | What it does | One command | Guide |
 | --- | --- | --- | --- |
-| Datasheets | Text, parameter tables, embedded figures and rendered page images from a PDF | `eda datasheet parse lm321.pdf -o out/` | [guide](.claude/skills/datasheet-analysis/SKILL.md) |
-| Simulation | ngspice op/dc/ac/tran/noise, THD, Monte Carlo tolerance analysis, temperature sweeps — with measurements and plots | `eda sim run filter.cir -o out/` | [guide](.claude/skills/spice-simulation/SKILL.md) |
-| Schematic review | Components, nets and hierarchy from `.kicad_sch`; ERC plus decoupling / floating-input / annotation / pull-up checks | `eda sch review hardware/ --text` | [guide](.claude/skills/kicad-schematic-review/SKILL.md) |
-| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen; layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](.claude/skills/kicad-pcb-review/SKILL.md) |
-| Fabrication | Gerbers, Excellon drill, pick-and-place, BOM, STEP/IPC-2581, zipped with a manifest | `eda pcb fab hardware/ -o fab/` | [guide](.claude/skills/kicad-fabrication-output/SKILL.md) |
-| The container | Build, pin, verify and troubleshoot the toolchain | `eda doctor` | [guide](.claude/skills/eda-environment/SKILL.md) |
+| Datasheets | Text, parameter tables, embedded figures and rendered page images from a PDF | `eda datasheet parse lm321.pdf -o out/` | [guide](docs/guides/datasheet-analysis.md) |
+| Simulation | ngspice op/dc/ac/tran/noise, THD, Monte Carlo tolerance analysis, temperature sweeps — with measurements and plots | `eda sim run filter.cir -o out/` | [guide](docs/guides/spice-simulation.md) |
+| Schematic review | Components, nets and hierarchy from `.kicad_sch`; ERC plus decoupling / floating-input / annotation / pull-up checks | `eda sch review hardware/ --text` | [guide](docs/guides/kicad-schematic-review.md) |
+| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen; layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](docs/guides/kicad-pcb-review.md) |
+| Fabrication | Gerbers, Excellon drill, pick-and-place, BOM, STEP/IPC-2581, zipped with a manifest | `eda pcb fab hardware/ -o fab/` | [guide](docs/guides/kicad-fabrication-output.md) |
+| The container | Build, pin, verify and troubleshoot the toolchain | `eda doctor` | [guide](docs/guides/eda-environment.md) |
 
 ### Examples
 
@@ -356,11 +362,13 @@ which is what [`docs/guides/`](docs/guides/README.md) is for. Those guides cover
 the review methodology, what each finding means, and what the tool cannot judge
 for you.
 
-* **Claude Code** discovers them automatically: they live at
-  `.claude/skills/<name>/SKILL.md`, and `bin/install-skills.sh` links them into
-  a parent project for you.
-* **Anything else** — point it at `docs/guides/`, or copy them where your tool
-  looks: `./bin/install-skills.sh --dest .cursor/rules --copy`.
+* **Anything that reads a repository** — point it at `docs/guides/`, or let it
+  read [`AGENTS.md`](AGENTS.md), which names them.
+* **Claude Code** wants its own layout (`.claude/skills/<name>/SKILL.md`) so it
+  can load a guide on demand. `bin/install-skills.sh` generates that layout from
+  `docs/guides/` as symlinks — run it in this checkout or in a project that uses
+  the submodule. The result is git-ignored: it is an adapter, not a second copy.
+* **Some other tool** — `./bin/install-skills.sh --dest .cursor/rules --copy`.
 * **No assistant at all** — they are ordinary Markdown, written to be read.
 
 Contributor and agent instructions for this repository itself live in
@@ -374,7 +382,7 @@ can check at a glance instead of taking a summary on trust.
 
 ```
 bin/eda.sh            host wrapper: docker run, uid mapping, network policy, path rewriting
-bin/install-skills.sh install into a parent project that uses this as a submodule
+bin/install-skills.sh CLI shim + renders docs/guides/ into an assistant's layout
 docker/Dockerfile     kicad/kicad:<version> + ngspice + an isolated virtualenv
 src/eda_toolkit/
 ├── cli.py                 the `eda` command
@@ -385,9 +393,8 @@ src/eda_toolkit/
                            outline geometry, kicad-cli wrapper, review rules,
                            renderers, fabrication package
 tests/                     pytest suite + fixtures + smoke test
-docs/guides/               index of the usage guides
+docs/guides/               the usage guides - prose, and the source of truth
 docs/examples/             committed output, so the README shows rather than tells
-.claude/skills/            the guides themselves, where Claude Code finds them
 AGENTS.md                  contributor / agent instructions (CLAUDE.md points here)
 ```
 
@@ -415,7 +422,8 @@ Design notes:
 * **The knowledge is in Markdown, not in prompts.** The judgement calls that make
   a review useful live in [`docs/guides/`](docs/guides/README.md) as prose, so
   they are reviewable in a diff and usable by a person, a script or any
-  assistant — not baked into one vendor's format.
+  assistant. One tool's directory layout is generated from them, never the other
+  way round.
 
 ## Review quality
 
@@ -483,6 +491,7 @@ make test-coverage # the same, with a coverage report
 make test-host     # pure-python subset on the host (needs a local venv)
 make lint          # ruff
 make smoke         # end-to-end: every top-level command
+make skills        # mirror docs/guides/ into .claude/skills (generated)
 ```
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs on every push

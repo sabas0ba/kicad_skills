@@ -3,8 +3,8 @@ name: datasheet-analysis
 description: Extract text, parameter tables, embedded figures and page images from a datasheet PDF so its contents (absolute maximum ratings, electrical characteristics, pinout, typical application circuits, curves) can be read and quoted. Use when a datasheet PDF has to be read, when a specific parameter or pin function has to be looked up, or when a figure/graph in a PDF needs to be viewed.
 ---
 
-> Part of [kicad_skills](https://github.com/sabas0ba/kicad_skills) — plain-Markdown usage
-> guides for the `eda` CLI. Readable on its own; Claude Code loads it as a skill.
+> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
+> `eda` CLI. Plain Markdown: read it directly, or hand it to whatever assistant you use.
 
 # Datasheet analysis
 

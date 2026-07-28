@@ -3,8 +3,8 @@ name: kicad-fabrication-output
 description: Produce the manufacturing package from a KiCad project - Gerbers, Excellon drill files, pick-and-place, BOM, optional STEP and IPC-2581, zipped and with a manifest. Use when a board has to be sent to a fab or assembly house, when gerbers/drill/BOM/pick-and-place files are requested, or when checking that a design is ready to order.
 ---
 
-> Part of [kicad_skills](https://github.com/sabas0ba/kicad_skills) — plain-Markdown usage
-> guides for the `eda` CLI. Readable on its own; Claude Code loads it as a skill.
+> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
+> `eda` CLI. Plain Markdown: read it directly, or hand it to whatever assistant you use.
 
 # Fabrication output
 

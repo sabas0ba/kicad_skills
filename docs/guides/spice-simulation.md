@@ -3,8 +3,8 @@ name: spice-simulation
 description: Simulate analog circuits with ngspice - DC operating point, DC sweep, AC/Bode, transient, noise, THD - plus Monte Carlo component tolerance analysis and temperature sweeps, with measurements (gain, -3 dB bandwidth, phase margin, rise time, overshoot, spread) and plots. Use when a filter, amplifier, regulator, bias network or driver has to be verified, dimensioned, toleranced or debugged, or when a KiCad schematic needs simulating.
 ---
 
-> Part of [kicad_skills](https://github.com/sabas0ba/kicad_skills) — plain-Markdown usage
-> guides for the `eda` CLI. Readable on its own; Claude Code loads it as a skill.
+> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
+> `eda` CLI. Plain Markdown: read it directly, or hand it to whatever assistant you use.
 
 # Analog simulation (ngspice)
 

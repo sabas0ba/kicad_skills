@@ -3,8 +3,8 @@ name: kicad-pcb-review
 description: Read a KiCad board (.kicad_pcb) and review the artwork - DRC, schematic parity, unrouted nets, track widths, vias and drills, edge clearance, decoupling placement, ground pour, silkscreen, placement - and render the layers and 3D views as PNGs for visual inspection. Use when asked to review, check or look at a PCB layout, artwork, routing, stackup or fabrication readiness.
 ---
 
-> Part of [kicad_skills](https://github.com/sabas0ba/kicad_skills) — plain-Markdown usage
-> guides for the `eda` CLI. Readable on its own; Claude Code loads it as a skill.
+> One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
+> `eda` CLI. Plain Markdown: read it directly, or hand it to whatever assistant you use.
 
 # KiCad PCB / artwork review
 

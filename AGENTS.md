@@ -88,10 +88,16 @@ by accident — no KiCad 10 only tokens, and the ground pour stays filled.
 ## Documentation
 
 * `README.md` — what the toolkit is and how to use it.
-* `docs/guides/` — the per-area usage guides (also served to Claude Code as
-  skills, see `docs/guides/README.md`).
+* **`docs/guides/`** — one usage guide per area, and the source of truth for how
+  to *use* the toolkit well. Read the one that matches the task before doing it:
+  `datasheet-analysis`, `spice-simulation`, `kicad-schematic-review`,
+  `kicad-pcb-review`, `kicad-fabrication-output`, `eda-environment`.
 * `docs/examples/` — committed sample output, regenerable with the commands
   documented there.
 
 When behaviour changes, update the guide that covers it in the same commit. A
 guide that describes a flag the CLI no longer has is worse than no guide.
+
+`bin/install-skills.sh` renders `docs/guides/` into Claude Code's skill layout
+(`.claude/skills/<name>/SKILL.md`, symlinks, git-ignored). Never edit that copy:
+it is generated, and `make skills` regenerates it.
