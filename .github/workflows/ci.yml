@@ -56,41 +56,50 @@ jobs:
         run: uv run --frozen --extra test pytest -q -m "not kicad and not ngspice" tests
 
   container:
-    name: container suite (KiCad + ngspice)
+    # The KiCad release is a build argument, so "it works on 10" is a claim the
+    # matrix has to back up. Every version here must have a pinned digest in
+    # docker/kicad-digests.txt.
+    name: container suite (KiCad ${{ matrix.kicad }})
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        kicad: ["10.0.4", "9.0.9"]
     steps:
       - name: Checkout
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
 
       - name: Build the image (base pinned by digest)
-        run: make build
+        run: make build KICAD_VERSION=${{ matrix.kicad }}
 
       - name: Report the toolchain
         run: ./bin/eda.sh doctor
+        env:
+          KICAD_VERSION: ${{ matrix.kicad }}
 
       - name: Full test-suite inside the container (with coverage)
-        run: make test-coverage
+        run: make test-coverage KICAD_VERSION=${{ matrix.kicad }}
 
       - name: End-to-end smoke test
-        run: make smoke
+        run: make smoke KICAD_VERSION=${{ matrix.kicad }}
 
-      - name: Render the example board (artefact for eyeballing)
-        run: |
-          ./bin/eda.sh pcb render tests/fixtures/example_project -o artwork --dpi 150
-          ./bin/eda.sh sch render tests/fixtures/example_project -o artwork/schematic
+      - name: Build the visual report for the example project
+        env:
+          KICAD_VERSION: ${{ matrix.kicad }}
+        run: ./bin/eda.sh report tests/fixtures/example_project -o artwork --dpi 150
 
-      - name: Upload rendered artwork
+      - name: Upload the report
         if: always()
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
-          name: example-artwork
-          path: artwork/**/*.png
+          name: example-report-kicad-${{ matrix.kicad }}
+          path: artwork
           retention-days: 7
           if-no-files-found: warn
 
       - name: Upload the coverage report
-        if: always()
+        if: always() && matrix.kicad == '10.0.4'
         uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5.0.0
         with:
           name: coverage

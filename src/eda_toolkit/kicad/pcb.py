@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from ..util import EdaError
+from . import outline as outline_geom
 from . import s_expression as sexp
 from .s_expression import SNode
 
@@ -135,6 +136,10 @@ class Board:
     edges: list[dict[str, Any]] = field(default_factory=list)
     silk_texts: list[dict[str, Any]] = field(default_factory=list)
     stackup: list[dict[str, Any]] = field(default_factory=list)
+    _segments: list[tuple[tuple[float, float], tuple[float, float]]] | None = field(
+        default=None, repr=False, compare=False
+    )
+    _closed: bool | None = field(default=None, repr=False, compare=False)
 
     # -- derived -----------------------------------------------------------
     @property
@@ -145,16 +150,23 @@ class Board:
             if layer.get("type") == "signal" or layer["name"].endswith(".Cu")
         ]
 
+    def edge_segments(self) -> list[tuple[tuple[float, float], tuple[float, float]]]:
+        """Edge.Cuts flattened to straight segments (arcs and circles included)."""
+        if self._segments is None:
+            self._segments = outline_geom.flatten(self.edges)
+        return self._segments
+
+    def outline_closed(self) -> bool:
+        if self._closed is None:
+            self._closed = outline_geom.is_closed(self.edge_segments())
+        return self._closed
+
+    def edge_clearance_at(self, x: float, y: float) -> float:
+        """Signed distance from a point to the outline: negative means outside."""
+        return outline_geom.clearance((x, y), self.edge_segments(), closed=self.outline_closed())
+
     def outline_bbox(self) -> tuple[float, float, float, float] | None:
-        xs: list[float] = []
-        ys: list[float] = []
-        for edge in self.edges:
-            for x, y in edge["points"]:
-                xs.append(x)
-                ys.append(y)
-        if not xs:
-            return None
-        return (min(xs), min(ys), max(xs), max(ys))
+        return outline_geom.bbox(self.edge_segments())
 
     def size_mm(self) -> tuple[float, float] | None:
         bbox = self.outline_bbox()
@@ -417,23 +429,34 @@ def parse(path: str | os.PathLike[str]) -> Board:
         for node in root.children(tag):
             if str(node.value("layer", default="")) != "Edge.Cuts":
                 continue
-            points: list[tuple[float, float]] = []
-            for key in ("start", "end", "center", "mid"):
+            edge: dict[str, Any] = {"type": tag}
+            # Keep the shape's own vocabulary (centre, mid, ...) rather than a
+            # flat point list: an arc is not its three points, and a circle is
+            # not its centre and rim point.
+            for key, name in (
+                ("start", "start"),
+                ("end", "end"),
+                ("center", "centre"),
+                ("mid", "mid"),
+            ):
                 child = node.child(key)
                 if child is not None:
                     x, y, _ = _xy(child)
-                    points.append((x, y))
+                    edge[name] = (x, y)
+            polyline: list[tuple[float, float]] = []
             pts = node.child("pts")
             if pts is not None:
                 for xy in pts.children("xy"):
                     atoms = xy.atoms()
-                    points.append((float(atoms[0]), float(atoms[1])))
-            if tag == "gr_circle" and len(points) >= 2:
-                cx, cy = points[0]
-                r = math.dist(points[0], points[1])
-                points = [(cx - r, cy - r), (cx + r, cy + r)]
-            if points:
-                board.edges.append({"type": tag, "points": points})
+                    polyline.append((float(atoms[0]), float(atoms[1])))
+            if polyline:
+                edge["polyline"] = polyline
+            if tag == "gr_circle" and "centre" in edge and "end" in edge:
+                edge["radius"] = math.dist(edge["centre"], edge["end"])
+            segments = outline_geom.flatten([edge])
+            edge["points"] = [seg[0] for seg in segments] + ([segments[-1][1]] if segments else [])
+            if edge["points"]:
+                board.edges.append(edge)
 
     for text in root.children("gr_text"):
         layer = str(text.value("layer", default=""))

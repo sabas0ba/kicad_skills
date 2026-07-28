@@ -114,3 +114,22 @@ def test_doctor(capsys):
     assert "python_modules" in payload
     assert payload["python_modules"]["numpy"] is True
     assert code in (0, 1)  # 1 when kicad-cli/ngspice are absent (outside the container)
+
+
+def test_every_subcommand_is_reachable():
+    """A command whose parser is never registered is a command nobody can run."""
+
+    def subcommands(parser):
+        action = next(a for a in parser._actions if getattr(a, "choices", None))
+        return action.choices
+
+    top = subcommands(cli.build_parser())
+    assert {"doctor", "report", "datasheet", "sim", "sch", "pcb"} <= set(top)
+    assert set(subcommands(top["pcb"])) >= {"render", "glb", "fab", "review"}
+    assert set(subcommands(top["sch"])) >= {"render", "pdf", "review", "bom"}
+
+
+def test_report_defaults_are_the_useful_ones():
+    args = cli.build_parser().parse_args(["report", "board.kicad_pcb", "-o", "out"])
+    assert args.func is cli.cmd_report
+    assert (args.no_3d, args.no_per_layer, args.no_bom, args.glb) == (False, False, False, False)

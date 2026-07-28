@@ -40,9 +40,24 @@ step "board review (DRC + heuristics)"
 eda pcb review "$PROJECT" -o "$OUT/pcb-review.json" > /dev/null
 have "$OUT/pcb-review.json" "d['summary']['error'] == 0 and d['drc_available']"
 
-step "board render (layers + 3D)"
+step "board render (layers + 3D + contact sheet)"
 eda pcb render "$PROJECT" -o "$OUT/art" --dpi 120 --views front copper-front > "$OUT/art.json"
-have "$OUT/art.json" "len(d['images']) >= 5 and not d['errors']"
+have "$OUT/art.json" "len(d['images']) >= 5 and not d['errors'] and 'contact_sheet' in d"
+test -s "$OUT/art/contact-sheet.png"
+
+step "GLB 3D model"
+eda pcb glb "$PROJECT" -o "$OUT/board.glb" > "$OUT/glb.json"
+have "$OUT/glb.json" "d['bytes'] > 1000"
+
+step "schematic PDF"
+eda sch pdf "$PROJECT" -o "$OUT/schematic.pdf" > "$OUT/schpdf.json"
+have "$OUT/schpdf.json" "d['bytes'] > 1000"
+
+step "one-command report"
+eda report "$PROJECT" -o "$OUT/report" --dpi 100 --no-3d > "$OUT/report.json"
+have "$OUT/report.json" "not d['errors'] and {'schematic_review','board_review','bom'} <= set(d['sections'])"
+test -s "$OUT/report/report.html"
+test -s "$OUT/report/report.md"
 
 step "bill of materials"
 eda sch bom "$PROJECT" -o "$OUT/bom.csv" > "$OUT/bom.json"

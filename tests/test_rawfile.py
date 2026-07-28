@@ -94,3 +94,25 @@ def test_to_csv_real(tmp_path):
     plot = rawfile.parse_bytes(ASCII_RAW.encode())[0]
     dest = rawfile.to_csv(plot, tmp_path / "dc.csv")
     assert dest.read_text().splitlines()[0] == "v-sweep,v(out)"
+
+
+def test_complex_sweep_ignores_ngspice_uninitialised_imaginary_part():
+    """ngspice never writes the imaginary half of an AC sweep's frequency column.
+
+    ngspice 44 happens to leave a denormal there; ngspice 39 left -1.8e199, which
+    turned every -3 dB measurement into 1e123. Only the real part is defined.
+    """
+    header = (
+        b"Title: * ac\nDate: today\nPlotname: AC Analysis\nFlags: complex\n"
+        b"No. Variables: 2\nNo. Points: 2\n"
+        b"Variables:\n\t0\tfrequency\tfrequency\n\t1\tv(out)\tvoltage\nBinary:\n"
+    )
+    payload = struct.pack("<dddd", 10.0, -1.8e199, 1.0, 0.0)
+    payload += struct.pack("<dddd", 100.0, 4.6e-310, 0.5, -0.5)
+    plot = rawfile.parse_bytes(header + payload)[0]
+
+    assert plot.complex
+    assert plot.data["frequency"].dtype == np.float64
+    assert list(plot.data["frequency"]) == [10.0, 100.0]
+    # the signals themselves stay complex
+    assert plot.data["v(out)"][1] == complex(0.5, -0.5)

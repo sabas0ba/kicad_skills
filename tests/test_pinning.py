@@ -138,9 +138,25 @@ def test_kicad_version_defaults_agree():
 
     for workflow in workflows():
         for match in re.finditer(r"KICAD_VERSION:\s*(\S+)", workflow.read_text()):
-            assert match.group(1) == docker_version, (
-                f"{workflow.name} pins a different KiCad version"
-            )
+            value = match.group(1)
+            if value.startswith("${{"):  # supplied by the build matrix, checked below
+                continue
+            assert value == docker_version, f"{workflow.name} pins a different KiCad version"
+
+
+def test_every_matrix_kicad_version_has_a_pinned_digest():
+    """The matrix is the claim "these releases work"; each needs a reproducible base."""
+    digests = _kicad_digests()
+    found = False
+    for workflow in workflows():
+        for line in workflow.read_text().splitlines():
+            match = re.match(r"\s*kicad:\s*\[(.+)\]\s*$", line)
+            if not match:
+                continue
+            found = True
+            for version in re.findall(r'"([\d.]+)"', match.group(1)):
+                assert version in digests, f"{workflow.name} builds KiCad {version} unpinned"
+    assert found, "no KiCad version matrix found in the workflows"
 
 
 def _kicad_digests() -> dict[str, str]:

@@ -26,6 +26,13 @@ make smoke        # end-to-end run of every skill's main command
 tests the code you are editing, not the copy baked into the image. Rebuild the
 image only when the Dockerfile or the dependencies change.
 
+CI runs the suite against **every KiCad version in the `ci.yml` matrix**
+(currently 10.0.4 and 9.0.9). Run `make test KICAD_VERSION=9.0.9` before
+pushing anything that touches `kicad_cli.py`, the fixtures or the review rules.
+Not every flag exists in every release: gate on `kicad_cli.supports([...],
+"--flag")` rather than on a version number, and keep the fixtures in the oldest
+format the matrix covers — KiCad never reads a file newer than itself.
+
 ## Adding a review rule
 
 Rules are functions registered with the `@rule` decorator in
@@ -64,4 +71,5 @@ are folded into one entry by `util.collapse_findings`, so prefer grading a rule
 + LM321 buffer). Its symbols come from the real KiCad libraries; its footprints
 are simplified, which is why DRC reports `lib_footprint_mismatch` for each of
 them. Keep the project clean: a new error there means the toolkit changed
-behaviour.
+behaviour. Its own README documents the two constraints that are easy to break
+by accident — no KiCad 10 only tokens, and the ground pour stays filled.

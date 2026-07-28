@@ -299,6 +299,8 @@ def cmd_pcb_render(args: argparse.Namespace) -> int:
         dpi=args.dpi,
         three_d=not args.no_3d,
         per_layer=args.per_layer,
+        glb=args.glb,
+        sheet=not args.no_sheet,
     )
     emit(payload, as_json=True)
     return 0
@@ -370,6 +372,42 @@ def cmd_sim_temperature(args: argparse.Namespace) -> int:
     return 0 if payload.get("ok") else 2
 
 
+def cmd_report(args: argparse.Namespace) -> int:
+    from . import report
+
+    payload = report.build(
+        args.target,
+        args.output,
+        dpi=args.dpi,
+        three_d=not args.no_3d,
+        per_layer=not args.no_per_layer,
+        glb=args.glb,
+        bom=not args.no_bom,
+        simulation=args.simulation,
+        title=args.title,
+    )
+    emit(payload, as_json=True)
+    return 0 if not payload["errors"] else 2
+
+
+def cmd_pcb_glb(args: argparse.Namespace) -> int:
+    from .kicad import kicad_cli, pcb
+
+    board = pcb.find_board(args.target)
+    dest = kicad_cli.export_glb(board, args.output)
+    emit({"board": str(board), "glb": str(dest), "bytes": dest.stat().st_size}, as_json=True)
+    return 0
+
+
+def cmd_sch_pdf(args: argparse.Namespace) -> int:
+    from .kicad import kicad_cli, schematic
+
+    sch = schematic.find_root_schematic(args.target)
+    dest = kicad_cli.export_sch_pdf(sch, args.output)
+    emit({"schematic": str(sch), "pdf": str(dest), "bytes": dest.stat().st_size}, as_json=True)
+    return 0
+
+
 def cmd_pcb_stats(args: argparse.Namespace) -> int:
     from .kicad import kicad_cli, pcb
 
@@ -399,6 +437,23 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "doctor", help="report the tool versions available in this environment"
     ).set_defaults(func=cmd_doctor)
+
+    # ------------------------------------------------------------ report
+    p = sub.add_parser(
+        "report", help="one visual report: schematic, board, reviews, BOM, simulation"
+    )
+    p.add_argument("target", help=".kicad_pro, project directory, schematic or board")
+    p.add_argument("-o", "--output", required=True, help="directory to write the report into")
+    p.add_argument("--dpi", type=int, default=200)
+    p.add_argument("--title", help="heading for the report (default: project name)")
+    p.add_argument(
+        "--simulation", metavar="NETLIST", help="also run this SPICE deck and include its plots"
+    )
+    p.add_argument("--glb", action="store_true", help="also export a GLB 3D model")
+    p.add_argument("--no-3d", action="store_true", help="skip the 3D renders (much faster)")
+    p.add_argument("--no-per-layer", action="store_true", help="skip the per-copper-layer plots")
+    p.add_argument("--no-bom", action="store_true")
+    p.set_defaults(func=cmd_report)
 
     # -- datasheet --------------------------------------------------------
     ds = sub.add_parser("datasheet", help="read datasheet PDFs").add_subparsers(
@@ -568,11 +623,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--rows", action="store_true", help="include every row in the JSON")
     p.set_defaults(func=cmd_sch_bom)
 
-    p = sch.add_parser("render", help="plot the schematic to PNG")
+    p = sch.add_parser("render", help="plot the schematic to PNG (and PDF)")
     p.add_argument("target")
     p.add_argument("-o", "--output", required=True)
     p.add_argument("--dpi", type=int, default=200)
     p.set_defaults(func=cmd_sch_render)
+
+    p = sch.add_parser("pdf", help="export the schematic as a PDF")
+    p.add_argument("target")
+    p.add_argument("-o", "--output", required=True)
+    p.set_defaults(func=cmd_sch_pdf)
 
     # -- pcb --------------------------------------------------------------
     pcb_p = sub.add_parser("pcb", help="read and review KiCad boards").add_subparsers(
@@ -616,8 +676,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--views", nargs="*", help="front back copper-front ... or layer:F.Cu")
     p.add_argument("--dpi", type=int, default=300)
     p.add_argument("--no-3d", action="store_true")
-    p.add_argument("--per-layer", action="store_true")
+    p.add_argument("--per-layer", action="store_true", help="one plot per copper layer")
+    p.add_argument("--glb", action="store_true", help="also export a GLB 3D model")
+    p.add_argument("--no-sheet", action="store_true", help="skip the tiled contact sheet")
     p.set_defaults(func=cmd_pcb_render)
+
+    p = pcb_p.add_parser("glb", help="export a GLB 3D model (viewable in a browser)")
+    p.add_argument("target")
+    p.add_argument("-o", "--output", required=True)
+    p.set_defaults(func=cmd_pcb_glb)
 
     p = pcb_p.add_parser("fab", help="gerbers, drill, pick-and-place, BOM and a zip")
     p.add_argument("target")
