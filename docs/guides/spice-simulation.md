@@ -81,6 +81,31 @@ Returns `statistics` (mean, stdev, min/max, p05/median/p95, `spread_pct`),
 is a path into the usual measurements: `<analysis>.<signal>.<key>` — e.g.
 `ac.v(out).gain_db_max`, `tran.v(out).overshoot_pct`, or `op.v(out)`.
 
+### Which part is responsible
+
+The same run also answers "so which component do I need to buy tighter?".
+`sensitivity` ranks every varied part, with `sensitivity.png` as the picture:
+
+```json
+{"explained_pct": 99.7,
+ "parameters": [{"parameter": "C1", "contribution_pct": 99.3, "elasticity": -0.99},
+                {"parameter": "R1", "contribution_pct":  0.7, "elasticity": -0.96}]}
+```
+
+* `contribution_pct` — that part's share of the spread. Here the 10 % capacitor
+  is the whole problem and the 1 % resistor is irrelevant, so a tighter C is the
+  only change worth paying for.
+* `elasticity` — how many percent the metric moves per percent of that part.
+  `-0.99` says the corner frequency falls almost exactly in proportion, which is
+  what `fc = 1/(2πRC)` predicts.
+* `explained_pct` — how much of the spread a straight line accounts for. Well
+  below 100 means the circuit does not respond linearly over that tolerance
+  band, and the per-part split is indicative rather than exact. Look at the
+  histogram before trusting the ranking.
+
+It costs no extra simulation — it is the trials you already ran, read
+column-wise. It needs at least three trials and more trials than varied parts.
+
 * `--distribution normal` (default) treats the tolerance as ±3σ, clipped to the
   band — how reels of parts actually behave.
 * `--distribution uniform` is the honest choice when you know nothing about the

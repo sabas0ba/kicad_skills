@@ -20,10 +20,32 @@ Reads `.kicad_sch` files and reviews them. Runs in the container
 ./bin/eda.sh sch render  hardware/ -o /tmp/sch   # PDF + a PNG per sheet + contact sheet
 ./bin/eda.sh sch pdf     hardware/ -o /tmp/sch.pdf
 ./bin/eda.sh report      hardware/ -o /tmp/report  # review + images + BOM on one page
+./bin/eda.sh diff        old/ hardware/ -o /tmp/diff  # what changed between revisions
 ```
 
 The target may be a `.kicad_sch`, a `.kicad_pro`, or the project directory
 (the root sheet is found automatically, sub-sheets are followed).
+
+`eda diff` compares connectivity by which pins each net joins, so a net that
+gained or lost a pin shows up and one that was only moved on the sheet does not.
+A net whose connections survived under a new name is reported as a rename rather
+than as one deletion and one addition. Components are compared by reference, with
+value, footprint, DNP and library changes named.
+
+It also renders both revisions of every sheet and compares them: **red** is what
+the old revision had and the new one does not, **green** is the other way round.
+A symbol that moved is red where it was and green where it is now, over a faded
+copy of the sheet for context. Because a moved part is a speck on an A4 page, a
+zoomed crop of the changed region is written next to the full sheet - read that
+one first. `--no-images` skips the rendering when only the connectivity matters.
+
+The drawing diff answers "what moved, what appeared, what went away". It is not
+the channel for "what was re-labelled". Suppressing anti-aliasing means ink that
+lands within a pixel of where ink already was is treated as the renderer wobbling
+rather than as a change — and text redrawn in place is largely that. Retagging a
+resistor 10k → 4k7 registers zero changed pixels at 100 dpi, 13 at 150 and 130 at
+300. Read the **Components** table for that: it compares the field rather than
+the picture of it, so it catches the change at any dpi.
 
 ## How to actually review a schematic
 

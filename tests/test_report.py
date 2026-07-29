@@ -146,3 +146,34 @@ def test_build_produces_a_report_for_the_example_project(tmp_path, example_proje
     markdown = (tmp_path / "out" / "report.md").read_text(encoding="utf-8")
     assert "## Verdict" in markdown
     assert Path(result["sections"]["schematic_images"]["pdf"]).exists()
+
+
+def test_copper_section_lists_the_current_limited_nets(tmp_path):
+    electrical = {
+        "temperature_rise_c": 10.0,
+        "nets": [
+            {
+                "net": "+5V",
+                "narrowest_mm": 0.25,
+                "narrowest_layer": "F.Cu",
+                "current_a": 0.92,
+                "length_mm": 48.5,
+                "resistance_mohm": 93.1,
+            }
+        ],
+        "impedance": [
+            {
+                "layer": "F.Cu",
+                "kind": "microstrip",
+                "height_mm": 0.1,
+                "epsilon_r": 4.5,
+                "width_50r_mm": 0.141,
+                "width_90r_diff_mm": 0.13,
+            }
+        ],
+    }
+    text = report.render_markdown(payload(tmp_path, electrical=electrical))
+    assert "## Copper" in text
+    assert "| +5V | 0.25 mm | F.Cu | 0.92 A |" in text
+    assert "| F.Cu | microstrip | 0.1 mm | 4.5 | 0.141 mm | 0.13 mm |" in text
+    assert "0.92 A" in report.render_html(payload(tmp_path, electrical=electrical))

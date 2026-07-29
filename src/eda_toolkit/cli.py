@@ -408,6 +408,32 @@ def cmd_sch_pdf(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_diff(args: argparse.Namespace) -> int:
+    from .kicad import diff
+
+    payload = diff.build(
+        args.old,
+        args.new,
+        args.output,
+        images=not args.no_images,
+        dpi=args.dpi,
+    )
+    emit(payload, as_json=True)
+    return 0 if not payload["errors"] else 2
+
+
+def cmd_pcb_electrical(args: argparse.Namespace) -> int:
+    from .kicad import electrical, pcb
+
+    board_path = pcb.find_board(args.target)
+    payload = electrical.analyse(pcb.parse(board_path), temperature_rise_c=args.temperature_rise)
+    payload["board"] = str(board_path)
+    if args.top:
+        payload["nets"] = payload["nets"][: args.top]
+    emit(payload, as_json=True)
+    return 0
+
+
 def cmd_pcb_stats(args: argparse.Namespace) -> int:
     from .kicad import kicad_cli, pcb
 
@@ -437,6 +463,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "doctor", help="report the tool versions available in this environment"
     ).set_defaults(func=cmd_doctor)
+
+    # ------------------------------------------------------------ diff
+    p = sub.add_parser("diff", help="what changed between two revisions of a design")
+    p.add_argument("old", help="the earlier project (directory, .kicad_pro, or file)")
+    p.add_argument("new", help="the later one")
+    p.add_argument("-o", "--output", required=True, help="directory to write the diff into")
+    p.add_argument("--dpi", type=int, default=150)
+    p.add_argument("--no-images", action="store_true", help="skip rendering and the pixel diff")
+    p.set_defaults(func=cmd_diff)
 
     # ------------------------------------------------------------ report
     p = sub.add_parser(
@@ -696,6 +731,20 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--include-dnp", action="store_true", help="keep DNP parts")
     p.add_argument("--no-zip", action="store_true")
     p.set_defaults(func=cmd_pcb_fab)
+
+    p = pcb_p.add_parser(
+        "electrical", help="track resistance, current capacity and impedance widths"
+    )
+    p.add_argument("target")
+    p.add_argument(
+        "--temperature-rise",
+        type=float,
+        default=10.0,
+        metavar="K",
+        help="temperature rise the current rating is quoted at (default: 10)",
+    )
+    p.add_argument("--top", type=int, metavar="N", help="only the N most current-limited nets")
+    p.set_defaults(func=cmd_pcb_electrical)
 
     p = pcb_p.add_parser("stats", help="board statistics")
     p.add_argument("target")

@@ -110,7 +110,7 @@ flowchart LR
 | Datasheets | Text, parameter tables, embedded figures and rendered page images from a PDF | `eda datasheet parse lm321.pdf -o out/` | [guide](docs/guides/datasheet-analysis.md) |
 | Simulation | ngspice op/dc/ac/tran/noise, THD, Monte Carlo tolerance analysis, temperature sweeps — with measurements and plots | `eda sim run filter.cir -o out/` | [guide](docs/guides/spice-simulation.md) |
 | Schematic review | Components, nets and hierarchy from `.kicad_sch`; ERC plus decoupling / floating-input / annotation / pull-up checks | `eda sch review hardware/ --text` | [guide](docs/guides/kicad-schematic-review.md) |
-| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen; layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](docs/guides/kicad-pcb-review.md) |
+| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen; current capacity, resistance and impedance from the stackup; layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](docs/guides/kicad-pcb-review.md) |
 | Fabrication | Gerbers, Excellon drill, pick-and-place, BOM, STEP/IPC-2581, zipped with a manifest | `eda pcb fab hardware/ -o fab/` | [guide](docs/guides/kicad-fabrication-output.md) |
 | The container | Build, pin, verify and troubleshoot the toolchain | `eda doctor` | [guide](docs/guides/eda-environment.md) |
 
@@ -142,8 +142,14 @@ $ ./bin/eda.sh sim montecarlo sim/rc.cir -o sim/mc \
 {"metric": "ac.v(out).f_minus_3db_hz", "nominal_metric": 997.7,
  "statistics": {"samples": 200, "mean": 1001.1, "stdev": 35.5,
                 "p05": 940.1, "median": 1000.7, "p95": 1064.0, "spread_pct": 20.4},
+ "sensitivity": {"explained_pct": 99.7, "parameters": [
+     {"parameter": "C1", "contribution_pct": 99.3, "elasticity": -0.99},
+     {"parameter": "R1", "contribution_pct":  0.7, "elasticity": -0.96}]},
  "failures": [], "histogram": "sim/mc/histogram.png", "csv": "sim/mc/trials.csv"}
 ```
+
+The 10 % capacitor is the entire spread; the 1 % resistor is noise. That is the
+line item worth changing, and it came out of the trials that were already run.
 
 **Read a datasheet without opening a viewer** — page images for the curves,
 tables for the numbers.
@@ -272,6 +278,7 @@ Provenance and licensing of these images: [`docs/examples/README.md`](docs/examp
 
 ```
 eda doctor                                    tool versions in the environment
+eda diff         OLD NEW -o DIR [--dpi 150] [--no-images]
 eda report       TARGET -o DIR [--dpi 200] [--glb] [--simulation NETLIST]
                               [--no-3d] [--no-per-layer] [--no-bom] [--title T]
 
@@ -306,6 +313,7 @@ eda pcb drc      TARGET [--no-parity]        raw KiCad DRC JSON
 eda pcb render   TARGET -o DIR [--views ...] [--per-layer] [--no-3d] [--no-sheet]
                               [--glb] [--dpi 300]
 eda pcb glb      TARGET -o FILE              3D model a browser can display
+eda pcb electrical TARGET [--temperature-rise K] [--top N]
 eda pcb stats    TARGET
 ```
 
@@ -343,6 +351,40 @@ code is. In a project that added this as a submodule:
   if: always()
   with: { name: hardware-report, path: build/report }
 ```
+
+On a pull request the more useful question is what changed. `eda diff` answers it
+against the design rather than the file: a moved component rewrites thousands of
+coordinates in the `.kicad_pcb`, and a text diff cannot tell that apart from a
+rerouted net.
+
+```yaml
+- name: What changed
+  run: |
+    git worktree add /tmp/base "$GITHUB_BASE_REF"
+    ./bin/eda.sh diff /tmp/base/hardware hardware/ -o build/diff
+    cat build/diff/diff.md >> "$GITHUB_STEP_SUMMARY"
+```
+
+```markdown
+## Connectivity
+* **VCC**: gained U3.14, lost -
+## Components
+* **R7**: value '10k' -> '4k7'
+## Board
+* moved: U3 (5.0 mm), C12 (1.2 mm)
+## Artwork
+* `copper-front`: 0.28% of pixels changed
+```
+
+Both drawings are rendered and compared too — the schematic sheets and the board
+plots. What only the old revision had is drawn in **red**, what only the new one
+has in **green**, over a faded copy of the new drawing, so a part that moved reads
+as red where it was and green where it is now. Where the change is a speck on an
+A4 sheet, a zoomed crop is written alongside the full page:
+
+| schematic: C2 moved, R1 re-valued | board: the same R1 move |
+| --- | --- |
+| ![schematic diff](docs/examples/diff-schematic.jpg) | ![board diff](docs/examples/diff-board.jpg) |
 
 Exit `0` clean, `1` on a usage error, `2` when a review found errors. Loosen or
 tighten what counts as an error with `--threshold KEY=VALUE`, or post-process

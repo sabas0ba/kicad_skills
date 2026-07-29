@@ -34,7 +34,7 @@ def build(
     title: str | None = None,
 ) -> dict[str, Any]:
     """Collect everything and write report.md / report.html / report.json."""
-    from .kicad import fab, pcb, pcb_review, render, sch_review, schematic
+    from .kicad import electrical, fab, pcb, pcb_review, render, sch_review, schematic
 
     out = ensure_dir(out_dir)
     report: dict[str, Any] = {
@@ -63,6 +63,7 @@ def build(
             attempt("bom", lambda: _bom_summary(fab, target, out / "bom.csv"))
     if has_pcb:
         attempt("board_review", lambda: pcb_review.review(target))
+        attempt("electrical", lambda: _electrical(electrical, pcb, target))
         attempt(
             "board_images",
             lambda: render.render_board(
@@ -93,6 +94,12 @@ def _bom_summary(fab_module, target, dest: Path) -> dict[str, Any]:
     result = fab_module.bom(target, dest)
     rows = result.pop("rows", [])
     result["preview"] = rows[:15]
+    return result
+
+
+def _electrical(electrical_module, pcb_module, target) -> dict[str, Any]:
+    result = electrical_module.analyse(pcb_module.parse(pcb_module.find_board(target)))
+    result["nets"] = result["nets"][:10]  # the most current-limited, which is the useful end
     return result
 
 
@@ -227,6 +234,37 @@ def render_markdown(report: dict[str, Any]) -> str:
             "",
         ]
 
+    electrical = sections.get("electrical")
+    if electrical and electrical.get("nets"):
+        lines += [
+            "## Copper",
+            "",
+            f"Current capacity at a {electrical['temperature_rise_c']:g} K rise, "
+            "narrowest segment first (IPC-2221).",
+            "",
+            "| net | narrowest | layer | current | length | resistance |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        for net in electrical["nets"]:
+            lines.append(
+                f"| {net['net']} | {net['narrowest_mm']} mm | {net['narrowest_layer']} | "
+                f"{net['current_a']:.2f} A | {net['length_mm']:.1f} mm | "
+                f"{net['resistance_mohm']:.1f} mΩ |"
+            )
+        lines.append("")
+        if electrical.get("impedance"):
+            lines += [
+                "| layer | model | height | εr | 50 Ω | 90 Ω diff |",
+                "| --- | --- | --- | --- | --- | --- |",
+            ]
+            for row in electrical["impedance"]:
+                lines.append(
+                    f"| {row['layer']} | {row['kind']} | {row['height_mm']} mm | "
+                    f"{row['epsilon_r']} | {row.get('width_50r_mm') or '-'} mm | "
+                    f"{row.get('width_90r_diff_mm') or '-'} mm |"
+                )
+            lines.append("")
+
     if report["errors"]:
         lines += ["## Sections that failed", ""]
         for error in report["errors"]:
@@ -338,6 +376,23 @@ def render_html(report: dict[str, Any]) -> str:
             f"{bom['total_parts']} parts "
             f"(<a href='{_relative(bom['csv'], root)}'>CSV</a>)</p>"
         )
+
+    electrical = sections.get("electrical")
+    if electrical and electrical.get("nets"):
+        parts.append(
+            f"<h2>Copper</h2><p>Current capacity at a "
+            f"{electrical['temperature_rise_c']:g} K rise, narrowest segment first "
+            "(IPC-2221).</p><table><tr><th>net</th><th>narrowest</th><th>layer</th>"
+            "<th>current</th><th>length</th><th>resistance</th></tr>"
+        )
+        for net in electrical["nets"]:
+            parts.append(
+                f"<tr><td>{html.escape(net['net'])}</td><td>{net['narrowest_mm']} mm</td>"
+                f"<td>{html.escape(net['narrowest_layer'])}</td>"
+                f"<td>{net['current_a']:.2f} A</td><td>{net['length_mm']:.1f} mm</td>"
+                f"<td>{net['resistance_mohm']:.1f} m&#8486;</td></tr>"
+            )
+        parts.append("</table>")
 
     if report["errors"]:
         parts.append("<h2>Sections that failed</h2><ul>")

@@ -59,6 +59,32 @@ have "$OUT/report.json" "not d['errors'] and {'schematic_review','board_review',
 test -s "$OUT/report/report.html"
 test -s "$OUT/report/report.md"
 
+step "diff between two revisions"
+cp -r "$PROJECT" "$OUT/revised"
+# Two kinds of change, because they surface through different channels: a
+# re-valued part shows in the component table, a moved one in the drawing.
+sed -i 's/(property "Value" "10k"/(property "Value" "4k7"/' "$OUT/revised/example.kicad_sch"
+grep -q '"4k7"' "$OUT/revised/example.kicad_sch"  # the fixture still had a 10k to change
+sed -i 's/(symbol (lib_id "Device:C") (at 147.32 60.96 0)/(symbol (lib_id "Device:C") (at 154.94 66.04 0)/' \
+    "$OUT/revised/example.kicad_sch"
+grep -q "154.94 66.04" "$OUT/revised/example.kicad_sch"  # C2 was still where we expected
+eda diff "$PROJECT" "$OUT/revised" -o "$OUT/diff" --dpi 100 > "$OUT/diff.json"
+have "$OUT/diff.json" "not d['identical'] and d['sections']['schematic']['components']['changed']"
+have "$OUT/diff.json" "d['sections']['schematic_drawing']['pages'][0]['removed_pixels'] > 0"
+have "$OUT/diff.json" "d['sections']['schematic_drawing']['pages'][0]['added_pixels'] > 0"
+grep -q "4k7" "$OUT/diff/diff.md"
+test -s "$OUT/diff/diff/sheet-diff.png"
+
+step "copper: current capacity, resistance, impedance"
+eda pcb electrical "$PROJECT" > "$OUT/electrical.json"
+have "$OUT/electrical.json" "d['nets'] and all(n['current_a'] > 0 for n in d['nets'])"
+python3 -c "
+import json
+d = json.load(open('$OUT/electrical.json'))
+tight = d['nets'][0]
+print(f\"tightest net {tight['net']}: {tight['narrowest_mm']} mm -> {tight['current_a']} A\")
+"
+
 step "bill of materials"
 eda sch bom "$PROJECT" -o "$OUT/bom.csv" > "$OUT/bom.json"
 have "$OUT/bom.json" "d['total_parts'] == 5 and d['line_items'] >= 3"

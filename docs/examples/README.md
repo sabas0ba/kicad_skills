@@ -28,6 +28,28 @@ docker run --rm -v "$PWD:/work" -w /work -e PYTHONPATH=/work/src \
       --dpi 150 --glb --title "Open Air Max (KiCad demo)"'
 ```
 
+## Revision diff
+
+`diff-schematic.jpg` and `diff-board.jpg` are `eda diff` run over two revisions of
+the test fixture, with C2 moved on the sheet, R1 moved on the board and its value
+changed from 10k to 4k7. Red is what the old revision had and the new one does
+not; green is the other way round, so a part that moved is both. Both are the
+zoomed detail crop the command writes alongside the full page — on an A4 sheet the
+change is a few hundred pixels of two megapixels.
+
+| File | What it is |
+| --- | --- |
+| `diff-schematic.jpg` | C2 red where it was, green where it is now; R1's value change marked |
+| `diff-board.jpg` | the same R1 move on the front copper |
+
+```bash
+git worktree add /tmp/base <ref>
+./bin/eda.sh diff /tmp/base/hardware hardware/ -o build/diff
+```
+
+Both come from this repository's own fixture, so they are Apache-2.0 like the
+rest of it.
+
 ## RC low-pass reference circuit
 
 `rc-lowpass-*.jpg` come from [`tests/fixtures/spice/rc_lowpass.cir`](https://github.com/sabas0ba/kicad_skills/blob/main/tests/fixtures/spice/rc_lowpass.cir),
