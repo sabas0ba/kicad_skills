@@ -1,14 +1,15 @@
 name: Refresh pins
 
 # The pins Dependabot cannot see: the KiCad base image digest and the pip / uv
-# bootstrap wheels. Runs weekly, opens (or updates) a single pull request when
-# something upstream moved. The default KiCad release is never bumped
-# automatically - that changes what every review runs against, so it stays a
-# deliberate act (tools/refresh_pins.py --write --set-default-kicad).
+# bootstrap wheels. Manual-only (workflow_dispatch): this repository does not
+# allow Actions to open pull requests, so the job pushes the update to the
+# `automation/refresh-pins` branch and links to the PR creation page in the run
+# summary - opening the pull request stays a human act. The default KiCad
+# release is never bumped automatically either; that changes what every review
+# runs against, so it stays a deliberate act
+# (tools/refresh_pins.py --write --set-default-kicad).
 
 on:
-  schedule:
-    - cron: "17 4 * * 1"
   workflow_dispatch:
 
 permissions:
@@ -21,7 +22,6 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: write
-      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,26 +35,40 @@ jobs:
         id: refresh
         run: |
           python tools/refresh_pins.py --write | tee /tmp/pins.txt
-          echo "report<<EOF" >> "$GITHUB_OUTPUT"
-          cat /tmp/pins.txt >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Open a pull request when something changed
-        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
-        with:
-          branch: automation/refresh-pins
-          delete-branch: true
-          commit-message: "deps: refresh container pins"
-          title: "deps: refresh container pins"
-          body: |
-            `tools/refresh_pins.py --write` found newer upstream artefacts.
+      - name: Push the update branch
+        if: steps.refresh.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c automation/refresh-pins
+          git commit -am "deps: refresh container pins"
+          git push --force origin automation/refresh-pins
 
-            ```
-            ${{ steps.refresh.outputs.report }}
-            ```
-
-            CI rebuilds the image and runs the full suite against these pins.
-            The default `KICAD_VERSION` is not touched by automation; bump it by
-            hand (`tools/refresh_pins.py --write --set-default-kicad`) once the
-            new release has been tried.
-          labels: dependencies
+      - name: Write the run summary
+        env:
+          CHANGED: ${{ steps.refresh.outputs.changed }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          if [ "$CHANGED" = "true" ]; then
+            {
+              echo '`tools/refresh_pins.py --write` found newer upstream artefacts:'
+              echo
+              echo '```'
+              cat /tmp/pins.txt
+              echo '```'
+              echo
+              echo 'The update is pushed to `automation/refresh-pins`. Open the pull request:'
+              echo
+              echo "https://github.com/$REPOSITORY/pull/new/automation/refresh-pins"
+              echo
+              echo 'CI rebuilds the image and runs the full suite against these pins.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'All pins are current - nothing to update.' >> "$GITHUB_STEP_SUMMARY"
+          fi
