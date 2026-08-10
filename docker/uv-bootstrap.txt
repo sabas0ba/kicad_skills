@@ -7,6 +7,6 @@
 # To bump:
 #   curl -s https://pypi.org/pypi/uv/json | \
 #     jq -r '.info.version, (.urls[] | select(.filename | test("manylinux.*(x86_64|aarch64)") and (test("musl") | not)) | "\(.filename) \(.digests.sha256)")'
-uv==0.11.32 \
-    --hash=sha256:3da76cd4e2697de30928b8a8524bd39183ac1e08cb7e72833807c022b7cba6c4 \
-    --hash=sha256:be0799f1ad70c755d10de5aaf46af94199d4f16a992f90278f2662350cd3f4fe
+uv==0.12.3 \
+    --hash=sha256:1482d1462b1aecd18ee33627363fe1c63d6a194f12d40d37efc446d9e0d800a1 \
+    --hash=sha256:248b6b282f96f98d79dddecd1b2acd1893efd84667321f26703feffff6433211

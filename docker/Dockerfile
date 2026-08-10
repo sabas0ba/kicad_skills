@@ -20,9 +20,9 @@ FROM kicad/kicad:${KICAD_VERSION}@${KICAD_DIGEST}
 ARG KICAD_VERSION
 ARG WITH_OCR=1
 # pip exists only to install uv; both are fetched by digest.
-ARG PIP_VERSION=26.1.2
-ARG PIP_URL=https://files.pythonhosted.org/packages/5d/95/6b5cb3461ea5673ba0995989746db58eb18b91b54dbf331e72f569540946/pip-26.1.2-py3-none-any.whl
-ARG PIP_SHA256=382ff9f685ee3bc25864f820aa50505825f10f5458ffff07e30a6d96e5715cab
+ARG PIP_VERSION=26.2.1
+ARG PIP_URL=https://files.pythonhosted.org/packages/f3/6e/1736e5b4ae2b778ef2f81c47d797de9f891d4d8acb047a24ca37a60294dd/pip-26.2.1-py3-none-any.whl
+ARG PIP_SHA256=71138adf1f4ca900cdb7d289c21b7494329f2332b6d85f0e1c42108c0384ed3e
 
 LABEL org.opencontainers.image.title="eda-toolkit" \
       org.opencontainers.image.description="Datasheet, SPICE and KiCad review toolkit" \
