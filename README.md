@@ -509,10 +509,12 @@ Keeping them current:
 
 * Dependabot ([`.github/dependabot.yml`](https://github.com/sabas0ba/kicad_skills/blob/main/.github/dependabot.yml)) opens weekly
   PRs for `uv.lock` and the actions.
-* `make check-pins` (and the weekly [`pins.yml`](https://github.com/sabas0ba/kicad_skills/blob/main/.github/workflows/pins.yml)
+* `make check-pins` (and the manually dispatched [`pins.yml`](https://github.com/sabas0ba/kicad_skills/blob/main/.github/workflows/pins.yml)
   workflow) covers what Dependabot cannot parse: the KiCad image digest and the
-  pip/uv bootstrap wheels. It opens a PR when upstream moved. The default KiCad
-  release is never bumped automatically.
+  pip/uv bootstrap wheels. When upstream moved, the workflow pushes the update
+  to `automation/refresh-pins` and links to the PR creation page in its run
+  summary — opening the PR stays a human act. The default KiCad release is
+  never bumped automatically.
 
 To change a dependency, edit `pyproject.toml` and regenerate the lock:
 
