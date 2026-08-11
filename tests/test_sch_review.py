@@ -1,7 +1,9 @@
 """Rules are exercised through in-memory netlists so they stay fast and precise."""
 
+from pathlib import Path
+
 from eda_toolkit.kicad import sch_review
-from eda_toolkit.kicad.schematic import Symbol
+from eda_toolkit.kicad.schematic import Label, Pin, SchematicDoc, Sheet, Symbol, Wire
 
 
 def make_ctx(nets, symbols=(), erc=None):
@@ -230,3 +232,247 @@ def test_a_broken_rule_does_not_break_the_report(monkeypatch, example_project):
     report = sch_review.review(example_project, use_cli=False)
     rules = {f["rule"] for f in report["findings"]}
     assert "internal.exploding" in rules
+
+
+# -- readability -----------------------------------------------------------
+#
+# These rules read the drawing rather than the netlist, so they are exercised
+# through hand-built sheets: the geometry is the input under test.
+
+GRID = 1.27
+
+
+def pin(number, x, y, type_="passive"):
+    return Pin(number=number, name="~", electrical_type=type_, x=x, y=y, unit=1)
+
+
+def placed(ref, x, y, pins=(), lib_id="Device:R", **kwargs):
+    """A symbol with real sheet geometry (make_ctx's `symbol` has none)."""
+    return Symbol(
+        uuid=f"u-{ref}",
+        lib_id=lib_id,
+        reference=ref,
+        value="10k",
+        x=x,
+        y=y,
+        pins=list(pins),
+        **kwargs,
+    )
+
+
+def sheet(symbols=(), wires=(), junctions=(), labels=(), paper=None, **kwargs):
+    doc = SchematicDoc(path=Path("sheet.kicad_sch"), version=20231120, generator="test")
+    doc.symbols = list(symbols)
+    doc.wires = [Wire(points=list(points)) for points in wires]
+    doc.junctions = list(junctions)
+    doc.labels = list(labels)
+    if paper:
+        doc.paper, doc.paper_size = "A4", paper
+    for key, value in kwargs.items():
+        setattr(doc, key, value)
+    return doc
+
+
+def sheet_ctx(doc, nets=None, **kwargs):
+    return make_ctx_with_docs(nets or {}, [doc], **kwargs)
+
+
+def make_ctx_with_docs(nets, docs, thresholds=None):
+    netlist = {
+        "source": "test",
+        "nets": [
+            {"name": name, "nodes": nodes, "pin_count": len(nodes)} for name, nodes in nets.items()
+        ],
+    }
+    return sch_review.ReviewContext.from_netlist(
+        netlist,
+        symbols=[s for doc in docs for s in doc.symbols],
+        docs=docs,
+        thresholds=thresholds,
+    )
+
+
+def test_off_grid_geometry_is_split_by_what_it_breaks():
+    doc = sheet(
+        symbols=[placed("R1", 0, 0, [pin("1", 10.0, 20.0), pin("2", GRID, 2 * GRID)])],
+        wires=[[(10.0, 20.0), (10.0, 30.0)]],
+        junctions=[(3 * GRID, 4 * GRID)],
+    )
+    findings = {f.rule: f for f in sch_review.rule_off_grid(sheet_ctx(doc))}
+    assert set(findings) == {"readability.off_grid_pin", "readability.off_grid_wire"}
+    assert findings["readability.off_grid_pin"].details["count"] == 1
+    assert findings["readability.off_grid_pin"].severity == "warning"
+    # the on-grid junction and the second pin are not reported
+    assert findings["readability.off_grid_wire"].details["count"] == 2
+
+
+def test_the_grid_is_configurable():
+    doc = sheet(wires=[[(2.54, 2.54), (2.54, 5.08)]])
+    assert sch_review.rule_off_grid(sheet_ctx(doc)) == []
+    strict = sheet_ctx(doc, thresholds={"grid_mm": 2.0})
+    assert [f.rule for f in sch_review.rule_off_grid(strict)] == ["readability.off_grid_wire"]
+
+
+def test_diagonal_wires_are_reported_once():
+    doc = sheet(wires=[[(0, 0), (GRID, GRID)], [(0, 0), (0, GRID)]])
+    findings = sch_review.rule_diagonal_wires(sheet_ctx(doc))
+    assert [f.rule for f in findings] == ["readability.diagonal_wire"]
+    assert findings[0].details["count"] == 1
+
+
+def test_a_tee_without_a_junction_is_not_a_connection():
+    tee = [[(0, 0), (0, 10 * GRID)], [(0, 5 * GRID), (10 * GRID, 5 * GRID)]]
+    findings = sch_review.rule_missing_junction(sheet_ctx(sheet(wires=tee)))
+    assert [f.rule for f in findings] == ["readability.missing_junction"]
+    assert findings[0].details["count"] == 1
+    # the same geometry with the dot is silent
+    with_dot = sheet(wires=tee, junctions=[(0, 5 * GRID)])
+    assert sch_review.rule_missing_junction(sheet_ctx(with_dot)) == []
+
+
+def test_crossing_wires_need_no_junction():
+    crossing = [[(-10, 0), (10, 0)], [(0, -10), (0, 10)]]
+    assert sch_review.rule_missing_junction(sheet_ctx(sheet(wires=crossing))) == []
+
+
+def test_a_wire_that_reaches_a_pin_is_not_dangling():
+    doc = sheet(
+        symbols=[placed("R1", 0, 0, [pin("1", 0.0, 0.0)])],
+        wires=[[(0.0, 0.0), (0.0, 10 * GRID)]],
+        labels=[Label(text="OUT", kind="local", x=0.0, y=10 * GRID)],
+    )
+    assert sch_review.rule_dangling_wire(sheet_ctx(doc)) == []
+
+
+def test_a_wire_that_reaches_nothing_is_dangling():
+    doc = sheet(wires=[[(0.0, 0.0), (0.0, 10 * GRID)]])
+    findings = sch_review.rule_dangling_wire(sheet_ctx(doc))
+    assert findings[0].details["count"] == 2
+
+
+def test_a_wire_into_a_sheet_pin_is_not_dangling():
+    doc = sheet(wires=[[(0.0, 0.0), (0.0, 10 * GRID)]])
+    doc.sheets = [Sheet(name="io", filename="io.kicad_sch", uuid="s", pins=[(0.0, 0.0)])]
+    assert [f.details["count"] for f in sch_review.rule_dangling_wire(sheet_ctx(doc))] == [1]
+
+
+def test_overlapping_symbols_are_reported_as_pairs():
+    pins_a = [pin("1", 0, 0), pin("2", 4 * GRID, 0)]
+    pins_b = [pin("1", GRID, 0), pin("2", 5 * GRID, 0)]
+    doc = sheet(symbols=[placed("R1", 0, 0, pins_a), placed("R2", GRID, 0, pins_b)])
+    findings = sch_review.rule_symbol_overlap(sheet_ctx(doc))
+    assert findings[0].details["examples"] == ["sheet.kicad_sch:R1 / R2"]
+
+
+def test_symbols_side_by_side_do_not_overlap():
+    pins_a = [pin("1", 0, 0), pin("2", 4 * GRID, 0)]
+    pins_b = [pin("1", 20 * GRID, 0), pin("2", 24 * GRID, 0)]
+    doc = sheet(symbols=[placed("R1", 0, 0, pins_a), placed("R2", 20 * GRID, 0, pins_b)])
+    assert sch_review.rule_symbol_overlap(sheet_ctx(doc)) == []
+
+
+def test_items_beyond_the_page_border_are_reported():
+    doc = sheet(
+        symbols=[placed("R1", 400.0, 50.0, [pin("1", 400.0, 50.0)])],
+        wires=[[(10.0, 10.0), (20.0, 20.0)]],
+        paper=(297.0, 210.0),
+    )
+    findings = sch_review.rule_outside_page(sheet_ctx(doc))
+    assert findings[0].details["count"] == 1
+    assert "R1" in findings[0].details["examples"][0]
+
+
+def test_a_sheet_with_no_page_size_is_not_judged():
+    doc = sheet(symbols=[placed("R1", 4000.0, 50.0, [pin("1", 0, 0)])])
+    assert sch_review.rule_outside_page(sheet_ctx(doc)) == []
+
+
+def test_a_crowded_sheet_is_reported():
+    doc = sheet(symbols=[placed(f"R{i}", 0, 0) for i in range(70)])
+    findings = sch_review.rule_sheet_density(sheet_ctx(doc))
+    assert findings[0].details == {"symbols": 70, "limit": 60}
+    relaxed = sheet_ctx(doc, thresholds={"max_symbols_per_sheet": 100})
+    assert sch_review.rule_sheet_density(relaxed) == []
+
+
+def test_mostly_generated_net_names_are_reported():
+    nets = {f"Net-(U1-Pad{i})": [node("U1", str(i)), node("R1", "1")] for i in range(12)}
+    assert sch_review.rule_unnamed_nets(make_ctx(nets))[0].details["named"] == 0
+    named = {f"SIG{i}": [node("U1", str(i)), node("R1", "1")] for i in range(12)}
+    assert sch_review.rule_unnamed_nets(make_ctx(named)) == []
+
+
+def test_a_handful_of_nets_is_not_judged_on_naming():
+    nets = {f"Net-(U1-Pad{i})": [node("U1", str(i)), node("R1", "1")] for i in range(4)}
+    assert sch_review.rule_unnamed_nets(make_ctx(nets)) == []
+
+
+def test_an_empty_title_block_is_reported():
+    doc = sheet()
+    doc.title_block = {"title": "Buffer", "rev": "A"}
+    findings = sch_review.rule_title_block(sheet_ctx(doc))
+    assert findings[0].details["missing"] == ["date", "company"]
+
+
+# -- specification ---------------------------------------------------------
+
+
+def test_passives_must_state_their_ratings():
+    parts = [
+        symbol("R1", properties={"Reference": "R1", "Tolerance": "1%"}),
+        symbol(
+            "C1", value="100n", properties={"Reference": "C1", "Voltage": "50V", "Tolerance": "10%"}
+        ),
+        symbol("C2", value="100n"),
+    ]
+    findings = {
+        f.location.split(":")[-1]: f for f in sch_review.rule_missing_ratings(make_ctx({}, parts))
+    }
+    assert set(findings) == {"R1", "C2"}
+    assert findings["R1"].details["missing"] == ["power"]
+    assert findings["C2"].details["missing"] == ["voltage", "tolerance"]
+
+
+def test_active_parts_need_a_part_number():
+    parts = [
+        symbol("U1", value="LM321", properties={"MPN": "LM321MF/NOPB"}),
+        symbol("U2", value="LM358"),
+        symbol("R1"),
+    ]
+    findings = sch_review.rule_missing_part_number(make_ctx({}, parts))
+    assert [f.location.split(":")[-1] for f in findings] == ["U2"]
+
+
+def test_a_capacitor_is_derated_against_the_rail_it_sits_on():
+    nets = {
+        "+12V": [node("C1", "1"), node("C2", "1"), node("C3", "1")],
+        "GND": [node("C1", "2"), node("C2", "2"), node("C3", "2")],
+    }
+    parts = [
+        symbol("C1", value="100n", properties={"Voltage": "6.3V"}),  # under the rail
+        symbol("C2", value="100n", properties={"Voltage": "16V"}),  # over it, but tight
+        symbol("C3", value="100n", properties={"Voltage": "50V"}),  # comfortable
+    ]
+    findings = {
+        f.location.split(":")[-1]: f
+        for f in sch_review.rule_capacitor_derating(make_ctx(nets, parts))
+    }
+    assert findings["C1"].severity == "error"
+    assert findings["C1"].details == {"rating_v": 6.3, "rail_v": 12.0}
+    assert findings["C2"].severity == "warning"
+    assert "C3" not in findings
+
+
+def test_a_rail_that_names_no_voltage_derates_nothing():
+    nets = {"VCC": [node("C1", "1")], "GND": [node("C1", "2")]}
+    parts = [symbol("C1", value="100n", properties={"Voltage": "6.3V"})]
+    assert sch_review.rule_capacitor_derating(make_ctx(nets, parts)) == []
+
+
+def test_a_sheet_with_no_note_is_reported_once():
+    doc = sheet(symbols=[placed("R1", 0, 0)])
+    assert [f.rule for f in sch_review.rule_design_notes(sheet_ctx(doc))] == [
+        "spec.no_design_notes"
+    ]
+    doc.texts = ["fc = 1/(2 pi R C) = 1.6 kHz"]
+    assert sch_review.rule_design_notes(sheet_ctx(doc)) == []

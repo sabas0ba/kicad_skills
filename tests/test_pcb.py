@@ -89,3 +89,32 @@ def test_info_reports_nets(example_project):
     assert nets["GND"]["class"] == "ground"
     assert nets["+5V"]["class"] == "power"
     assert nets["/MID"]["track_length_mm"] > 0
+
+
+def test_silkscreen_text_carries_its_size_and_visibility(example_pcb):
+    board = pcb.parse(example_pcb)
+    r1 = next(t for t in board.silk_texts if t["footprint"] == "R1")
+    assert r1["height"] > 0 and r1["width"] > 0
+    assert r1["hidden"] is False
+
+
+def test_a_rotated_footprint_turns_its_silkscreen_with_it(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:f" (layer "F.Cu") (at 10 20 90)'
+        '    (property "Reference" "R1" (at 0 2 0) (layer "F.SilkS")'
+        "      (effects (font (size 1 1) (thickness 0.15))))))"
+    )
+    path = tmp_path / "b.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    text = pcb.parse(path).silk_texts[0]
+    # 2 mm below the origin, turned a quarter turn: 2 mm to one side of it
+    assert (round(text["x"], 3), round(text["y"], 3)) == (12.0, 20.0)
+
+
+def test_pad_bbox_follows_the_footprint_rotation():
+    pad = pcb.Pad("1", "smd", "rect", 0.0, 0.0, 0.0, (2.0, 1.0), None, ["F.Cu"], "N")
+    assert pad.bbox() == (-1.0, -0.5, 1.0, 0.5)
+    turned = pad.bbox(angle_offset=90.0)
+    assert (round(turned[0], 6), round(turned[1], 6)) == (-0.5, -1.0)
+    assert pad.bbox(margin=0.5) == (-1.5, -1.0, 1.5, 1.0)

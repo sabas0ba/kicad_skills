@@ -23,7 +23,19 @@ THRESHOLDS = {
     "max_decoupling_distance_mm": 5.0,
     "max_drill_sizes": 6,
     "min_silk_text_height_mm": 0.8,
+    # Placement conventions. A part off the grid or turned to 37 degrees costs
+    # nothing electrically and makes the board unreadable and awkward to place.
+    "placement_grid_mm": 0.5,
+    "rotation_step_deg": 90.0,
+    # A decoupling capacitor whose ground pad has to travel this far to reach a
+    # via has already lost the inductance argument.
+    "max_decoupling_via_mm": 1.5,
+    # Interior angle below which a corner is an acid trap and an impedance step.
+    "min_track_angle_deg": 90.0,
 }
+
+# Copper geometry is stored in nm; anything below this is file noise.
+GEOM_TOL = 0.001
 
 
 def rule(func: Callable[[PcbContext], list[Finding]]):
@@ -508,6 +520,440 @@ def rule_layer_usage(ctx: PcbContext) -> list[Finding]:
             "info",
             "track segments per layer: "
             + ", ".join(f"{k}={v}" for k, v in sorted(per_layer.items())),
+        )
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Artwork readability and buildability: what a layout engineer objects to on
+# sight. DRC passes a board whose silkscreen is unreadable, whose parts sit at
+# 37 degrees and whose decoupling has no way down to the plane.
+# ---------------------------------------------------------------------------
+
+
+def _boxes_overlap(a: tuple[float, ...], b: tuple[float, ...]) -> bool:
+    return (
+        min(a[2], b[2]) - max(a[0], b[0]) > GEOM_TOL
+        and min(a[3], b[3]) - max(a[1], b[1]) > GEOM_TOL
+    )
+
+
+def _silk_bbox(text: dict[str, Any]) -> tuple[float, ...] | None:
+    """Rough extent of a silkscreen string.
+
+    KiCad's stroke font advances roughly 0.75 of the glyph width per character;
+    deliberately on the low side, so the rule reports overlap it is sure of
+    rather than every label that passes near a pad.
+    """
+    height = float(text.get("height") or 0.0)
+    width = float(text.get("width") or height)
+    body = str(text.get("text") or "")
+    if height <= 0 or not body:
+        return None
+    thickness = float(text.get("thickness") or 0.0)
+    span = len(body) * width * 0.75 + thickness
+    extent = height + thickness
+    half_x, half_y = span / 2, extent / 2
+    if round(abs(float(text.get("angle") or 0.0)) % 180) == 90:
+        half_x, half_y = half_y, half_x
+    x, y = float(text["x"]), float(text["y"])
+    return (x - half_x, y - half_y, x + half_x, y + half_y)
+
+
+def _pad_layers(pad: pcb.Pad, board: pcb.Board) -> set[str]:
+    layers: set[str] = set()
+    for layer in pad.layers:
+        if layer.startswith("*"):
+            suffix = layer[1:]
+            layers |= {name for name in board.copper_layers if name.endswith(suffix)}
+            layers |= {f"F{suffix}", f"B{suffix}"}
+        else:
+            layers.add(layer)
+    return layers
+
+
+class _PadIndex:
+    """Pads bucketed by the board cells they cover, so a box query is local.
+
+    Asking "which pads does this label print over" once per silkscreen string is
+    quadratic against the pad list, and a dense board has thousands of both.
+    """
+
+    CELL = 5.0  # mm
+
+    def __init__(self, board: pcb.Board) -> None:
+        self.entries: list[tuple[tuple[float, ...], set[str], str]] = []
+        self.cells: dict[tuple[int, int], list[int]] = defaultdict(list)
+        for fp in board.footprints:
+            for pad in fp.pads:
+                box = pad.bbox(angle_offset=fp.angle)
+                self.entries.append((box, _pad_layers(pad, board), f"{fp.ref}.{pad.number}"))
+                for key in self._keys(box):
+                    self.cells[key].append(len(self.entries) - 1)
+
+    @classmethod
+    def _keys(cls, box: tuple[float, ...]):
+        for cx in range(math.floor(box[0] / cls.CELL), math.floor(box[2] / cls.CELL) + 1):
+            for cy in range(math.floor(box[1] / cls.CELL), math.floor(box[3] / cls.CELL) + 1):
+                yield (cx, cy)
+
+    def near(self, box: tuple[float, ...]):
+        seen: set[int] = set()
+        for key in self._keys(box):
+            for index in self.cells.get(key, ()):
+                if index not in seen:
+                    seen.add(index)
+                    yield self.entries[index]
+
+
+@rule
+def rule_silk_text_size(ctx: PcbContext) -> list[Finding]:
+    """Silkscreen below what the screen printer can hold."""
+    limit = ctx.thresholds["min_silk_text_height_mm"]
+    small = [
+        t
+        for t in ctx.board.silk_texts
+        if not t.get("hidden") and 0 < float(t.get("height") or 0) < limit - 1e-9
+    ]
+    if not small:
+        return []
+    smallest = min(float(t["height"]) for t in small)
+    return [
+        Finding(
+            "silk.text_too_small",
+            "warning",
+            f"{len(small)} silkscreen text(s) below {limit} mm high (smallest {smallest} mm) - "
+            "the fab will print it as a smudge",
+            details={
+                "count": len(small),
+                "examples": [
+                    f"{t.get('footprint') or 'board'}: {t['text']!r} at {t['height']} mm"
+                    for t in small[:8]
+                ],
+            },
+        )
+    ]
+
+
+@rule
+def rule_silk_over_pad(ctx: PcbContext) -> list[Finding]:
+    """Silkscreen printed across a pad.
+
+    Ink on a pad keeps solder off it. It is also the first thing to go when the
+    reference designators are placed by whatever had room rather than by
+    someone who will have to read them on the assembled board.
+    """
+    board = ctx.board
+    pads = _PadIndex(board)
+    collisions = []
+    for text in board.silk_texts:
+        if text.get("hidden"):
+            continue
+        box = _silk_bbox(text)
+        if not box:
+            continue
+        side = "B." if str(text.get("layer", "")).startswith("B.") else "F."
+        for pad_box, layers, label in pads.near(box):
+            if not any(layer.startswith(side) for layer in layers):
+                continue
+            if _boxes_overlap(box, pad_box):
+                collisions.append(f"{text['text']!r} over {label}")
+    collisions = sorted(set(collisions))
+    if not collisions:
+        return []
+    return [
+        Finding(
+            "silk.over_pad",
+            "warning",
+            f"{len(collisions)} silkscreen item(s) print across a pad",
+            details={"count": len(collisions), "examples": collisions[:8]},
+        )
+    ]
+
+
+@rule
+def rule_placement_grid(ctx: PcbContext) -> list[Finding]:
+    """Footprint origins off the placement grid, and odd rotations.
+
+    Neither costs anything electrically; together they are most of why a
+    generated layout looks like a generated layout, and they make every later
+    edit - aligning a row, matching a connector to a mating part - a fight.
+    """
+    grid = ctx.thresholds["placement_grid_mm"]
+    step = ctx.thresholds["rotation_step_deg"]
+    findings = []
+    if grid > 0:
+        off = [
+            f"{fp.ref} at ({round(fp.x, 3)}, {round(fp.y, 3)})"
+            for fp in ctx.board.footprints
+            if abs(fp.x / grid - round(fp.x / grid)) * grid > GEOM_TOL
+            or abs(fp.y / grid - round(fp.y / grid)) * grid > GEOM_TOL
+        ]
+        if off:
+            findings.append(
+                Finding(
+                    "layout.off_grid_placement",
+                    "info",
+                    f"{len(off)} footprint(s) are not on the {grid} mm placement grid",
+                    details={"count": len(off), "examples": off[:8]},
+                )
+            )
+    if step > 0:
+        odd = [
+            f"{fp.ref} at {fp.angle} deg"
+            for fp in ctx.board.footprints
+            if min(fp.angle % step, step - (fp.angle % step)) > 1e-6
+        ]
+        if odd:
+            findings.append(
+                Finding(
+                    "layout.odd_rotation",
+                    "info",
+                    f"{len(odd)} footprint(s) are turned to something other than a "
+                    f"multiple of {step} deg",
+                    details={"count": len(odd), "examples": odd[:8]},
+                )
+            )
+    return findings
+
+
+@rule
+def rule_pad_collision(ctx: PcbContext) -> list[Finding]:
+    """Pads of different footprints sharing the same copper.
+
+    DRC is authoritative here when it can run; this catches the same thing from
+    the geometry alone, which is what is left when the board is being generated
+    rather than edited.
+    """
+    board = ctx.board
+    entries = []
+    for fp in board.footprints:
+        for pad in fp.pads:
+            entries.append((pad.bbox(angle_offset=fp.angle), fp, pad))
+    entries.sort(key=lambda item: item[0][0])
+
+    collisions = []
+    for i, (box_a, fp_a, pad_a) in enumerate(entries):
+        layers_a = _pad_layers(pad_a, board)
+        for box_b, fp_b, pad_b in entries[i + 1 :]:
+            if box_b[0] >= box_a[2] - GEOM_TOL:
+                break  # sorted by left edge
+            if fp_a.ref == fp_b.ref:
+                continue
+            if not layers_a & _pad_layers(pad_b, board):
+                continue
+            if _boxes_overlap(box_a, box_b):
+                collisions.append(f"{fp_a.ref}.{pad_a.number} / {fp_b.ref}.{pad_b.number}")
+    collisions = sorted(set(collisions))
+    if not collisions:
+        return []
+    return [
+        Finding(
+            "layout.pad_collision",
+            "warning",
+            f"{len(collisions)} pad pair(s) from different footprints overlap - "
+            "the parts are placed on top of each other",
+            details={"count": len(collisions), "examples": collisions[:8]},
+        )
+    ]
+
+
+def _track_endpoints(board: pcb.Board) -> dict[tuple[int, int, str], list[int]]:
+    index: dict[tuple[int, int, str], list[int]] = defaultdict(list)
+    for i, track in enumerate(board.tracks):
+        for point in (track.start, track.end):
+            index[(round(point[0] * 1000), round(point[1] * 1000), track.layer)].append(i)
+    return index
+
+
+@rule
+def rule_track_angles(ctx: PcbContext) -> list[Finding]:
+    """Corners tighter than a right angle.
+
+    An acute corner traps etchant, so it keeps etching after the rest of the
+    track is done, and it is a discontinuity for anything fast. Routing at 45
+    degrees costs nothing and avoids both.
+    """
+    limit = ctx.thresholds["min_track_angle_deg"]
+    if limit <= 0:
+        return []
+    board = ctx.board
+    acute = []
+    for key, indices in _track_endpoints(board).items():
+        if len(indices) != 2:
+            continue
+        first, second = (board.tracks[i] for i in indices)
+        if first.net != second.net or "arc" in (first.kind, second.kind):
+            continue
+        point = (key[0] / 1000, key[1] / 1000)
+        vectors = []
+        for track in (first, second):
+            far = (
+                track.end
+                if math.dist(track.start, point) < math.dist(track.end, point)
+                else (track.start)
+            )
+            length = math.dist(far, point)
+            if length > GEOM_TOL:
+                vectors.append(((far[0] - point[0]) / length, (far[1] - point[1]) / length))
+        if len(vectors) != 2:
+            continue
+        cosine = max(-1.0, min(1.0, vectors[0][0] * vectors[1][0] + vectors[0][1] * vectors[1][1]))
+        angle = math.degrees(math.acos(cosine))
+        if angle < limit - 1e-6:
+            acute.append(
+                f"{first.net or '(no net)'} at "
+                f"({round(point[0], 2)}, {round(point[1], 2)}): {round(angle)} deg"
+            )
+    if not acute:
+        return []
+    return [
+        Finding(
+            "route.acute_angle",
+            "info",
+            f"{len(acute)} track corner(s) tighter than {limit} deg",
+            details={"count": len(acute), "examples": sorted(acute)[:8]},
+        )
+    ]
+
+
+@rule
+def rule_track_stubs(ctx: PcbContext) -> list[Finding]:
+    """Track ends that connect to nothing.
+
+    Copper with one free end is an antenna the schematic never asked for, and
+    it is usually the tail of a route that was abandoned half way.
+    """
+    board = ctx.board
+    if not board.tracks:
+        return []
+    zone_layers = {(z.net, layer) for z in board.zones if not z.keepout for layer in z.layers}
+    via_points = {(round(v.x * 1000), round(v.y * 1000)) for v in board.vias}
+    pad_boxes = [
+        (pad.bbox(angle_offset=fp.angle), _pad_layers(pad, board))
+        for fp in board.footprints
+        for pad in fp.pads
+    ]
+    endpoints = _track_endpoints(board)
+    # Only same-layer, same-net copper can pick up a loose end, so the "does it
+    # land mid-track" scan never has to look at the whole board.
+    siblings: dict[tuple[str, str], list[pcb.Track]] = defaultdict(list)
+    for track in board.tracks:
+        siblings[(track.layer, track.net)].append(track)
+
+    stubs = []
+    for track in board.tracks:
+        if (track.net, track.layer) in zone_layers:
+            continue  # a track that ends inside a pour of its own net is connected
+        for point in (track.start, track.end):
+            key = (round(point[0] * 1000), round(point[1] * 1000), track.layer)
+            if len(endpoints.get(key, ())) > 1 or (key[0], key[1]) in via_points:
+                continue
+            if any(
+                track.layer in layers
+                and box[0] <= point[0] <= box[2]
+                and box[1] <= point[1] <= box[3]
+                for box, layers in pad_boxes
+            ):
+                continue
+            if any(
+                other is not track and _on_track(point, other)
+                for other in siblings[(track.layer, track.net)]
+            ):
+                continue
+            stubs.append(
+                f"{track.net or '(no net)'} on {track.layer} at "
+                f"({round(point[0], 2)}, {round(point[1], 2)})"
+            )
+    stubs = sorted(set(stubs))
+    if not stubs:
+        return []
+    return [
+        Finding(
+            "route.stub",
+            "warning",
+            f"{len(stubs)} track end(s) reach no pad, via or other track",
+            details={"count": len(stubs), "examples": stubs[:8]},
+        )
+    ]
+
+
+def _on_track(point: tuple[float, float], track: pcb.Track) -> bool:
+    a, b = track.start, track.end
+    if not (min(a[0], b[0]) - GEOM_TOL <= point[0] <= max(a[0], b[0]) + GEOM_TOL):
+        return False
+    if not (min(a[1], b[1]) - GEOM_TOL <= point[1] <= max(a[1], b[1]) + GEOM_TOL):
+        return False
+    cross = (b[0] - a[0]) * (point[1] - a[1]) - (b[1] - a[1]) * (point[0] - a[0])
+    length = math.hypot(b[0] - a[0], b[1] - a[1]) or 1.0
+    return abs(cross) / length <= GEOM_TOL
+
+
+@rule
+def rule_decoupling_via(ctx: PcbContext) -> list[Finding]:
+    """Decoupling capacitors with no via down to the plane.
+
+    The capacitor's job is to close a high-frequency loop, and the loop runs
+    through the ground plane. A ground pad that has to travel millimetres of
+    track to find a via has more inductance in the path than the part removes,
+    however close the capacitor sits to the pin.
+    """
+    board = ctx.board
+    if not any(ctx.net_class_of(z.net) == "ground" for z in board.zones if not z.keepout):
+        return []  # no plane to reach: layout.no_ground_plane covers that case
+    if not board.vias:
+        return []
+    limit = ctx.thresholds["max_decoupling_via_mm"]
+    findings = []
+    for fp in board.footprints:
+        if not fp.ref.startswith("C"):
+            continue
+        nets = {ctx.net_class_of(p.net): p for p in fp.pads if p.net}
+        if "power" not in nets or "ground" not in nets:
+            continue
+        pad = nets["ground"]
+        vias = [v for v in board.vias if v.net == pad.net]
+        if not vias:
+            continue
+        distance = min(math.dist((pad.x, pad.y), (v.x, v.y)) for v in vias)
+        if distance > limit:
+            findings.append(
+                Finding(
+                    "layout.decoupling_via",
+                    "warning",
+                    f"{fp.ref}: nearest {pad.net} via is {round(distance, 2)} mm from its "
+                    f"ground pad (limit {limit} mm) - the return loop runs through that track",
+                    location=fp.ref,
+                    details={"distance_mm": round(distance, 2), "limit_mm": limit},
+                )
+            )
+    return findings
+
+
+@rule
+def rule_track_width_consistency(ctx: PcbContext) -> list[Finding]:
+    """Nets routed at several different widths.
+
+    A width change mid-net is a deliberate act - a neck-down into a fine-pitch
+    pad, a fat power spine - and worth being deliberate about. Three or more
+    widths on one net is usually nobody having decided.
+    """
+    by_net: dict[str, set[float]] = defaultdict(set)
+    for track in ctx.board.tracks:
+        if track.net:
+            by_net[track.net].add(round(track.width, 3))
+    noisy = {net: sorted(widths) for net, widths in by_net.items() if len(widths) >= 3}
+    if not noisy:
+        return []
+    return [
+        Finding(
+            "route.mixed_track_widths",
+            "info",
+            f"{len(noisy)} net(s) are routed at three or more different widths",
+            details={
+                "count": len(noisy),
+                "examples": [f"{net}: {widths}" for net, widths in sorted(noisy.items())[:8]],
+            },
         )
     ]
 

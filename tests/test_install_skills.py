@@ -47,6 +47,7 @@ def test_there_is_a_guide_for_every_area():
     assert set(GUIDES) == {
         "datasheet-analysis",
         "eda-environment",
+        "kicad-design-gate",
         "kicad-fabrication-output",
         "kicad-pcb-review",
         "kicad-schematic-review",
@@ -55,7 +56,7 @@ def test_there_is_a_guide_for_every_area():
 
 
 def test_every_guide_carries_the_header_a_tool_selects_on():
-    """The YAML front matter is what lets a tool pick one guide out of six."""
+    """The YAML front matter is what lets a tool pick one guide out of the set."""
     for name in GUIDES:
         text = (GUIDE_DIR / f"{name}.md").read_text()
         assert text.startswith("---\n"), name

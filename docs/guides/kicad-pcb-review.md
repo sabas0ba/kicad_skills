@@ -1,12 +1,12 @@
 ---
 name: kicad-pcb-review
-description: Read a KiCad board (.kicad_pcb) and review the artwork - DRC, schematic parity, unrouted nets, track widths, vias and drills, edge clearance, decoupling placement, ground pour, silkscreen, placement - and render the layers and 3D views as PNGs for visual inspection. Use when asked to review, check or look at a PCB layout, artwork, routing, stackup or fabrication readiness.
+description: Read a KiCad board (.kicad_pcb) and review the artwork - DRC, schematic parity, unrouted nets, track widths, vias and drills, edge clearance, decoupling placement, ground pour, silkscreen over pads and text size, placement grid and rotation, overlapping footprints, track stubs and acute corners, decoupling vias - and render the layers and 3D views as PNGs for visual inspection. Use when asked to review, check or look at a PCB layout, artwork, routing, stackup or fabrication readiness.
 ---
 
 # KiCad PCB / artwork review
 
 > One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI — [all six](README.md). Plain Markdown: read it directly, or hand it to
+> `eda` CLI — [all seven](README.md). Plain Markdown: read it directly, or hand it to
 > whatever assistant you use.
 
 Reads `.kicad_pcb` files, runs KiCad's DRC and renders the artwork so it can be
@@ -17,6 +17,7 @@ looked at. Runs in the container (see the `eda-environment` guide).
 ```bash
 ./bin/eda.sh pcb info   hardware/                      # stackup, footprints, nets, routing stats
 ./bin/eda.sh pcb review hardware/ --text               # DRC + layout heuristics
+./bin/eda.sh gate       hardware/ --policy ai-generated --text  # one pass/fail verdict
 ./bin/eda.sh pcb render hardware/ -o /tmp/art --dpi 300
 ./bin/eda.sh pcb glb    hardware/ -o /tmp/board.glb    # 3D model for a browser
 ./bin/eda.sh pcb electrical hardware/                  # current, resistance, impedance
@@ -106,11 +107,28 @@ mismatches).
 | `fab.many_drill_sizes` | 6 | drill count drives fab cost |
 | `silk.missing_reference` | — | parts without a visible designator |
 | `mechanical.no_mounting_holes`, `test.no_testpoints` | — | informational |
+| `silk.over_pad` | — | silkscreen printed across a pad: ink on a pad keeps solder off it |
+| `silk.text_too_small` | 0.8 mm | below the screen printer's limit it comes back a smudge |
+| `layout.pad_collision` | — | pads of two footprints sharing copper - parts placed on top of each other |
+| `layout.off_grid_placement` | 0.5 mm | footprint origins off the placement grid |
+| `layout.odd_rotation` | 90 deg | parts turned to something other than a multiple of it |
+| `layout.decoupling_via` | 1.5 mm | decoupling ground pad to the nearest via: the return loop runs through whatever separates them |
+| `route.stub` | — | a track end reaching no pad, via or other track |
+| `route.acute_angle` | 90 deg | corners that trap etchant and step the impedance |
+| `route.mixed_track_widths` | 3 widths | a net nobody decided the width of |
 
 Override any threshold: `--threshold min_track_mm=0.2 --threshold max_decoupling_distance_mm=3`.
+The full set: `min_track_mm`, `min_via_drill_mm`, `min_annular_ring_mm`,
+`min_edge_clearance_mm`, `max_decoupling_distance_mm`, `max_drill_sizes`,
+`min_silk_text_height_mm`, `placement_grid_mm`, `rotation_step_deg`,
+`max_decoupling_via_mm`, `min_track_angle_deg`.
 Use the fab's real capability, not the defaults, when the fab is known.
 
 Exit code is `2` when there is at least one error.
+
+`eda gate` turns the board review and the schematic review into a single
+verdict against a policy, which is what to use when the layout is being
+generated rather than drawn: see the `kicad-design-gate` guide.
 
 A rule that fires more than six times is folded into a single finding carrying
 the count and the first examples (`details.collapsed`), so one noisy rule cannot

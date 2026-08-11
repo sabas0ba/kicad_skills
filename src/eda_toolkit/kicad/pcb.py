@@ -34,6 +34,19 @@ class Pad:
             return None
         return (min(self.size) - self.drill) / 2.0
 
+    def bbox(self, angle_offset: float = 0.0, margin: float = 0.0) -> tuple[float, ...]:
+        """Axis-aligned extent of the pad, exact for a rotated rectangle.
+
+        ``angle_offset`` is the parent footprint's orientation: the pad angle in
+        the file is relative to the footprint, so the two add up.
+        """
+        rad = math.radians(self.angle + angle_offset)
+        cos_a, sin_a = abs(math.cos(rad)), abs(math.sin(rad))
+        w, h = self.size
+        ex = (w * cos_a + h * sin_a) / 2 + margin
+        ey = (w * sin_a + h * cos_a) / 2 + margin
+        return (self.x - ex, self.y - ey, self.x + ex, self.y + ey)
+
 
 @dataclass
 class Footprint:
@@ -210,6 +223,48 @@ def _layer_list(node: SNode | None) -> list[str]:
     return [str(a) for a in node.atoms()]
 
 
+def _is_hidden(node: SNode) -> bool:
+    """``hide`` is a bare atom up to KiCad 7 and ``(hide yes)`` from KiCad 8."""
+    if node.flag("hide"):
+        return True
+    return any(str(a) == "hide" for a in node.atoms())
+
+
+def _text_effects(node: SNode) -> tuple[float, float, float]:
+    """``(height, width, thickness)`` in mm; KiCad writes ``(size height width)``."""
+    effects = node.child("effects")
+    font = effects.child("font") if effects else None
+    size = font.child("size") if font else None
+    atoms = [a for a in (size.atoms() if size else []) if isinstance(a, (int, float))]
+    height = float(atoms[0]) if atoms else 0.0
+    width = float(atoms[1]) if len(atoms) > 1 else height
+    thickness = float(font.value("thickness", default=0.0) or 0.0) if font else 0.0
+    return (height, width, thickness)
+
+
+def _silk_text(node: SNode, text: str, fp: Footprint | None) -> dict[str, Any]:
+    """One silkscreen text entry, positioned in board coordinates."""
+    tx, ty, angle = _xy(node.child("at"))
+    if fp is not None:
+        # Footprint text is stored in footprint coordinates and turns with the
+        # part, exactly like a pad does.
+        rx, ry = _rotate(tx, ty, fp.angle)
+        tx, ty = fp.x + rx, fp.y + ry
+    height, width, thickness = _text_effects(node)
+    return {
+        "text": text,
+        "layer": str(node.value("layer", default="")),
+        "x": tx,
+        "y": ty,
+        "angle": angle,
+        "height": height,
+        "width": width,
+        "thickness": thickness,
+        "hidden": _is_hidden(node),
+        "footprint": fp.ref if fp is not None else "",
+    }
+
+
 def parse(path: str | os.PathLike[str]) -> Board:
     p = Path(path)
     if not p.exists():
@@ -334,31 +389,11 @@ def parse(path: str | os.PathLike[str]) -> Board:
 
         # Reference/value text: KiCad <= 7 used fp_text, KiCad >= 8 uses property.
         for text_node in fp_node.walk("fp_text"):
-            layer = str(text_node.value("layer", default=""))
-            if is_silk_layer(layer):
-                tx, ty, _ = _xy(text_node.child("at"))
-                board.silk_texts.append(
-                    {
-                        "text": str(text_node.atom(1, "")),
-                        "layer": layer,
-                        "x": fp.x + tx,
-                        "y": fp.y + ty,
-                        "footprint": fp.ref,
-                    }
-                )
+            if is_silk_layer(str(text_node.value("layer", default=""))):
+                board.silk_texts.append(_silk_text(text_node, str(text_node.atom(1, "")), fp))
         for prop_node in fp_node.children("property"):
-            layer = str(prop_node.value("layer", default=""))
-            if is_silk_layer(layer):
-                tx, ty, _ = _xy(prop_node.child("at"))
-                board.silk_texts.append(
-                    {
-                        "text": str(prop_node.atom(1, "")),
-                        "layer": layer,
-                        "x": fp.x + tx,
-                        "y": fp.y + ty,
-                        "footprint": fp.ref,
-                    }
-                )
+            if is_silk_layer(str(prop_node.value("layer", default=""))):
+                board.silk_texts.append(_silk_text(prop_node, str(prop_node.atom(1, "")), fp))
 
     for seg in root.children("segment"):
         sx, sy, _ = _xy(seg.child("start"))
@@ -459,12 +494,8 @@ def parse(path: str | os.PathLike[str]) -> Board:
                 board.edges.append(edge)
 
     for text in root.children("gr_text"):
-        layer = str(text.value("layer", default=""))
-        if is_silk_layer(layer):
-            tx, ty, _ = _xy(text.child("at"))
-            board.silk_texts.append(
-                {"text": str(text.atom(0, "")), "layer": layer, "x": tx, "y": ty, "footprint": ""}
-            )
+        if is_silk_layer(str(text.value("layer", default=""))):
+            board.silk_texts.append(_silk_text(text, str(text.atom(0, "")), None))
 
     return board
 

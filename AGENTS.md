@@ -47,7 +47,17 @@ Add the rule, then add a test in `tests/test_sch_review.py` /
 `PcbContext.from_board` constructors — no filesystem needed.
 
 Keep severities honest: `error` = the design is broken, `warning` = a human must
-judge it, `info` = context.
+judge it, `info` = context. A rule that reads the *drawing* rather than the
+netlist (grid, overlap, page) belongs in the `readability.*` family; one about
+what a part has to state to be orderable belongs in `spec.*`. Anything tunable
+goes in the module's `THRESHOLDS` dict rather than as a literal in the rule, so
+`--threshold key=value` reaches it.
+
+Then decide what the rule does to `eda gate`. A rule that *describes* the design
+rather than faulting it (`board.size`, `layout.ground_plane`) must be added to
+`CONTEXT_RULES` in `src/eda_toolkit/gate.py`, or a policy could promote it into
+an error no correct design can clear. A rule a generated design has to get right
+belongs in `_AI_BLOCKING` in the same file. `tests/test_gate.py` covers both.
 
 ## Tuning a rule
 
@@ -79,7 +89,11 @@ are folded into one entry by `util.collapse_findings`, so prefer grading a rule
 ## Test fixtures
 
 `tests/fixtures/example_project` is a small, DRC-clean KiCad project (RC filter
-+ LM321 buffer). Its symbols come from the real KiCad libraries; its footprints
++ LM321 buffer) that also passes every built-in gate policy. It states what it
+expects of a design: ratings and tolerances on the passives, manufacturer part
+numbers on the actives, and a sheet note explaining the values. Keep it that way
+— a new `spec.*` or `readability.*` finding there means either the rule or the
+fixture drifted. Its symbols come from the real KiCad libraries; its footprints
 are simplified, which is why DRC reports `lib_footprint_mismatch` for each of
 them. Keep the project clean: a new error there means the toolkit changed
 behaviour. Its own README documents the two constraints that are easy to break
@@ -91,7 +105,8 @@ by accident — no KiCad 10 only tokens, and the ground pour stays filled.
 * **`docs/guides/`** — one usage guide per area, and the source of truth for how
   to *use* the toolkit well. Read the one that matches the task before doing it:
   `datasheet-analysis`, `spice-simulation`, `kicad-schematic-review`,
-  `kicad-pcb-review`, `kicad-fabrication-output`, `eda-environment`.
+  `kicad-pcb-review`, `kicad-design-gate`, `kicad-fabrication-output`,
+  `eda-environment`.
 * `docs/examples/` — committed sample output, regenerable with the commands
   documented there.
 

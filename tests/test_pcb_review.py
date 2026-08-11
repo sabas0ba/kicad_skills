@@ -276,3 +276,165 @@ def test_review_of_the_example_board(example_project):
     assert "drc.unavailable" in rules
     assert "layout.no_decoupling" not in rules
     assert "route.unrouted_net" not in rules
+
+
+# -- artwork readability and buildability ----------------------------------
+
+
+def silk(text, x, y, height=1.0, layer="F.SilkS", angle=0, hidden=False, footprint=""):
+    return {
+        "text": text,
+        "layer": layer,
+        "x": x,
+        "y": y,
+        "angle": angle,
+        "height": height,
+        "width": height,
+        "thickness": 0.15,
+        "hidden": hidden,
+        "footprint": footprint,
+    }
+
+
+def test_silkscreen_below_the_print_limit_is_reported():
+    board = board_from(silk=[silk("R1", 5, 5, height=0.4), silk("R2", 9, 5, height=1.0)])
+    findings = pcb_review.rule_silk_text_size(ctx_for(board))
+    assert findings[0].details["count"] == 1
+    assert (
+        pcb_review.rule_silk_text_size(ctx_for(board, thresholds={"min_silk_text_height_mm": 0.2}))
+        == []
+    )
+
+
+def test_hidden_silkscreen_is_not_judged():
+    board = board_from(silk=[silk("R1", 5, 5, height=0.4, hidden=True)])
+    assert pcb_review.rule_silk_text_size(ctx_for(board)) == []
+
+
+def test_silkscreen_printed_across_a_pad():
+    board = board_from(
+        footprints=[footprint("R1", 10, 10, [pad("1", 10, 10, "SIG", size=(2.0, 2.0))])],
+        silk=[silk("R1", 10, 10, height=1.0, footprint="R1")],
+    )
+    findings = pcb_review.rule_silk_over_pad(ctx_for(board))
+    assert findings[0].details["examples"] == ["'R1' over R1.1"]
+
+
+def test_silkscreen_clear_of_the_pad_is_quiet():
+    board = board_from(
+        footprints=[footprint("R1", 10, 10, [pad("1", 10, 10, "SIG", size=(1.0, 1.0))])],
+        silk=[silk("R1", 10, 14, height=1.0, footprint="R1")],
+    )
+    assert pcb_review.rule_silk_over_pad(ctx_for(board)) == []
+
+
+def test_back_silkscreen_is_not_matched_against_front_pads():
+    board = board_from(
+        footprints=[footprint("R1", 10, 10, [pad("1", 10, 10, "SIG", size=(2.0, 2.0))])],
+        silk=[silk("R1", 10, 10, layer="B.SilkS")],
+    )
+    assert pcb_review.rule_silk_over_pad(ctx_for(board)) == []
+
+
+def test_placement_off_the_grid_and_at_an_odd_angle():
+    board = board_from(
+        footprints=[
+            footprint("R1", 10.0, 10.0, []),
+            footprint("R2", 10.3, 10.0, []),
+            footprint("R3", 10.5, 10.0, []),
+        ]
+    )
+    board.footprints[2].angle = 37.0
+    board.footprints[0].angle = 270.0
+    findings = {f.rule: f for f in pcb_review.rule_placement_grid(ctx_for(board))}
+    assert findings["layout.off_grid_placement"].details["count"] == 1
+    assert findings["layout.odd_rotation"].details["examples"] == ["R3 at 37.0 deg"]
+
+
+def test_a_finer_placement_grid_can_be_asked_for():
+    board = board_from(footprints=[footprint("R1", 10.3, 10.0, [])])
+    ctx = ctx_for(board, thresholds={"placement_grid_mm": 0.1})
+    assert "layout.off_grid_placement" not in rules_of(pcb_review.rule_placement_grid(ctx))
+
+
+def test_pads_of_two_footprints_on_the_same_copper():
+    board = board_from(
+        footprints=[
+            footprint("U1", 10, 10, [pad("1", 10, 10, "A", size=(2.0, 2.0))]),
+            footprint("C1", 11, 10, [pad("1", 11, 10, "B", size=(2.0, 2.0))]),
+        ]
+    )
+    findings = pcb_review.rule_pad_collision(ctx_for(board))
+    assert findings[0].details["examples"] == ["U1.1 / C1.1"]
+
+
+def test_pads_on_opposite_sides_do_not_collide():
+    top = pad("1", 10, 10, "A", size=(2.0, 2.0))
+    bottom = pcb.Pad("1", "smd", "rect", 10, 10, 0, (2.0, 2.0), None, ["B.Cu"], "B")
+    board = board_from(
+        footprints=[footprint("U1", 10, 10, [top]), footprint("C1", 10, 10, [bottom])]
+    )
+    assert pcb_review.rule_pad_collision(ctx_for(board)) == []
+
+
+def test_an_acute_corner_is_reported_and_a_right_angle_is_not():
+    acute = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 1, 1, net="S")])
+    assert pcb_review.rule_track_angles(ctx_for(acute))[0].details["count"] == 1
+    right = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 5, 5, net="S")])
+    assert pcb_review.rule_track_angles(ctx_for(right)) == []
+
+
+def test_a_track_end_that_reaches_nothing_is_a_stub():
+    board = board_from(
+        footprints=[footprint("R1", 0, 0, [pad("1", 0, 0, "S", size=(1.0, 1.0))])],
+        tracks=[track(0, 0, 5, 0, net="S")],
+    )
+    findings = pcb_review.rule_track_stubs(ctx_for(board))
+    assert findings[0].details["count"] == 1
+    assert findings[0].details["examples"] == ["S on F.Cu at (5, 0)"]
+
+
+def test_a_track_between_two_pads_is_not_a_stub():
+    board = board_from(
+        footprints=[
+            footprint("R1", 0, 0, [pad("1", 0, 0, "S", size=(1.0, 1.0))]),
+            footprint("R2", 5, 0, [pad("1", 5, 0, "S", size=(1.0, 1.0))]),
+        ],
+        tracks=[track(0, 0, 5, 0, net="S")],
+    )
+    assert pcb_review.rule_track_stubs(ctx_for(board)) == []
+
+
+def test_a_track_ending_in_a_pour_of_its_own_net_is_connected():
+    board = board_from(
+        tracks=[track(0, 0, 5, 0, net="GND")],
+        zones=[pcb.Zone(net="GND", layers=["F.Cu"], filled=True)],
+    )
+    assert pcb_review.rule_track_stubs(ctx_for(board)) == []
+
+
+def test_decoupling_without_a_via_to_the_plane():
+    caps = [pad("1", 10, 10, "+3V3"), pad("2", 11, 10, "GND")]
+    board = board_from(
+        footprints=[footprint("C1", 10, 10, caps)],
+        zones=[pcb.Zone(net="GND", layers=["B.Cu"], filled=True)],
+        vias=[pcb.Via(30, 30, 0.6, 0.3, ["F.Cu", "B.Cu"], 1, "GND")],
+    )
+    findings = pcb_review.rule_decoupling_via(ctx_for(board))
+    assert findings[0].location == "C1"
+    board.vias = [pcb.Via(11.5, 10, 0.6, 0.3, ["F.Cu", "B.Cu"], 1, "GND")]
+    assert pcb_review.rule_decoupling_via(ctx_for(board)) == []
+
+
+def test_a_net_routed_at_three_widths():
+    board = board_from(
+        tracks=[
+            track(0, 0, 1, 0, width=0.2, net="D0"),
+            track(1, 0, 2, 0, width=0.3, net="D0"),
+            track(2, 0, 3, 0, width=0.4, net="D0"),
+            track(0, 5, 1, 5, width=0.2, net="D1"),
+            track(1, 5, 2, 5, width=0.3, net="D1"),
+        ]
+    )
+    findings = pcb_review.rule_track_width_consistency(ctx_for(board))
+    assert findings[0].details["examples"] == ["D0: [0.2, 0.3, 0.4]"]

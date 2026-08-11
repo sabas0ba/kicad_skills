@@ -6,7 +6,7 @@ description: Produce the manufacturing package from a KiCad project - Gerbers, E
 # Fabrication output
 
 > One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI — [all six](README.md). Plain Markdown: read it directly, or hand it to
+> `eda` CLI — [all seven](README.md). Plain Markdown: read it directly, or hand it to
 > whatever assistant you use.
 
 Turns a finished board into the files a manufacturer accepts. Runs in the

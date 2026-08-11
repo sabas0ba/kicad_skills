@@ -6,7 +6,7 @@ description: Simulate analog circuits with ngspice - DC operating point, DC swee
 # Analog simulation (ngspice)
 
 > One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI — [all six](README.md). Plain Markdown: read it directly, or hand it to
+> `eda` CLI — [all seven](README.md). Plain Markdown: read it directly, or hand it to
 > whatever assistant you use.
 
 ngspice runs inside the container (see the `eda-environment` guide), the same engine

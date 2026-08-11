@@ -87,6 +87,21 @@ class Symbol:
     def unannotated(self) -> bool:
         return self.reference.endswith("?") or not self.reference
 
+    def bbox(self, margin: float = 0.0) -> tuple[float, float, float, float] | None:
+        """Sheet-space extent of the symbol, taken from its pin endpoints.
+
+        The library body outline is not carried in the instance, so this is the
+        smallest box the symbol certainly occupies rather than the box KiCad
+        draws. It understates a part with few pins, which is the safe direction:
+        a rule built on it reports overlap only where copper-level pins really
+        do collide. ``None`` when there are fewer than two pins to span.
+        """
+        if len(self.pins) < 2:
+            return None
+        xs = [p.x for p in self.pins]
+        ys = [p.y for p in self.pins]
+        return (min(xs) - margin, min(ys) - margin, max(xs) + margin, max(ys) + margin)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "reference": self.reference,
@@ -130,6 +145,27 @@ class Sheet:
     filename: str
     uuid: str
     parent: str = ""
+    pins: list[tuple[float, float]] = field(default_factory=list)
+
+
+# KiCad's page presets, landscape (width, height) in mm. A `(paper "A4"
+# portrait)` swaps them; `(paper "User" w h)` states its own.
+PAPER_SIZES_MM: dict[str, tuple[float, float]] = {
+    "A0": (1189.0, 841.0),
+    "A1": (841.0, 594.0),
+    "A2": (594.0, 420.0),
+    "A3": (420.0, 297.0),
+    "A4": (297.0, 210.0),
+    "A5": (210.0, 148.0),
+    "A": (279.4, 215.9),
+    "B": (431.8, 279.4),
+    "C": (558.8, 431.8),
+    "D": (863.6, 558.8),
+    "E": (1117.6, 863.6),
+    "USLetter": (279.4, 215.9),
+    "USLegal": (355.6, 215.9),
+    "USLedger": (431.8, 279.4),
+}
 
 
 @dataclass
@@ -137,11 +173,14 @@ class SchematicDoc:
     path: Path
     version: int
     generator: str
+    paper: str = ""
+    paper_size: tuple[float, float] | None = None
     symbols: list[Symbol] = field(default_factory=list)
     labels: list[Label] = field(default_factory=list)
     wires: list[Wire] = field(default_factory=list)
     junctions: list[tuple[float, float]] = field(default_factory=list)
     no_connects: list[tuple[float, float]] = field(default_factory=list)
+    bus_entries: list[tuple[tuple[float, float], tuple[float, float]]] = field(default_factory=list)
     sheets: list[Sheet] = field(default_factory=list)
     texts: list[str] = field(default_factory=list)
     title_block: dict[str, str] = field(default_factory=dict)
@@ -239,6 +278,19 @@ def parse(path: str | Path) -> SchematicDoc:
         generator=str(root.value("generator", default="")),
     )
 
+    paper = root.child("paper")
+    if paper:
+        atoms = paper.atoms()
+        doc.paper = str(atoms[0]) if atoms else ""
+        numeric = [a for a in atoms[1:] if isinstance(a, (int, float))]
+        if len(numeric) >= 2:
+            doc.paper_size = (float(numeric[0]), float(numeric[1]))
+        else:
+            preset = PAPER_SIZES_MM.get(doc.paper)
+            if preset:
+                portrait = any(str(a).lower() == "portrait" for a in atoms[1:])
+                doc.paper_size = (preset[1], preset[0]) if portrait else preset
+
     tb = root.child("title_block")
     if tb:
         for key in ("title", "date", "rev", "company"):
@@ -327,14 +379,28 @@ def parse(path: str | Path) -> SchematicDoc:
             atoms = at.atoms()
             doc.no_connects.append((float(atoms[0]), float(atoms[1])))
 
+    for node in root.children("bus_entry"):
+        at = node.child("at")
+        size = node.child("size")
+        if at and size:
+            ax, ay = float(at.atom(0, 0)), float(at.atom(1, 0))
+            dx, dy = float(size.atom(0, 0)), float(size.atom(1, 0))
+            doc.bus_entries.append(((ax, ay), (ax + dx, ay + dy)))
+
     for node in root.children("sheet"):
         props = _prop_map(node)
+        pins: list[tuple[float, float]] = []
+        for pin_node in node.children("pin"):
+            at = pin_node.child("at")
+            if at:
+                pins.append((float(at.atom(0, 0)), float(at.atom(1, 0))))
         doc.sheets.append(
             Sheet(
                 name=props.get("Sheetname", props.get("Sheet name", "")),
                 filename=props.get("Sheetfile", props.get("Sheet file", "")),
                 uuid=str(node.value("uuid", default="")),
                 parent=p.name,
+                pins=pins,
             )
         )
 
