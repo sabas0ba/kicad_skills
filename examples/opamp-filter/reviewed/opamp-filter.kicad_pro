@@ -1,0 +1,5 @@
+{
+  "board": {"design_settings": {"rules": {"min_track_width": 0.15}}},
+  "meta": {"filename": "opamp-filter.kicad_pro", "version": 1},
+  "sheets": [["efb028ab-a5b5-5d27-b654-08a8ba6b5d9d", "Root"]]
+}

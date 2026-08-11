@@ -2359,10 +2359,378 @@ def pico_carrier() -> Design:
     return replace(design, tracks=tracks)
 
 
+def _passive(ref, lib, value, footprint, sheet, board, angle=0.0, **fields):
+    return Part(ref, lib, value, footprint, sheet, board, angle=angle, fields=fields)
+
+
+OPAMP = "Amplifier_Operational:MCP6001R"
+YAGEO = "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
+SAMSUNG = "https://product.samsungsem.com/mlcc/{}.do"
+
+
+def opamp_filter() -> Design:
+    """A 1 kHz Sallen-Key low pass on a single 5 V supply.
+
+    The part that makes this an analogue example rather than an arrangement of
+    parts is what "ground" means. On one supply the signal has to sit somewhere
+    in the middle of the rail, so there are two grounds: GND, which is the
+    supply return, and VREF at half the rail, which is what the filter is
+    referenced to. R3/R4 make VREF and U2 buffers it, because the filter's
+    return current flows into that node through C2 - into a bare divider that is
+    a 50 kohm source impedance and the filter is not the filter any more.
+
+    The values are a Butterworth-ish pair rather than the textbook one: equal
+    10 k resistors with 22 nF and 10 nF give f = 1073 Hz and Q = 0.742, where
+    Butterworth wants Q = 0.707 and 11 nF. 10 nF is a value one can buy in C0G
+    and 11 nF is not, and the sheet says so rather than implying the arithmetic
+    came out exactly.
+
+    C0G matters more than the arithmetic: an X7R of the same value loses a third
+    of its capacitance over the rail's range and the corner moves with it, which
+    is why the two filter capacitors state a dielectric and nothing else does.
+    """
+    parts = [
+        _passive(
+            "J1",
+            "Connector:Conn_01x02_Pin",
+            "IN",
+            "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+            (30.0, 100.0),
+            (8.0, 18.0, 0.0),
+            MPN="61300211121",
+            Manufacturer="Wurth Elektronik",
+            Datasheet="https://www.we-online.com/components/products/datasheet/61300211121.pdf",
+        ),
+        _passive(
+            "C3",
+            "Device:C",
+            "1u",
+            "Capacitor_SMD:C_0805_2012Metric",
+            (55.0, 100.0),
+            (16.0, 18.0, 90.0),
+            Voltage="25V",
+            Tolerance="10%",
+            MPN="CL21B105KBFNNNE",
+            Manufacturer="Samsung",
+            Datasheet=SAMSUNG.format("CL21B105KBFNNNE"),
+        ),
+        _passive(
+            "R5",
+            "Device:R",
+            "100k",
+            "Resistor_SMD:R_0805_2012Metric",
+            (70.0, 130.0),
+            (24.0, 26.0, 0.0),
+            Tolerance="1%",
+            Power="0.125W",
+            MPN="RC0805FR-07100KL",
+            Manufacturer="Yageo",
+            Datasheet=YAGEO,
+        ),
+        _passive(
+            "R1",
+            "Device:R",
+            "10k",
+            "Resistor_SMD:R_0805_2012Metric",
+            (85.0, 100.0),
+            (26.0, 18.0, 0.0),
+            angle=90.0,
+            Tolerance="1%",
+            Power="0.125W",
+            MPN="RC0805FR-0710KL",
+            Manufacturer="Yageo",
+            Datasheet=YAGEO,
+        ),
+        _passive(
+            "R2",
+            "Device:R",
+            "10k",
+            "Resistor_SMD:R_0805_2012Metric",
+            (115.0, 100.0),
+            (36.0, 18.0, 0.0),
+            angle=90.0,
+            Tolerance="1%",
+            Power="0.125W",
+            MPN="RC0805FR-0710KL",
+            Manufacturer="Yageo",
+            Datasheet=YAGEO,
+        ),
+        _passive(
+            "C1",
+            "Device:C",
+            "22n",
+            "Capacitor_SMD:C_0805_2012Metric",
+            (100.0, 70.0),
+            (42.0, 11.0, 0.0),
+            Voltage="50V",
+            Tolerance="1%",
+            Dielectric="C0G",
+            MPN="CL21C223JBFNNNE",
+            Manufacturer="Samsung",
+            Datasheet=SAMSUNG.format("CL21C223JBFNNNE"),
+        ),
+        _passive(
+            "C2",
+            "Device:C",
+            "10n",
+            "Capacitor_SMD:C_0805_2012Metric",
+            (130.0, 130.0),
+            (40.0, 24.0, 0.0),
+            Voltage="50V",
+            Tolerance="1%",
+            Dielectric="C0G",
+            MPN="CL21C103JBFNNNE",
+            Manufacturer="Samsung",
+            Datasheet=SAMSUNG.format("CL21C103JBFNNNE"),
+        ),
+        Part(
+            "U1",
+            OPAMP,
+            "MCP6001R",
+            "Package_TO_SOT_SMD:SOT-23-5",
+            sheet=(160.0, 100.0),
+            board=(48.0, 18.0, 0.0),
+            stub=6.35,
+            fields={
+                "MPN": "MCP6001RT-I/OT",
+                "Manufacturer": "Microchip",
+                "Datasheet": "https://ww1.microchip.com/downloads/en/DeviceDoc/21733j.pdf",
+            },
+        ),
+        _passive(
+            "C5",
+            "Device:C",
+            "100n",
+            "Capacitor_SMD:C_0805_2012Metric",
+            (190.0, 65.0),
+            (52.0, 12.0, 0.0),
+            Voltage="25V",
+            Tolerance="10%",
+            MPN="CL21B104KBCNNNC",
+            Manufacturer="Samsung",
+            Datasheet=SAMSUNG.format("CL21B104KBCNNNC"),
+        ),
+        _passive(
+            "C6",
+            "Device:C",
+            "1u",
+            "Capacitor_SMD:C_0805_2012Metric",
+            (195.0, 100.0),
+            (60.0, 18.0, 90.0),
+            Voltage="25V",
+            Tolerance="10%",
+            MPN="CL21B105KBFNNNE",
+            Manufacturer="Samsung",
+            Datasheet=SAMSUNG.format("CL21B105KBFNNNE"),
+        ),
+        _passive(
+            "J3",
+            "Connector:Conn_01x02_Pin",
+            "OUT",
+            "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+            (225.0, 100.0),
+            (72.0, 18.0, 0.0),
+            MPN="61300211121",
+            Manufacturer="Wurth Elektronik",
+            Datasheet="https://www.we-online.com/components/products/datasheet/61300211121.pdf",
+        ),
+        _passive(
+            "J2",
+            "Connector:Screw_Terminal_01x02",
+            "5V",
+            "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+            (205.0, 35.0),
+            (70.0, 8.0, 0.0),
+            MPN="1729128",
+            Manufacturer="Phoenix Contact",
+            Datasheet="https://www.phoenixcontact.com/product/1729128",
+        ),
+        _passive(
+            "R3",
+            "Device:R",
+            "100k",
+            "Resistor_SMD:R_0805_2012Metric",
+            (75.0, 165.0),
+            (30.0, 34.0, 0.0),
+            Tolerance="1%",
+            Power="0.125W",
+            MPN="RC0805FR-07100KL",
+            Manufacturer="Yageo",
+            Datasheet=YAGEO,
+        ),
+        _passive(
+            "R4",
+            "Device:R",
+            "100k",
+            "Resistor_SMD:R_0805_2012Metric",
+            (75.0, 190.0),
+            (36.0, 34.0, 0.0),
+            Tolerance="1%",
+            Power="0.125W",
+            MPN="RC0805FR-07100KL",
+            Manufacturer="Yageo",
+            Datasheet=YAGEO,
+        ),
+        _passive(
+            "C4",
+            "Device:C",
+            "10u",
+            "Capacitor_SMD:C_0805_2012Metric",
+            (105.0, 180.0),
+            (42.0, 34.0, 0.0),
+            Voltage="16V",
+            Tolerance="20%",
+            MPN="CL21A106KOQNNNE",
+            Manufacturer="Samsung",
+            Datasheet=SAMSUNG.format("CL21A106KOQNNNE"),
+        ),
+        Part(
+            "U2",
+            OPAMP,
+            "MCP6001R",
+            "Package_TO_SOT_SMD:SOT-23-5",
+            sheet=(150.0, 175.0),
+            board=(52.0, 34.0, 0.0),
+            stub=6.35,
+            fields={
+                "MPN": "MCP6001RT-I/OT",
+                "Manufacturer": "Microchip",
+                "Datasheet": "https://ww1.microchip.com/downloads/en/DeviceDoc/21733j.pdf",
+            },
+        ),
+        _passive(
+            "C7",
+            "Device:C",
+            "100n",
+            "Capacitor_SMD:C_0805_2012Metric",
+            (190.0, 150.0),
+            (58.0, 30.0, 0.0),
+            Voltage="25V",
+            Tolerance="10%",
+            MPN="CL21B104KBCNNNC",
+            Manufacturer="Samsung",
+            Datasheet=SAMSUNG.format("CL21B104KBCNNNC"),
+        ),
+    ]
+
+    nets = {
+        "+5V": ["J2.1", "R3.1", "C5.1", "C7.1", "U1.2", "U2.2"],
+        "GND": ["J2.2", "J1.2", "J3.2", "R4.2", "C4.2", "C5.2", "C7.2", "U1.5", "U2.5"],
+        "IN": ["J1.1", "C3.1"],
+        "IN_DC": ["C3.2", "R5.1", "R1.1"],
+        "X": ["R1.2", "R2.1", "C1.1"],
+        "FILT_IN": ["R2.2", "C2.1", "U1.3"],
+        "OUT": ["U1.1", "U1.4", "C1.2", "C6.1"],
+        "OUT_AC": ["C6.2", "J3.1"],
+        "MID": ["R3.2", "R4.1", "C4.1", "U2.3"],
+        "VREF": ["U2.1", "U2.4", "R5.2", "C2.2"],
+    }
+
+    design = Design(
+        name="opamp-filter",
+        title="1 kHz Sallen-Key low pass, single 5 V",
+        rev="A",
+        company="kicad_skills examples",
+        notes=[
+            "Second-order Sallen-Key low pass, unity gain, on one 5 V rail.",
+            "R1 = R2 = 10k with C1 = 22n and C2 = 10n gives f = 1073 Hz and",
+            "Q = 0.742. Butterworth wants Q = 0.707, which is 11 nF - a value",
+            "one cannot buy in C0G, and C0G is what keeps the corner where it is.",
+            "An X7R of the same size loses a third of its value over the rail.",
+            "VREF is half the rail: R3/R4 make it and U2 buffers it. The filter's",
+            "return flows into that node through C2, and a bare divider is a",
+            "50k source impedance - the filter would not be this filter.",
+            "C3 and C6 couple in and out, so the header sees no DC. R5 sets the",
+            "input's own operating point at VREF and loads the source with 100k.",
+        ],
+        parts=parts,
+        nets=nets,
+        power_flags=["+5V", "GND"],
+        board_size=(80.0, 45.0),
+        tracks=[],
+        vias=[],
+        pour=(3.0, 3.0, 77.0, 42.0),
+        notes_at=(18.0, 20.0),
+        flags_at=(150.0, 35.0),
+    ).snapped()
+
+    SIG = 0.3
+    POWER = 0.6
+    # A SOT-23-5 puts three pads on one side at 0.95 mm, and the middle one is
+    # the supply. Nothing can reach it except straight out, so the row leaves as
+    # a stated fan and the router picks the nets up clear of the package - the
+    # same reason the motor driver's TSSOP does, two sizes down.
+    escapes: list[Track] = []
+    ends: dict[str, dict[str, tuple[float, float]]] = {}
+    for ref, (cx, cy, _) in (("U1", (48.0, 18.0, 0)), ("U2", (52.0, 34.0, 0))):
+        west, ends[f"{ref}w"] = fan(
+            design,
+            ref,
+            ["1", "2", "3"],
+            lead_x=cx - 3.4,
+            column=cx - 6.0,
+            pitch=1.9,
+            centre=cy,
+            width=SIG,
+        )
+        east, ends[f"{ref}e"] = fan(
+            design,
+            ref,
+            ["5", "4"],
+            lead_x=cx + 3.4,
+            column=cx + 6.0,
+            pitch=2.8,
+            centre=cy,
+            width=SIG,
+        )
+        escapes += west + east
+    u1w, u1e, u2w, u2e = (ends["U1w"], ends["U1e"], ends["U2w"], ends["U2e"])
+
+    tracks = [
+        *escapes,
+        Track("IN", "F.Cu", SIG, ["J1.1", "C3.1"], auto=True),
+        Track("IN_DC", "F.Cu", SIG, ["C3.2", "R1.1"], auto=True),
+        Track("IN_DC", "F.Cu", SIG, ["C3.2", "R5.1"], auto=True),
+        Track("X", "F.Cu", SIG, ["R1.2", "R2.1"], auto=True),
+        Track("X", "F.Cu", SIG, ["R2.1", "C1.1"], auto=True),
+        Track("FILT_IN", "F.Cu", SIG, ["R2.2", u1w["3"]], auto=True),
+        Track("FILT_IN", "F.Cu", SIG, ["C2.1", u1w["3"]], auto=True),
+        Track("OUT", "F.Cu", SIG, [u1w["1"], u1e["4"]], auto=True),
+        Track("OUT", "F.Cu", SIG, [u1w["1"], "C1.2"], auto=True),
+        Track("OUT", "F.Cu", SIG, [u1e["4"], "C6.1"], auto=True),
+        Track("OUT_AC", "F.Cu", SIG, ["C6.2", "J3.1"], auto=True),
+        Track("VREF", "F.Cu", SIG, [u2w["1"], u2e["4"]], auto=True),
+        Track("VREF", "F.Cu", SIG, [u2w["1"], "C2.2"], auto=True),
+        Track("VREF", "F.Cu", SIG, [u2w["1"], "R5.2"], auto=True),
+        Track("MID", "F.Cu", SIG, ["R3.2", "R4.1"], auto=True),
+        Track("MID", "F.Cu", SIG, ["R4.1", "C4.1"], auto=True),
+        Track("MID", "F.Cu", SIG, ["C4.1", u2w["3"]], auto=True),
+        Track("+5V", "F.Cu", POWER, ["J2.1", "C5.1"], auto=True),
+        Track("+5V", "F.Cu", POWER, ["C5.1", u1w["2"]], auto=True),
+        Track("+5V", "F.Cu", POWER, ["C5.1", "C7.1"], auto=True),
+        Track("+5V", "F.Cu", POWER, ["C7.1", u2w["2"]], auto=True),
+        Track("+5V", "F.Cu", SIG, ["C7.1", "R3.1"], auto=True),
+    ]
+    for pad, target in (
+        ("J1.2", (12.0, 24.0)),
+        ("J3.2", (68.0, 24.0)),
+        ("J2.2", (66.0, 12.0)),
+        ("C5.2", (53.0, 9.0)),
+        ("C7.2", (61.0, 33.0)),
+        ("C4.2", (44.0, 38.0)),
+        ("R4.2", (37.0, 38.0)),
+        (u1e["5"], (54.0, 13.0)),
+        (u2e["5"], (58.0, 29.0)),
+    ):
+        tracks.append(Track("GND", "F.Cu", 0.5, [pad, target], auto=True, goal_layer="B.Cu"))
+    return replace(design, tracks=tracks)
+
+
 DESIGNS = {
     "buck-5v": buck_5v,
     "motor-driver": motor_driver,
     "pico-carrier": pico_carrier,
+    "opamp-filter": opamp_filter,
 }
 
 

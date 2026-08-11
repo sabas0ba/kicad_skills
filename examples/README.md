@@ -263,6 +263,44 @@ few places where it is not:
   them; replacing pad uuids one at a time leaves the groups naming things that
   are no longer there.
 
+## opamp-filter — 1 kHz Sallen-Key low pass, single 5 V
+
+Two MCP6001 singles: one is the filter, the other buffers the half-rail the
+filter is referenced to.
+
+| | verdict | schematic (e/w/i) | board (e/w/i) |
+| --- | --- | --- | --- |
+| `reviewed` | **FAIL**, 7 blocking | 0 / 1 / 0 | 0 / 5 / 6 |
+| `as-generated` | **FAIL**, 26 blocking | 2 / 5 / 9 | 1 / 16 / 7 |
+
+`reviewed` passes KiCad's own DRC with nothing at all — no violations, no
+unconnected items, no parity findings.
+
+| as-generated | reviewed |
+| --- | --- |
+| ![schematic, as generated](opamp-filter/images/schematic-as-generated.jpg) | ![schematic, reviewed](opamp-filter/images/schematic-reviewed.jpg) |
+| ![board front, as generated](opamp-filter/images/board-front-as-generated.jpg) | ![board front, reviewed](opamp-filter/images/board-front-reviewed.jpg) |
+| ![board back, as generated](opamp-filter/images/board-back-as-generated.jpg) | ![board back, reviewed](opamp-filter/images/board-back-reviewed.jpg) |
+
+### What this one is honest about
+
+* **`layout.decoupling_distance` on VREF (U2.1 and U2.4)** — VREF is an op-amp
+  *output*, the half-rail the signal sits on. It is not a supply and there is
+  nothing to decouple it to; C2 is a filter capacitor that happens to land on
+  that net. This is the same blind spot as VBUS on the Pico carrier, from the
+  other direction.
+* **`layout.decoupling_distance` on U1.2 and U2.2** — 7.3 mm, and a SOT-23-5
+  is the reason: three pads at 0.95 mm with the supply in the middle, so the
+  row has to be walked out before anything can be placed against it. Exactly
+  the motor driver's problem two package sizes down, which is what makes it
+  worth reporting as a pattern rather than as four separate boards' bad luck.
+* **`analog.missing_decoupling` on VREF** — same net, same reason.
+
+And one thing no rule says at all: **every connection on that schematic is a
+label, not a wire.** Ten parts in a row with net names beside them is a valid
+netlist and a poor drawing, and it is the most recognisable thing about a
+schematic a program wrote. Nothing in `readability.*` looks for it yet.
+
 ## Still to come
 
-`opamp-filter`, `fpga-audio` — in that order.
+`fpga-audio`.

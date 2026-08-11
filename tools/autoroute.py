@@ -291,27 +291,37 @@ class Router:
             state = came[state]
         chain.reverse()
 
-        path = Path()
+        runs: list[tuple[str, list[tuple[float, float]]]] = []
         run: list[tuple[float, float]] = []
         layer = chain[0][2]
         for cx, cy, this_layer, _ in chain:
             point = self._point((cx, cy))
             if this_layer != layer:
-                path.vias.append(point)
-                path.runs.append((self.layers[layer], run))
+                runs.append((self.layers[layer], run))
                 layer, run = this_layer, [point]
                 continue
             if not run or run[-1] != point:
                 run.append(point)
-        path.runs.append((self.layers[layer], run))
+        runs.append((self.layers[layer], run))
+        runs = [(name, list(points)) for name, points in runs if points]
 
-        # Anchor the two ends on the pads rather than on the grid.
-        path.runs = [(name, list(points)) for name, points in path.runs if points]
-        path.runs[0][1][0] = start
-        path.runs[-1][1][-1] = goal
+        # Anchor the two ends on the pads rather than on the grid. A run that is
+        # a single point is a layer change on the spot, and it has to take the
+        # anchored point with it - otherwise the via lands on the nearest cell
+        # and the pad it was meant to drill under is a tenth of a millimetre
+        # away, which is a dangling track end and nothing else.
+        runs[0][1][0] = start
+        runs[-1][1][-1] = goal
+        if len(runs) > 1 and len(runs[0][1]) == 1:
+            runs[1][1][0] = start
+        if len(runs) > 1 and len(runs[-1][1]) == 1:
+            runs[-2][1][-1] = goal
+
+        path = Path()
+        path.vias = [runs[index][1][-1] for index in range(len(runs) - 1)]
         path.runs = [
             (name, self._simplify(points))
-            for name, points in path.runs
+            for name, points in runs
             if len(self._simplify(points)) > 1
         ]
         return path

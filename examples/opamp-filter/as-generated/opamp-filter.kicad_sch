@@ -1,0 +1,1460 @@
+(kicad_sch (version 20250114) (generator "eda-toolkit") (generator_version "9.0")
+  (uuid "efb028ab-a5b5-5d27-b654-08a8ba6b5d9d")
+  (paper "A4")
+  (title_block
+  	(comment 1 "generated 2026-08-11 by Claude Code")
+  	(comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
+  )
+  (lib_symbols
+    (symbol "Amplifier_Operational:MCP6001R"
+      (pin_names
+        (offset 0.127)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "U"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Value" "MCP6001R"
+        (at 0 -5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Footprint" "Package_TO_SOT_SMD:SOT-23-5"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "https://ww1.microchip.com/downloads/en/DeviceDoc/MCP6001-1R-1U-2-4-1-MHz-Low-Power-Op-Amp-DS20001733L.pdf"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "1MHz, Low-Power Op Amp, SOT-23-5"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "single opamp"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "SOT?23*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "MCP6001R_0_1"
+        (polyline
+          (pts
+            (xy -5.08 5.08)
+            (xy 5.08 0)
+            (xy -5.08 -5.08)
+            (xy -5.08 5.08)
+          )
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "MCP6001R_1_1"
+        (pin input line
+          (at -7.62 2.54 0)
+          (length 2.54)
+          (name "+"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -7.62 -2.54 0)
+          (length 2.54)
+          (name "-"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "4"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at -2.54 7.62 270)
+          (length 3.81)
+          (name "V+"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at -2.54 -7.62 90)
+          (length 3.81)
+          (name "V-"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "5"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 7.62 0 180)
+          (length 2.54)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Connector:Conn_01x02_Pin"
+      (pin_names
+        (offset 1.016)
+        (hide yes)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "J"
+        (at 0 2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "Conn_01x02_Pin"
+        (at 0 -5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Generic connector, single row, 01x02, script generated"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_locked" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "ki_keywords" "connector"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "Connector*:*_1x??_*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Conn_01x02_Pin_1_1"
+        (rectangle
+          (start 0.8636 0.127)
+          (end 0 -0.127)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (rectangle
+          (start 0.8636 -2.413)
+          (end 0 -2.667)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 0)
+            (xy 0.8636 0)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 -2.54)
+            (xy 0.8636 -2.54)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (pin passive line
+          (at 5.08 0 180)
+          (length 3.81)
+          (name "Pin_1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 5.08 -2.54 180)
+          (length 3.81)
+          (name "Pin_2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Connector:Screw_Terminal_01x02"
+      (pin_names
+        (offset 1.016)
+        (hide yes)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "J"
+        (at 0 2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "Screw_Terminal_01x02"
+        (at 0 -5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Generic screw terminal, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "screw terminal"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "TerminalBlock*:*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Screw_Terminal_01x02_1_1"
+        (rectangle
+          (start -1.27 1.27)
+          (end 1.27 -3.81)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+        (polyline
+          (pts
+            (xy -0.5334 0.3302)
+            (xy 0.3302 -0.508)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -0.5334 -2.2098)
+            (xy 0.3302 -3.048)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -0.3556 0.508)
+            (xy 0.508 -0.3302)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -0.3556 -2.032)
+            (xy 0.508 -2.8702)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (circle
+          (center 0 0)
+          (radius 0.635)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (circle
+          (center 0 -2.54)
+          (radius 0.635)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (pin passive line
+          (at -5.08 0 0)
+          (length 3.81)
+          (name "Pin_1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at -5.08 -2.54 0)
+          (length 3.81)
+          (name "Pin_2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Device:C"
+      (pin_numbers
+        (hide yes)
+      )
+      (pin_names
+        (offset 0.254)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "C"
+        (at 0.635 2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Value" "C"
+        (at 0.635 -2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Footprint" ""
+        (at 0.9652 -3.81 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Unpolarized capacitor"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "cap capacitor"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "C_*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "C_0_1"
+        (polyline
+          (pts
+            (xy -2.032 0.762)
+            (xy 2.032 0.762)
+          )
+          (stroke
+            (width 0.508)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -2.032 -0.762)
+            (xy 2.032 -0.762)
+          )
+          (stroke
+            (width 0.508)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "C_1_1"
+        (pin passive line
+          (at 0 3.81 270)
+          (length 2.794)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 0 -3.81 90)
+          (length 2.794)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Device:R"
+      (pin_numbers
+        (hide yes)
+      )
+      (pin_names
+        (offset 0)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "R"
+        (at 2.032 0 90)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "R"
+        (at 0 0 90)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at -1.778 0 90)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Resistor"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "R res resistor"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "R_*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "R_0_1"
+        (rectangle
+          (start -1.016 -2.54)
+          (end 1.016 2.54)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "R_1_1"
+        (pin passive line
+          (at 0 3.81 270)
+          (length 1.27)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 0 -3.81 90)
+          (length 1.27)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "power:+5V"
+      (power)
+      (pin_numbers
+        (hide yes)
+      )
+      (pin_names
+        (offset 0)
+        (hide yes)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "#PWR"
+        (at 0 -3.81 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Value" "+5V"
+        (at 0 3.556 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Power symbol creates a global label with name \"+5V\""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "global power"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "+5V_0_1"
+        (polyline
+          (pts
+            (xy -0.762 1.27)
+            (xy 0 2.54)
+          )
+          (stroke
+            (width 0)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 0 2.54)
+            (xy 0.762 1.27)
+          )
+          (stroke
+            (width 0)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 0 0)
+            (xy 0 2.54)
+          )
+          (stroke
+            (width 0)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "+5V_1_1"
+        (pin power_in line
+          (at 0 0 90)
+          (length 0)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "power:GND"
+      (power)
+      (pin_numbers
+        (hide yes)
+      )
+      (pin_names
+        (offset 0)
+        (hide yes)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "#PWR"
+        (at 0 -6.35 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Value" "GND"
+        (at 0 -3.81 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "global power"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "GND_0_1"
+        (polyline
+          (pts
+            (xy 0 0)
+            (xy 0 -1.27)
+            (xy 1.27 -1.27)
+            (xy 0 -2.54)
+            (xy -1.27 -1.27)
+            (xy 0 -1.27)
+          )
+          (stroke
+            (width 0)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "GND_1_1"
+        (pin power_in line
+          (at 0 0 270)
+          (length 0)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+  )
+  (wire (pts (xy 35.87 100.14) (xy 38.41 100.14)) (stroke (width 0) (type default)) (uuid "8f4f1654-953b-5bfc-81bf-a38f8618770b"))
+  (label "IN" (at 38.41 100.14 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "80b910dd-f065-538d-9132-384d06637951"))
+  (wire (pts (xy 35.87 102.68) (xy 38.41 102.68)) (stroke (width 0) (type default)) (uuid "043c4757-49f6-5bb2-bd84-d5803eef1dae"))
+  (symbol (lib_id "power:GND") (at 38.41 102.68 270) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "7b909a4b-2572-506e-a69c-aa7f91780b00")
+    (property "Reference" "#PWR01" (at 38.41 102.68 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 42.22 102.68 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 38.41 102.68 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 38.41 102.68 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "7b909a4b-2572-506e-a69c-aa7f91780b00-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR01") (unit 1))))
+  )
+  (symbol (lib_id "Connector:Conn_01x02_Pin") (at 30.79 100.14 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "c97167aa-93e6-59f9-bb5c-98f425f0e8e6")
+    (property "Reference" "J1" (at 30.79 97.6 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "IN" (at 30.79 105.22 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" (at 30.79 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61300211121.pdf" (at 30.79 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "c97167aa-93e6-59f9-bb5c-98f425f0e8e6-p1"))
+    (pin "2" (uuid "c97167aa-93e6-59f9-bb5c-98f425f0e8e6-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "J1") (unit 1))))
+  )
+  (wire (pts (xy 54.92 96.33) (xy 54.92 93.79)) (stroke (width 0) (type default)) (uuid "f4d40542-d129-5929-96c5-d6ba00e225ba"))
+  (label "IN" (at 54.92 93.79 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "09beb067-999a-5fa9-a855-f1437914a5c4"))
+  (wire (pts (xy 54.92 103.95) (xy 54.92 106.49)) (stroke (width 0) (type default)) (uuid "92c15825-a931-5da6-b136-8605db5fe912"))
+  (label "IN_DC" (at 54.92 106.49 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "e91cc416-6a2b-5c58-986b-36d7c2ab62f7"))
+  (symbol (lib_id "Device:C") (at 54.92 100.14 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "358a0c69-fd4f-5b0c-85ff-8812fb9f7f06")
+    (property "Reference" "C3" (at 54.92 93.79 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "220u" (at 54.92 106.49 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0805_2012Metric" (at 54.92 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B105KBFNNNE.do" (at 54.92 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "358a0c69-fd4f-5b0c-85ff-8812fb9f7f06-p1"))
+    (pin "2" (uuid "358a0c69-fd4f-5b0c-85ff-8812fb9f7f06-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "C3") (unit 1))))
+  )
+  (wire (pts (xy 70.16 125.54) (xy 70.16 123.0)) (stroke (width 0) (type default)) (uuid "baa623ae-458c-556d-b600-d5172d386dca"))
+  (label "IN_DC" (at 70.16 123.0 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "0768e339-ebfb-5708-bcd9-1411b749c236"))
+  (wire (pts (xy 70.16 133.16) (xy 70.16 135.7)) (stroke (width 0) (type default)) (uuid "4ce7adb8-73ca-59c4-9a7c-37f74c984ebf"))
+  (label "VREF" (at 70.16 135.7 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "d22784dc-8cc1-599f-95fe-579da4f8dd62"))
+  (symbol (lib_id "Device:R") (at 70.16 129.35 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "a1fd3aa8-3faa-5a22-b9b8-5016f20de1b4")
+    (property "Reference" "R5" (at 70.16 123.0 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100k" (at 70.16 135.7 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Resistor_SMD:R_0805_2012Metric" (at 70.16 129.35 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf" (at 70.16 129.35 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "a1fd3aa8-3faa-5a22-b9b8-5016f20de1b4-p1"))
+    (pin "2" (uuid "a1fd3aa8-3faa-5a22-b9b8-5016f20de1b4-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "R5") (unit 1))))
+  )
+  (wire (pts (xy 81.59 100.14) (xy 79.05 100.14)) (stroke (width 0) (type default)) (uuid "2554ab42-89d9-5c20-9b8c-7a3fa7dda998"))
+  (label "IN_DC" (at 79.05 100.14 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "cb5f5ab6-2e11-5871-a7cd-e7cb174079dd"))
+  (wire (pts (xy 89.21 100.14) (xy 91.75 100.14)) (stroke (width 0) (type default)) (uuid "c70f959d-5c96-53f5-9be9-e15ef5b0389c"))
+  (label "X" (at 91.75 100.14 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "364148e9-73d1-53ee-bdfb-cf2f91b3f67a"))
+  (symbol (lib_id "Device:R") (at 85.4 100.14 90.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "488f224b-aaf9-5efb-9faa-3d2f0f88b8e2")
+    (property "Reference" "R1" (at 85.4 97.6 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "10k" (at 85.4 102.68 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Resistor_SMD:R_0805_2012Metric" (at 85.4 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf" (at 85.4 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "488f224b-aaf9-5efb-9faa-3d2f0f88b8e2-p1"))
+    (pin "2" (uuid "488f224b-aaf9-5efb-9faa-3d2f0f88b8e2-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "R1") (unit 1))))
+  )
+  (wire (pts (xy 112.07 100.14) (xy 109.53 100.14)) (stroke (width 0) (type default)) (uuid "517f7d72-e516-59ee-b71d-114dd191d3fa"))
+  (label "X" (at 109.53 100.14 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "6807992c-352f-57c0-abc4-a724875ba7f9"))
+  (wire (pts (xy 119.69 100.14) (xy 122.23 100.14)) (stroke (width 0) (type default)) (uuid "65c350a0-028e-5f18-93d5-42c411bfc219"))
+  (label "FILT_IN" (at 122.23 100.14 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "70af362e-004f-52be-8196-0d66f679c0bd"))
+  (symbol (lib_id "Device:R") (at 115.88 100.14 90.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "a8a544d1-3496-5ad9-ab32-7e82ddb8b69c")
+    (property "Reference" "R2" (at 115.88 97.6 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "10k" (at 115.88 102.68 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Resistor_SMD:R_0805_2012Metric" (at 115.88 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf" (at 115.88 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "a8a544d1-3496-5ad9-ab32-7e82ddb8b69c-p1"))
+    (pin "2" (uuid "a8a544d1-3496-5ad9-ab32-7e82ddb8b69c-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "R2") (unit 1))))
+  )
+  (wire (pts (xy 100.64 65.85) (xy 100.64 63.31)) (stroke (width 0) (type default)) (uuid "fae6a162-d2c8-5fe9-93dc-73963db21890"))
+  (label "X" (at 100.64 63.31 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "201da59d-aa12-5db1-a490-6ab9982584f3"))
+  (wire (pts (xy 100.64 73.47) (xy 100.64 76.01)) (stroke (width 0) (type default)) (uuid "d5b59037-2457-53bf-a74a-2f9fa99efb11"))
+  (label "OUT" (at 100.64 76.01 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "85eee709-b906-5d6c-aa9e-301125dc7b7a"))
+  (symbol (lib_id "Device:C") (at 100.64 69.66 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "bc382b1e-c962-573b-9e0a-10633fcdf8a1")
+    (property "Reference" "C1" (at 100.64 63.31 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "220u" (at 100.64 76.01 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0805_2012Metric" (at 100.64 69.66 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21C223JBFNNNE.do" (at 100.64 69.66 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "bc382b1e-c962-573b-9e0a-10633fcdf8a1-p1"))
+    (pin "2" (uuid "bc382b1e-c962-573b-9e0a-10633fcdf8a1-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "C1") (unit 1))))
+  )
+  (wire (pts (xy 129.85 125.54) (xy 129.85 123.0)) (stroke (width 0) (type default)) (uuid "0a13f6e4-180a-53ce-89d8-646ebc87c1c9"))
+  (label "FILT_IN" (at 129.85 123.0 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "fe81f193-4746-5bb1-91a3-ac147f8d9b7e"))
+  (wire (pts (xy 129.85 133.16) (xy 129.85 135.7)) (stroke (width 0) (type default)) (uuid "5cffe47a-16de-513f-8090-82e487792245"))
+  (label "VREF" (at 129.85 135.7 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "d086fa25-8898-56fc-975e-a3b4b6253428"))
+  (symbol (lib_id "Device:C") (at 129.85 129.35 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "86c85ed9-2434-53f4-b4ca-044627ac077e")
+    (property "Reference" "C2" (at 129.85 123.0 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "10n" (at 129.85 135.7 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0805_2012Metric" (at 129.85 129.35 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21C103JBFNNNE.do" (at 129.85 129.35 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "86c85ed9-2434-53f4-b4ca-044627ac077e-p1"))
+    (pin "2" (uuid "86c85ed9-2434-53f4-b4ca-044627ac077e-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "C2") (unit 1))))
+  )
+  (wire (pts (xy 152.71 97.6) (xy 146.36 97.6)) (stroke (width 0) (type default)) (uuid "58c5d69f-d55f-599c-8378-6c60b2afadec"))
+  (label "FILT_IN" (at 146.36 97.6 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "8d77ce4c-2477-5565-a1b1-2241fd86915e"))
+  (wire (pts (xy 152.71 102.68) (xy 146.36 102.68)) (stroke (width 0) (type default)) (uuid "a282752b-a621-5e4a-baa0-1de87cc9f8eb"))
+  (label "OUT" (at 146.36 102.68 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "a19836a8-6ecc-5ced-b428-77686f32351d"))
+  (wire (pts (xy 157.79 92.52) (xy 157.79 86.17)) (stroke (width 0) (type default)) (uuid "f87dd647-5d4b-53c8-a431-98efdd78bb55"))
+  (symbol (lib_id "power:+5V") (at 157.79 86.17 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "3aaac294-ebcd-5d3d-b54b-e959360ded43")
+    (property "Reference" "#PWR02" (at 157.79 86.17 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+5V" (at 157.79 82.36 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 157.79 86.17 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 157.79 86.17 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "3aaac294-ebcd-5d3d-b54b-e959360ded43-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR02") (unit 1))))
+  )
+  (wire (pts (xy 157.79 107.76) (xy 157.79 114.11)) (stroke (width 0) (type default)) (uuid "4812105f-5901-5ae2-b460-c6ce6decc0dc"))
+  (symbol (lib_id "power:GND") (at 157.79 114.11 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "5438aef7-5157-5a93-9ae4-0c8d9e345893")
+    (property "Reference" "#PWR03" (at 157.79 114.11 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 157.79 117.92 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 157.79 114.11 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 157.79 114.11 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "5438aef7-5157-5a93-9ae4-0c8d9e345893-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR03") (unit 1))))
+  )
+  (wire (pts (xy 167.95 100.14) (xy 174.3 100.14)) (stroke (width 0) (type default)) (uuid "e916a7a2-ae58-54d8-84dc-4bfdfa9c851f"))
+  (label "OUT" (at 174.3 100.14 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "e74133a8-0937-5330-aa81-93e1db9c6c4a"))
+  (symbol (lib_id "Amplifier_Operational:MCP6001R") (at 160.33 100.14 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "d5fd5ae8-0daf-53ba-a536-e665fca1c7ed")
+    (property "Reference" "U1" (at 160.33 89.98 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "MCP6001R" (at 160.33 110.3 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-5" (at 160.33 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://ww1.microchip.com/downloads/en/DeviceDoc/21733j.pdf" (at 160.33 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "3" (uuid "d5fd5ae8-0daf-53ba-a536-e665fca1c7ed-p3"))
+    (pin "4" (uuid "d5fd5ae8-0daf-53ba-a536-e665fca1c7ed-p4"))
+    (pin "2" (uuid "d5fd5ae8-0daf-53ba-a536-e665fca1c7ed-p2"))
+    (pin "5" (uuid "d5fd5ae8-0daf-53ba-a536-e665fca1c7ed-p5"))
+    (pin "1" (uuid "d5fd5ae8-0daf-53ba-a536-e665fca1c7ed-p1"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "U1") (unit 1))))
+  )
+  (wire (pts (xy 190.81 60.77) (xy 190.81 58.23)) (stroke (width 0) (type default)) (uuid "b4b92591-0327-5478-b4ee-2b2c7d8bc576"))
+  (symbol (lib_id "power:+5V") (at 190.81 58.23 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "1a13b0e7-c2ad-532e-8f80-b027e06f48ef")
+    (property "Reference" "#PWR04" (at 190.81 58.23 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+5V" (at 190.81 54.42 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 190.81 58.23 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 190.81 58.23 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "1a13b0e7-c2ad-532e-8f80-b027e06f48ef-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR04") (unit 1))))
+  )
+  (wire (pts (xy 190.81 68.39) (xy 190.81 70.93)) (stroke (width 0) (type default)) (uuid "2e995b42-46c7-52c8-b76c-65434788fb1d"))
+  (symbol (lib_id "power:GND") (at 190.81 70.93 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "f04b9694-9b70-5864-91ec-f20ba3b341a1")
+    (property "Reference" "#PWR05" (at 190.81 70.93 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 190.81 74.74 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 190.81 70.93 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 190.81 70.93 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f04b9694-9b70-5864-91ec-f20ba3b341a1-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR05") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 190.81 64.58 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "cbc634d5-0e62-55eb-8d66-8eb949ab3c95")
+    (property "Reference" "C5" (at 190.81 58.23 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 190.81 70.93 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0805_2012Metric" (at 190.81 64.58 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do" (at 190.81 64.58 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "cbc634d5-0e62-55eb-8d66-8eb949ab3c95-p1"))
+    (pin "2" (uuid "cbc634d5-0e62-55eb-8d66-8eb949ab3c95-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "C5") (unit 1))))
+  )
+  (wire (pts (xy 195.89 96.33) (xy 195.89 93.79)) (stroke (width 0) (type default)) (uuid "19dd20d6-f4a9-5463-a808-884b86064d5e"))
+  (label "OUT" (at 195.89 93.79 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "c6c9f095-c76a-579b-81b1-6545c2dfab2e"))
+  (wire (pts (xy 195.89 103.95) (xy 195.89 106.49)) (stroke (width 0) (type default)) (uuid "267c0310-bdbd-5da9-8bf9-8d2df9129926"))
+  (label "OUT_AC" (at 195.89 106.49 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "6246a4f1-19f3-5d26-87d0-338703f3fa41"))
+  (symbol (lib_id "Device:C") (at 195.89 100.14 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "f34b4eaf-a71d-51e2-b109-0705b49e0b31")
+    (property "Reference" "C6" (at 195.89 93.79 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "1u" (at 195.89 106.49 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0805_2012Metric" (at 195.89 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B105KBFNNNE.do" (at 195.89 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f34b4eaf-a71d-51e2-b109-0705b49e0b31-p1"))
+    (pin "2" (uuid "f34b4eaf-a71d-51e2-b109-0705b49e0b31-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "C6") (unit 1))))
+  )
+  (wire (pts (xy 230.18 100.14) (xy 232.72 100.14)) (stroke (width 0) (type default)) (uuid "f7cb56ee-20a9-5e20-a6a4-20528d26aba2"))
+  (label "OUT_AC" (at 232.72 100.14 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "86aba6ec-43d9-5195-b721-8f7a72e97ccf"))
+  (wire (pts (xy 230.18 102.68) (xy 232.72 102.68)) (stroke (width 0) (type default)) (uuid "f428f401-4f50-5d42-8b15-7e2226a55d7b"))
+  (symbol (lib_id "power:GND") (at 232.72 102.68 270) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "cc0355c6-3f33-522c-bb39-d6fb12f1bac2")
+    (property "Reference" "#PWR06" (at 232.72 102.68 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 236.53 102.68 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 232.72 102.68 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 232.72 102.68 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "cc0355c6-3f33-522c-bb39-d6fb12f1bac2-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR06") (unit 1))))
+  )
+  (symbol (lib_id "Connector:Conn_01x02_Pin") (at 225.1 100.14 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "9be2ab63-491f-58bf-9e95-e071c58cb325")
+    (property "Reference" "J3" (at 225.1 97.6 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "OUT" (at 225.1 105.22 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical" (at 225.1 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61300211121.pdf" (at 225.1 100.14 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "9be2ab63-491f-58bf-9e95-e071c58cb325-p1"))
+    (pin "2" (uuid "9be2ab63-491f-58bf-9e95-e071c58cb325-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "J3") (unit 1))))
+  )
+  (wire (pts (xy 199.7 35.37) (xy 197.16 35.37)) (stroke (width 0) (type default)) (uuid "de9aec60-a75a-5ebb-9ea1-e83a47014c02"))
+  (symbol (lib_id "power:+5V") (at 197.16 35.37 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "a09ad880-0877-5c7c-8bf2-86a65df709ad")
+    (property "Reference" "#PWR07" (at 197.16 35.37 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+5V" (at 193.35 35.37 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 197.16 35.37 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 197.16 35.37 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "a09ad880-0877-5c7c-8bf2-86a65df709ad-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR07") (unit 1))))
+  )
+  (wire (pts (xy 199.7 37.91) (xy 197.16 37.91)) (stroke (width 0) (type default)) (uuid "905f254e-5f0c-5b0d-b185-9dfaeb7b77f9"))
+  (symbol (lib_id "power:GND") (at 197.16 37.91 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "f3610c30-35c2-5efc-b929-03dfebf9be79")
+    (property "Reference" "#PWR08" (at 197.16 37.91 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 193.35 37.91 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 197.16 37.91 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 197.16 37.91 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f3610c30-35c2-5efc-b929-03dfebf9be79-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR08") (unit 1))))
+  )
+  (symbol (lib_id "Connector:Screw_Terminal_01x02") (at 204.78 35.37 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "88331fb5-8bb2-58e6-9b4b-5d303c518e3e")
+    (property "Reference" "J2" (at 204.78 32.83 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "5V" (at 204.78 40.45 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal" (at 204.78 35.37 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.phoenixcontact.com/product/1729128" (at 204.78 35.37 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "88331fb5-8bb2-58e6-9b4b-5d303c518e3e-p1"))
+    (pin "2" (uuid "88331fb5-8bb2-58e6-9b4b-5d303c518e3e-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "J2") (unit 1))))
+  )
+  (wire (pts (xy 75.24 161.1) (xy 75.24 158.56)) (stroke (width 0) (type default)) (uuid "98e8312c-10cc-51cc-adcc-9eccf624a666"))
+  (symbol (lib_id "power:+5V") (at 75.24 158.56 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "d7ee3136-fb4f-5f57-8252-dd295fd54ab2")
+    (property "Reference" "#PWR09" (at 75.24 158.56 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+5V" (at 75.24 154.75 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 75.24 158.56 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 75.24 158.56 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "d7ee3136-fb4f-5f57-8252-dd295fd54ab2-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR09") (unit 1))))
+  )
+  (wire (pts (xy 75.24 168.72) (xy 75.24 171.26)) (stroke (width 0) (type default)) (uuid "b1d843f4-9a79-5d2b-b429-25b15772355c"))
+  (label "MID" (at 75.24 171.26 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "51d9bc5c-c15a-5138-ad58-de0a659651d7"))
+  (symbol (lib_id "Device:R") (at 75.24 164.91 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "fa236cad-0b0a-561e-8d6c-f8fd438c6e76")
+    (property "Reference" "R3" (at 75.24 158.56 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100k" (at 75.24 171.26 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Resistor_SMD:R_0805_2012Metric" (at 75.24 164.91 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf" (at 75.24 164.91 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "fa236cad-0b0a-561e-8d6c-f8fd438c6e76-p1"))
+    (pin "2" (uuid "fa236cad-0b0a-561e-8d6c-f8fd438c6e76-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "R3") (unit 1))))
+  )
+  (wire (pts (xy 75.24 186.5) (xy 75.24 183.96)) (stroke (width 0) (type default)) (uuid "63a1303e-d0e0-5c67-92c0-6e81344cd0af"))
+  (label "MID" (at 75.24 183.96 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "9bb9e7ac-d42e-5638-945e-48aaf5bc61a8"))
+  (wire (pts (xy 75.24 194.12) (xy 75.24 196.66)) (stroke (width 0) (type default)) (uuid "9658699a-c093-5f27-b590-d7a9365b96a9"))
+  (symbol (lib_id "power:GND") (at 75.24 196.66 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "91d167e6-bc7d-5396-afdf-0897618a4967")
+    (property "Reference" "#PWR10" (at 75.24 196.66 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 75.24 200.47 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 75.24 196.66 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 75.24 196.66 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "91d167e6-bc7d-5396-afdf-0897618a4967-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR10") (unit 1))))
+  )
+  (symbol (lib_id "Device:R") (at 75.24 190.31 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "1ee52176-2d42-5e84-a9f2-8277c1d83281")
+    (property "Reference" "R4" (at 75.24 183.96 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100k" (at 75.24 196.66 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Resistor_SMD:R_0805_2012Metric" (at 75.24 190.31 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf" (at 75.24 190.31 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "1ee52176-2d42-5e84-a9f2-8277c1d83281-p1"))
+    (pin "2" (uuid "1ee52176-2d42-5e84-a9f2-8277c1d83281-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "R4") (unit 1))))
+  )
+  (wire (pts (xy 105.72 176.34) (xy 105.72 173.8)) (stroke (width 0) (type default)) (uuid "52b2fdf2-886f-556e-afe6-3b71b1637837"))
+  (label "MID" (at 105.72 173.8 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "cf7611fd-8a8f-5657-b590-b40896345e8c"))
+  (wire (pts (xy 105.72 183.96) (xy 105.72 186.5)) (stroke (width 0) (type default)) (uuid "6bd10021-578b-5b75-b5fa-0173ab0afcf6"))
+  (symbol (lib_id "power:GND") (at 105.72 186.5 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "f598f0cd-6c21-56a8-aa8a-7a6256951480")
+    (property "Reference" "#PWR11" (at 105.72 186.5 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 105.72 190.31 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 105.72 186.5 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 105.72 186.5 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f598f0cd-6c21-56a8-aa8a-7a6256951480-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR11") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 105.72 180.15 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "c204e1fa-fc4c-5fb7-9464-e17c1c294797")
+    (property "Reference" "C4" (at 105.72 173.8 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "10u" (at 105.72 186.5 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0805_2012Metric" (at 105.72 180.15 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21A106KOQNNNE.do" (at 105.72 180.15 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "c204e1fa-fc4c-5fb7-9464-e17c1c294797-p1"))
+    (pin "2" (uuid "c204e1fa-fc4c-5fb7-9464-e17c1c294797-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "C4") (unit 1))))
+  )
+  (wire (pts (xy 142.55 172.53) (xy 136.2 172.53)) (stroke (width 0) (type default)) (uuid "fe6603b9-123c-5e09-98fb-05a622ae5786"))
+  (label "MID" (at 136.2 172.53 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "f2442509-d1af-5c65-82ee-9d00435e1737"))
+  (wire (pts (xy 142.55 177.61) (xy 136.2 177.61)) (stroke (width 0) (type default)) (uuid "c2525456-8d9f-57a8-8543-8e2a6eaa69d2"))
+  (label "VREF" (at 136.2 177.61 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "1927ba30-e09e-5685-bcaa-ef03d4d290f4"))
+  (wire (pts (xy 147.63 167.45) (xy 147.63 161.1)) (stroke (width 0) (type default)) (uuid "0ea769d9-4660-537b-8b27-e716b90201aa"))
+  (symbol (lib_id "power:+5V") (at 147.63 161.1 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "7f371738-6328-5145-9893-399984b62daf")
+    (property "Reference" "#PWR12" (at 147.63 161.1 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+5V" (at 147.63 157.29 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 147.63 161.1 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 147.63 161.1 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "7f371738-6328-5145-9893-399984b62daf-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR12") (unit 1))))
+  )
+  (wire (pts (xy 147.63 182.69) (xy 147.63 189.04)) (stroke (width 0) (type default)) (uuid "f6dfd8fe-f6d6-5657-8b6d-4726ee08edfa"))
+  (symbol (lib_id "power:GND") (at 147.63 189.04 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "a48b6884-efc2-5d23-8832-492b63f05814")
+    (property "Reference" "#PWR13" (at 147.63 189.04 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 147.63 192.85 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 147.63 189.04 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 147.63 189.04 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "a48b6884-efc2-5d23-8832-492b63f05814-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR13") (unit 1))))
+  )
+  (wire (pts (xy 157.79 175.07) (xy 164.14 175.07)) (stroke (width 0) (type default)) (uuid "da648824-2b91-531b-a442-113ea8dfd0e7"))
+  (label "VREF" (at 164.14 175.07 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "0bea82ba-08c6-5150-a540-56273b057510"))
+  (symbol (lib_id "Amplifier_Operational:MCP6001R") (at 150.17 175.07 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "0c422bbb-a212-5794-89e7-f3239f65dba9")
+    (property "Reference" "U2" (at 150.17 164.91 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "MCP6001R" (at 150.17 185.23 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-5" (at 150.17 175.07 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://ww1.microchip.com/downloads/en/DeviceDoc/21733j.pdf" (at 150.17 175.07 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "3" (uuid "0c422bbb-a212-5794-89e7-f3239f65dba9-p3"))
+    (pin "4" (uuid "0c422bbb-a212-5794-89e7-f3239f65dba9-p4"))
+    (pin "2" (uuid "0c422bbb-a212-5794-89e7-f3239f65dba9-p2"))
+    (pin "5" (uuid "0c422bbb-a212-5794-89e7-f3239f65dba9-p5"))
+    (pin "1" (uuid "0c422bbb-a212-5794-89e7-f3239f65dba9-p1"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "U2") (unit 1))))
+  )
+  (wire (pts (xy 150.17 171.26) (xy 150.17 168.72)) (stroke (width 0) (type default)) (uuid "83133412-3067-5447-83ee-4318b34ffbf1"))
+  (symbol (lib_id "power:+5V") (at 150.17 168.72 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "53601b83-4d40-5370-b333-2d9f8df183f5")
+    (property "Reference" "#PWR14" (at 150.17 168.72 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+5V" (at 150.17 164.91 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 150.17 168.72 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 150.17 168.72 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "53601b83-4d40-5370-b333-2d9f8df183f5-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR14") (unit 1))))
+  )
+  (wire (pts (xy 150.17 178.88) (xy 150.17 181.42)) (stroke (width 0) (type default)) (uuid "c3cccbcb-2650-5bcf-bc66-27da47cf6065"))
+  (symbol (lib_id "power:GND") (at 150.17 181.42 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "8da0878f-b37e-5865-a666-072ac2a0f0b2")
+    (property "Reference" "#PWR15" (at 150.17 181.42 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 150.17 185.23 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 150.17 181.42 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 150.17 181.42 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "8da0878f-b37e-5865-a666-072ac2a0f0b2-p"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "#PWR15") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 150.17 175.07 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "479cc9ad-006e-593c-b6bc-c73b2bc65b7b")
+    (property "Reference" "C7" (at 150.17 168.72 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 150.17 181.42 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0805_2012Metric" (at 150.17 175.07 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do" (at 150.17 175.07 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "479cc9ad-006e-593c-b6bc-c73b2bc65b7b-p1"))
+    (pin "2" (uuid "479cc9ad-006e-593c-b6bc-c73b2bc65b7b-p2"))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "C7") (unit 1))))
+  )
+  (sheet_instances
+    (path "/" (page "1"))
+  )
+)
