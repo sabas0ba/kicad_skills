@@ -21,9 +21,9 @@
   --link: #0969da;
   --brand: #0b5f7d;
   --brand-bright: #7dd3fc;
-  --header-from: #10344a;
-  --header-to: #0a1d29;
-  --header-fg: #dceaf3;
+  --header-bg: #0c2532;
+  --header-fg: #cfdfe9;
+  --header-rule: rgba(255, 255, 255, 0.1);
   --shell-max: 84rem;
   --header-height: 3.25rem;
 }
@@ -72,14 +72,15 @@ a { color: var(--link); }
 
 /* Header --------------------------------------------------------------- */
 
-/* Dark in both colour schemes: it is the same slate the logo tile is drawn on,
-   so the mark sits on the bar rather than in a box of its own. */
+/* One flat slate in both colour schemes - the same the logo tile is drawn on,
+   so the mark sits on the bar rather than in a box of its own. Flat on purpose:
+   a vertical gradient across a bar this short reads as a chrome bevel. */
 .site-header {
   position: sticky;
   top: 0;
   z-index: 20;
-  background: linear-gradient(180deg, var(--header-from), var(--header-to));
-  border-bottom: 1px solid rgba(125, 211, 252, 0.22);
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--header-rule);
 }
 
 .site-header-inner {
