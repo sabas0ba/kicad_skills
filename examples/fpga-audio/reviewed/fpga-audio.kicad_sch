@@ -1,0 +1,4587 @@
+(kicad_sch (version 20250114) (generator "eda-toolkit") (generator_version "9.0")
+  (uuid "434dea94-d96f-5288-b60c-67317d440f4e")
+  (paper "A4")
+  (title_block
+  	(title "iCE40UP5K to PCM5102A, I2S out")
+  	(date "2026-08-11")
+  	(rev "A")
+  	(company "kicad_skills examples")
+  	(comment 1 "generated 2026-08-11 by Claude Code")
+  	(comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
+  )
+  (lib_symbols
+    (symbol "Audio:PCM5102A"
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "U"
+        (at -10.16 13.97 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Value" "PCM5102A"
+        (at 3.81 13.97 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Footprint" "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm"
+        (at 25.4 -16.51 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "https://www.ti.com/lit/ds/symlink/pcm5102a.pdf"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "2.1 VRMS, 112dB Audio Stereo DAC with PLL and 32-bit, 384kHz PCM Interface, TSSOP-20"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "audio dac 2ch 32bit 384kHz"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "TSSOP*4.4x6.5mm*P0.65mm*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "PCM5102A_0_1"
+        (rectangle
+          (start -10.16 12.7)
+          (end 10.16 -15.24)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "PCM5102A_1_1"
+        (pin input line
+          (at -12.7 10.16 0)
+          (length 2.54)
+          (name "LRCK"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "15"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -12.7 7.62 0)
+          (length 2.54)
+          (name "DIN"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "14"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -12.7 5.08 0)
+          (length 2.54)
+          (name "BCK"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "13"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -12.7 2.54 0)
+          (length 2.54)
+          (name "SCK"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "12"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -12.7 -2.54 0)
+          (length 2.54)
+          (name "FLT"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "11"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -12.7 -5.08 0)
+          (length 2.54)
+          (name "DEMP"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "10"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -12.7 -7.62 0)
+          (length 2.54)
+          (name "XSMT"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "17"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -12.7 -10.16 0)
+          (length 2.54)
+          (name "FMT"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "16"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at -2.54 15.24 270)
+          (length 2.54)
+          (name "CPVDD"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at -2.54 -17.78 90)
+          (length 2.54)
+          (name "CPGND"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 15.24 270)
+          (length 2.54)
+          (name "DVDD"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "20"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 -17.78 90)
+          (length 2.54)
+          (name "DGND"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "19"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 2.54 15.24 270)
+          (length 2.54)
+          (name "AVDD"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "8"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 2.54 -17.78 90)
+          (length 2.54)
+          (name "AGND"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "9"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 12.7 10.16 180)
+          (length 2.54)
+          (name "OUTL"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "6"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 12.7 7.62 180)
+          (length 2.54)
+          (name "OUTR"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "7"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 12.7 2.54 180)
+          (length 2.54)
+          (name "CAPP"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 12.7 -5.08 180)
+          (length 2.54)
+          (name "CAPM"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "4"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 12.7 -10.16 180)
+          (length 2.54)
+          (name "LDOO"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "18"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 12.7 -12.7 180)
+          (length 2.54)
+          (name "VNEG"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "5"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Connector:Conn_01x03_Pin"
+      (pin_names
+        (offset 1.016)
+        (hide yes)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "J"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "Conn_01x03_Pin"
+        (at 0 -5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Generic connector, single row, 01x03, script generated"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_locked" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "ki_keywords" "connector"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "Connector*:*_1x??_*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Conn_01x03_Pin_1_1"
+        (rectangle
+          (start 0.8636 2.667)
+          (end 0 2.413)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (rectangle
+          (start 0.8636 0.127)
+          (end 0 -0.127)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (rectangle
+          (start 0.8636 -2.413)
+          (end 0 -2.667)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 2.54)
+            (xy 0.8636 2.54)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 0)
+            (xy 0.8636 0)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 -2.54)
+            (xy 0.8636 -2.54)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (pin passive line
+          (at 5.08 2.54 180)
+          (length 3.81)
+          (name "Pin_1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 5.08 0 180)
+          (length 3.81)
+          (name "Pin_2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 5.08 -2.54 180)
+          (length 3.81)
+          (name "Pin_3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Connector:Conn_01x06_Pin"
+      (pin_names
+        (offset 1.016)
+        (hide yes)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "J"
+        (at 0 7.62 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "Conn_01x06_Pin"
+        (at 0 -10.16 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Generic connector, single row, 01x06, script generated"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_locked" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "ki_keywords" "connector"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "Connector*:*_1x??_*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Conn_01x06_Pin_1_1"
+        (rectangle
+          (start 0.8636 5.207)
+          (end 0 4.953)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (rectangle
+          (start 0.8636 2.667)
+          (end 0 2.413)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (rectangle
+          (start 0.8636 0.127)
+          (end 0 -0.127)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (rectangle
+          (start 0.8636 -2.413)
+          (end 0 -2.667)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (rectangle
+          (start 0.8636 -4.953)
+          (end 0 -5.207)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (rectangle
+          (start 0.8636 -7.493)
+          (end 0 -7.747)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type outline)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 5.08)
+            (xy 0.8636 5.08)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 2.54)
+            (xy 0.8636 2.54)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 0)
+            (xy 0.8636 0)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 -2.54)
+            (xy 0.8636 -2.54)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 -5.08)
+            (xy 0.8636 -5.08)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 1.27 -7.62)
+            (xy 0.8636 -7.62)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (pin passive line
+          (at 5.08 5.08 180)
+          (length 3.81)
+          (name "Pin_1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 5.08 2.54 180)
+          (length 3.81)
+          (name "Pin_2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 5.08 0 180)
+          (length 3.81)
+          (name "Pin_3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 5.08 -2.54 180)
+          (length 3.81)
+          (name "Pin_4"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "4"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 5.08 -5.08 180)
+          (length 3.81)
+          (name "Pin_5"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "5"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 5.08 -7.62 180)
+          (length 3.81)
+          (name "Pin_6"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "6"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Connector:Screw_Terminal_01x02"
+      (pin_names
+        (offset 1.016)
+        (hide yes)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "J"
+        (at 0 2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "Screw_Terminal_01x02"
+        (at 0 -5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Generic screw terminal, single row, 01x02, script generated (kicad-library-utils/schlib/autogen/connector/)"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "screw terminal"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "TerminalBlock*:*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Screw_Terminal_01x02_1_1"
+        (rectangle
+          (start -1.27 1.27)
+          (end 1.27 -3.81)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+        (polyline
+          (pts
+            (xy -0.5334 0.3302)
+            (xy 0.3302 -0.508)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -0.5334 -2.2098)
+            (xy 0.3302 -3.048)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -0.3556 0.508)
+            (xy 0.508 -0.3302)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -0.3556 -2.032)
+            (xy 0.508 -2.8702)
+          )
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (circle
+          (center 0 0)
+          (radius 0.635)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (circle
+          (center 0 -2.54)
+          (radius 0.635)
+          (stroke
+            (width 0.1524)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (pin passive line
+          (at -5.08 0 0)
+          (length 3.81)
+          (name "Pin_1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at -5.08 -2.54 0)
+          (length 3.81)
+          (name "Pin_2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Device:C"
+      (pin_numbers
+        (hide yes)
+      )
+      (pin_names
+        (offset 0.254)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "C"
+        (at 0.635 2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Value" "C"
+        (at 0.635 -2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Footprint" ""
+        (at 0.9652 -3.81 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Unpolarized capacitor"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "cap capacitor"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "C_*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "C_0_1"
+        (polyline
+          (pts
+            (xy -2.032 0.762)
+            (xy 2.032 0.762)
+          )
+          (stroke
+            (width 0.508)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy -2.032 -0.762)
+            (xy 2.032 -0.762)
+          )
+          (stroke
+            (width 0.508)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "C_1_1"
+        (pin passive line
+          (at 0 3.81 270)
+          (length 2.794)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 0 -3.81 90)
+          (length 2.794)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Device:R"
+      (pin_numbers
+        (hide yes)
+      )
+      (pin_names
+        (offset 0)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "R"
+        (at 2.032 0 90)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "R"
+        (at 0 0 90)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at -1.778 0 90)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Resistor"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "R res resistor"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "R_*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "R_0_1"
+        (rectangle
+          (start -1.016 -2.54)
+          (end 1.016 2.54)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "R_1_1"
+        (pin passive line
+          (at 0 3.81 270)
+          (length 1.27)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 0 -3.81 90)
+          (length 1.27)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "FPGA_Lattice:ICE40UP5K-SG48ITR"
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "U"
+        (at -8.89 -29.21 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "ICE40UP5K-SG48ITR"
+        (at 0 -31.75 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Package_DFN_QFN:QFN-48-1EP_7x7mm_P0.5mm_EP5.6x5.6mm"
+        (at 0 -34.29 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "http://www.latticesemi.com/Products/FPGAandCPLD/iCE40Ultra"
+        (at -10.16 25.4 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "iCE40 UltraPlus FPGA, 5280 LUTs, 1.2V, 48-pin QFN"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_locked" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "ki_keywords" "FPGA programmable logic"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "QFN*1EP*7x7mm*P0.5mm*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "ICE40UP5K-SG48ITR_1_1"
+        (rectangle
+          (start -7.62 25.4)
+          (end 7.62 -27.94)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 15.24 0)
+          (length 2.54)
+          (name "IOT_36b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "25"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 12.7 0)
+          (length 2.54)
+          (name "IOT_37a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "23"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 10.16 0)
+          (length 2.54)
+          (name "IOT_38b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "27"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 7.62 0)
+          (length 2.54)
+          (name "IOT_39a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "26"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 5.08 0)
+          (length 2.54)
+          (name "IOT_41a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "28"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 2.54 0)
+          (length 2.54)
+          (name "IOT_42b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "31"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 0 0)
+          (length 2.54)
+          (name "IOT_43a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "32"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -2.54 0)
+          (length 2.54)
+          (name "IOT_44b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "34"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -5.08 0)
+          (length 2.54)
+          (name "IOT_45a_G1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "37"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -7.62 0)
+          (length 2.54)
+          (name "IOT_46b_G0"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "35"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -10.16 0)
+          (length 2.54)
+          (name "IOT_48b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "36"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -12.7 0)
+          (length 2.54)
+          (name "IOT_49a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "43"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -15.24 0)
+          (length 2.54)
+          (name "IOT_50b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "38"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -17.78 0)
+          (length 2.54)
+          (name "IOT_51a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "42"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin open_collector line
+          (at -10.16 -20.32 0)
+          (length 2.54)
+          (name "RGB0"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "39"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin open_collector line
+          (at -10.16 -22.86 0)
+          (length 2.54)
+          (name "RGB1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "40"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin open_collector line
+          (at -10.16 -25.4 0)
+          (length 2.54)
+          (name "RGB2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "41"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 27.94 270)
+          (length 2.54)
+          (name "VCCIO_0"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "33"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (symbol "ICE40UP5K-SG48ITR_2_1"
+        (rectangle
+          (start -10.16 25.4)
+          (end 10.16 -25.4)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+        (pin input line
+          (at -12.7 17.78 0)
+          (length 2.54)
+          (name "~{CRESET}"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "8"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 10.16 0)
+          (length 2.54)
+          (name "IOB_13b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "6"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 7.62 0)
+          (length 2.54)
+          (name "IOB_16a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "9"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 5.08 0)
+          (length 2.54)
+          (name "IOB_18a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "10"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 2.54 0)
+          (length 2.54)
+          (name "IOB_20a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "11"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 0 0)
+          (length 2.54)
+          (name "IOB_22a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "12"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 -2.54 0)
+          (length 2.54)
+          (name "IOB_23b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "21"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 -5.08 0)
+          (length 2.54)
+          (name "IOB_24a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "13"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 -7.62 0)
+          (length 2.54)
+          (name "IOB_25b_G3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "20"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 -10.16 0)
+          (length 2.54)
+          (name "IOB_29b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "19"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 -12.7 0)
+          (length 2.54)
+          (name "IOB_31b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "18"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 -15.24 0)
+          (length 2.54)
+          (name "IOB_32a_SPI_SO"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "14"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 -17.78 0)
+          (length 2.54)
+          (name "IOB_33b_SPI_SI"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "17"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 -20.32 0)
+          (length 2.54)
+          (name "IOB_34a_SPI_SCK"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "15"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -12.7 -22.86 0)
+          (length 2.54)
+          (name "IOB_35b_SPI_SS"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "16"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 27.94 270)
+          (length 2.54)
+          (name "SPI_VCCIO1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "22"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin open_collector line
+          (at 12.7 17.78 180)
+          (length 2.54)
+          (name "CDONE"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "7"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (symbol "ICE40UP5K-SG48ITR_3_1"
+        (rectangle
+          (start -7.62 15.24)
+          (end 7.62 -15.24)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 5.08 0)
+          (length 2.54)
+          (name "IOB_0a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "46"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 2.54 0)
+          (length 2.54)
+          (name "IOB_2a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "47"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 0 0)
+          (length 2.54)
+          (name "IOB_3b_G6"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "44"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -2.54 0)
+          (length 2.54)
+          (name "IOB_4a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "48"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -5.08 0)
+          (length 2.54)
+          (name "IOB_5b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "45"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -7.62 0)
+          (length 2.54)
+          (name "IOB_6a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -10.16 0)
+          (length 2.54)
+          (name "IOB_8a"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "4"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -12.7 0)
+          (length 2.54)
+          (name "IOB_9b"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 17.78 270)
+          (length 2.54)
+          (name "VCCIO_2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (symbol "ICE40UP5K-SG48ITR_4_1"
+        (rectangle
+          (start -5.08 7.62)
+          (end 5.08 -7.62)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+        (pin power_in line
+          (at -2.54 10.16 270)
+          (length 2.54)
+          (name "VPP_2V5"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "24"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin passive line
+          (at 0 10.16 270)
+          (length 2.54)
+          (hide yes)
+          (name "VCC"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "30"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 10.16 270)
+          (length 2.54)
+          (name "VCC"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "5"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 -10.16 90)
+          (length 2.54)
+          (name "GND"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "49"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_out line
+          (at 2.54 10.16 270)
+          (length 2.54)
+          (name "VCCPLL"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "29"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Memory_Flash:W25Q32JVSS"
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "U"
+        (at -6.35 11.43 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "W25Q32JVSS"
+        (at 7.62 11.43 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" "Package_SO:SOIC-8_5.3x5.3mm_P1.27mm"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "http://www.winbond.com/resource-files/w25q32jv%20revg%2003272018%20plus.pdf"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "32Mbit / 4MiB Serial Flash Memory, Standard/Dual/Quad SPI, 2.7-3.6V, SOIC-8 (208 mil)"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "flash memory SPI"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "*SOIC*5.3x5.3mm*P1.27mm*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "W25Q32JVSS_0_1"
+        (rectangle
+          (start -7.62 10.16)
+          (end 10.16 -10.16)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "W25Q32JVSS_1_1"
+        (pin input line
+          (at -10.16 7.62 0)
+          (length 2.54)
+          (name "~{CS}"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -10.16 5.08 0)
+          (length 2.54)
+          (name "CLK"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "6"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 2.54 0)
+          (length 2.54)
+          (name "DI/IO_{0}"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "5"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 0 0)
+          (length 2.54)
+          (name "DO/IO_{1}"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -2.54 0)
+          (length 2.54)
+          (name "~{WP}/IO_{2}"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin bidirectional line
+          (at -10.16 -5.08 0)
+          (length 2.54)
+          (name "~{HOLD}/~{RESET}/IO_{3}"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "7"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 12.7 270)
+          (length 2.54)
+          (name "VCC"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "8"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 -12.7 90)
+          (length 2.54)
+          (name "GND"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "4"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Oscillator:ASE-xxxMHz"
+      (pin_names
+        (offset 0.254)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "Y"
+        (at -5.08 6.35 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Value" "ASE-xxxMHz"
+        (at 1.27 -6.35 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Footprint" "Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm"
+        (at 17.78 -8.89 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "http://www.abracon.com/Oscillators/ASV.pdf"
+        (at -2.54 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "3.3V CMOS SMD Crystal Clock Oscillator, Abracon"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "3.3V CMOS SMD Crystal Clock Oscillator"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "Oscillator*SMD*Abracon*ASE*3.2x2.5mm*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "ASE-xxxMHz_0_1"
+        (rectangle
+          (start -5.08 5.08)
+          (end 5.08 -5.08)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+        (polyline
+          (pts
+            (xy -1.27 -0.762)
+            (xy -1.016 -0.762)
+            (xy -1.016 0.762)
+            (xy -0.508 0.762)
+            (xy -0.508 -0.762)
+            (xy 0 -0.762)
+            (xy 0 0.762)
+            (xy 0.508 0.762)
+            (xy 0.508 -0.762)
+            (xy 0.762 -0.762)
+          )
+          (stroke
+            (width 0)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "ASE-xxxMHz_1_1"
+        (pin input line
+          (at -7.62 0 0)
+          (length 2.54)
+          (name "EN"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 7.62 270)
+          (length 2.54)
+          (name "Vdd"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "4"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 -7.62 90)
+          (length 2.54)
+          (name "GND"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin output line
+          (at 7.62 0 180)
+          (length 2.54)
+          (name "OUT"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "Regulator_Linear:AP2112K-1.2"
+      (pin_names
+        (offset 0.254)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "U"
+        (at -5.08 5.715 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Value" "AP2112K-1.2"
+        (at 0 5.715 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (justify left)
+        )
+      )
+      (property "Footprint" "Package_TO_SOT_SMD:SOT-23-5"
+        (at 0 8.255 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "https://www.diodes.com/assets/Datasheets/AP2112.pdf"
+        (at 0 2.54 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "600mA low dropout linear regulator, with enable pin, 2.5V-6V input voltage range, 1.2V fixed positive output, SOT-23-5"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "linear regulator ldo fixed positive"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "SOT?23?5*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "AP2112K-1.2_0_1"
+        (rectangle
+          (start -5.08 4.445)
+          (end 5.08 -5.08)
+          (stroke
+            (width 0.254)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (symbol "AP2112K-1.2_1_1"
+        (pin power_in line
+          (at -7.62 2.54 0)
+          (length 2.54)
+          (name "VIN"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin input line
+          (at -7.62 0 0)
+          (length 2.54)
+          (name "EN"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "3"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_in line
+          (at 0 -7.62 90)
+          (length 2.54)
+          (name "GND"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "2"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin no_connect line
+          (at 5.08 0 180)
+          (length 2.54)
+          (hide yes)
+          (name "NC"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "4"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+        (pin power_out line
+          (at 7.62 2.54 180)
+          (length 2.54)
+          (name "VOUT"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "5"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "power:+3V3"
+      (power)
+      (pin_numbers
+        (hide yes)
+      )
+      (pin_names
+        (offset 0)
+        (hide yes)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "#PWR"
+        (at 0 -3.81 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Value" "+3V3"
+        (at 0 3.556 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Power symbol creates a global label with name \"+3V3\""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "global power"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "+3V3_0_1"
+        (polyline
+          (pts
+            (xy -0.762 1.27)
+            (xy 0 2.54)
+          )
+          (stroke
+            (width 0)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 0 2.54)
+            (xy 0.762 1.27)
+          )
+          (stroke
+            (width 0)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+        (polyline
+          (pts
+            (xy 0 0)
+            (xy 0 2.54)
+          )
+          (stroke
+            (width 0)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "+3V3_1_1"
+        (pin power_in line
+          (at 0 0 90)
+          (length 0)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "power:GND"
+      (power)
+      (pin_numbers
+        (hide yes)
+      )
+      (pin_names
+        (offset 0)
+        (hide yes)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "#PWR"
+        (at 0 -6.35 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Value" "GND"
+        (at 0 -3.81 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "global power"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "GND_0_1"
+        (polyline
+          (pts
+            (xy 0 0)
+            (xy 0 -1.27)
+            (xy 1.27 -1.27)
+            (xy 0 -2.54)
+            (xy -1.27 -1.27)
+            (xy 0 -1.27)
+          )
+          (stroke
+            (width 0)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (symbol "GND_1_1"
+        (pin power_in line
+          (at 0 0 270)
+          (length 0)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+    (symbol "power:PWR_FLAG"
+      (power)
+      (pin_numbers
+        (hide yes)
+      )
+      (pin_names
+        (offset 0)
+        (hide yes)
+      )
+      (exclude_from_sim no)
+      (in_bom yes)
+      (on_board yes)
+      (property "Reference" "#FLG"
+        (at 0 1.905 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Value" "PWR_FLAG"
+        (at 0 3.81 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Special symbol for telling ERC where power comes from"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "flag power"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "PWR_FLAG_0_0"
+        (pin power_out line
+          (at 0 0 90)
+          (length 0)
+          (name "~"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+          (number "1"
+            (effects
+              (font
+                (size 1.27 1.27)
+              )
+            )
+          )
+        )
+      )
+      (symbol "PWR_FLAG_0_1"
+        (polyline
+          (pts
+            (xy 0 0)
+            (xy 0 1.27)
+            (xy -1.016 1.905)
+            (xy 0 2.54)
+            (xy 1.016 1.905)
+            (xy 0 1.27)
+          )
+          (stroke
+            (width 0)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
+  )
+  (no_connect (at 139.7 90.17) (uuid "7a385707-264e-5b15-8277-c9de466775e4"))
+  (no_connect (at 139.7 92.71) (uuid "00de9106-a287-5820-9ee0-a6e0cd0e78f0"))
+  (no_connect (at 139.7 95.25) (uuid "307922fc-992a-528f-936e-6a80abfd19c7"))
+  (no_connect (at 139.7 97.79) (uuid "bc2c69e1-973f-5e7f-803c-188506b8e5a0"))
+  (no_connect (at 139.7 100.33) (uuid "ed0532e6-9d45-54ce-a2cb-772a5d5a873b"))
+  (no_connect (at 139.7 102.87) (uuid "a58cd7bd-f4cf-5bd7-8811-2c8f613ffa84"))
+  (wire (pts (xy 139.7 105.41) (xy 130.81 105.41)) (stroke (width 0) (type default)) (uuid "e28fd493-a81e-5c3d-8655-bd8e20c35ee8"))
+  (label "I2S_LRCK" (at 130.81 105.41 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "bde964f3-1fb5-51b5-88ab-a8b409ad43ea"))
+  (wire (pts (xy 139.7 107.95) (xy 130.81 107.95)) (stroke (width 0) (type default)) (uuid "dc02fe89-659c-5439-b60a-e555604168e3"))
+  (label "I2S_DIN" (at 130.81 107.95 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "da0c99ec-4899-58dd-bc6c-2dd642e9f314"))
+  (no_connect (at 139.7 110.49) (uuid "0126294b-f192-57fc-887a-e0fcb7521647"))
+  (wire (pts (xy 139.7 113.03) (xy 130.81 113.03)) (stroke (width 0) (type default)) (uuid "c32d5e83-68e1-5a7d-ae6d-8564fd5f6233"))
+  (label "I2S_BCK" (at 130.81 113.03 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "8987e80e-be90-549d-948e-5b4b21035638"))
+  (wire (pts (xy 139.7 115.57) (xy 130.81 115.57)) (stroke (width 0) (type default)) (uuid "1db6f705-a10c-5ff1-a0eb-36885c5e65ae"))
+  (label "I2S_SCK" (at 130.81 115.57 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "870e0395-d32d-5128-8bcf-034fade3766e"))
+  (no_connect (at 139.7 118.11) (uuid "a9039b7f-00e5-5b93-a226-2479eb62313b"))
+  (no_connect (at 139.7 120.65) (uuid "e857a83c-cf13-563c-ab95-9aaa847d1b9b"))
+  (no_connect (at 139.7 123.19) (uuid "51a2958c-357d-5da8-b4f8-e2f9915a371e"))
+  (no_connect (at 139.7 125.73) (uuid "b5dd5f00-ccda-5d64-92b9-fe0bafab9d2f"))
+  (no_connect (at 139.7 128.27) (uuid "19e12f2b-5f9a-5edf-beaf-973df7947cee"))
+  (no_connect (at 139.7 130.81) (uuid "88ccdc43-240d-5a38-8ca0-d0c8a72bbfb1"))
+  (wire (pts (xy 149.86 77.47) (xy 149.86 68.58)) (stroke (width 0) (type default)) (uuid "d099f885-48bf-57fe-8bd4-85217cdd52c8"))
+  (symbol (lib_id "power:+3V3") (at 149.86 68.58 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "92cecf8c-fe6f-51c1-995a-f17f9c5212a5")
+    (property "Reference" "#PWR01" (at 149.86 68.58 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 149.86 64.77 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 149.86 68.58 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 149.86 68.58 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "92cecf8c-fe6f-51c1-995a-f17f9c5212a5-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR01") (unit 1))))
+  )
+  (wire (pts (xy 137.16 87.63) (xy 128.27 87.63)) (stroke (width 0) (type default)) (uuid "c822e896-399f-58b3-a680-df6b0f29ea3b"))
+  (label "CRESET" (at 128.27 87.63 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "d743aa8c-513b-5bd2-be18-627daf60b9b3"))
+  (no_connect (at 137.16 95.25) (uuid "2ed3399d-4d51-57b4-9563-6c454a438018"))
+  (no_connect (at 137.16 97.79) (uuid "5d030079-b640-5024-885d-2905e39646fb"))
+  (no_connect (at 137.16 100.33) (uuid "f0955973-59be-55c4-b0ec-3a1b2338a693"))
+  (no_connect (at 137.16 102.87) (uuid "5b814c3a-f76d-59d0-a5ee-9c11204261e2"))
+  (no_connect (at 137.16 105.41) (uuid "0e16d571-2e88-5cc2-bb10-7c48cfca96d6"))
+  (no_connect (at 137.16 107.95) (uuid "ee0f563d-f2fe-54a9-979f-5db204c440cd"))
+  (no_connect (at 137.16 110.49) (uuid "49a6c159-a2c9-56cc-bcf2-726e2f1c6b21"))
+  (wire (pts (xy 137.16 113.03) (xy 128.27 113.03)) (stroke (width 0) (type default)) (uuid "5e12993d-5bd7-59f0-9816-280ca7f7b490"))
+  (label "CLK12" (at 128.27 113.03 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "35823bbc-f573-5dd7-a0be-f2afb0e6a9c9"))
+  (no_connect (at 137.16 115.57) (uuid "4a739dbb-896a-5299-8dd0-b6efdd1c567b"))
+  (no_connect (at 137.16 118.11) (uuid "4dbf5069-26e9-5c30-9ba1-27dbca7cb51f"))
+  (wire (pts (xy 137.16 120.65) (xy 128.27 120.65)) (stroke (width 0) (type default)) (uuid "d8e042b3-48fe-5ce9-965c-75a451cdceb8"))
+  (label "SPI_SO" (at 128.27 120.65 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "eeef14a8-1c11-5ecd-a570-b7b6e8cc9984"))
+  (wire (pts (xy 137.16 123.19) (xy 128.27 123.19)) (stroke (width 0) (type default)) (uuid "5d14cb9a-b16a-5aec-8ec4-178a77e6d22a"))
+  (label "SPI_SI" (at 128.27 123.19 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "bb558866-0845-51bd-90e1-f1f647368600"))
+  (wire (pts (xy 137.16 125.73) (xy 128.27 125.73)) (stroke (width 0) (type default)) (uuid "4576494a-9957-5d95-aa71-d3beaac375a6"))
+  (label "SPI_SCK" (at 128.27 125.73 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "4cff3641-5b03-5540-82c0-b27c48d6e44f"))
+  (wire (pts (xy 137.16 128.27) (xy 128.27 128.27)) (stroke (width 0) (type default)) (uuid "2bb25c71-e7a1-5bd9-b66f-8c39fed97f37"))
+  (label "SPI_SS" (at 128.27 128.27 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "5906e8a8-45cf-5230-9af1-9cd1fade1dee"))
+  (wire (pts (xy 162.56 87.63) (xy 171.45 87.63)) (stroke (width 0) (type default)) (uuid "77e7e729-4b09-5648-bfd1-8553fa2adcd1"))
+  (label "CDONE" (at 171.45 87.63 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "a981fe18-1250-550b-8418-a1fed109715b"))
+  (wire (pts (xy 149.86 87.63) (xy 149.86 78.74)) (stroke (width 0) (type default)) (uuid "c5059b9a-a47e-5262-8196-a0d1870da0d8"))
+  (symbol (lib_id "power:+3V3") (at 149.86 78.74 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "190c0aee-bd23-5501-adeb-73913a7ad5e2")
+    (property "Reference" "#PWR02" (at 149.86 78.74 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 149.86 74.93 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 149.86 78.74 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 149.86 78.74 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "190c0aee-bd23-5501-adeb-73913a7ad5e2-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR02") (unit 1))))
+  )
+  (wire (pts (xy 147.32 95.25) (xy 147.32 86.36)) (stroke (width 0) (type default)) (uuid "2560afe0-8315-5fbd-bba1-5402f15e8634"))
+  (symbol (lib_id "power:+3V3") (at 147.32 86.36 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "f62bac01-22d1-5a36-a660-ae88299bd6a9")
+    (property "Reference" "#PWR03" (at 147.32 86.36 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 147.32 82.55 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 147.32 86.36 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 147.32 86.36 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f62bac01-22d1-5a36-a660-ae88299bd6a9-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR03") (unit 1))))
+  )
+  (wire (pts (xy 149.86 95.25) (xy 149.86 86.36)) (stroke (width 0) (type default)) (uuid "98fbdab7-0f7f-5b4f-9571-e1202c37ed49"))
+  (label "+1V2" (at 149.86 86.36 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "4730d829-c91d-50f1-a0dc-112400529c9e"))
+  (wire (pts (xy 149.86 115.57) (xy 149.86 124.46)) (stroke (width 0) (type default)) (uuid "c5c38a76-3774-5369-afd3-9414c0771e15"))
+  (symbol (lib_id "power:GND") (at 149.86 124.46 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "1d832e2c-ba60-5934-8ee3-3efc6cdc3f80")
+    (property "Reference" "#PWR04" (at 149.86 124.46 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 149.86 128.27 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 149.86 124.46 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 149.86 124.46 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "1d832e2c-ba60-5934-8ee3-3efc6cdc3f80-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR04") (unit 1))))
+  )
+  (wire (pts (xy 152.4 95.25) (xy 152.4 86.36)) (stroke (width 0) (type default)) (uuid "81ae38f2-6404-53c6-8c9a-816875c3fe61"))
+  (label "+1V2" (at 152.4 86.36 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "491881d9-c7e8-59c8-951e-eac892c96a5a"))
+  (symbol (lib_id "FPGA_Lattice:ICE40UP5K-SG48ITR") (at 149.86 105.41 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "041db1e9-1f41-522f-89bc-0c8738252382")
+    (property "Reference" "U1" (at 149.86 74.93 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "iCE40UP5K" (at 149.86 133.35 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_DFN_QFN:QFN-48-1EP_7x7mm_P0.5mm_EP3.5x3.5mm" (at 149.86 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.latticesemi.com/view_document?document_id=51968" (at 149.86 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "ICE40UP5K-SG48ITR" (at 149.86 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Lattice Semiconductor" (at 149.86 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "25" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p25"))
+    (pin "23" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p23"))
+    (pin "27" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p27"))
+    (pin "26" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p26"))
+    (pin "28" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p28"))
+    (pin "31" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p31"))
+    (pin "32" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p32"))
+    (pin "34" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p34"))
+    (pin "37" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p37"))
+    (pin "35" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p35"))
+    (pin "36" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p36"))
+    (pin "43" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p43"))
+    (pin "38" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p38"))
+    (pin "42" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p42"))
+    (pin "39" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p39"))
+    (pin "40" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p40"))
+    (pin "41" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p41"))
+    (pin "33" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p33"))
+    (pin "8" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p8"))
+    (pin "6" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p6"))
+    (pin "9" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p9"))
+    (pin "10" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p10"))
+    (pin "11" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p11"))
+    (pin "12" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p12"))
+    (pin "21" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p21"))
+    (pin "13" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p13"))
+    (pin "20" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p20"))
+    (pin "19" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p19"))
+    (pin "18" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p18"))
+    (pin "14" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p14"))
+    (pin "17" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p17"))
+    (pin "15" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p15"))
+    (pin "16" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p16"))
+    (pin "22" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p22"))
+    (pin "7" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p7"))
+    (pin "46" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p46"))
+    (pin "47" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p47"))
+    (pin "44" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p44"))
+    (pin "48" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p48"))
+    (pin "45" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p45"))
+    (pin "2" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p2"))
+    (pin "4" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p4"))
+    (pin "3" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p3"))
+    (pin "1" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p1"))
+    (pin "24" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p24"))
+    (pin "30" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p30"))
+    (pin "5" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p5"))
+    (pin "49" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p49"))
+    (pin "29" (uuid "041db1e9-1f41-522f-89bc-0c8738252382-p29"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "U1") (unit 1))))
+  )
+  (wire (pts (xy 242.57 95.25) (xy 236.22 95.25)) (stroke (width 0) (type default)) (uuid "bdc51712-e3bb-5ccd-97c7-f5e07bcd1b0d"))
+  (label "I2S_LRCK" (at 236.22 95.25 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "577aa34d-2b35-5f6c-af43-45a177823b4f"))
+  (wire (pts (xy 242.57 97.79) (xy 236.22 97.79)) (stroke (width 0) (type default)) (uuid "3b22372d-e072-5116-b9bf-c801ddf4e5dd"))
+  (label "I2S_DIN" (at 236.22 97.79 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "9ad1d35e-5e23-515f-91d8-86203506b5ae"))
+  (wire (pts (xy 242.57 100.33) (xy 236.22 100.33)) (stroke (width 0) (type default)) (uuid "d857caac-2632-515b-a485-3757e4ef46bd"))
+  (label "I2S_BCK" (at 236.22 100.33 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "378253b6-6d9f-5a8d-9c3b-9647004245b5"))
+  (wire (pts (xy 242.57 102.87) (xy 236.22 102.87)) (stroke (width 0) (type default)) (uuid "a7bbfbdb-3909-562f-8787-fa6c8044fe85"))
+  (label "I2S_SCK" (at 236.22 102.87 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "698bbe72-afb7-5f64-a07f-cdb0466210d4"))
+  (wire (pts (xy 242.57 107.95) (xy 236.22 107.95)) (stroke (width 0) (type default)) (uuid "f09cee59-b3e3-5dc6-ba2b-26e4313521c1"))
+  (symbol (lib_id "power:GND") (at 236.22 107.95 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "7d069609-14ea-5831-98a7-692b1ac70a80")
+    (property "Reference" "#PWR05" (at 236.22 107.95 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 232.41 107.95 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 236.22 107.95 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 236.22 107.95 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "7d069609-14ea-5831-98a7-692b1ac70a80-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR05") (unit 1))))
+  )
+  (wire (pts (xy 242.57 110.49) (xy 236.22 110.49)) (stroke (width 0) (type default)) (uuid "2988c8a9-e9f4-5270-bbfb-438466581c9c"))
+  (symbol (lib_id "power:GND") (at 236.22 110.49 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "58eb06bb-985b-5972-b642-26115afe4b90")
+    (property "Reference" "#PWR06" (at 236.22 110.49 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 232.41 110.49 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 236.22 110.49 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 236.22 110.49 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "58eb06bb-985b-5972-b642-26115afe4b90-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR06") (unit 1))))
+  )
+  (wire (pts (xy 242.57 113.03) (xy 236.22 113.03)) (stroke (width 0) (type default)) (uuid "2c082f8b-d950-5a70-ac42-b593daaae149"))
+  (symbol (lib_id "power:+3V3") (at 236.22 113.03 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "8c318258-4c4d-5e40-a0bc-0066831d38aa")
+    (property "Reference" "#PWR07" (at 236.22 113.03 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 232.41 113.03 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 236.22 113.03 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 236.22 113.03 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "8c318258-4c4d-5e40-a0bc-0066831d38aa-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR07") (unit 1))))
+  )
+  (wire (pts (xy 242.57 115.57) (xy 236.22 115.57)) (stroke (width 0) (type default)) (uuid "6cc61f4a-b398-556d-88ae-7bf8419ffdfb"))
+  (symbol (lib_id "power:GND") (at 236.22 115.57 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "2b10483c-bd18-593e-870b-7d723dd7213a")
+    (property "Reference" "#PWR08" (at 236.22 115.57 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 232.41 115.57 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 236.22 115.57 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 236.22 115.57 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "2b10483c-bd18-593e-870b-7d723dd7213a-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR08") (unit 1))))
+  )
+  (wire (pts (xy 252.73 90.17) (xy 252.73 83.82)) (stroke (width 0) (type default)) (uuid "c0876952-112e-58ca-8253-83e32184ce36"))
+  (symbol (lib_id "power:+3V3") (at 252.73 83.82 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "f3f31840-073d-5ccf-ad65-a0b48bd8b629")
+    (property "Reference" "#PWR09" (at 252.73 83.82 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 252.73 80.01 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 252.73 83.82 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 252.73 83.82 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f3f31840-073d-5ccf-ad65-a0b48bd8b629-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR09") (unit 1))))
+  )
+  (wire (pts (xy 252.73 123.19) (xy 252.73 129.54)) (stroke (width 0) (type default)) (uuid "39a3d0c5-7bba-5112-ae3f-29d280d21f52"))
+  (symbol (lib_id "power:GND") (at 252.73 129.54 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "c5d4621b-e6a0-52b3-a71a-ca878a65012d")
+    (property "Reference" "#PWR10" (at 252.73 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 252.73 133.35 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 252.73 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 252.73 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "c5d4621b-e6a0-52b3-a71a-ca878a65012d-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR10") (unit 1))))
+  )
+  (wire (pts (xy 255.27 90.17) (xy 255.27 83.82)) (stroke (width 0) (type default)) (uuid "d20ce037-7057-55df-b6f4-5bce6eaa3c79"))
+  (symbol (lib_id "power:+3V3") (at 255.27 83.82 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "402c180f-e262-5ada-9f2d-a71695292d9b")
+    (property "Reference" "#PWR11" (at 255.27 83.82 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 255.27 80.01 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 255.27 83.82 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 255.27 83.82 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "402c180f-e262-5ada-9f2d-a71695292d9b-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR11") (unit 1))))
+  )
+  (wire (pts (xy 255.27 123.19) (xy 255.27 129.54)) (stroke (width 0) (type default)) (uuid "69dbeeba-be7a-5802-8156-c365c902db26"))
+  (symbol (lib_id "power:GND") (at 255.27 129.54 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "733f54ef-fdb1-56c8-af1c-a1c029b9713d")
+    (property "Reference" "#PWR12" (at 255.27 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 255.27 133.35 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 255.27 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 255.27 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "733f54ef-fdb1-56c8-af1c-a1c029b9713d-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR12") (unit 1))))
+  )
+  (wire (pts (xy 257.81 90.17) (xy 257.81 83.82)) (stroke (width 0) (type default)) (uuid "a9341fa5-997c-59f9-afc5-0c47980ec6cf"))
+  (symbol (lib_id "power:+3V3") (at 257.81 83.82 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "33b6e813-d562-5626-8a77-066f71345c9e")
+    (property "Reference" "#PWR13" (at 257.81 83.82 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 257.81 80.01 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 257.81 83.82 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 257.81 83.82 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "33b6e813-d562-5626-8a77-066f71345c9e-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR13") (unit 1))))
+  )
+  (wire (pts (xy 257.81 123.19) (xy 257.81 129.54)) (stroke (width 0) (type default)) (uuid "03b987fd-0332-5384-bdcf-5b2f14af8b8d"))
+  (symbol (lib_id "power:GND") (at 257.81 129.54 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "0df2a689-a4fe-5702-a177-bcb6a88257c3")
+    (property "Reference" "#PWR14" (at 257.81 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 257.81 133.35 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 257.81 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 257.81 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "0df2a689-a4fe-5702-a177-bcb6a88257c3-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR14") (unit 1))))
+  )
+  (wire (pts (xy 267.97 95.25) (xy 274.32 95.25)) (stroke (width 0) (type default)) (uuid "a0a7f069-ed4c-5efa-b122-f79810629313"))
+  (label "OUTL" (at 274.32 95.25 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "ed5114bc-ad66-5909-ad58-f6a0c53c5096"))
+  (wire (pts (xy 267.97 97.79) (xy 274.32 97.79)) (stroke (width 0) (type default)) (uuid "c1c21620-a1af-5402-b059-85b1664142fa"))
+  (label "OUTR" (at 274.32 97.79 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "3087f957-6038-57cb-84cc-7e35e7741c7d"))
+  (wire (pts (xy 267.97 102.87) (xy 274.32 102.87)) (stroke (width 0) (type default)) (uuid "a19c571a-4e17-5a34-8e85-51a44fa7d025"))
+  (label "CAPP" (at 274.32 102.87 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "5a3d71a1-d035-5b20-b780-44b9f37a792f"))
+  (wire (pts (xy 267.97 110.49) (xy 274.32 110.49)) (stroke (width 0) (type default)) (uuid "8510d96f-195a-5f34-953d-168db3f3e99a"))
+  (label "CAPM" (at 274.32 110.49 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "4fd58116-1d8c-5214-8fc2-0e8287a70acc"))
+  (wire (pts (xy 267.97 115.57) (xy 274.32 115.57)) (stroke (width 0) (type default)) (uuid "c7a615b1-89c9-50dc-a667-60e8c528828b"))
+  (label "LDOO" (at 274.32 115.57 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "79330d89-e935-5649-bb93-41b1ef1116b8"))
+  (wire (pts (xy 267.97 118.11) (xy 274.32 118.11)) (stroke (width 0) (type default)) (uuid "085ae854-1922-59bc-95b9-84b0d736ae45"))
+  (label "VNEG" (at 274.32 118.11 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "99f32cd0-11b5-5a00-abf2-98d4b1c49227"))
+  (symbol (lib_id "Audio:PCM5102A") (at 255.27 105.41 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd")
+    (property "Reference" "U2" (at 255.27 87.63 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "PCM5102A" (at 255.27 125.73 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm" (at 255.27 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.ti.com/lit/ds/symlink/pcm5102a.pdf" (at 255.27 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "PCM5102APWR" (at 255.27 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Texas Instruments" (at 255.27 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "15" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p15"))
+    (pin "14" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p14"))
+    (pin "13" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p13"))
+    (pin "12" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p12"))
+    (pin "11" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p11"))
+    (pin "10" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p10"))
+    (pin "17" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p17"))
+    (pin "16" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p16"))
+    (pin "1" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p1"))
+    (pin "3" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p3"))
+    (pin "20" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p20"))
+    (pin "19" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p19"))
+    (pin "8" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p8"))
+    (pin "9" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p9"))
+    (pin "6" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p6"))
+    (pin "7" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p7"))
+    (pin "2" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p2"))
+    (pin "4" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p4"))
+    (pin "18" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p18"))
+    (pin "5" (uuid "e97bcfd3-cee4-571e-b025-4995e630c8cd-p5"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "U2") (unit 1))))
+  )
+  (wire (pts (xy 52.07 41.91) (xy 49.53 41.91)) (stroke (width 0) (type default)) (uuid "cda72946-99c4-5611-a5df-ddcd8a554080"))
+  (symbol (lib_id "power:+3V3") (at 49.53 41.91 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "eea07c4e-c552-5649-8a81-8a0c333f3186")
+    (property "Reference" "#PWR15" (at 49.53 41.91 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 45.72 41.91 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 49.53 41.91 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 49.53 41.91 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "eea07c4e-c552-5649-8a81-8a0c333f3186-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR15") (unit 1))))
+  )
+  (wire (pts (xy 52.07 44.45) (xy 49.53 44.45)) (stroke (width 0) (type default)) (uuid "5c8b0ee9-a3d4-5036-ac9f-942f5b8ca174"))
+  (symbol (lib_id "power:+3V3") (at 49.53 44.45 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "96645835-d4be-58cb-ade6-91d509ba0f89")
+    (property "Reference" "#PWR16" (at 49.53 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 45.72 44.45 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 49.53 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 49.53 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "96645835-d4be-58cb-ade6-91d509ba0f89-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR16") (unit 1))))
+  )
+  (wire (pts (xy 59.69 52.07) (xy 59.69 54.61)) (stroke (width 0) (type default)) (uuid "2c1f906e-3cd7-57c4-be1e-e817334a30fd"))
+  (symbol (lib_id "power:GND") (at 59.69 54.61 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "c80afa08-8367-532d-9b15-67d85b4431ce")
+    (property "Reference" "#PWR17" (at 59.69 54.61 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 59.69 58.42 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 59.69 54.61 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 59.69 54.61 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "c80afa08-8367-532d-9b15-67d85b4431ce-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR17") (unit 1))))
+  )
+  (wire (pts (xy 67.31 41.91) (xy 69.85 41.91)) (stroke (width 0) (type default)) (uuid "7280b092-9ba2-5b9a-b4dc-9cba4b0db000"))
+  (label "+1V2" (at 69.85 41.91 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "9da6d2d0-146b-5af9-ba08-1599f3299a4d"))
+  (symbol (lib_id "Regulator_Linear:AP2112K-1.2") (at 59.69 44.45 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "1c726e9f-7f12-5dc5-9d16-843d4155d416")
+    (property "Reference" "U3" (at 59.69 39.37 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "AP2112K-1.2" (at 59.69 54.61 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_TO_SOT_SMD:SOT-23-5" (at 59.69 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.diodes.com/assets/Datasheets/AP2112.pdf" (at 59.69 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "1.2V" (at 59.69 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Current" "600mA" (at 59.69 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "AP2112K-1.2TRG1" (at 59.69 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Diodes Incorporated" (at 59.69 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "1c726e9f-7f12-5dc5-9d16-843d4155d416-p1"))
+    (pin "3" (uuid "1c726e9f-7f12-5dc5-9d16-843d4155d416-p3"))
+    (pin "2" (uuid "1c726e9f-7f12-5dc5-9d16-843d4155d416-p2"))
+    (pin "4" (uuid "1c726e9f-7f12-5dc5-9d16-843d4155d416-p4"))
+    (pin "5" (uuid "1c726e9f-7f12-5dc5-9d16-843d4155d416-p5"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "U3") (unit 1))))
+  )
+  (wire (pts (xy 139.7 182.88) (xy 137.16 182.88)) (stroke (width 0) (type default)) (uuid "de1e784e-b7fe-5a04-9208-8ac621059544"))
+  (label "SPI_SS" (at 137.16 182.88 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "72c479d1-aa3f-5c3d-984a-8487f16a9d83"))
+  (wire (pts (xy 139.7 185.42) (xy 137.16 185.42)) (stroke (width 0) (type default)) (uuid "d7bd183f-0046-57aa-aae0-8e26770709c4"))
+  (label "SPI_SCK" (at 137.16 185.42 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "599243f1-6203-53b5-8088-83b9371f67ca"))
+  (wire (pts (xy 139.7 187.96) (xy 137.16 187.96)) (stroke (width 0) (type default)) (uuid "c351735e-daa4-5382-a89c-5a0ceeee0964"))
+  (label "SPI_SI" (at 137.16 187.96 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "b1261fc0-d8d1-56ac-b106-7c968a5a2984"))
+  (wire (pts (xy 139.7 190.5) (xy 137.16 190.5)) (stroke (width 0) (type default)) (uuid "5b43ba79-7c14-5fa4-b8c5-d136a0e9953a"))
+  (label "SPI_SO" (at 137.16 190.5 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "2f6bfcc1-6497-5ab9-b63d-4a8981afa6a0"))
+  (wire (pts (xy 139.7 193.04) (xy 137.16 193.04)) (stroke (width 0) (type default)) (uuid "7359362f-0b2d-5e7b-98be-2db00fcb2c93"))
+  (symbol (lib_id "power:+3V3") (at 137.16 193.04 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "aeda0525-0f94-55b2-845f-d4f3fb90c08c")
+    (property "Reference" "#PWR18" (at 137.16 193.04 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 133.35 193.04 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 137.16 193.04 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 137.16 193.04 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "aeda0525-0f94-55b2-845f-d4f3fb90c08c-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR18") (unit 1))))
+  )
+  (wire (pts (xy 139.7 195.58) (xy 137.16 195.58)) (stroke (width 0) (type default)) (uuid "d13a0a82-13ae-5755-8ee8-21dd29559968"))
+  (symbol (lib_id "power:+3V3") (at 137.16 195.58 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "387b6773-307b-562a-8458-2646b1e2517e")
+    (property "Reference" "#PWR19" (at 137.16 195.58 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 133.35 195.58 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 137.16 195.58 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 137.16 195.58 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "387b6773-307b-562a-8458-2646b1e2517e-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR19") (unit 1))))
+  )
+  (wire (pts (xy 149.86 177.8) (xy 149.86 175.26)) (stroke (width 0) (type default)) (uuid "3af9e112-db3c-5900-a354-30ae5ba3db42"))
+  (symbol (lib_id "power:+3V3") (at 149.86 175.26 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "a604ad17-e3af-561a-97f5-3fff9c226392")
+    (property "Reference" "#PWR20" (at 149.86 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 149.86 171.45 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 149.86 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 149.86 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "a604ad17-e3af-561a-97f5-3fff9c226392-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR20") (unit 1))))
+  )
+  (wire (pts (xy 149.86 203.2) (xy 149.86 205.74)) (stroke (width 0) (type default)) (uuid "6c55e38f-f4a2-51db-bcb4-d10383bf36c7"))
+  (symbol (lib_id "power:GND") (at 149.86 205.74 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "afc9c036-7fb8-5094-a146-783c2f2f1c22")
+    (property "Reference" "#PWR21" (at 149.86 205.74 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 149.86 209.55 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 149.86 205.74 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 149.86 205.74 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "afc9c036-7fb8-5094-a146-783c2f2f1c22-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR21") (unit 1))))
+  )
+  (symbol (lib_id "Memory_Flash:W25Q32JVSS") (at 149.86 190.5 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "6f1ab730-4a98-553a-974e-14b579810bb9")
+    (property "Reference" "U4" (at 149.86 175.26 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "W25Q32JV" (at 149.86 205.74 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm" (at 149.86 190.5 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.winbond.com/resource-files/w25q32jv%20revi%2005182022%20plus.pdf" (at 149.86 190.5 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "W25Q32JVSSIQ" (at 149.86 190.5 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Winbond" (at 149.86 190.5 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "6f1ab730-4a98-553a-974e-14b579810bb9-p1"))
+    (pin "6" (uuid "6f1ab730-4a98-553a-974e-14b579810bb9-p6"))
+    (pin "5" (uuid "6f1ab730-4a98-553a-974e-14b579810bb9-p5"))
+    (pin "2" (uuid "6f1ab730-4a98-553a-974e-14b579810bb9-p2"))
+    (pin "3" (uuid "6f1ab730-4a98-553a-974e-14b579810bb9-p3"))
+    (pin "7" (uuid "6f1ab730-4a98-553a-974e-14b579810bb9-p7"))
+    (pin "8" (uuid "6f1ab730-4a98-553a-974e-14b579810bb9-p8"))
+    (pin "4" (uuid "6f1ab730-4a98-553a-974e-14b579810bb9-p4"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "U4") (unit 1))))
+  )
+  (wire (pts (xy 52.07 149.86) (xy 49.53 149.86)) (stroke (width 0) (type default)) (uuid "7a3f6449-a806-5dc7-85ef-eec43c8b4df9"))
+  (symbol (lib_id "power:+3V3") (at 49.53 149.86 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "050afbed-dbf0-5cec-900c-940c7a099fc7")
+    (property "Reference" "#PWR22" (at 49.53 149.86 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 45.72 149.86 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 49.53 149.86 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 49.53 149.86 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "050afbed-dbf0-5cec-900c-940c7a099fc7-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR22") (unit 1))))
+  )
+  (wire (pts (xy 59.69 142.24) (xy 59.69 139.7)) (stroke (width 0) (type default)) (uuid "0b758d9d-efb4-57ba-9715-8fc1603aba7d"))
+  (symbol (lib_id "power:+3V3") (at 59.69 139.7 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "c7878787-c335-545c-b2a7-7952b8733c6c")
+    (property "Reference" "#PWR23" (at 59.69 139.7 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 59.69 135.89 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 59.69 139.7 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 59.69 139.7 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "c7878787-c335-545c-b2a7-7952b8733c6c-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR23") (unit 1))))
+  )
+  (wire (pts (xy 59.69 157.48) (xy 59.69 160.02)) (stroke (width 0) (type default)) (uuid "fb398652-ac70-5050-aa7d-1972c9f66585"))
+  (symbol (lib_id "power:GND") (at 59.69 160.02 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "535b8bd9-6366-5d71-a2ff-37420f61cbf6")
+    (property "Reference" "#PWR24" (at 59.69 160.02 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 59.69 163.83 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 59.69 160.02 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 59.69 160.02 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "535b8bd9-6366-5d71-a2ff-37420f61cbf6-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR24") (unit 1))))
+  )
+  (wire (pts (xy 67.31 149.86) (xy 69.85 149.86)) (stroke (width 0) (type default)) (uuid "1eee1b36-fd3c-5cb5-8758-7d2b0453433b"))
+  (label "CLK12" (at 69.85 149.86 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "d1f168a5-ab2b-50cd-8c03-780422c0251a"))
+  (symbol (lib_id "Oscillator:ASE-xxxMHz") (at 59.69 149.86 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "c1236c5b-6ef0-5214-b7fb-baedb4094e3f")
+    (property "Reference" "X1" (at 59.69 139.7 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "12MHz" (at 59.69 160.02 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm" (at 59.69 149.86 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://abracon.com/Oscillators/ASE.pdf" (at 59.69 149.86 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "50ppm" (at 59.69 149.86 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "ASE-12.000MHZ-L-C-T" (at 59.69 149.86 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Abracon" (at 59.69 149.86 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "c1236c5b-6ef0-5214-b7fb-baedb4094e3f-p1"))
+    (pin "4" (uuid "c1236c5b-6ef0-5214-b7fb-baedb4094e3f-p4"))
+    (pin "2" (uuid "c1236c5b-6ef0-5214-b7fb-baedb4094e3f-p2"))
+    (pin "3" (uuid "c1236c5b-6ef0-5214-b7fb-baedb4094e3f-p3"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "X1") (unit 1))))
+  )
+  (wire (pts (xy 30.48 30.48) (xy 27.94 30.48)) (stroke (width 0) (type default)) (uuid "64176fc1-5ae2-58a5-b3d7-74e1b849a7a7"))
+  (symbol (lib_id "power:+3V3") (at 27.94 30.48 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "cdc0699f-b888-59ce-852e-49bb6eee3c81")
+    (property "Reference" "#PWR25" (at 27.94 30.48 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 24.13 30.48 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 27.94 30.48 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 27.94 30.48 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "cdc0699f-b888-59ce-852e-49bb6eee3c81-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR25") (unit 1))))
+  )
+  (wire (pts (xy 30.48 33.02) (xy 27.94 33.02)) (stroke (width 0) (type default)) (uuid "8509b2e9-eac5-5474-bb4d-389947bd90e6"))
+  (symbol (lib_id "power:GND") (at 27.94 33.02 90) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "949c72a7-7f01-530b-90d8-86552ea4b8d0")
+    (property "Reference" "#PWR26" (at 27.94 33.02 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 24.13 33.02 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 27.94 33.02 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 27.94 33.02 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "949c72a7-7f01-530b-90d8-86552ea4b8d0-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR26") (unit 1))))
+  )
+  (symbol (lib_id "Connector:Screw_Terminal_01x02") (at 35.56 30.48 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "08b0134a-c2e5-5292-a21a-88dc03752830")
+    (property "Reference" "J1" (at 35.56 27.94 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "3V3 IN" (at 35.56 35.56 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal" (at 35.56 30.48 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.phoenixcontact.com/product/1729128" (at 35.56 30.48 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "1729128" (at 35.56 30.48 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Phoenix Contact" (at 35.56 30.48 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "08b0134a-c2e5-5292-a21a-88dc03752830-p1"))
+    (pin "2" (uuid "08b0134a-c2e5-5292-a21a-88dc03752830-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "J1") (unit 1))))
+  )
+  (wire (pts (xy 299.72 102.87) (xy 302.26 102.87)) (stroke (width 0) (type default)) (uuid "0f403ae9-7b1c-50de-ae59-a0fb147f065c"))
+  (label "OUTR" (at 302.26 102.87 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "d220bfec-d7d2-5c23-a0b9-03ef6cb612cb"))
+  (wire (pts (xy 299.72 105.41) (xy 302.26 105.41)) (stroke (width 0) (type default)) (uuid "1e94ba34-6335-543e-ae90-c45d21b3c7d3"))
+  (symbol (lib_id "power:GND") (at 302.26 105.41 270) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "7a66d538-521f-58b3-b016-4f9be03c24a8")
+    (property "Reference" "#PWR27" (at 302.26 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 306.07 105.41 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 302.26 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 302.26 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "7a66d538-521f-58b3-b016-4f9be03c24a8-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR27") (unit 1))))
+  )
+  (wire (pts (xy 299.72 107.95) (xy 302.26 107.95)) (stroke (width 0) (type default)) (uuid "20a0edba-6148-507a-9dfc-a6833f366c10"))
+  (label "OUTL" (at 302.26 107.95 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "51145e7b-5411-5291-b97b-013097091d18"))
+  (symbol (lib_id "Connector:Conn_01x03_Pin") (at 294.64 105.41 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "38c39e0b-aa25-5ba9-9bf8-00d0240cf62d")
+    (property "Reference" "J2" (at 294.64 100.33 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "AUDIO OUT" (at 294.64 110.49 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical" (at 294.64 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61300311121.pdf" (at 294.64 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "61300311121" (at 294.64 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Wurth Elektronik" (at 294.64 105.41 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "38c39e0b-aa25-5ba9-9bf8-00d0240cf62d-p1"))
+    (pin "2" (uuid "38c39e0b-aa25-5ba9-9bf8-00d0240cf62d-p2"))
+    (pin "3" (uuid "38c39e0b-aa25-5ba9-9bf8-00d0240cf62d-p3"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "J2") (unit 1))))
+  )
+  (wire (pts (xy 260.35 185.42) (xy 262.89 185.42)) (stroke (width 0) (type default)) (uuid "190ccdce-ae49-5d76-8278-53872b8db29c"))
+  (label "SPI_SS" (at 262.89 185.42 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "dbc7bc80-4ddf-576c-ada3-50594cbac6a2"))
+  (wire (pts (xy 260.35 187.96) (xy 262.89 187.96)) (stroke (width 0) (type default)) (uuid "afced858-f202-514c-bf85-672679cbca33"))
+  (label "SPI_SCK" (at 262.89 187.96 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "b731923d-11cf-514c-9c96-5fb46d1a97c2"))
+  (wire (pts (xy 260.35 190.5) (xy 262.89 190.5)) (stroke (width 0) (type default)) (uuid "8a73e894-c3d7-55e8-abe2-ef9f98633b02"))
+  (label "SPI_SI" (at 262.89 190.5 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "03bc2dd3-51e6-5787-90e7-a407540a8ce8"))
+  (wire (pts (xy 260.35 193.04) (xy 262.89 193.04)) (stroke (width 0) (type default)) (uuid "13c6e3f4-1ca5-56af-a9d4-02cad53ddf7e"))
+  (label "SPI_SO" (at 262.89 193.04 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "24e4a35d-e795-5e2d-8e53-cb681afe530f"))
+  (wire (pts (xy 260.35 195.58) (xy 262.89 195.58)) (stroke (width 0) (type default)) (uuid "7ac6e0d8-2088-542f-b076-30f71f72b57f"))
+  (label "CRESET" (at 262.89 195.58 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "a22682c3-190d-52d4-8bca-d790fb6a9246"))
+  (wire (pts (xy 260.35 198.12) (xy 262.89 198.12)) (stroke (width 0) (type default)) (uuid "460e74c6-86fb-520e-bb6e-f673c759448f"))
+  (symbol (lib_id "power:GND") (at 262.89 198.12 270) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "8f7bb39f-e9b5-5f7f-9ce8-b557c6e93b51")
+    (property "Reference" "#PWR28" (at 262.89 198.12 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 266.7 198.12 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 262.89 198.12 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 262.89 198.12 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "8f7bb39f-e9b5-5f7f-9ce8-b557c6e93b51-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR28") (unit 1))))
+  )
+  (symbol (lib_id "Connector:Conn_01x06_Pin") (at 255.27 190.5 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "53c328b0-2b35-5236-b2f2-75c1f067bdc6")
+    (property "Reference" "J3" (at 255.27 182.88 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "SPI PROG" (at 255.27 200.66 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical" (at 255.27 190.5 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61300611121.pdf" (at 255.27 190.5 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "61300611121" (at 255.27 190.5 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Wurth Elektronik" (at 255.27 190.5 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "53c328b0-2b35-5236-b2f2-75c1f067bdc6-p1"))
+    (pin "2" (uuid "53c328b0-2b35-5236-b2f2-75c1f067bdc6-p2"))
+    (pin "3" (uuid "53c328b0-2b35-5236-b2f2-75c1f067bdc6-p3"))
+    (pin "4" (uuid "53c328b0-2b35-5236-b2f2-75c1f067bdc6-p4"))
+    (pin "5" (uuid "53c328b0-2b35-5236-b2f2-75c1f067bdc6-p5"))
+    (pin "6" (uuid "53c328b0-2b35-5236-b2f2-75c1f067bdc6-p6"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "J3") (unit 1))))
+  )
+  (wire (pts (xy 85.09 40.64) (xy 85.09 38.1)) (stroke (width 0) (type default)) (uuid "f80a5ddc-cd42-5cd7-b396-4eabdff28f09"))
+  (symbol (lib_id "power:+3V3") (at 85.09 38.1 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "6e9923b8-75e3-547a-a1bf-3062871e3599")
+    (property "Reference" "#PWR29" (at 85.09 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 85.09 34.29 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 85.09 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 85.09 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "6e9923b8-75e3-547a-a1bf-3062871e3599-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR29") (unit 1))))
+  )
+  (wire (pts (xy 85.09 48.26) (xy 85.09 50.8)) (stroke (width 0) (type default)) (uuid "fd16d4a5-e4dd-5faa-9062-098827a624d4"))
+  (symbol (lib_id "power:GND") (at 85.09 50.8 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "f3ab8111-3cc6-5c3d-8e93-e81822519751")
+    (property "Reference" "#PWR30" (at 85.09 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 85.09 54.61 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 85.09 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 85.09 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f3ab8111-3cc6-5c3d-8e93-e81822519751-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR30") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 85.09 44.45 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "3ac3ddb8-9b2f-59ee-82d0-dfb29c3b1c9a")
+    (property "Reference" "C1" (at 85.09 38.1 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "10u" (at 85.09 50.8 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 85.09 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A106MQ8NNNC.do" (at 85.09 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "16V" (at 85.09 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 85.09 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10A106MQ8NNNC" (at 85.09 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 85.09 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "3ac3ddb8-9b2f-59ee-82d0-dfb29c3b1c9a-p1"))
+    (pin "2" (uuid "3ac3ddb8-9b2f-59ee-82d0-dfb29c3b1c9a-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C1") (unit 1))))
+  )
+  (wire (pts (xy 110.49 40.64) (xy 110.49 38.1)) (stroke (width 0) (type default)) (uuid "6abc651e-7500-5020-8d3c-f52b900c8119"))
+  (symbol (lib_id "power:+3V3") (at 110.49 38.1 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "f9c479ac-b892-50ff-9f96-2c05cdf9b744")
+    (property "Reference" "#PWR31" (at 110.49 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 110.49 34.29 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 110.49 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 110.49 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f9c479ac-b892-50ff-9f96-2c05cdf9b744-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR31") (unit 1))))
+  )
+  (wire (pts (xy 110.49 48.26) (xy 110.49 50.8)) (stroke (width 0) (type default)) (uuid "c3c6ad9e-6163-5871-b5e6-7eb186f080e5"))
+  (symbol (lib_id "power:GND") (at 110.49 50.8 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "e0d3f4fe-04fd-5401-8a03-35bcc410f57f")
+    (property "Reference" "#PWR32" (at 110.49 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 110.49 54.61 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 110.49 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 110.49 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "e0d3f4fe-04fd-5401-8a03-35bcc410f57f-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR32") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 110.49 44.45 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "9634aca8-1eb0-5a38-941d-a7c0a4c6c266")
+    (property "Reference" "C2" (at 110.49 38.1 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 110.49 50.8 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 110.49 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 110.49 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 110.49 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 110.49 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 110.49 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 110.49 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "9634aca8-1eb0-5a38-941d-a7c0a4c6c266-p1"))
+    (pin "2" (uuid "9634aca8-1eb0-5a38-941d-a7c0a4c6c266-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C2") (unit 1))))
+  )
+  (wire (pts (xy 59.69 66.04) (xy 59.69 63.5)) (stroke (width 0) (type default)) (uuid "98b4127a-b221-5a87-be89-80477b05d53a"))
+  (label "+1V2" (at 59.69 63.5 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "487838ab-fb02-5677-b35c-70b8cd7d9ec1"))
+  (wire (pts (xy 59.69 73.66) (xy 59.69 76.2)) (stroke (width 0) (type default)) (uuid "e1419fde-7acb-59f8-92d6-ff4e45efd0f1"))
+  (symbol (lib_id "power:GND") (at 59.69 76.2 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "2adcdf59-a1c2-54c5-95e9-581bc5c196ff")
+    (property "Reference" "#PWR33" (at 59.69 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 59.69 80.01 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 59.69 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 59.69 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "2adcdf59-a1c2-54c5-95e9-581bc5c196ff-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR33") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 59.69 69.85 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "905d667f-26be-5f1c-bb02-47d157877c45")
+    (property "Reference" "C3" (at 59.69 63.5 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "10u" (at 59.69 76.2 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 59.69 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A106MQ8NNNC.do" (at 59.69 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "16V" (at 59.69 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 59.69 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10A106MQ8NNNC" (at 59.69 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 59.69 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "905d667f-26be-5f1c-bb02-47d157877c45-p1"))
+    (pin "2" (uuid "905d667f-26be-5f1c-bb02-47d157877c45-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C3") (unit 1))))
+  )
+  (wire (pts (xy 85.09 66.04) (xy 85.09 63.5)) (stroke (width 0) (type default)) (uuid "edf35b92-bd53-5202-9787-cbe5117195c2"))
+  (label "+1V2" (at 85.09 63.5 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "c5d5e457-2f58-59d6-953f-e9d6fbebe830"))
+  (wire (pts (xy 85.09 73.66) (xy 85.09 76.2)) (stroke (width 0) (type default)) (uuid "8d2be6e6-3440-5710-ac78-120a2d2a24b8"))
+  (symbol (lib_id "power:GND") (at 85.09 76.2 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "6393756b-1298-5cb6-b981-d9941c73aee3")
+    (property "Reference" "#PWR34" (at 85.09 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 85.09 80.01 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 85.09 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 85.09 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "6393756b-1298-5cb6-b981-d9941c73aee3-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR34") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 85.09 69.85 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "e834e281-c9a9-5d67-a08c-4e60ed769401")
+    (property "Reference" "C4" (at 85.09 63.5 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 85.09 76.2 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 85.09 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 85.09 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 85.09 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 85.09 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 85.09 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 85.09 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "e834e281-c9a9-5d67-a08c-4e60ed769401-p1"))
+    (pin "2" (uuid "e834e281-c9a9-5d67-a08c-4e60ed769401-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C4") (unit 1))))
+  )
+  (wire (pts (xy 110.49 66.04) (xy 110.49 63.5)) (stroke (width 0) (type default)) (uuid "a08147d0-dce9-521a-8577-4ac08764717b"))
+  (label "+1V2" (at 110.49 63.5 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "2c8d5ee8-3ad4-5bcf-8754-4dc7b32f3479"))
+  (wire (pts (xy 110.49 73.66) (xy 110.49 76.2)) (stroke (width 0) (type default)) (uuid "ca0ea08e-2ef2-5e6b-9f4b-16e505b65504"))
+  (symbol (lib_id "power:GND") (at 110.49 76.2 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "03550757-7419-5445-9aca-f5ce46e80285")
+    (property "Reference" "#PWR35" (at 110.49 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 110.49 80.01 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 110.49 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 110.49 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "03550757-7419-5445-9aca-f5ce46e80285-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR35") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 110.49 69.85 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "3522485e-edfa-5f09-8965-24e48215fd4f")
+    (property "Reference" "C5" (at 110.49 63.5 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 110.49 76.2 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 110.49 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 110.49 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 110.49 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 110.49 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 110.49 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 110.49 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "3522485e-edfa-5f09-8965-24e48215fd4f-p1"))
+    (pin "2" (uuid "3522485e-edfa-5f09-8965-24e48215fd4f-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C5") (unit 1))))
+  )
+  (wire (pts (xy 199.39 40.64) (xy 199.39 38.1)) (stroke (width 0) (type default)) (uuid "9b689e0d-1b55-59f3-835c-dd033b077608"))
+  (symbol (lib_id "power:+3V3") (at 199.39 38.1 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "20a2207f-a8c1-5f6d-8cf0-b7f9df55a7fb")
+    (property "Reference" "#PWR36" (at 199.39 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 199.39 34.29 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 199.39 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 199.39 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "20a2207f-a8c1-5f6d-8cf0-b7f9df55a7fb-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR36") (unit 1))))
+  )
+  (wire (pts (xy 199.39 48.26) (xy 199.39 50.8)) (stroke (width 0) (type default)) (uuid "efbdaf0f-5315-51c6-82b2-efa676e882bb"))
+  (symbol (lib_id "power:GND") (at 199.39 50.8 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "448aaa25-3547-5025-bb48-239aa07e795a")
+    (property "Reference" "#PWR37" (at 199.39 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 199.39 54.61 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 199.39 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 199.39 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "448aaa25-3547-5025-bb48-239aa07e795a-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR37") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 199.39 44.45 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "890be2f1-09ea-55eb-8e45-bce23da5ba63")
+    (property "Reference" "C6" (at 199.39 38.1 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 199.39 50.8 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 199.39 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 199.39 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 199.39 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 199.39 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 199.39 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 199.39 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "890be2f1-09ea-55eb-8e45-bce23da5ba63-p1"))
+    (pin "2" (uuid "890be2f1-09ea-55eb-8e45-bce23da5ba63-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C6") (unit 1))))
+  )
+  (wire (pts (xy 224.79 40.64) (xy 224.79 38.1)) (stroke (width 0) (type default)) (uuid "ebf0b1aa-f2cf-5edc-9a89-8fc2cc43da6a"))
+  (symbol (lib_id "power:+3V3") (at 224.79 38.1 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "c3d180ba-4db5-5fda-a0d8-962c42809241")
+    (property "Reference" "#PWR38" (at 224.79 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 224.79 34.29 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 224.79 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 224.79 38.1 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "c3d180ba-4db5-5fda-a0d8-962c42809241-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR38") (unit 1))))
+  )
+  (wire (pts (xy 224.79 48.26) (xy 224.79 50.8)) (stroke (width 0) (type default)) (uuid "3a41a5cf-6459-50c5-bc85-5563a444708a"))
+  (symbol (lib_id "power:GND") (at 224.79 50.8 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "33430eea-fca3-5b12-9905-9b05c44b7ee4")
+    (property "Reference" "#PWR39" (at 224.79 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 224.79 54.61 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 224.79 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 224.79 50.8 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "33430eea-fca3-5b12-9905-9b05c44b7ee4-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR39") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 224.79 44.45 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "d140c9d8-9045-5f3c-bbab-23cd3260299c")
+    (property "Reference" "C7" (at 224.79 38.1 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 224.79 50.8 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 224.79 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 224.79 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 224.79 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 224.79 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 224.79 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 224.79 44.45 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "d140c9d8-9045-5f3c-bbab-23cd3260299c-p1"))
+    (pin "2" (uuid "d140c9d8-9045-5f3c-bbab-23cd3260299c-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C7") (unit 1))))
+  )
+  (wire (pts (xy 149.86 215.9) (xy 149.86 213.36)) (stroke (width 0) (type default)) (uuid "2a98d61b-a3e3-5e65-82b0-34590186f19a"))
+  (symbol (lib_id "power:+3V3") (at 149.86 213.36 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "d2f43219-1187-5252-96e8-694834921c88")
+    (property "Reference" "#PWR40" (at 149.86 213.36 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 149.86 209.55 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 149.86 213.36 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 149.86 213.36 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "d2f43219-1187-5252-96e8-694834921c88-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR40") (unit 1))))
+  )
+  (wire (pts (xy 149.86 223.52) (xy 149.86 226.06)) (stroke (width 0) (type default)) (uuid "76684113-9870-59de-9e4f-ee07758906da"))
+  (symbol (lib_id "power:GND") (at 149.86 226.06 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "0e9595d0-049f-54b8-b091-b583d1da09e9")
+    (property "Reference" "#PWR41" (at 149.86 226.06 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 149.86 229.87 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 149.86 226.06 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 149.86 226.06 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "0e9595d0-049f-54b8-b091-b583d1da09e9-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR41") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 149.86 219.71 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "278580a5-96ba-56f3-8fa3-73434d355736")
+    (property "Reference" "C8" (at 149.86 213.36 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 149.86 226.06 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 149.86 219.71 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 149.86 219.71 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 149.86 219.71 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 149.86 219.71 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 149.86 219.71 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 149.86 219.71 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "278580a5-96ba-56f3-8fa3-73434d355736-p1"))
+    (pin "2" (uuid "278580a5-96ba-56f3-8fa3-73434d355736-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C8") (unit 1))))
+  )
+  (wire (pts (xy 59.69 171.45) (xy 59.69 168.91)) (stroke (width 0) (type default)) (uuid "df57e198-b344-597c-9d65-5d3d25e4a314"))
+  (symbol (lib_id "power:+3V3") (at 59.69 168.91 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "dc2926de-1c6c-5099-b79c-de94ac9b189b")
+    (property "Reference" "#PWR42" (at 59.69 168.91 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 59.69 165.1 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 59.69 168.91 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 59.69 168.91 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "dc2926de-1c6c-5099-b79c-de94ac9b189b-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR42") (unit 1))))
+  )
+  (wire (pts (xy 59.69 179.07) (xy 59.69 181.61)) (stroke (width 0) (type default)) (uuid "dffe5a42-8cf8-51af-b5d0-66d7aef0b9c1"))
+  (symbol (lib_id "power:GND") (at 59.69 181.61 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "f71df96e-e51a-5e45-a09d-666e25e84a67")
+    (property "Reference" "#PWR43" (at 59.69 181.61 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 59.69 185.42 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 59.69 181.61 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 59.69 181.61 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f71df96e-e51a-5e45-a09d-666e25e84a67-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR43") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 59.69 175.26 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "ef8fbb1f-3faa-5bce-a12e-c260329375fc")
+    (property "Reference" "C9" (at 59.69 168.91 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 59.69 181.61 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 59.69 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 59.69 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 59.69 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 59.69 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 59.69 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 59.69 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "ef8fbb1f-3faa-5bce-a12e-c260329375fc-p1"))
+    (pin "2" (uuid "ef8fbb1f-3faa-5bce-a12e-c260329375fc-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C9") (unit 1))))
+  )
+  (wire (pts (xy 255.27 55.88) (xy 255.27 53.34)) (stroke (width 0) (type default)) (uuid "14fd81b9-67b1-59a5-97ad-6edd21ed66b9"))
+  (symbol (lib_id "power:+3V3") (at 255.27 53.34 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "edf7075c-1a4b-5c2b-9c97-bffedfc77826")
+    (property "Reference" "#PWR44" (at 255.27 53.34 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 255.27 49.53 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 255.27 53.34 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 255.27 53.34 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "edf7075c-1a4b-5c2b-9c97-bffedfc77826-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR44") (unit 1))))
+  )
+  (wire (pts (xy 255.27 63.5) (xy 255.27 66.04)) (stroke (width 0) (type default)) (uuid "a9f9d0dd-2dc5-590d-a41b-5ecab43a5d31"))
+  (symbol (lib_id "power:GND") (at 255.27 66.04 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "f91e5da5-4f64-54d1-ae91-6e4783a73b84")
+    (property "Reference" "#PWR45" (at 255.27 66.04 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 255.27 69.85 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 255.27 66.04 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 255.27 66.04 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f91e5da5-4f64-54d1-ae91-6e4783a73b84-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR45") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 255.27 59.69 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "918464f5-98b5-5b79-b56a-09b2648aa3df")
+    (property "Reference" "C10" (at 255.27 53.34 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 255.27 66.04 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 255.27 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 255.27 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 255.27 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 255.27 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 255.27 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 255.27 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "918464f5-98b5-5b79-b56a-09b2648aa3df-p1"))
+    (pin "2" (uuid "918464f5-98b5-5b79-b56a-09b2648aa3df-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C10") (unit 1))))
+  )
+  (wire (pts (xy 279.4 55.88) (xy 279.4 53.34)) (stroke (width 0) (type default)) (uuid "a1b0b8b5-acc1-59d1-9f22-67781d39345a"))
+  (symbol (lib_id "power:+3V3") (at 279.4 53.34 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "dcabb0c4-a237-5caf-a1ff-bf1f747692d2")
+    (property "Reference" "#PWR46" (at 279.4 53.34 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 279.4 49.53 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 279.4 53.34 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 279.4 53.34 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "dcabb0c4-a237-5caf-a1ff-bf1f747692d2-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR46") (unit 1))))
+  )
+  (wire (pts (xy 279.4 63.5) (xy 279.4 66.04)) (stroke (width 0) (type default)) (uuid "cc2cc897-f509-5c0a-ac38-80d8b5646047"))
+  (symbol (lib_id "power:GND") (at 279.4 66.04 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "b2a75c9e-a8e0-5b13-84cd-be295d8e1294")
+    (property "Reference" "#PWR47" (at 279.4 66.04 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 279.4 69.85 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 279.4 66.04 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 279.4 66.04 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "b2a75c9e-a8e0-5b13-84cd-be295d8e1294-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR47") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 279.4 59.69 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "43981370-d045-5aa5-8d2b-ff17e55223db")
+    (property "Reference" "C11" (at 279.4 53.34 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 279.4 66.04 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 279.4 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 279.4 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 279.4 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 279.4 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 279.4 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 279.4 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "43981370-d045-5aa5-8d2b-ff17e55223db-p1"))
+    (pin "2" (uuid "43981370-d045-5aa5-8d2b-ff17e55223db-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C11") (unit 1))))
+  )
+  (wire (pts (xy 279.4 171.45) (xy 279.4 168.91)) (stroke (width 0) (type default)) (uuid "2ebc3511-5149-560f-a77d-4eae7dd0325a"))
+  (symbol (lib_id "power:+3V3") (at 279.4 168.91 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "3c34d3c7-a260-5dd8-8da3-83368af825d1")
+    (property "Reference" "#PWR48" (at 279.4 168.91 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 279.4 165.1 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 279.4 168.91 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 279.4 168.91 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "3c34d3c7-a260-5dd8-8da3-83368af825d1-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR48") (unit 1))))
+  )
+  (wire (pts (xy 279.4 179.07) (xy 279.4 181.61)) (stroke (width 0) (type default)) (uuid "83b73d76-7344-5877-94cd-ee99b1f6da80"))
+  (symbol (lib_id "power:GND") (at 279.4 181.61 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "a7a3a7f6-c81c-5f20-868e-18777150ea58")
+    (property "Reference" "#PWR49" (at 279.4 181.61 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 279.4 185.42 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 279.4 181.61 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 279.4 181.61 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "a7a3a7f6-c81c-5f20-868e-18777150ea58-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR49") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 279.4 175.26 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "187cb7a7-453e-53b8-9d89-15b554233312")
+    (property "Reference" "C16" (at 279.4 168.91 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 279.4 181.61 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 279.4 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 279.4 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 279.4 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 279.4 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 279.4 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 279.4 175.26 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "187cb7a7-453e-53b8-9d89-15b554233312-p1"))
+    (pin "2" (uuid "187cb7a7-453e-53b8-9d89-15b554233312-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C16") (unit 1))))
+  )
+  (wire (pts (xy 279.4 140.97) (xy 279.4 138.43)) (stroke (width 0) (type default)) (uuid "0994ea75-b64b-5cd3-bace-d176efeeb131"))
+  (label "LDOO" (at 279.4 138.43 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "fed518e1-0412-51b0-b259-1f7aa79a9010"))
+  (wire (pts (xy 279.4 148.59) (xy 279.4 151.13)) (stroke (width 0) (type default)) (uuid "0cef4a88-eea4-5f59-a630-cfa96a854ba1"))
+  (symbol (lib_id "power:GND") (at 279.4 151.13 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "be6f9fef-4373-5741-84b3-7f4d44615507")
+    (property "Reference" "#PWR50" (at 279.4 151.13 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 279.4 154.94 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 279.4 151.13 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 279.4 151.13 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "be6f9fef-4373-5741-84b3-7f4d44615507-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR50") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 279.4 144.78 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "818395fe-924f-58cf-8e90-1673002cfe1c")
+    (property "Reference" "C12" (at 279.4 138.43 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "1u" (at 279.4 151.13 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 279.4 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A105KB8NNNC.do" (at 279.4 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "16V" (at 279.4 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 279.4 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10A105KB8NNNC" (at 279.4 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 279.4 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "818395fe-924f-58cf-8e90-1673002cfe1c-p1"))
+    (pin "2" (uuid "818395fe-924f-58cf-8e90-1673002cfe1c-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C12") (unit 1))))
+  )
+  (wire (pts (xy 255.27 140.97) (xy 255.27 138.43)) (stroke (width 0) (type default)) (uuid "309f17a8-8db2-51d2-87a2-2043f3291447"))
+  (label "CAPP" (at 255.27 138.43 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "47540010-d2cc-57fd-a3c9-620809349bc6"))
+  (wire (pts (xy 255.27 148.59) (xy 255.27 151.13)) (stroke (width 0) (type default)) (uuid "4a6aa708-d7fb-593c-90f4-d11d3c0c80c6"))
+  (symbol (lib_id "power:GND") (at 255.27 151.13 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "a1f15905-10f5-5a47-92a2-454f5ed98820")
+    (property "Reference" "#PWR51" (at 255.27 151.13 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 255.27 154.94 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 255.27 151.13 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 255.27 151.13 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "a1f15905-10f5-5a47-92a2-454f5ed98820-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR51") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 255.27 144.78 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "c46c6225-6a36-5486-9d9d-02a97da0d277")
+    (property "Reference" "C13" (at 255.27 138.43 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "2u2" (at 255.27 151.13 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 255.27 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A225KO8NNNC.do" (at 255.27 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "16V" (at 255.27 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 255.27 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10A225KO8NNNC" (at 255.27 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 255.27 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "c46c6225-6a36-5486-9d9d-02a97da0d277-p1"))
+    (pin "2" (uuid "c46c6225-6a36-5486-9d9d-02a97da0d277-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C13") (unit 1))))
+  )
+  (wire (pts (xy 229.87 140.97) (xy 229.87 138.43)) (stroke (width 0) (type default)) (uuid "06228f1d-f050-5163-91d4-9a7ca040850d"))
+  (label "CAPM" (at 229.87 138.43 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "33713850-9e19-566e-9cfb-88eb8de9b4f7"))
+  (wire (pts (xy 229.87 148.59) (xy 229.87 151.13)) (stroke (width 0) (type default)) (uuid "74775cd1-8378-5ad5-a4bf-2a9c59ab7386"))
+  (label "VNEG" (at 229.87 151.13 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "9c71aeb8-35cc-57c7-9a3a-a9b2308a3e0f"))
+  (symbol (lib_id "Device:C") (at 229.87 144.78 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "f69db40a-72fc-5363-a541-beafdc7a0056")
+    (property "Reference" "C14" (at 229.87 138.43 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "2u2" (at 229.87 151.13 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 229.87 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A225KO8NNNC.do" (at 229.87 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "16V" (at 229.87 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 229.87 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10A225KO8NNNC" (at 229.87 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 229.87 144.78 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f69db40a-72fc-5363-a541-beafdc7a0056-p1"))
+    (pin "2" (uuid "f69db40a-72fc-5363-a541-beafdc7a0056-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C14") (unit 1))))
+  )
+  (wire (pts (xy 110.49 125.73) (xy 110.49 123.19)) (stroke (width 0) (type default)) (uuid "61a8ff94-e25f-537f-a3b7-bb50a9da8017"))
+  (symbol (lib_id "power:+3V3") (at 110.49 123.19 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "452c6af7-b68b-5a65-aafa-6768d99914e2")
+    (property "Reference" "#PWR52" (at 110.49 123.19 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 110.49 119.38 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 110.49 123.19 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 110.49 123.19 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "452c6af7-b68b-5a65-aafa-6768d99914e2-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR52") (unit 1))))
+  )
+  (wire (pts (xy 110.49 133.35) (xy 110.49 135.89)) (stroke (width 0) (type default)) (uuid "9188b5e5-44b0-5bdd-8627-83f2f613b7ef"))
+  (label "CRESET" (at 110.49 135.89 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "920295fd-a06f-5239-adaf-9150a08d4eef"))
+  (symbol (lib_id "Device:R") (at 110.49 129.54 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "ddbfbc71-76f4-552f-bfdb-99d0288b13cf")
+    (property "Reference" "R1" (at 110.49 123.19 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "10k" (at 110.49 135.89 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 110.49 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf" (at 110.49 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "1%" (at 110.49 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Power" "0.1W" (at 110.49 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "RC0603FR-0710KL" (at 110.49 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Yageo" (at 110.49 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "ddbfbc71-76f4-552f-bfdb-99d0288b13cf-p1"))
+    (pin "2" (uuid "ddbfbc71-76f4-552f-bfdb-99d0288b13cf-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "R1") (unit 1))))
+  )
+  (wire (pts (xy 134.62 125.73) (xy 134.62 123.19)) (stroke (width 0) (type default)) (uuid "03f075f3-d4a0-5223-ad86-841976250dee"))
+  (symbol (lib_id "power:+3V3") (at 134.62 123.19 180) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "a2262622-9b7f-5bc7-9be1-32de81b27a83")
+    (property "Reference" "#PWR53" (at 134.62 123.19 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "+3V3" (at 134.62 119.38 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 134.62 123.19 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 134.62 123.19 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "a2262622-9b7f-5bc7-9be1-32de81b27a83-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR53") (unit 1))))
+  )
+  (wire (pts (xy 134.62 133.35) (xy 134.62 135.89)) (stroke (width 0) (type default)) (uuid "c0695353-0599-587e-b00d-ec9ac7dee7d3"))
+  (label "CDONE" (at 134.62 135.89 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "e4cfa155-01ca-5367-b745-d3213e27d894"))
+  (symbol (lib_id "Device:R") (at 134.62 129.54 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "638e2f0f-7764-5350-a52e-fb1b117baeb2")
+    (property "Reference" "R2" (at 134.62 123.19 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "10k" (at 134.62 135.89 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 134.62 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf" (at 134.62 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "1%" (at 134.62 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Power" "0.1W" (at 134.62 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "RC0603FR-0710KL" (at 134.62 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Yageo" (at 134.62 129.54 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "638e2f0f-7764-5350-a52e-fb1b117baeb2-p1"))
+    (pin "2" (uuid "638e2f0f-7764-5350-a52e-fb1b117baeb2-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "R2") (unit 1))))
+  )
+  (wire (pts (xy 134.62 66.04) (xy 134.62 63.5)) (stroke (width 0) (type default)) (uuid "f555d1f3-4ab4-5ceb-ab9d-6adb4166db8a"))
+  (label "+1V2" (at 134.62 63.5 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "cdbdbc18-1d83-50da-8934-c1e7e82ed5ee"))
+  (wire (pts (xy 134.62 73.66) (xy 134.62 76.2)) (stroke (width 0) (type default)) (uuid "c38e8dbe-a2dd-54c9-ae0f-45ee169e8a85"))
+  (symbol (lib_id "power:GND") (at 134.62 76.2 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "f698310b-3d7d-5697-a1ba-421d31882e5f")
+    (property "Reference" "#PWR54" (at 134.62 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "GND" (at 134.62 80.01 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 134.62 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 134.62 76.2 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "f698310b-3d7d-5697-a1ba-421d31882e5f-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#PWR54") (unit 1))))
+  )
+  (symbol (lib_id "Device:C") (at 134.62 69.85 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "450457a1-f6b0-58f5-babc-62a0c1f97b30")
+    (property "Reference" "C15" (at 134.62 63.5 0) (effects (font (size 1.27 1.27))))
+    (property "Value" "100n" (at 134.62 76.2 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "Capacitor_SMD:C_0603_1608Metric" (at 134.62 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do" (at 134.62 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Voltage" "25V" (at 134.62 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Tolerance" "10%" (at 134.62 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "CL10B104KB8NNNC" (at 134.62 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "Samsung" (at 134.62 69.85 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "450457a1-f6b0-58f5-babc-62a0c1f97b30-p1"))
+    (pin "2" (uuid "450457a1-f6b0-58f5-babc-62a0c1f97b30-p2"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C15") (unit 1))))
+  )
+  (wire (pts (xy 50.800000000000004 59.69) (xy 50.800000000000004 62.23)) (stroke (width 0) (type default)) (uuid "37d1d27a-0d34-54c7-85f0-6bfddc0b4157-w"))
+  (label "+3V3" (at 50.800000000000004 62.23 0) (effects (font (size 1.27 1.27)) (justify left bottom)) (uuid "37d1d27a-0d34-54c7-85f0-6bfddc0b4157-l"))
+  (symbol (lib_id "power:PWR_FLAG") (at 50.800000000000004 59.69 0) (unit 1)
+    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)
+    (uuid "37d1d27a-0d34-54c7-85f0-6bfddc0b4157")
+    (property "Reference" "#FLG01" (at 50.800000000000004 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Value" "PWR_FLAG" (at 50.800000000000004 55.879999999999995 0) (effects (font (size 1.27 1.27))))
+    (property "Footprint" "" (at 50.800000000000004 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 50.800000000000004 59.69 0) (effects (font (size 1.27 1.27)) hide))
+    (pin "1" (uuid "37d1d27a-0d34-54c7-85f0-6bfddc0b4157-p"))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "#FLG01") (unit 1))))
+  )
+  (text "A 0.5 mm pitch QFN with pads on four sides is not a two layer board." (at 18.0 25.08 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "1ac2de8b-57a9-51d1-b39e-7aaa6e0dee56"))
+  (text "A real iCE40 design drops each pin into an inner layer; this one has" (at 18.0 30.16 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "1bb7d5c0-7edc-5562-8844-b6f7545e0116"))
+  (text "no inner layer, so all 48 escape on the top at 0.2 mm track and" (at 18.0 35.24 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "57e21884-b0cf-5359-8706-1345b5fa29a9"))
+  (text "0.2 mm clearance - a fine-line process, and the reason a 7 mm chip" (at 18.0 40.32 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "6c692530-feaf-5c4e-a237-4c16f7235928"))
+  (text "needs 25 mm of board around it before anything else can be placed." (at 18.0 45.4 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "f76be8b2-7efe-5445-bbff-783159de774b"))
+  (text "Two rails: 3.3 V in for the I/O banks, the codec and the flash, and" (at 18.0 50.48 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "5e03d9c7-c1a3-5336-85f5-5adf8a65eee7"))
+  (text "1.2 V from U3 for the core, with C15 and C5 on the two VCC pins and" (at 18.0 55.56 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "b068273e-64b4-5dcf-bbf8-05773905b072"))
+  (text "on VCCPLL - which the datasheet would rather see filtered from the" (at 18.0 60.64 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "154bcb59-4733-551b-9b33-cae76cbcfb3f"))
+  (text "core rail than tied straight to it, and is a thing this board is" (at 18.0 65.72 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "89578fcd-db28-5fc1-bfe0-2c09c7ba6064"))
+  (text "not doing." (at 18.0 70.8 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "f2e1b4af-0cbf-5297-9f97-8a5a893d6602"))
+  (text "U1 boots from U4 over its own SPI port; J3 is that bus plus CRESET," (at 18.0 75.88 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "0e926ecf-a102-50a6-a2bb-1277f29deeb5"))
+  (text "so the flash can be written in circuit. R1 and R2 hold CRESET and" (at 18.0 80.96 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "172e97ac-430d-5914-98d7-6b0d7f57e07e"))
+  (text "CDONE up, both being open drain." (at 18.0 86.04 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "d44e8dc3-8585-55fc-9658-3f1af9cd7c41"))
+  (text "U2's mode pins are strapped to a rail rather than driven: 16-bit" (at 18.0 91.12 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "5d279a64-1bd3-5012-b496-8e5639faca50"))
+  (text "I2S, no de-emphasis, normal filter, un-muted." (at 18.0 96.2 0) (effects (font (size 1.27 1.27)) (justify left top)) (uuid "457de1f5-18bf-58c5-af27-c86f793c9aa7"))
+  (sheet_instances
+    (path "/" (page "1"))
+  )
+)

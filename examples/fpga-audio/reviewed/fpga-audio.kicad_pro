@@ -1,0 +1,5 @@
+{
+  "board": {"design_settings": {"rules": {"min_track_width": 0.15}}},
+  "meta": {"filename": "fpga-audio.kicad_pro", "version": 1},
+  "sheets": [["434dea94-d96f-5288-b60c-67317d440f4e", "Root"]]
+}

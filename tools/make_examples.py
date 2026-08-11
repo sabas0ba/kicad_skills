@@ -987,7 +987,12 @@ def fan(
             points.append(at(bend, target))
         if abs(column - bend) > GEOM_EPS:
             points.append(at(column, target))
-        net = next(name for name, nodes in design.nets.items() if pad in nodes)
+        net = next((name for name, nodes in design.nets.items() if pad in nodes), None)
+        if net is None:
+            # An unused pin still takes its place in the row: the spacing that
+            # makes the fan legal is the spacing of the whole row, and closing
+            # the gap would put its neighbours where it would have been.
+            continue
         tracks.append(Track(net, "F.Cu", widths.get(number, width), points))
         ends[number] = at(column, target)
     return tracks, ends
@@ -1092,6 +1097,11 @@ def resolve_routes(design: Design) -> Design:
             ripped.append(blocked.track)
             order.remove(blocked.track)
             order.insert(0, blocked.track)
+            print(
+                f"{design.name}: ripping up for {blocked.track.net} "
+                f"{blocked.track.points} (attempt {len(ripped)})",
+                file=sys.stderr,
+            )
             continue
         return replace(
             design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
@@ -1465,6 +1475,7 @@ OFF_GRID = (0.31, -0.19)  # enough to break a connection, too little to see
 
 def degrade(design: Design) -> Design:
     """The same circuit, drawn and laid out the way a generator leaves it."""
+    thin = min([0.25, *(track.width for track in design.tracks)])
     parts = []
     for index, part in enumerate(design.parts):
         sx, sy = part.sheet
@@ -1491,7 +1502,12 @@ def degrade(design: Design) -> Design:
         notes=[],
         parts=parts,
         power_flags=[],
-        tracks=[replace(t, width=0.25) for t in design.tracks],
+        # One width for everything, which is what a generator that never asked
+        # what a net carries produces. Never wider than the design's own
+        # narrowest, because a board whose escape was drawn for 0.2 mm has no
+        # room for 0.25 mm and the degraded variant is supposed to be bad, not
+        # unroutable.
+        tracks=[replace(t, width=thin) for t in design.tracks],
         vias=[],
         pour=None,
     )
@@ -2751,11 +2767,510 @@ def opamp_filter() -> Design:
     return replace(design, tracks=tracks)
 
 
+ICE40 = "FPGA_Lattice:ICE40UP5K-SG48ITR"
+TI = "https://www.ti.com/lit/ds/symlink/pcm5102a.pdf"
+
+
+def fpga_audio() -> Design:
+    """An iCE40UP5K driving a PCM5102A over I2S, on two layers.
+
+    This one is here to be difficult, and the difficulty is worth stating
+    plainly: a 0.5 mm pitch QFN with pads on four sides is not a two layer
+    board. Real iCE40 designs are four layer, with the escape dropping straight
+    into an inner layer through via-in-pad or a dogbone per pin. This generator
+    knows two layers, so the escape has to be a fan out on the top - twelve pins
+    a side walked from 0.5 mm to 0.8 mm, at 0.2 mm track and 0.2 mm clearance,
+    which is a fine-line process and says so in the fabrication notes.
+
+    What that costs is visible in the plot: a 7 mm chip needs a 25 mm square of
+    board around it before anything else can be placed, and the parts that talk
+    to it are pushed to the edges. That is the honest answer to "can this be
+    done on two layers", and it is worth having as an example precisely because
+    the answer is "yes, and you would not want to".
+
+    The rest is a normal small digital board. The FPGA boots from U4 over its
+    own SPI port, runs from a 12 MHz oscillator, and clocks I2S out to U2. Two
+    rails: 3.3 V in for the I/O banks and the codec, and 1.2 V from U3 for the
+    core. VCCPLL gets its own RC from the core rail rather than a direct
+    connection, which is what the datasheet asks for and what keeps the PLL out
+    of the core's supply noise.
+    """
+    parts = [
+        Part(
+            "U1",
+            ICE40,
+            "iCE40UP5K",
+            "Package_DFN_QFN:QFN-48-1EP_7x7mm_P0.5mm_EP3.5x3.5mm",
+            sheet=(150.0, 105.0),
+            board=(40.0, 40.0, 0.0),
+            stub=8.89,
+            no_connect=True,
+            fields={
+                "MPN": "ICE40UP5K-SG48ITR",
+                "Manufacturer": "Lattice Semiconductor",
+                "Datasheet": "https://www.latticesemi.com/view_document?document_id=51968",
+            },
+        ),
+        Part(
+            "U2",
+            "Audio:PCM5102A",
+            "PCM5102A",
+            "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
+            sheet=(255.0, 105.0),
+            board=(72.0, 40.0, 180.0),
+            stub=6.35,
+            fields={
+                "MPN": "PCM5102APWR",
+                "Manufacturer": "Texas Instruments",
+                "Datasheet": TI,
+            },
+        ),
+        Part(
+            "U3",
+            "Regulator_Linear:AP2112K-1.2",
+            "AP2112K-1.2",
+            "Package_TO_SOT_SMD:SOT-23-5",
+            sheet=(60.0, 45.0),
+            board=(14.0, 24.0, 0.0),
+            fields={
+                "Voltage": "1.2V",
+                "Current": "600mA",
+                "MPN": "AP2112K-1.2TRG1",
+                "Manufacturer": "Diodes Incorporated",
+                "Datasheet": "https://www.diodes.com/assets/Datasheets/AP2112.pdf",
+            },
+        ),
+        Part(
+            "U4",
+            "Memory_Flash:W25Q32JVSS",
+            "W25Q32JV",
+            "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
+            sheet=(150.0, 190.0),
+            board=(40.0, 72.0, 0.0),
+            fields={
+                "MPN": "W25Q32JVSSIQ",
+                "Manufacturer": "Winbond",
+                "Datasheet": "https://www.winbond.com/resource-files/w25q32jv%20revi%2005182022%20plus.pdf",
+            },
+        ),
+        Part(
+            "X1",
+            "Oscillator:ASE-xxxMHz",
+            "12MHz",
+            "Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm",
+            sheet=(60.0, 150.0),
+            board=(14.0, 56.0, 0.0),
+            fields={
+                "Tolerance": "50ppm",
+                "MPN": "ASE-12.000MHZ-L-C-T",
+                "Manufacturer": "Abracon",
+                "Datasheet": "https://abracon.com/Oscillators/ASE.pdf",
+            },
+        ),
+        Part(
+            "J1",
+            "Connector:Screw_Terminal_01x02",
+            "3V3 IN",
+            "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+            sheet=(35.0, 30.0),
+            board=(8.0, 8.0, 270.0),
+            fields={
+                "MPN": "1729128",
+                "Manufacturer": "Phoenix Contact",
+                "Datasheet": "https://www.phoenixcontact.com/product/1729128",
+            },
+        ),
+        Part(
+            "J2",
+            "Connector:Conn_01x03_Pin",
+            "AUDIO OUT",
+            "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
+            sheet=(295.0, 105.0),
+            board=(89.0, 38.0, 0.0),
+            fields={
+                "MPN": "61300311121",
+                "Manufacturer": "Wurth Elektronik",
+                "Datasheet": "https://www.we-online.com/components/products/datasheet/61300311121.pdf",
+            },
+        ),
+        Part(
+            "J3",
+            "Connector:Conn_01x06_Pin",
+            "SPI PROG",
+            "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
+            sheet=(255.0, 190.0),
+            board=(74.0, 66.0, 0.0),
+            fields={
+                "MPN": "61300611121",
+                "Manufacturer": "Wurth Elektronik",
+                "Datasheet": "https://www.we-online.com/components/products/datasheet/61300611121.pdf",
+            },
+        ),
+    ]
+
+    def cap(ref, value, sheet, board, voltage, mpn, angle=0.0):
+        return Part(
+            ref,
+            "Device:C",
+            value,
+            "Capacitor_SMD:C_0603_1608Metric",
+            sheet=sheet,
+            board=board,
+            angle=angle,
+            fields={
+                "Voltage": voltage,
+                "Tolerance": "10%",
+                "MPN": mpn,
+                "Manufacturer": "Samsung",
+                "Datasheet": f"https://product.samsungsem.com/mlcc/{mpn}.do",
+            },
+        )
+
+    def res(ref, value, sheet, board, mpn, angle=0.0):
+        return Part(
+            ref,
+            "Device:R",
+            value,
+            "Resistor_SMD:R_0603_1608Metric",
+            sheet=sheet,
+            board=board,
+            angle=angle,
+            fields={
+                "Tolerance": "1%",
+                "Power": "0.1W",
+                "MPN": mpn,
+                "Manufacturer": "Yageo",
+                "Datasheet": YAGEO,
+            },
+        )
+
+    parts += [
+        cap("C1", "10u", (85.0, 45.0), (14.0, 16.0, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C2", "100n", (110.0, 45.0), (22.0, 20.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C3", "10u", (60.0, 70.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C4", "100n", (85.0, 70.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C5", "100n", (110.0, 70.0), (61.0, 54.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C6", "100n", (200.0, 45.0), (57.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C7", "100n", (225.0, 45.0), (61.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C8", "100n", (150.0, 220.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C9", "100n", (60.0, 175.0), (20.0, 56.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C10", "100n", (255.0, 60.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C11", "100n", (280.0, 60.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C16", "100n", (280.0, 175.0), (84.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C12", "1u", (280.0, 145.0), (60.0, 50.0, 0.0), "16V", "CL10A105KB8NNNC"),
+        cap("C13", "2u2", (255.0, 145.0), (84.0, 45.0, 0.0), "16V", "CL10A225KO8NNNC"),
+        cap("C14", "2u2", (230.0, 145.0), (84.0, 40.5, 90.0), "16V", "CL10A225KO8NNNC"),
+        res("R1", "10k", (110.0, 130.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
+        res("R2", "10k", (135.0, 130.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
+        cap("C15", "100n", (135.0, 70.0), (57.0, 50.0, 180.0), "25V", "CL10B104KB8NNNC"),
+    ]
+
+    nets = {
+        "+3V3": [
+            "J1.1",
+            "C1.1",
+            "C2.1",
+            "U3.1",
+            "U3.3",
+            "U1.1",
+            "U1.22",
+            "U1.33",
+            "U1.24",
+            "C6.1",
+            "C7.1",
+            "R1.1",
+            "R2.1",
+            "U4.8",
+            "C8.1",
+            "X1.4",
+            "C9.1",
+            "U2.20",
+            "U2.8",
+            "U2.1",
+            "C10.1",
+            "C11.1",
+            "C16.1",
+        ],
+        "+1V2": ["U3.5", "C3.1", "C4.1", "C15.1", "C5.1", "U1.5", "U1.30", "U1.29"],
+        "GND": [
+            "J1.2",
+            "C1.2",
+            "C2.2",
+            "U3.2",
+            "C3.2",
+            "C4.2",
+            "C5.2",
+            "C6.2",
+            "C7.2",
+            "U1.49",
+            "U4.4",
+            "C8.2",
+            "X1.2",
+            "C9.2",
+            "U2.19",
+            "U2.9",
+            "U2.3",
+            "C10.2",
+            "C15.2",
+            "C11.2",
+            "C16.2",
+            "C12.2",
+            "C13.2",
+            "J2.2",
+            "J3.6",
+        ],
+        "SPI_SS": ["U1.16", "U4.1", "J3.1"],
+        "SPI_SCK": ["U1.15", "U4.6", "J3.2"],
+        "SPI_SI": ["U1.17", "U4.5", "J3.3"],
+        "SPI_SO": ["U1.14", "U4.2", "J3.4"],
+        "CRESET": ["U1.8", "R1.2", "J3.5"],
+        "CDONE": ["U1.7", "R2.2"],
+        "CLK12": ["X1.3", "U1.20"],
+        # On the east side, in the order the codec wants them: a bus that
+        # leaves the package already in the right order does not cross itself.
+        "I2S_SCK": ["U1.36", "U2.12"],
+        "I2S_BCK": ["U1.35", "U2.13"],
+        "I2S_DIN": ["U1.34", "U2.14"],
+        "I2S_LRCK": ["U1.32", "U2.15"],
+        "OUTL": ["U2.6", "J2.3"],
+        "OUTR": ["U2.7", "J2.1"],
+        "LDOO": ["U2.18", "C12.1"],
+        "CAPP": ["U2.2", "C13.1"],
+        "VNEG": ["U2.5", "C14.2"],
+        "CAPM": ["U2.4", "C14.1"],
+        # The codec's mode pins are strapped rather than driven: 16-bit I2S,
+        # no de-emphasis, normal filter, un-muted.
+        "FMT": ["U2.16"],
+        "DEMP": ["U2.10"],
+        "FLT": ["U2.11"],
+        "XSMT": ["U2.17"],
+        "WP": ["U4.3"],
+        "HOLD": ["U4.7"],
+        "OSC_EN": ["X1.1"],
+    }
+    # The strapped pins go to the rail their state asks for rather than to a net
+    # of their own - a pin held low is held low by copper, not by a name.
+    for pin, rail in (
+        ("U2.16", "GND"),
+        ("U2.10", "GND"),
+        ("U2.11", "GND"),
+        ("U2.17", "+3V3"),
+        ("U4.3", "+3V3"),
+        ("U4.7", "+3V3"),
+        ("X1.1", "+3V3"),
+    ):
+        nets[rail].append(pin)
+    for name in ("FMT", "DEMP", "FLT", "XSMT", "WP", "HOLD", "OSC_EN"):
+        del nets[name]
+
+    design = Design(
+        name="fpga-audio",
+        title="iCE40UP5K to PCM5102A, I2S out",
+        rev="A",
+        company="kicad_skills examples",
+        notes=[
+            "A 0.5 mm pitch QFN with pads on four sides is not a two layer board.",
+            "A real iCE40 design drops each pin into an inner layer; this one has",
+            "no inner layer, so all 48 escape on the top at 0.2 mm track and",
+            "0.2 mm clearance - a fine-line process, and the reason a 7 mm chip",
+            "needs 25 mm of board around it before anything else can be placed.",
+            "Two rails: 3.3 V in for the I/O banks, the codec and the flash, and",
+            "1.2 V from U3 for the core, with C15 and C5 on the two VCC pins and",
+            "on VCCPLL - which the datasheet would rather see filtered from the",
+            "core rail than tied straight to it, and is a thing this board is",
+            "not doing.",
+            "U1 boots from U4 over its own SPI port; J3 is that bus plus CRESET,",
+            "so the flash can be written in circuit. R1 and R2 hold CRESET and",
+            "CDONE up, both being open drain.",
+            "U2's mode pins are strapped to a rail rather than driven: 16-bit",
+            "I2S, no de-emphasis, normal filter, un-muted.",
+        ],
+        parts=parts,
+        nets=nets,
+        power_flags=["+3V3"],
+        board_size=(94.0, 84.0),
+        tracks=[],
+        vias=[],
+        pour=(3.0, 3.0, 91.0, 81.0),
+        notes_at=(18.0, 20.0),
+        flags_at=(35.0, 60.0),
+    ).snapped()
+
+    # Everything that lands on the QFN's escape lands at 0.2 mm: the escape
+    # walks the row out to 0.8 mm, and 0.8 mm is not enough for a 0.3 mm track
+    # to squeeze between two of its neighbours. Only the input, which never goes
+    # near the chip, is wider.
+    FINE, SIG, POWER = 0.2, 0.2, 0.4
+    cx, cy = 40.0, 40.0
+    sides = {
+        # Each row runs the way the pads do, not the way the numbers do: a QFN
+        # counts anticlockwise, so its east and north rows are bottom-to-top and
+        # right-to-left. Handing them over the other way round makes every
+        # escape on that side cross every other one, and the fan is legal
+        # nowhere.
+        "west": ([str(n) for n in range(1, 13)], "x", 35.55, 27.0),
+        "south": ([str(n) for n in range(13, 25)], "y", 44.45, 53.0),
+        "east": ([str(n) for n in range(36, 24, -1)], "x", 44.45, 53.0),
+        "north": ([str(n) for n in range(48, 36, -1)], "y", 35.55, 27.0),
+    }
+    escapes: list[Track] = []
+    pad_of: dict[str, tuple[float, float]] = {}
+
+    def end(spec: str):
+        return pad_of.get(spec, spec)
+
+    def escape(ref, pins, **kw):
+        tracks, ends = fan(design, ref, pins, **kw)
+        escapes.extend(tracks)
+        pad_of.update({f"{ref}.{number}": point for number, point in ends.items()})
+
+    for pins, axis, lead, column in sides.values():
+        escape(
+            "U1",
+            pins,
+            lead=lead,
+            column=column,
+            pitch=1.0,
+            centre=cy if axis == "x" else cx,
+            axis=axis,
+            width=FINE,
+            slope=3.0,
+            clearance=0.2,
+        )
+    # The codec, the regulator and the flash each have a supply pin in the
+    # middle of a row, which is the one place a search cannot reach.
+    # U2 is turned round so that its I2S pins face the FPGA and its outputs
+    # face the connector; that also swaps which row is which side.
+    escape(
+        "U2",
+        [str(n) for n in range(11, 21)],
+        lead=67.6,
+        column=64.0,
+        pitch=1.0,
+        centre=40.0,
+        width=SIG,
+    )
+    escape(
+        "U2",
+        [str(n) for n in range(10, 0, -1)],
+        lead=76.4,
+        column=80.0,
+        pitch=1.0,
+        centre=40.0,
+        width=SIG,
+    )
+    escape("U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=24.0, width=SIG)
+    escape("U3", ["5", "4"], lead=16.6, column=19.0, pitch=2.8, centre=24.0, width=SIG)
+    escape("U4", ["1", "2", "3", "4"], lead=36.1, column=33.5, pitch=2.0, centre=72.0, width=SIG)
+    escape("U4", ["8", "7", "6", "5"], lead=43.9, column=46.5, pitch=2.0, centre=72.0, width=SIG)
+
+    # The exposed pad is the ground, and it is stitched rather than routed.
+    vias = [Via("GND", x=cx + dx, y=cy + dy) for dx in (-1.0, 0.0, 1.0) for dy in (-1.0, 0.0, 1.0)]
+
+    # Every endpoint goes through `end`, which returns the far end of a pin's
+    # escape when it has one and the pad itself when it does not.
+    tracks = [*escapes]
+    routes = [
+        ("+3V3", POWER, [("J1.1", "C1.1"), ("C1.1", "U3.1"), ("C1.1", "C2.1"), ("C2.1", "U3.3")]),
+        (
+            "+3V3",
+            SIG,
+            [
+                ("C2.1", "R1.1"),
+                ("R1.1", "R2.1"),
+                ("R2.1", "U1.1"),
+                ("U1.22", "C6.1"),
+                ("C6.1", "U1.33"),
+                ("U1.33", "C7.1"),
+                ("C7.1", "U1.24"),
+                ("C7.1", "C10.1"),
+                ("C10.1", "U2.20"),
+                ("C10.1", "C11.1"),
+                ("C11.1", "U2.8"),
+                ("C11.1", "C16.1"),
+                ("C16.1", "U2.1"),
+                ("C10.1", "U2.17"),
+                ("R2.1", "C8.1"),
+                ("C8.1", "U4.8"),
+                ("C8.1", "U4.3"),
+                ("U4.3", "U4.7"),
+                ("C8.1", "C9.1"),
+                ("C9.1", "X1.4"),
+                ("C9.1", "X1.1"),
+            ],
+        ),
+        (
+            "+1V2",
+            SIG,
+            [
+                ("U3.5", "C3.1"),
+                ("C3.1", "C4.1"),
+                ("C4.1", "U1.5"),
+                ("C4.1", "C15.1"),
+                ("C15.1", "U1.30"),
+                ("C15.1", "C5.1"),
+                ("C5.1", "U1.29"),
+            ],
+        ),
+        ("SPI_SS", SIG, [("U1.16", "U4.1"), ("U4.1", "J3.1")]),
+        ("SPI_SCK", SIG, [("U1.15", "U4.6"), ("U4.6", "J3.2")]),
+        ("SPI_SI", SIG, [("U1.17", "U4.5"), ("U4.5", "J3.3")]),
+        ("SPI_SO", SIG, [("U1.14", "U4.2"), ("U4.2", "J3.4")]),
+        ("CRESET", SIG, [("U1.8", "R1.2"), ("R1.2", "J3.5")]),
+        ("CDONE", SIG, [("U1.7", "R2.2")]),
+        ("CLK12", SIG, [("X1.3", "U1.20")]),
+        ("I2S_SCK", SIG, [("U1.36", "U2.12")]),
+        ("I2S_BCK", SIG, [("U1.35", "U2.13")]),
+        ("I2S_DIN", SIG, [("U1.34", "U2.14")]),
+        ("I2S_LRCK", SIG, [("U1.32", "U2.15")]),
+        ("OUTL", SIG, [("U2.6", "J2.3")]),
+        ("OUTR", SIG, [("U2.7", "J2.1")]),
+        ("LDOO", SIG, [("U2.18", "C12.1")]),
+        ("CAPP", SIG, [("U2.2", "C13.1")]),
+        ("VNEG", SIG, [("U2.5", "C14.2")]),
+        ("CAPM", SIG, [("U2.4", "C14.1")]),
+    ]
+    for net, width, pairs in routes:
+        for a, b in pairs:
+            tracks.append(Track(net, "F.Cu", width, [end(a), end(b)], auto=True))
+
+    for pad, target in (
+        ("J1.2", (12.0, 12.0)),
+        ("C1.2", (17.0, 16.0)),
+        ("C2.2", (25.0, 20.0)),
+        ("U3.2", (16.0, 27.0)),
+        ("C3.2", (25.0, 30.0)),
+        ("C4.2", (22.5, 36.0)),
+        ("C5.2", (64.0, 54.0)),
+        ("C15.2", (54.0, 50.0)),
+        ("C6.2", (59.0, 43.5)),
+        ("C7.2", (64.0, 46.0)),
+        ("C8.2", (46.0, 71.0)),
+        ("C9.2", (20.0, 59.0)),
+        ("X1.2", (17.0, 59.0)),
+        ("U4.4", (37.0, 75.0)),
+        ("U2.19", (61.0, 45.0)),
+        ("U2.9", (84.5, 32.0)),
+        ("U2.10", (82.0, 30.0)),
+        ("U2.3", (83.0, 43.0)),
+        ("C10.2", (60.0, 27.0)),
+        ("C11.2", (85.0, 31.0)),
+        ("C16.2", (84.0, 52.0)),
+        ("C12.2", (60.0, 53.0)),
+        ("C13.2", (87.0, 45.0)),
+        ("J2.2", (92.0, 41.0)),
+        ("J3.6", (78.0, 70.0)),
+    ):
+        tracks.append(Track("GND", "F.Cu", 0.4, [end(pad), target], auto=True, goal_layer="B.Cu"))
+    return replace(design, tracks=tracks, vias=vias)
+
+
 DESIGNS = {
     "buck-5v": buck_5v,
     "motor-driver": motor_driver,
     "pico-carrier": pico_carrier,
     "opamp-filter": opamp_filter,
+    "fpga-audio": fpga_audio,
 }
 
 
