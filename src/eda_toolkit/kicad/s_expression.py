@@ -2,7 +2,9 @@
 
 The parser is intentionally dependency free and lossless enough for review work:
 lists become :class:`SNode`, atoms become ``str``/``float``/``int``/``bool``.
-Quoted strings keep their value; bare atoms keep their text unless numeric.
+Quoted strings keep their value; bare atoms keep their text as :class:`Bare`
+unless numeric, which is what lets :func:`dumps` put the quotes back where KiCad
+expects them.
 """
 
 from __future__ import annotations
@@ -18,6 +20,20 @@ _NUM_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
 
 class SExpressionError(ValueError):
     pass
+
+
+class Bare(str):
+    """An atom that was written without quotes: a keyword like ``yes`` or ``smd``.
+
+    Parsing throws the distinction away - ``none`` and ``"none"`` both arrive as
+    a Python string - and KiCad rejects a document either way round: a keyword
+    that turns up quoted, or an identifier that turns up bare. Recording which
+    one it was is what lets a symbol copied out of a library be written back into
+    a file KiCad will open. It subclasses ``str``, so every existing comparison
+    and ``str()`` call is unaffected.
+    """
+
+    __slots__ = ()
 
 
 @dataclass
@@ -85,7 +101,7 @@ def _atom(token: str) -> Any:
         return True
     if token == "no":
         return False
-    return token
+    return Bare(token)
 
 
 def loads(text: str) -> SNode:
@@ -191,7 +207,9 @@ def _dump_atom(value: Any) -> str:
     if isinstance(value, (int, float)):
         return repr(value) if isinstance(value, float) else str(value)
     text = str(value)
-    if text and re.fullmatch(r"[A-Za-z0-9_.+*/<>=:$-]+", text):
+    # Anything not known to have arrived bare is a string, and KiCad wants its
+    # strings quoted: `(symbol Device:R)` is not a document it will open.
+    if isinstance(value, Bare) and text and re.fullmatch(r"[A-Za-z0-9_.+*/<>=:$-]+", text):
         return text
     escaped = text.replace("\\", "\\\\").replace('"', '\\"')
     return f'"{escaped}"'

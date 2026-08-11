@@ -46,6 +46,23 @@ def test_dumps_round_trip():
     assert reparsed.child("wire").child("pts").children("xy")[1].atoms() == [3, 4]
 
 
-def test_dumps_quotes_when_needed():
-    node = SNode("prop", ["Value", "10 k", True, 1.5])
-    assert sexp.dumps(node) == '(prop Value "10 k" yes 1.5)'
+def test_dumps_quotes_every_string_and_leaves_keywords_bare():
+    """KiCad rejects `(symbol Device:R)` and `(fill (type "none"))` alike, so the
+    writer has to put each atom back the way it arrived."""
+    node = SNode("prop", ["Value", "10 k", sexp.Bare("yes_really"), True, 1.5])
+    assert sexp.dumps(node) == '(prop "Value" "10 k" yes_really yes 1.5)'
+
+
+def test_quoting_survives_a_round_trip():
+    """The layout may be re-wrapped, but every atom keeps the quoting it had.
+
+    `"Lib:R_0805"` is a name and has to come back quoted; `smd` and `none` are
+    keywords and have to come back bare. KiCad refuses the file either way round.
+    """
+    text = '(footprint "Lib:R_0805" (attr smd) (fill (type none)) (pad "1" smd roundrect))'
+    written = sexp.dumps(sexp.loads(text))
+    assert '(footprint "Lib:R_0805"' in written
+    assert "(attr smd)" in written
+    assert "(type none)" in written
+    assert '(pad "1" smd roundrect)' in written
+    assert sexp.dumps(sexp.loads(written)) == written  # and it settles

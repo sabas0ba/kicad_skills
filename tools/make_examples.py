@@ -14,10 +14,10 @@ good designs pass; the *pair* is what shows that the rules catch what they claim
 to catch, and that the loop converges. ``examples/README.md`` puts the two
 verdicts side by side.
 
-Run it inside the **KiCad 9** image: it reads KiCad's own symbol and footprint
-libraries so the projects use real parts, and it saves boards through pcbnew, so
-the file format has to be the oldest one the CI matrix covers - KiCad never
-reads a file newer than itself.
+Run it inside the container: it reads KiCad's own symbol and footprint
+libraries, so the projects are built from the real parts rather than from
+simplified copies. The files it writes are in the oldest format the CI matrix
+covers, because KiCad never reads a file newer than itself.
 
     docker run --rm -u $(id -u):$(id -g) -v "$PWD:/work" -w /work \\
       -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \\
@@ -33,6 +33,7 @@ import re
 import sys
 import uuid
 from dataclasses import dataclass, field, replace
+from itertools import pairwise
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -85,14 +86,26 @@ class Track:
     net: str
     layer: str
     width: float
-    points: list[tuple[float, float]]
+    # Each point is either a board coordinate or "REF.PAD". Naming the pad rather
+    # than copying its coordinate is what keeps a track actually landing on it
+    # when the part moves or turns.
+    points: list[tuple[float, float] | str]
 
 
 @dataclass
 class Via:
+    """A via, placed either at a coordinate or beside the pad it drains.
+
+    Anchoring to ``pad`` is what keeps a stitching via next to its ground pad
+    when the part moves: a typed coordinate silently becomes a via in the middle
+    of nowhere and a pad with no way down to the plane.
+    """
+
     net: str
-    x: float
-    y: float
+    x: float = 0.0
+    y: float = 0.0
+    pad: str | None = None
+    offset: tuple[float, float] = (0.0, 0.0)
     drill: float = 0.4
     size: float = 0.8
 
@@ -110,7 +123,11 @@ class Design:
     board_size: tuple[float, float]
     tracks: list[Track]
     vias: list[Via] = field(default_factory=list)
-    ground_pour: bool = True
+    # The ground pour, as (x0, y0, x1, y1) in board coordinates. It is a region
+    # rather than the whole board on purpose: keeping every through-hole pad of
+    # another net outside it means the filled area is the outline itself, with
+    # nothing to subtract, which is what makes the fill safe to write down.
+    pour: tuple[float, float, float, float] | None = None
     origin: tuple[float, float] = (100.0, 60.0)  # top-left of the board on the sheet
 
     def part(self, ref: str) -> Part:
@@ -287,6 +304,10 @@ def emit_schematic(design: Design) -> str:
 
     body: list[str] = []
     power_index = 0
+    # Two stubs that happen to end on the same coordinate silently become one
+    # net, and the design is quietly not the design any more. Catch it here
+    # rather than in ERC, where it surfaces as a puzzle about net names.
+    claimed: dict[tuple[float, float], tuple[str, str]] = {}
 
     for part in design.parts:
         pins = symbol_pins(part.lib_id)
@@ -295,6 +316,15 @@ def emit_schematic(design: Design) -> str:
             if net is None:
                 continue
             end, out = pin_geometry(part, pin)
+            # Both ends matter: a pin landing on someone else's stub joins the
+            # two nets just as surely as two stubs meeting.
+            for point in (end, out):
+                owner = claimed.setdefault(point, (net, f"{part.ref}.{pin.number}"))
+                if owner[0] != net:
+                    raise SystemExit(
+                        f"{design.name}: {part.ref}.{pin.number} ({net}) and {owner[1]} "
+                        f"({owner[0]}) both touch {point} - move one of them"
+                    )
             body.append(_wire(design, part.ref, pin.number, end, out))
             if net in POWER_SYMBOLS:
                 power_index += 1
@@ -424,104 +454,226 @@ def emit_project(design: Design) -> str:
 
 
 # ---------------------------------------------------------------------------
-# board emission (through pcbnew, so the geometry and the fill are KiCad's own)
+# board emission
 # ---------------------------------------------------------------------------
+#
+# The board is written as s-expressions rather than built through pcbnew. That
+# is not a shortcut: pcbnew's ZONE_FILLER segfaults headlessly on both KiCad 9
+# and 10 (it wants a wx display, and the image has no framebuffer), and a pour
+# with no computed fill reads as an unconnected GND on the half of the CI matrix
+# that has no `pcb drc --refill-zones`. Writing the file directly means the fill
+# is ours to state - which is only honest because the pour is deliberately
+# placed where nothing else can be inside it. See `Design.pour`.
+
+BOARD_LAYERS = """\
+	(layers
+		(0 "F.Cu" signal)
+		(2 "B.Cu" signal)
+		(9 "F.Adhes" user "F.Adhesive")
+		(11 "B.Adhes" user "B.Adhesive")
+		(13 "F.Paste" user)
+		(15 "B.Paste" user)
+		(5 "F.SilkS" user "F.Silkscreen")
+		(7 "B.SilkS" user "B.Silkscreen")
+		(1 "F.Mask" user)
+		(3 "B.Mask" user)
+		(17 "Dwgs.User" user "User.Drawings")
+		(19 "Cmts.User" user "User.Comments")
+		(21 "Eco1.User" user "User.Eco1")
+		(23 "Eco2.User" user "User.Eco2")
+		(25 "Edge.Cuts" user)
+		(27 "Margin" user)
+		(31 "F.CrtYd" user "F.Courtyard")
+		(29 "B.CrtYd" user "B.Courtyard")
+		(35 "F.Fab" user)
+		(33 "B.Fab" user)
+	)"""
+
+_footprint_cache: dict[str, SNode] = {}
+
+
+def footprint_definition(spec: str) -> SNode:
+    """One of KiCad's own footprints, ready to drop into a board."""
+    if spec not in _footprint_cache:
+        lib, _, name = spec.partition(":")
+        path = FOOTPRINT_DIR / f"{lib}.pretty" / f"{name}.kicad_mod"
+        if not path.exists():
+            raise SystemExit(f"no such footprint: {path}")
+        node = sexp.load(path)
+        node.args[0] = spec
+        # A board carries no per-footprint format stamp; the document has one.
+        node.args = [
+            a
+            for a in node.args
+            if not (
+                isinstance(a, SNode) and a.name in ("version", "generator", "generator_version")
+            )
+        ]
+        _footprint_cache[spec] = node
+    return copy.deepcopy(_footprint_cache[spec])
+
+
+def _set_property(node: SNode, name: str, value: str) -> None:
+    for prop in node.children("property"):
+        if str(prop.atom(0, "")) == name:
+            # a property is (property "Name" "Value" ...): the value is its
+            # second bare atom, whatever nodes are interleaved after it
+            bare = [i for i, a in enumerate(prop.args) if not isinstance(a, SNode)]
+            if len(bare) >= 2:
+                prop.args[bare[1]] = value
+            return
+
+
+def _uuid_node(value: str) -> SNode:
+    return SNode("uuid", [value])
+
+
+def _rotate(x: float, y: float, angle: float) -> tuple[float, float]:
+    """KiCad's RotatePoint: positive angles turn counter-clockwise on screen."""
+    rad = math.radians(angle)
+    return (x * math.cos(rad) + y * math.sin(rad), -x * math.sin(rad) + y * math.cos(rad))
+
+
+def pad_position(design: Design, spec: str) -> tuple[float, float]:
+    """Board coordinates of ``REF.PAD``, footprint rotation included."""
+    ref, _, number = spec.partition(".")
+    part = design.part(ref)
+    node = footprint_definition(part.footprint)
+    for pad in node.children("pad"):
+        if str(pad.atom(0, "")) != number:
+            continue
+        at = pad.child("at")
+        atoms = [a for a in (at.atoms() if at else []) if isinstance(a, (int, float))]
+        px, py = (float(atoms[0]), float(atoms[1])) if len(atoms) >= 2 else (0.0, 0.0)
+        bx, by, angle = part.board
+        rx, ry = _rotate(px, py, angle)
+        return (round(bx + rx, 4), round(by + ry, 4))
+    raise SystemExit(f"{part.footprint} has no pad {number!r} (wanted by {spec})")
+
+
+def resolve(design: Design, point: tuple[float, float] | str) -> tuple[float, float]:
+    return pad_position(design, point) if isinstance(point, str) else point
 
 
 def emit_board(design: Design, path: Path) -> None:
-    import pcbnew
-
-    def mm(value: float) -> int:
-        return pcbnew.FromMM(value)
-
-    def point(x: float, y: float):
-        return pcbnew.VECTOR2I(mm(x), mm(y))
-
-    # A bare BOARD() has no design settings and segfaults as soon as anything
-    # is added to it; CreateEmptyBoard is the constructor that sets one up.
-    board = pcbnew.CreateEmptyBoard()
-    board.SetCopperLayerCount(2)
-
-    nets = {}
-    for name in sorted(design.nets):
-        info = pcbnew.NETINFO_ITEM(board, name)
-        board.Add(info)
-        nets[name] = info
-
+    ox, oy = design.origin
     net_of: dict[tuple[str, str], str] = {}
     for name, nodes in design.nets.items():
-        for node in nodes:
-            ref, _, number = node.partition(".")
+        for entry in nodes:
+            ref, _, number = entry.partition(".")
             net_of[(ref, number)] = name
 
-    ox, oy = design.origin
+    order = ["GND", *sorted(n for n in design.nets if n != "GND")]
+    codes = {name: index for index, name in enumerate(order, start=1)}
+
+    lines = [
+        "(kicad_pcb",
+        "\t(version 20241229)",
+        '\t(generator "eda-toolkit")',
+        '\t(generator_version "9.0")',
+        "\t(general",
+        "\t\t(thickness 1.6)",
+        "\t\t(legacy_teardrops no)",
+        "\t)",
+        '\t(paper "A4")',
+        BOARD_LAYERS,
+        "\t(setup",
+        "\t\t(pad_to_mask_clearance 0)",
+        "\t\t(allow_soldermask_bridges_in_footprints no)",
+        "\t)",
+        '\t(net 0 "")',
+    ]
+    for name in order:
+        lines.append(f'\t(net {codes[name]} "{name}")')
+
     for part in design.parts:
-        lib, _, fp_name = part.footprint.partition(":")
-        footprint = pcbnew.FootprintLoad(str(FOOTPRINT_DIR / f"{lib}.pretty"), fp_name)
-        if footprint is None:
-            raise SystemExit(f"footprint {part.footprint} not found")
-        footprint.SetReference(part.ref)
-        footprint.SetValue(part.value)
+        node = footprint_definition(part.footprint)
         bx, by, angle = part.board
-        footprint.SetPosition(point(ox + bx, oy + by))
-        footprint.SetOrientationDegrees(angle)
-        for pad in footprint.Pads():
-            name = net_of.get((part.ref, pad.GetNumber()))
+        node.args.insert(
+            1, SNode("at", [round(ox + bx, 4), round(oy + by, 4)] + ([angle] if angle else []))
+        )
+        node.args.insert(2, _uuid_node(stable_uuid(design.name, "fp", part.ref)))
+        _set_property(node, "Reference", part.ref)
+        _set_property(node, "Value", part.value)
+        for index, pad in enumerate(node.children("pad")):
+            number = str(pad.atom(0, ""))
+            name = net_of.get((part.ref, number))
             if name:
-                pad.SetNet(nets[name])
-        board.Add(footprint)
+                pad.args.append(SNode("net", [codes[name], name]))
+            pad.args.append(_uuid_node(stable_uuid(design.name, "pad", part.ref, number, index)))
+        lines.append(sexp.dumps(node, indent=1))
 
     width, height = design.board_size
-    for a, b in (
-        ((0, 0), (width, 0)),
-        ((width, 0), (width, height)),
-        ((width, height), (0, height)),
-        ((0, height), (0, 0)),
-    ):
-        edge = pcbnew.PCB_SHAPE(board)
-        edge.SetShape(pcbnew.SHAPE_T_SEGMENT)
-        edge.SetStart(point(ox + a[0], oy + a[1]))
-        edge.SetEnd(point(ox + b[0], oy + b[1]))
-        edge.SetLayer(pcbnew.Edge_Cuts)
-        edge.SetWidth(mm(0.1))
-        board.Add(edge)
+    corners = [(0, 0), (width, 0), (width, height), (0, height)]
+    for index, (a, b) in enumerate(zip(corners, corners[1:] + corners[:1], strict=False)):
+        lines.append(
+            f"\t(gr_line (start {ox + a[0]} {oy + a[1]}) (end {ox + b[0]} {oy + b[1]}) "
+            f'(stroke (width 0.1) (type default)) (layer "Edge.Cuts") '
+            f'(uuid "{stable_uuid(design.name, "edge", index)}"))'
+        )
 
-    layers = {"F.Cu": pcbnew.F_Cu, "B.Cu": pcbnew.B_Cu}
-    for track in design.tracks:
-        for a, b in zip(track.points, track.points[1:], strict=False):
-            segment = pcbnew.PCB_TRACK(board)
-            segment.SetStart(point(ox + a[0], oy + a[1]))
-            segment.SetEnd(point(ox + b[0], oy + b[1]))
-            segment.SetWidth(mm(track.width))
-            segment.SetLayer(layers[track.layer])
-            segment.SetNet(nets[track.net])
-            board.Add(segment)
+    for index, track in enumerate(design.tracks):
+        points = [resolve(design, p) for p in track.points]
+        for step, (a, b) in enumerate(pairwise(points)):
+            lines.append(
+                f"\t(segment (start {round(ox + a[0], 4)} {round(oy + a[1], 4)}) "
+                f"(end {round(ox + b[0], 4)} {round(oy + b[1], 4)}) (width {track.width}) "
+                f'(layer "{track.layer}") (net {codes[track.net]}) '
+                f'(uuid "{stable_uuid(design.name, "seg", index, step)}"))'
+            )
 
-    for via in design.vias:
-        item = pcbnew.PCB_VIA(board)
-        item.SetPosition(point(ox + via.x, oy + via.y))
-        item.SetDrill(mm(via.drill))
-        item.SetWidth(mm(via.size))
-        item.SetNet(nets[via.net])
-        board.Add(item)
+    for index, via in enumerate(design.vias):
+        vx, vy = via.x, via.y
+        if via.pad:
+            px, py = pad_position(design, via.pad)
+            vx, vy = px + via.offset[0], py + via.offset[1]
+        lines.append(
+            f"\t(via (at {round(ox + vx, 4)} {round(oy + vy, 4)}) (size {via.size}) "
+            f'(drill {via.drill}) (layers "F.Cu" "B.Cu") (net {codes[via.net]}) '
+            f'(uuid "{stable_uuid(design.name, "via", index)}"))'
+        )
 
-    if design.ground_pour:
-        outline = pcbnew.SHAPE_POLY_SET()
-        outline.NewOutline()
-        for x, y in ((0, 0), (width, 0), (width, height), (0, height)):
-            outline.Append(mm(ox + x), mm(oy + y))
-        zone = pcbnew.ZONE(board)
-        zone.SetOutline(outline)
-        zone.SetLayer(pcbnew.B_Cu)
-        zone.SetNet(nets["GND"])
-        zone.SetIsFilled(False)
-        board.Add(zone)
-        # Fill it here rather than leaving it to whoever opens the board: KiCad 9
-        # has no `pcb drc --refill-zones`, so an unfilled pour reads as an
-        # unconnected GND on half the CI matrix.
-        pcbnew.ZONE_FILLER(board).Fill(board.Zones())
+    if design.pour:
+        lines.append(_zone(design, codes["GND"]))
 
-    pcbnew.SaveBoard(str(path), board)
+    lines.append(")")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _zone(design: Design, code: int) -> str:
+    """The ground pour, and the fill it is safe to state.
+
+    The pour region is chosen so that no copper of another net can be inside it -
+    every through-hole pad sits outside it, and the only things it contains are
+    its own GND vias. That makes the filled area the outline itself, which is why
+    it can be written down rather than computed: there is nothing to subtract.
+    """
+    ox, oy = design.origin
+    x0, y0, x1, y1 = design.pour
+    outline = [(ox + x0, oy + y0), (ox + x1, oy + y0), (ox + x1, oy + y1), (ox + x0, oy + y1)]
+    pts = " ".join(f"(xy {round(x, 4)} {round(y, 4)})" for x, y in outline)
+    return "\n".join(
+        [
+            "\t(zone",
+            f"\t\t(net {code})",
+            '\t\t(net_name "GND")',
+            '\t\t(layer "B.Cu")',
+            f'\t\t(uuid "{stable_uuid(design.name, "zone")}")',
+            "\t\t(hatch edge 0.5)",
+            "\t\t(connect_pads",
+            "\t\t\t(clearance 0.5)",
+            "\t\t)",
+            "\t\t(min_thickness 0.25)",
+            "\t\t(filled_areas_thickness no)",
+            "\t\t(fill yes",
+            "\t\t\t(thermal_gap 0.5)",
+            "\t\t\t(thermal_bridge_width 0.5)",
+            "\t\t)",
+            f"\t\t(polygon (pts {pts}))",
+            f'\t\t(filled_polygon (layer "B.Cu") (pts {pts}))',
+            "\t)",
+        ]
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -576,7 +728,7 @@ def degrade(design: Design) -> Design:
         power_flags=[],
         tracks=[replace(t, width=0.25) for t in design.tracks],
         vias=[],
-        ground_pour=False,
+        pour=None,
     )
 
 
@@ -590,7 +742,16 @@ UNDERRATED = {"C1": "220u", "C3": "220u"}
 
 
 def buck_5v() -> Design:
-    """12 V to 5 V at 2 A, LM2596S-5 with a catch diode and an output inductor."""
+    """12 V to 5 V at 2 A: LM2596S-5, catch diode, output inductor.
+
+    The floorplan is what makes the rest work. The two screw terminals are
+    through-hole and sit outside the pour at the far left and right; everything
+    between them is surface mount, so B.Cu carries nothing but the ground pour
+    and the vias that drop into it. That means every ground pad reaches the plane
+    straight down through a via of its own instead of running a track across the
+    board, and it means the filled area is the pour outline itself, with nothing
+    to subtract - which is what lets the fill be written rather than computed.
+    """
     RIGHT = 168.91  # where the output half of the sheet starts
     parts = [
         Part(
@@ -599,21 +760,26 @@ def buck_5v() -> Design:
             "12V IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(38.1, 66.04),
-            board=(6.0, 17.5, 180.0),
-            fields={"MPN": "1729128", "Manufacturer": "Phoenix Contact"},
+            board=(7.0, 18.0, 180.0),
+            fields={
+                "MPN": "1729128",
+                "Manufacturer": "Phoenix Contact",
+                "Datasheet": "https://www.phoenixcontact.com/product/1729128",
+            },
         ),
         Part(
             "C1",
             "Device:C_Polarized",
             "220u",
-            "Capacitor_THT:CP_Radial_D8.0mm_P3.50mm",
+            "Capacitor_SMD:CP_Elec_8x10.5",
             sheet=(63.5, 71.12),
-            board=(17.0, 9.0, 0.0),
+            board=(22.0, 12.0, 0.0),
             fields={
                 "Voltage": "35V",
                 "Tolerance": "20%",
-                "MPN": "UVR1V221MPD",
-                "Manufacturer": "Nichicon",
+                "MPN": "EEE-FK1V221AP",
+                "Manufacturer": "Panasonic",
+                "Datasheet": "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf",
             },
         ),
         Part(
@@ -622,12 +788,13 @@ def buck_5v() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(78.74, 71.12),
-            board=(17.0, 25.0, 0.0),
+            board=(31.0, 12.0, 0.0),
             fields={
                 "Voltage": "50V",
                 "Tolerance": "10%",
                 "MPN": "CL21B104KBCNNNC",
                 "Manufacturer": "Samsung",
+                "Datasheet": "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do",
             },
         ),
         Part(
@@ -636,7 +803,7 @@ def buck_5v() -> Design:
             "LM2596S-5",
             "Package_TO_SOT_SMD:TO-263-5_TabPin3",
             sheet=(109.22, 66.04),
-            board=(30.0, 17.0, 0.0),
+            board=(42.0, 13.0, 0.0),
             fields={
                 "MPN": "LM2596SX-5.0/NOPB",
                 "Manufacturer": "Texas Instruments",
@@ -649,7 +816,7 @@ def buck_5v() -> Design:
             "SS34",
             "Diode_SMD:D_SMA",
             sheet=(140.97, 76.2),
-            board=(41.0, 25.0, 90.0),
+            board=(54.0, 24.0, 270.0),
             fields={
                 "MPN": "SS34",
                 "Manufacturer": "Vishay",
@@ -662,26 +829,28 @@ def buck_5v() -> Design:
             "33u",
             "Inductor_SMD:L_12x12mm_H8mm",
             sheet=(154.94, 66.04),
-            board=(53.0, 17.0, 0.0),
+            board=(66.0, 13.0, 0.0),
             fields={
                 "Current": "3A",
                 "Tolerance": "20%",
                 "MPN": "SRR1260-330M",
                 "Manufacturer": "Bourns",
+                "Datasheet": "https://www.bourns.com/docs/product-datasheets/srr1260.pdf",
             },
         ),
         Part(
             "C3",
             "Device:C_Polarized",
             "220u",
-            "Capacitor_THT:CP_Radial_D8.0mm_P3.50mm",
+            "Capacitor_SMD:CP_Elec_8x10.5",
             sheet=(RIGHT, 71.12),
-            board=(65.0, 9.0, 0.0),
+            board=(78.0, 12.0, 0.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
-                "MPN": "UVR1C221MPD",
-                "Manufacturer": "Nichicon",
+                "MPN": "EEE-FK1C221P",
+                "Manufacturer": "Panasonic",
+                "Datasheet": "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf",
             },
         ),
         Part(
@@ -690,12 +859,13 @@ def buck_5v() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(RIGHT + 15.24, 71.12),
-            board=(65.0, 25.0, 0.0),
+            board=(71.0, 12.0, 0.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "10%",
                 "MPN": "CL21B104KBCNNNC",
                 "Manufacturer": "Samsung",
+                "Datasheet": "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do",
             },
         ),
         Part(
@@ -704,12 +874,13 @@ def buck_5v() -> Design:
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(RIGHT + 30.48, 71.12),
-            board=(76.0, 9.0, 0.0),
+            board=(66.0, 27.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
                 "MPN": "RC0805FR-071KL",
                 "Manufacturer": "Yageo",
+                "Datasheet": "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf",
             },
         ),
         Part(
@@ -717,14 +888,15 @@ def buck_5v() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(RIGHT + 30.48, 81.28),
-            board=(76.0, 17.0, 0.0),
+            sheet=(RIGHT + 30.48, 88.9),
+            board=(73.0, 27.0, 0.0),
             angle=270.0,
             fields={
                 "Voltage": "2.1V",
                 "Current": "3mA",
                 "MPN": "LTST-C170KGKT",
                 "Manufacturer": "Lite-On",
+                "Datasheet": "https://optoelectronics.liteon.com/upload/download/DS-22-98-0002/LTST-C170KGKT.pdf",
             },
         ),
         Part(
@@ -733,8 +905,12 @@ def buck_5v() -> Design:
             "5V OUT",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(RIGHT + 45.72, 66.04),
-            board=(84.0, 17.5, 0.0),
-            fields={"MPN": "1729128", "Manufacturer": "Phoenix Contact"},
+            board=(93.0, 18.0, 0.0),
+            fields={
+                "MPN": "1729128",
+                "Manufacturer": "Phoenix Contact",
+                "Datasheet": "https://www.phoenixcontact.com/product/1729128",
+            },
         ),
     ]
 
@@ -747,30 +923,42 @@ def buck_5v() -> Design:
     }
 
     # 2 A of output current needs copper, not a signal trace: 1.0 mm of 35 um
-    # outer-layer copper carries about 2.7 A at a 10 C rise (IPC-2221).
-    power = 1.0
+    # outer-layer copper carries about 2.7 A at a 10 C rise (IPC-2221). The LED
+    # branch is the one place a thinner trace is right, and it is still 0.4 mm
+    # because it hangs off a power rail.
+    W, SIG = 1.0, 0.4
     tracks = [
-        Track("+12V", "F.Cu", power, [(6.0, 15.0), (17.0, 15.0), (17.0, 11.2), (30.0, 11.2)]),
-        Track("+12V", "F.Cu", power, [(17.0, 15.0), (17.0, 23.0)]),
-        Track("SW", "F.Cu", power, [(35.0, 17.0), (41.0, 17.0), (41.0, 23.0)]),
-        Track("SW", "F.Cu", power, [(41.0, 17.0), (53.0, 17.0)]),
-        Track("+5V", "F.Cu", power, [(57.0, 17.0), (65.0, 17.0), (65.0, 11.2)]),
-        Track("+5V", "F.Cu", power, [(65.0, 17.0), (76.0, 17.0), (84.0, 17.0)]),
-        Track("+5V", "F.Cu", power, [(65.0, 17.0), (65.0, 23.0)]),
-        Track("+5V", "F.Cu", 0.3, [(76.0, 11.2), (76.0, 15.0)]),
-        Track("LED_A", "F.Cu", 0.3, [(76.0, 7.0), (79.0, 7.0), (79.0, 19.0), (76.0, 19.0)]),
+        # Input rail runs left to right along the top of the SMD band.
+        Track("+12V", "F.Cu", W, ["J1.1", (14.0, 15.0), (14.0, 8.5), "C1.1"]),
+        Track("+12V", "F.Cu", W, ["C1.1", "C2.1"]),
+        Track("+12V", "F.Cu", W, ["C2.1", (36.0, 8.5), (36.0, 10.46), "U1.1"]),
+        # Switch node: short and fat, straight down to the diode and across.
+        Track("SW", "F.Cu", W, ["U1.2", (48.0, 15.54), (48.0, 24.0), "D1.1"]),
+        Track("SW", "F.Cu", W, ["D1.1", (60.0, 24.0), (60.0, 13.0), "L1.1"]),
+        # Output rail, and the feedback tap back to U1.
+        Track("+5V", "F.Cu", W, ["L1.2", "C4.1"]),
+        Track("+5V", "F.Cu", W, ["C4.1", "C3.1"]),
+        Track("+5V", "F.Cu", W, ["C3.1", (86.0, 8.5), (86.0, 15.0), "J2.1"]),
+        Track("+5V", "F.Cu", SIG, ["U1.4", (48.0, 10.46), (48.0, 5.0), (71.0, 5.0), "C4.1"]),
+        Track("+5V", "F.Cu", SIG, ["C4.1", (66.0, 20.0), "R1.1"]),
+        Track("LED_A", "F.Cu", SIG, ["R1.2", "D2.2"]),
+        # Ground never travels: each pad drops into the pour beside it. Only the
+        # two through-hole terminals, which sit outside the pour, run any copper.
+        Track("GND", "F.Cu", W, ["J1.2", (14.0, 21.0)]),
+        Track("GND", "F.Cu", W, ["J2.2", (86.0, 21.0)]),
     ]
-    # Every ground pad reaches the pour on B.Cu through a via of its own.
+    # A via beside every ground pad, all of them inside the pour.
     vias = [
-        Via("GND", 6.0, 20.0),
-        Via("GND", 17.0, 7.0),
-        Via("GND", 17.0, 27.0),
-        Via("GND", 30.0, 21.0),
-        Via("GND", 41.0, 27.0),
-        Via("GND", 65.0, 7.0),
-        Via("GND", 65.0, 27.0),
-        Via("GND", 76.0, 21.0),
-        Via("GND", 84.0, 20.0),
+        Via("GND", 14.0, 21.0),
+        Via("GND", 24.6, 12.0),
+        Via("GND", 32.0, 12.0),
+        Via("GND", 42.0, 18.0),
+        Via("GND", 38.0, 17.0),
+        Via("GND", 54.0, 27.5),
+        Via("GND", 72.0, 12.0),
+        Via("GND", 80.6, 12.0),
+        Via("GND", 86.0, 21.0),
+        Via("GND", 74.5, 27.0),
     ]
 
     return Design(
@@ -779,21 +967,24 @@ def buck_5v() -> Design:
         rev="A",
         company="kicad_skills examples",
         notes=[
-            "LM2596S-5 fixed 5 V: FB ties straight to the output, no divider.",
-            "C1 35 V on a 12 V rail and C3 16 V on a 5 V rail: both keep the 1.5x",
-            "headroom a ceramic-adjacent electrolytic wants over its working voltage.",
-            "L1 33 uH / 3 A: ripple is about 0.6 A pk-pk at 2 A out, and the",
-            "saturation rating stays above the peak.",
+            "LM2596S-5 is the fixed 5 V part: FB ties straight to the output, no divider.",
+            "C1 35 V on a 12 V rail and C3 16 V on a 5 V rail - both keep more than the",
+            "1.5x headroom the gate asks for over their working voltage.",
+            "L1 33 uH / 3 A saturation: ripple is about 0.6 A pk-pk at 2 A out, so the",
+            "peak stays under the rating.",
+            "D1 catches the inductor current. SS34 is 3 A / 40 V, above both the 2 A load",
+            "and the 12 V input.",
             "Power copper is 1.0 mm, good for 2.7 A at a 10 C rise (IPC-2221).",
-            "D1 catches the inductor current: SS34 is 3 A / 40 V, both above the",
-            "2 A load and the 12 V input.",
+            "Only the two screw terminals are through-hole, and both sit outside the",
+            "ground pour, so B.Cu carries nothing but the plane and the vias into it.",
         ],
         parts=parts,
         nets=nets,
-        power_flags=["+12V", "GND"],
-        board_size=(92.0, 34.0),
+        power_flags=["+12V", "GND", "+5V"],
+        board_size=(100.0, 36.0),
         tracks=tracks,
         vias=vias,
+        pour=(12.0, 2.0, 88.0, 34.0),
     )
 
 

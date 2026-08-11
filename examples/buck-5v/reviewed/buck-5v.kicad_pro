@@ -1,0 +1,5 @@
+{
+  "board": {"design_settings": {"rules": {"min_track_width": 0.15}}},
+  "meta": {"filename": "buck-5v.kicad_pro", "version": 1},
+  "sheets": [["ec98644d-848c-5056-a4cb-c829189be5c3", "Root"]]
+}
