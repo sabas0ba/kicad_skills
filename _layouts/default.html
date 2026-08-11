@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="{{ site.lang | default: "en-US" }}">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+{% seo %}
+    <link rel="icon" href="{{ '/assets/favicon.svg' | relative_url }}" type="image/svg+xml">
+    <link rel="stylesheet" href="{{ '/assets/css/style.css' | relative_url }}">
+    {% include head-custom.html %}
+  </head>
+  <body>
+    <a class="skip-link" href="#content">Skip to content</a>
+
+    <header class="site-header">
+      <div class="site-header-inner">
+        <a class="site-brand" href="{{ '/' | relative_url }}">
+          <img class="site-brand-mark" src="{{ '/assets/logo.svg' | relative_url }}" alt="" width="30" height="30">
+          <span class="site-brand-name">{{ site.title }}</span>
+        </a>
+        <div class="site-header-right">
+          <!-- The same entries as the sidebar, for the widths that have no
+               room for one. Only one of the two is ever visible. -->
+          <nav class="site-topnav" aria-label="Sections">
+            {%- for item in site.data.nav %}
+            <a href="{{ item.url | relative_url }}"{% if page.url == item.url %} aria-current="page"{% endif %}>{{ item.title }}</a>
+            {%- endfor %}
+          </nav>
+          <a class="site-repo-link" href="https://github.com/{{ site.repository }}">GitHub</a>
+        </div>
+      </div>
+    </header>
+
+    <div class="site-body">
+      <nav class="site-sidebar" aria-label="Documentation">
+        {%- for item in site.data.nav %}
+        <a class="site-sidebar-section" href="{{ item.url | relative_url }}"{% if page.url == item.url %} aria-current="page"{% endif %}>{{ item.title }}</a>
+        {%- if item.children %}
+        <ul>
+          {%- for child in item.children %}
+          <li><a href="{{ child.url | relative_url }}"{% if page.url == child.url %} aria-current="page"{% endif %}>{{ child.title }}</a></li>
+          {%- endfor %}
+        </ul>
+        {%- endif %}
+        {%- endfor %}
+      </nav>
+
+      <main id="content" class="site-main markdown-body">
+        {{ content }}
+      </main>
+
+      <aside class="site-toc" aria-label="On this page" hidden>
+        <p class="site-toc-title">On this page</p>
+        <ul></ul>
+      </aside>
+    </div>
+
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p>
+          The site is the Markdown in the repository — no build step, nothing generated.
+        </p>
+        <p>
+          <a href="https://github.com/{{ site.repository }}">github.com/{{ site.repository }}</a>
+          · <a href="https://github.com/{{ site.repository }}/blob/main/LICENSE">Apache-2.0</a>
+        </p>
+      </div>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/anchor-js/4.1.0/anchor.min.js" integrity="sha256-lZaRhKri35AyJSypXXs4o6OPFTbTmUoltBbDCbdzegg=" crossorigin="anonymous"></script>
+    <script>
+      // "On this page" is built from the headings that are already there, so it
+      // stays correct without anything being written into the Markdown. No
+      // headings worth listing (or no room for the rail) - the aside stays
+      // hidden. Runs before anchors.add(), which appends a link to each heading.
+      (function () {
+        var aside = document.querySelector('.site-toc');
+        var list = aside && aside.querySelector('ul');
+        var headings = document.querySelectorAll('.markdown-body h2[id]');
+        if (!list || headings.length < 3) return;
+        headings.forEach(function (heading) {
+          var link = document.createElement('a');
+          link.href = '#' + heading.id;
+          link.textContent = heading.textContent.replace(/\s*$/, '');
+          var item = document.createElement('li');
+          item.appendChild(link);
+          list.appendChild(item);
+        });
+        aside.hidden = false;
+      })();
+
+      anchors.add('.markdown-body h2, .markdown-body h3');
+    </script>
+  </body>
+</html>
