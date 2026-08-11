@@ -37,8 +37,8 @@
 	(net 1 "GND")
 	(net 2 "+12V")
 	(net 3 "+5V")
-	(net 4 "LED_A")
-	(net 5 "SW")
+	(net 4 "/LED_A")
+	(net 5 "/SW")
   (footprint "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal"
     (at 110.0 72.0 180.0)
     (uuid "aacb4f48-b6f8-5521-aa41-12cf4072426e")
@@ -300,7 +300,7 @@
       )
     )
     (pad "1" thru_hole roundrect
-      (at 0 0)
+      (at 0 0 180.0)
       (size 2.6 2.6)
       (drill 1.3)
       (layers "*.Cu" "*.Mask")
@@ -310,7 +310,7 @@
       (uuid "0b5cf269-491f-599b-8ad8-3a94311a497c")
     )
     (pad "2" thru_hole circle
-      (at 5 0)
+      (at 5 0 180.0)
       (size 2.6 2.6)
       (drill 1.3)
       (layers "*.Cu" "*.Mask")
@@ -328,6 +328,39 @@
       )
       (rotate
         (xyz 0 0 0)
+      )
+    )
+    (property "MPN" "1729128"
+      (at 2.5 -6.32 0)
+      (layer "F.Fab")
+      (uuid "3e49e5d7-7a3f-5a6e-854a-cb82e14af168")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Phoenix Contact"
+      (at 2.5 -6.32 0)
+      (layer "F.Fab")
+      (uuid "213cb5f0-5a1e-507f-85e5-11803a2b276d")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Datasheet" "https://www.phoenixcontact.com/product/1729128"
+      (at 2.5 -6.32 0)
+      (layer "F.Fab")
+      (uuid "1da95898-8bd6-5792-8a6e-ee1bc1a2a9f8")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
       )
     )
   )
@@ -694,6 +727,61 @@
         (xyz 0 0 0)
       )
     )
+    (property "Voltage" "35V"
+      (at 0 -5.3 0)
+      (layer "F.Fab")
+      (uuid "fb0996fe-141a-5ba2-a285-c0e19a2e93ef")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Tolerance" "20%"
+      (at 0 -5.3 0)
+      (layer "F.Fab")
+      (uuid "366f87cf-686d-5da1-8558-f3e6b0b24b0e")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "MPN" "EEE-FK1V221AP"
+      (at 0 -5.3 0)
+      (layer "F.Fab")
+      (uuid "42a2606d-b624-5f73-a49b-52af47f7cfaf")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Panasonic"
+      (at 0 -5.3 0)
+      (layer "F.Fab")
+      (uuid "46d0ac0d-0d3c-5de6-93ef-f27e62c9ca1c")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Datasheet" "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf"
+      (at 0 -5.3 0)
+      (layer "F.Fab")
+      (uuid "d56e272d-d85e-5e9b-8549-94f749779b95")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
   )
   (footprint "Capacitor_SMD:C_0805_2012Metric"
     (at 150.0 67.0 90.0)
@@ -771,7 +859,7 @@
       )
     )
     (pad "1" smd roundrect
-      (at -0.95 0)
+      (at -0.95 0 90.0)
       (size 1 1.45)
       (layers "F.Cu" "F.Mask" "F.Paste")
       (roundrect_rratio 0.25)
@@ -779,7 +867,7 @@
       (uuid "f1aa472c-3d45-5838-92c8-ffd1f08120a3")
     )
     (pad "2" smd roundrect
-      (at 0.95 0)
+      (at 0.95 0 90.0)
       (size 1 1.45)
       (layers "F.Cu" "F.Mask" "F.Paste")
       (roundrect_rratio 0.25)
@@ -796,6 +884,61 @@
       )
       (rotate
         (xyz 0 0 0)
+      )
+    )
+    (property "Voltage" "50V"
+      (at 0 -1.68 0)
+      (layer "F.Fab")
+      (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Tolerance" "10%"
+      (at 0 -1.68 0)
+      (layer "F.Fab")
+      (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "MPN" "CL21B104KBCNNNC"
+      (at 0 -1.68 0)
+      (layer "F.Fab")
+      (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Samsung"
+      (at 0 -1.68 0)
+      (layer "F.Fab")
+      (uuid "443233cc-433b-55c0-9207-0c13c34de959")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
+      (at 0 -1.68 0)
+      (layer "F.Fab")
+      (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
       )
     )
   )
@@ -1113,7 +1256,7 @@
       (size 4.6 1.1)
       (layers "F.Cu" "F.Mask" "F.Paste")
       (roundrect_rratio 0.227273)
-      (net 5 "SW")
+      (net 5 "/SW")
       (uuid "df1831bc-d56e-57b9-98af-1c319d176416")
     )
     (pad "3" smd roundrect
@@ -1160,6 +1303,39 @@
         (xyz 0 0 0)
       )
     )
+    (property "MPN" "LM2596SX-5.0/NOPB"
+      (at 0 -6.65 0)
+      (layer "F.Fab")
+      (uuid "e39022a4-97a1-556f-857a-016b90132ebf")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Texas Instruments"
+      (at 0 -6.65 0)
+      (layer "F.Fab")
+      (uuid "c959a679-7d39-5cca-9de5-bae8d0993d9c")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Datasheet" "https://www.ti.com/lit/ds/symlink/lm2596.pdf"
+      (at 0 -6.65 0)
+      (layer "F.Fab")
+      (uuid "97319bff-00d8-5e40-a46b-35fcb2c53498")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
   )
   (footprint "Diode_SMD:D_SMA"
     (at 158.0 96.0)
@@ -1189,7 +1365,7 @@
         )
       )
     )
-    (property "Datasheet" ""
+    (property "Datasheet" "https://www.vishay.com/docs/88946/ss32.pdf"
       (at 0 0 0)
       (unlocked yes)
       (layer "F.Fab")
@@ -1403,7 +1579,7 @@
       (layers "F.Cu" "F.Mask" "F.Paste")
       (roundrect_rratio 0.1388888889)
       (uuid "e092a9e8-b915-4f8c-82db-96bdde4366ac")
-      (net 5 "SW")
+      (net 5 "/SW")
       (uuid "467af52b-3a84-5598-baf9-8acd36df27b0")
     )
     (pad "2" smd roundrect
@@ -1425,6 +1601,28 @@
       )
       (rotate
         (xyz 0 0 0)
+      )
+    )
+    (property "MPN" "SS34"
+      (at 0 -2.5 0)
+      (layer "F.Fab")
+      (uuid "cb2935f6-b35c-5a58-ad1a-0299fc76bcf5")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Vishay"
+      (at 0 -2.5 0)
+      (layer "F.Fab")
+      (uuid "e17a20f7-eb30-5693-9a0e-dbe8c349d406")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
       )
     )
   )
@@ -1456,7 +1654,7 @@
         )
       )
     )
-    (property "Datasheet" ""
+    (property "Datasheet" "https://www.bourns.com/docs/product-datasheets/srr1260.pdf"
       (at 0 0 0)
       (unlocked yes)
       (layer "F.Fab")
@@ -2223,7 +2421,7 @@
       (size 2.9 5.4)
       (layers "F.Cu" "F.Mask" "F.Paste")
       (uuid "0076b9e7-5696-4e2a-ac17-0131d842ef44")
-      (net 5 "SW")
+      (net 5 "/SW")
       (uuid "660e8726-8c81-54ee-b502-55300644acd6")
     )
     (pad "2" smd rect
@@ -2244,6 +2442,50 @@
       )
       (rotate
         (xyz 0 0 0)
+      )
+    )
+    (property "Current" "3A"
+      (at 0 -7.4 0)
+      (layer "F.Fab")
+      (uuid "1d11cc56-6259-50a0-bbf7-ee9c9eea396e")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Tolerance" "20%"
+      (at 0 -7.4 0)
+      (layer "F.Fab")
+      (uuid "f41408e5-8318-5252-82b8-e120c608a843")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "MPN" "SRR1260-330M"
+      (at 0 -7.4 0)
+      (layer "F.Fab")
+      (uuid "e5b6bf00-3488-5286-ada9-35ce0a25f3b3")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Bourns"
+      (at 0 -7.4 0)
+      (layer "F.Fab")
+      (uuid "f2047ca1-fbdd-5c25-998b-52f5cded3360")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
       )
     )
   )
@@ -2348,6 +2590,61 @@
       )
       (rotate
         (xyz 0 0 0)
+      )
+    )
+    (property "Voltage" "25V"
+      (at 0 -1.68 0)
+      (layer "F.Fab")
+      (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Tolerance" "10%"
+      (at 0 -1.68 0)
+      (layer "F.Fab")
+      (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "MPN" "CL21B104KBCNNNC"
+      (at 0 -1.68 0)
+      (layer "F.Fab")
+      (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Samsung"
+      (at 0 -1.68 0)
+      (layer "F.Fab")
+      (uuid "443233cc-433b-55c0-9207-0c13c34de959")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
+      (at 0 -1.68 0)
+      (layer "F.Fab")
+      (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
       )
     )
   )
@@ -2714,6 +3011,61 @@
         (xyz 0 0 0)
       )
     )
+    (property "Voltage" "16V"
+      (at 0 -5.3 0)
+      (layer "F.Fab")
+      (uuid "fb0996fe-141a-5ba2-a285-c0e19a2e93ef")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Tolerance" "20%"
+      (at 0 -5.3 0)
+      (layer "F.Fab")
+      (uuid "366f87cf-686d-5da1-8558-f3e6b0b24b0e")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "MPN" "EEE-FK1C221P"
+      (at 0 -5.3 0)
+      (layer "F.Fab")
+      (uuid "42a2606d-b624-5f73-a49b-52af47f7cfaf")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Panasonic"
+      (at 0 -5.3 0)
+      (layer "F.Fab")
+      (uuid "46d0ac0d-0d3c-5de6-93ef-f27e62c9ca1c")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Datasheet" "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf"
+      (at 0 -5.3 0)
+      (layer "F.Fab")
+      (uuid "d56e272d-d85e-5e9b-8549-94f749779b95")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
   )
   (footprint "Resistor_SMD:R_0805_2012Metric"
     (at 200.0 106.0)
@@ -2803,7 +3155,7 @@
       (size 1.025 1.4)
       (layers "F.Cu" "F.Mask" "F.Paste")
       (roundrect_rratio 0.243902)
-      (net 4 "LED_A")
+      (net 4 "/LED_A")
       (uuid "c6e24bd6-e2f1-5711-80c2-93a4d02f884f")
     )
     (embedded_fonts no)
@@ -2816,6 +3168,61 @@
       )
       (rotate
         (xyz 0 0 0)
+      )
+    )
+    (property "Tolerance" "1%"
+      (at 0 -1.65 0)
+      (layer "F.Fab")
+      (uuid "acac4148-fb6c-5cf9-95f2-5eb1655a471f")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Power" "0.125W"
+      (at 0 -1.65 0)
+      (layer "F.Fab")
+      (uuid "a2ade429-6025-54bd-be09-ef34ba95283f")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "MPN" "RC0805FR-071KL"
+      (at 0 -1.65 0)
+      (layer "F.Fab")
+      (uuid "ab968259-814b-5f85-ac3b-603954413f23")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Yageo"
+      (at 0 -1.65 0)
+      (layer "F.Fab")
+      (uuid "dad74daf-5221-5080-bb66-0eba4400f5c6")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
+      (at 0 -1.65 0)
+      (layer "F.Fab")
+      (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
       )
     )
   )
@@ -2939,7 +3346,7 @@
       )
     )
     (pad "1" smd roundrect
-      (at -0.9375 0)
+      (at -0.9375 0 180.0)
       (size 0.975 1.4)
       (layers "F.Cu" "F.Mask" "F.Paste")
       (roundrect_rratio 0.25)
@@ -2947,11 +3354,11 @@
       (uuid "a3134bea-e26a-5372-ac86-3a19a066bfa1")
     )
     (pad "2" smd roundrect
-      (at 0.9375 0)
+      (at 0.9375 0 180.0)
       (size 0.975 1.4)
       (layers "F.Cu" "F.Mask" "F.Paste")
       (roundrect_rratio 0.25)
-      (net 4 "LED_A")
+      (net 4 "/LED_A")
       (uuid "dd1a9a7d-fcb2-51b2-9cd9-02bed1c57665")
     )
     (embedded_fonts no)
@@ -2964,6 +3371,61 @@
       )
       (rotate
         (xyz 0 0 0)
+      )
+    )
+    (property "Voltage" "2.1V"
+      (at 0 -1.65 0)
+      (layer "F.Fab")
+      (uuid "b7ffe6df-6b1f-51c6-b29b-5d2926928b8b")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Current" "3mA"
+      (at 0 -1.65 0)
+      (layer "F.Fab")
+      (uuid "3a7b21c0-65ff-5bc4-85c9-97cb94d1cd76")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "MPN" "LTST-C170KGKT"
+      (at 0 -1.65 0)
+      (layer "F.Fab")
+      (uuid "d0ec8fa9-da1a-5379-b5aa-d23282efd574")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Lite-On"
+      (at 0 -1.65 0)
+      (layer "F.Fab")
+      (uuid "488805ff-11e0-59e9-b676-ef65f15c6f74")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Datasheet" "https://optoelectronics.liteon.com/upload/download/DS-22-98-0002/LTST-C170KGKT.pdf"
+      (at 0 -1.65 0)
+      (layer "F.Fab")
+      (uuid "bf56ffe1-b723-5d93-8a68-e1a507244257")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
       )
     )
   )
@@ -3258,6 +3720,39 @@
         (xyz 0 0 0)
       )
     )
+    (property "MPN" "1729128"
+      (at 2.5 -6.32 0)
+      (layer "F.Fab")
+      (uuid "3e49e5d7-7a3f-5a6e-854a-cb82e14af168")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Manufacturer" "Phoenix Contact"
+      (at 2.5 -6.32 0)
+      (layer "F.Fab")
+      (uuid "213cb5f0-5a1e-507f-85e5-11803a2b276d")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
+    (property "Datasheet" "https://www.phoenixcontact.com/product/1729128"
+      (at 2.5 -6.32 0)
+      (layer "F.Fab")
+      (uuid "1da95898-8bd6-5792-8a6e-ee1bc1a2a9f8")
+      (hide yes)
+      (effects
+        (font
+          (size 1.0 1.0)
+        )
+      )
+    )
   )
 	(gr_line (start 100.0 60.0) (end 226.0 60.0) (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (uuid "882869a9-da5b-51ba-bbf7-a40fb0caca2a"))
 	(gr_line (start 226.0 60.0) (end 226.0 116.0) (stroke (width 0.1) (type default)) (layer "Edge.Cuts") (uuid "bdc7c086-2e18-5e41-bbcd-2473e0ca9918"))
@@ -3323,15 +3818,18 @@
 		(uuid "ff8a96bc-c53c-5d37-bd05-a89cb151a5b7")
 		(hatch edge 0.5)
 		(connect_pads
-			(clearance 0.5)
+			(clearance 0.4)
 		)
-		(min_thickness 0.25)
+		(min_thickness 0.175)
 		(filled_areas_thickness no)
 		(fill yes
 			(thermal_gap 0.5)
 			(thermal_bridge_width 0.5)
 		)
 		(polygon (pts (xy 115.0 62.0) (xy 212.0 62.0) (xy 212.0 114.0) (xy 115.0 114.0)))
-		(filled_polygon (layer "B.Cu") (pts (xy 115.0 62.0) (xy 212.0 62.0) (xy 212.0 114.0) (xy 115.0 114.0)))
+		(filled_polygon (layer "B.Cu") (pts (xy 115.0 62.0) (xy 158.35 62.0) (xy 158.35 114.0) (xy 115.0 114.0)))
+		(filled_polygon (layer "B.Cu") (pts (xy 158.25 62.0) (xy 168.75 62.0) (xy 168.75 66.15) (xy 158.25 66.15)))
+		(filled_polygon (layer "B.Cu") (pts (xy 158.25 77.85) (xy 168.75 77.85) (xy 168.75 114.0) (xy 158.25 114.0)))
+		(filled_polygon (layer "B.Cu") (pts (xy 168.65 62.0) (xy 212.0 62.0) (xy 212.0 114.0) (xy 168.65 114.0)))
 	)
 )

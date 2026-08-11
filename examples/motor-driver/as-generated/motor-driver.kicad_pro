@@ -1,0 +1,5 @@
+{
+  "board": {"design_settings": {"rules": {"min_track_width": 0.15}}},
+  "meta": {"filename": "motor-driver.kicad_pro", "version": 1},
+  "sheets": [["bddeec65-fa67-5f6a-9af2-d98e98d56e38", "Root"]]
+}

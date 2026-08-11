@@ -37,21 +37,29 @@ from itertools import pairwise
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import autoroute
 
 from eda_toolkit.kicad import s_expression as sexp
-from eda_toolkit.kicad.s_expression import SNode
+from eda_toolkit.kicad.s_expression import Bare, SNode
 from eda_toolkit.kicad.schematic import transform_pin
 
 SYMBOL_DIR = Path("/usr/share/kicad/symbols")
 FOOTPRINT_DIR = Path("/usr/share/kicad/footprints")
 
 GRID = 1.27  # KiCad's default schematic grid, 50 mil
+BOARD_GRID = 0.5  # and its default placement grid on the board
 STUB = 2.54  # how far a wire runs from a pin before its label
 # The oldest format in the CI matrix, which is KiCad 9's. It cannot be older:
 # the symbols are copied verbatim out of that release's libraries, so a file
 # stamped KiCad 8 is parsed as KiCad 8 and rejected for tokens it now contains.
 SCH_VERSION = 20250114
 NAMESPACE = uuid.UUID("6f1a0f3e-0000-4000-8000-000000000000")
+
+GEOM_EPS = 1e-6
+VIA_SIZE = 0.8  # what the router drops when it has to change layer
+POUR_NET = "GND"  # the net every ground pour in these examples belongs to
 
 
 def stable_uuid(*parts: object) -> str:
@@ -93,6 +101,15 @@ class Track:
     # than copying its coordinate is what keeps a track actually landing on it
     # when the part moves or turns.
     points: list[tuple[float, float] | str]
+    # When set, the two points are endpoints to find a path between rather than
+    # a path already chosen. Power nets are never routed this way - where the
+    # copper goes is the design - but a logic input that simply has to arrive
+    # is exactly what a maze router is for.
+    auto: bool = False
+    # Which layer an auto route has to *end* on. A ground stub asks for B.Cu at a
+    # point inside the pour, which is how it reaches the plane: the router has to
+    # spend a via, and where it spends it is not worth choosing by hand.
+    goal_layer: str | None = None
 
 
 @dataclass
@@ -126,15 +143,49 @@ class Design:
     board_size: tuple[float, float]
     tracks: list[Track]
     vias: list[Via] = field(default_factory=list)
-    # The ground pour, as (x0, y0, x1, y1) in board coordinates. It is a region
-    # rather than the whole board on purpose: keeping every through-hole pad of
-    # another net outside it means the filled area is the outline itself, with
-    # nothing to subtract, which is what makes the fill safe to write down.
+    # The ground pour, as (x0, y0, x1, y1) in board coordinates. It is inset
+    # from the board edge rather than being the whole board, because KiCad's own
+    # zone-to-edge clearance is not something the hand-written fill applies.
     pour: tuple[float, float, float, float] | None = None
     origin: tuple[float, float] = (100.0, 60.0)  # top-left of the board on the sheet
 
     def part(self, ref: str) -> Part:
         return next(p for p in self.parts if p.ref == ref)
+
+    def snapped(self) -> Design:
+        """The same design on the two grids: 1.27 mm on the sheet, 0.5 mm on the board.
+
+        Placing a symbol at a round millimetre puts every one of its pins off
+        the 1.27 mm grid, and KiCad's own ERC says so 65 times. The board has
+        the same problem in reverse: a part placed to line up with something
+        else - the end of a fan-out, the pin it bypasses - lands wherever that
+        was, and `layout.off_grid_placement` counts it. Snapping here rather
+        than asking each design to spell out multiples of 1.27 and 0.5 means the
+        reviewed variant is on both grids by construction, and `degrade` is the
+        only thing that can take it off either.
+
+        Tracks are unaffected: every one of them names the pad it lands on
+        rather than repeating its coordinate, so moving the part moves the
+        copper with it.
+        """
+        return replace(
+            self,
+            parts=[
+                replace(
+                    part,
+                    sheet=(
+                        round(round(part.sheet[0] / GRID) * GRID, 4),
+                        round(round(part.sheet[1] / GRID) * GRID, 4),
+                    ),
+                    board=(
+                        round(round(part.board[0] / BOARD_GRID) * BOARD_GRID, 4),
+                        round(round(part.board[1] / BOARD_GRID) * BOARD_GRID, 4),
+                        part.board[2],
+                    ),
+                )
+                for part in self.parts
+            ],
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -525,7 +576,7 @@ def footprint_definition(spec: str) -> SNode:
     return copy.deepcopy(_footprint_cache[spec])
 
 
-def _set_property(node: SNode, name: str, value: str) -> None:
+def _set_property(node: SNode, name: str, value: str, *, add: bool = False) -> None:
     for prop in node.children("property"):
         if str(prop.atom(0, "")) == name:
             # a property is (property "Name" "Value" ...): the value is its
@@ -534,6 +585,21 @@ def _set_property(node: SNode, name: str, value: str) -> None:
             if len(bare) >= 2:
                 prop.args[bare[1]] = value
             return
+    if not add:
+        return
+    # KiCad's own "update PCB from schematic" copies every symbol field onto the
+    # footprint, and its parity check then compares the two. A footprint without
+    # them is one `footprint_symbol_field_mismatch` per field per part.
+    template = node.child("property")
+    at = template.child("at") if template else None
+    prop = SNode("property", [name, value])
+    if at is not None:
+        prop.args.append(SNode("at", list(at.atoms())))
+    prop.args.append(SNode("layer", ["F.Fab"]))
+    prop.args.append(_uuid_node(stable_uuid(str(node.atom(0, "")), "prop", name)))
+    prop.args.append(SNode("hide", [Bare("yes")]))
+    prop.args.append(SNode("effects", [SNode("font", [SNode("size", [1.0, 1.0])])]))
+    node.args.append(prop)
 
 
 def _uuid_node(value: str) -> SNode:
@@ -608,7 +674,14 @@ def check_board(design: Design, clearance: float = 0.2) -> list[str]:
         for a, b in pairwise(points):
             segments.append((track.net, track.layer, track.width, a, b))
 
+    # A via is copper on every layer, so it is checked as a square pad on both.
     pads = []
+    for index, via in enumerate(design.vias):
+        vx, vy = via_position(design, via)
+        half = via.size / 2
+        pads.append(
+            (via.net, None, f"via{index} at ({vx}, {vy})", (vx - half, vy - half, vx + half, vy + half))
+        )
     for part in design.parts:
         node = footprint_definition(part.footprint)
         for pad in node.children("pad"):
@@ -617,7 +690,12 @@ def check_board(design: Design, clearance: float = 0.2) -> list[str]:
             for name, nodes in design.nets.items():
                 if f"{part.ref}.{number}" in nodes:
                     net = name
-            pads.append((net, f"{part.ref}.{number}", pad_box(design, part, pad)))
+            pads.append(
+                (net, pad_layer(pad), f"{part.ref}.{number}", pad_box(design, part, pad))
+            )
+
+    def shares(one: str | None, other: str | None) -> bool:
+        return one is None or other is None or one == other
 
     problems = []
     for i, (net, layer, width, a, b) in enumerate(segments):
@@ -630,15 +708,32 @@ def check_board(design: Design, clearance: float = 0.2) -> list[str]:
                     f"{net} and {other_net} come within {max(gap, 0):.2f} mm: "
                     f"{a}-{b} against {c}-{d}"
                 )
-        for pad_net, label, box in pads:
-            if pad_net is None or pad_net == net:
+        for pad_net, pad_on, label, box in pads:
+            if pad_net is None or pad_net == net or not shares(layer, pad_on):
                 continue
             gap = _segment_to_box(a, b, box) - width / 2
             if gap < clearance:
                 problems.append(
                     f"{net} track {a}-{b} comes within {max(gap, 0):.2f} mm of {label} ({pad_net})"
                 )
+    for i, (net, pad_on, label, box) in enumerate(pads):
+        for other_net, other_on, other_label, other_box in pads[i + 1 :]:
+            if net is None or other_net is None or net == other_net:
+                continue
+            if not shares(pad_on, other_on) or not _boxes_near(box, other_box, clearance):
+                continue
+            problems.append(f"{label} ({net}) is too close to {other_label} ({other_net})")
+
     return sorted(set(problems))
+
+
+def _boxes_near(one, other, clearance: float) -> bool:
+    return (
+        one[0] - clearance < other[2]
+        and other[0] - clearance < one[2]
+        and one[1] - clearance < other[3]
+        and other[1] - clearance < one[3]
+    )
 
 
 def _segment_to_box(a, b, box) -> float:
@@ -675,6 +770,203 @@ def pad_position_of(design: Design, part: Part, pad: SNode) -> tuple[float, floa
     return (round(bx + rx, 4), round(by + ry, 4))
 
 
+def pad_layer(pad: SNode) -> str | None:
+    """Which copper layer a pad is on, or None when it is on all of them."""
+    node = pad.child("layers")
+    names = [str(a) for a in (node.atoms() if node else [])]
+    if any(name.startswith("*") for name in names):
+        return None
+    copper = [name for name in names if name.endswith(".Cu")]
+    return copper[0] if len(copper) == 1 else None
+
+
+def through_hole(design: Design, point: tuple[float, float] | str) -> bool:
+    """Whether a route endpoint is a pad that exists on every copper layer."""
+    if not isinstance(point, str):
+        return False
+    ref, _, number = point.partition(".")
+    node = footprint_definition(design.part(ref).footprint)
+    pad = next((p for p in node.children("pad") if str(p.atom(0, "")) == number), None)
+    return pad is not None and pad_layer(pad) is None
+
+
+def via_position(design: Design, via: Via) -> tuple[float, float]:
+    if not via.pad:
+        return (via.x, via.y)
+    px, py = pad_position(design, via.pad)
+    return (round(px + via.offset[0], 4), round(py + via.offset[1], 4))
+
+
+def fan(
+    design: Design,
+    ref: str,
+    pins: list[str],
+    *,
+    lead_x: float,
+    column: float,
+    pitch: float,
+    centre: float,
+    widths: dict[str, float] | None = None,
+    width: float = 0.3,
+    slope: float = 2.2,
+    clearance: float = 0.25,
+) -> tuple[list[Track], dict[str, tuple[float, float]]]:
+    """Take one row of a fine-pitch package out to a pitch a router can use.
+
+    At 0.65 mm there is nothing for a search to find: two 0.3 mm tracks and the
+    clearance between them already fill the gap, and a grid coarse enough to
+    finish in this decade cannot see it. So the escape is stated rather than
+    searched for - every pin leaves straight, then all of them turn together at
+    the same shallow angle, which keeps the perpendicular spacing at
+    ``row pitch * cos(angle)`` instead of letting one track cut the corner into
+    its neighbour. ``slope`` is dx/dy of that turn.
+
+    That is also what sets the width. Two neighbours in the turn are only
+    ``cos(angle)`` of the row pitch apart, so on a 0.65 mm row nothing wider
+    than 0.3 mm fits however gentle the angle is made - a pair of 0.4 mm tracks
+    would need the full 0.65 mm and so could only ever run parallel. Every pin
+    therefore leaves narrow and widens once it is clear, which is what the
+    assertion below is checking rather than trusting.
+
+    Returns the escape tracks and, per pin, the point the router picks up from.
+    """
+    widths = widths or {}
+    direction = -1.0 if column < lead_x else 1.0
+    row = min(
+        abs(pad_position(design, f"{ref}.{a}")[1] - pad_position(design, f"{ref}.{b}")[1])
+        for a, b in pairwise(pins)
+    )
+    span = row * math.cos(math.atan2(1.0, slope))
+    for a, b in pairwise(pins):
+        need = (widths.get(a, width) + widths.get(b, width)) / 2 + clearance
+        if span < need - GEOM_EPS:
+            raise SystemExit(
+                f"{design.name}: {ref} pins {a} and {b} are {row:.3f} mm apart, which at "
+                f"slope {slope} leaves {span:.3f} mm across the turn and they need {need:.3f}"
+            )
+    tracks: list[Track] = []
+    ends: dict[str, tuple[float, float]] = {}
+    for index, number in enumerate(pins):
+        pad = f"{ref}.{number}"
+        _, pad_y = pad_position(design, pad)
+        target_y = round(centre + (index - (len(pins) - 1) / 2) * pitch, 4)
+        bend_x = round(lead_x + direction * abs(target_y - pad_y) * slope, 4)
+        points: list[tuple[float, float] | str] = [pad, (lead_x, pad_y)]
+        if abs(target_y - pad_y) > GEOM_EPS:
+            points.append((bend_x, target_y))
+        if abs(column - bend_x) > GEOM_EPS:
+            points.append((column, target_y))
+        net = next(
+            name for name, nodes in design.nets.items() if pad in nodes
+        )
+        tracks.append(Track(net, "F.Cu", widths.get(number, width), points))
+        ends[number] = (column, target_y)
+    return tracks, ends
+
+
+class Blocked(Exception):
+    """The router could not place one track, given everything already placed."""
+
+    def __init__(self, track: Track) -> None:
+        super().__init__(track)
+        self.track = track
+
+
+def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Track]], list[Via]]:
+    """Route every ``auto`` track in ``order``, or say which one had no room."""
+    router = autoroute.Router(*design.board_size)
+    for part in design.parts:
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            net = next(
+                (name for name, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes),
+                "",
+            )
+            x0, y0, x1, y1 = pad_box(design, part, pad)
+            router.add(autoroute.Obstacle(x0, y0, x1, y1, net, pad_layer(pad)))
+    for via in design.vias:
+        router.add_via(via.net, via_position(design, via), via.size)
+    for track in design.tracks:
+        if track.auto:
+            continue
+        points = [resolve(design, point) for point in track.points]
+        for a, b in pairwise(points):
+            router.add_track(track.net, a, b, track.width, track.layer)
+
+    # Keyed by where the design listed the track, so that the emitted board does
+    # not shuffle when a retry changes the order things are routed in.
+    place = {id(track): index for index, track in enumerate(design.tracks)}
+    routed = [(place[id(t)], t) for t in design.tracks if not t.auto]
+    vias = list(design.vias)
+    for index, track in enumerate(order):
+        a, b = (resolve(design, point) for point in track.points)
+        path = router.route(
+            track.net,
+            a,
+            b,
+            track.width,
+            start_layer=None if through_hole(design, track.points[0]) else track.layer,
+            goal_layer=(
+                track.goal_layer
+                or (None if through_hole(design, track.points[-1]) else track.layer)
+            ),
+            crowd=[
+                resolve(design, point)
+                for later in order[index + 1 :]
+                if later.net != track.net
+                for point in later.points
+            ],
+        )
+        if path is None:
+            raise Blocked(track)
+        for layer, points in path.runs:
+            for start, end in pairwise(points):
+                router.add_track(track.net, start, end, track.width, layer)
+            routed.append(
+                (place[id(track)], replace(track, points=list(points), layer=layer, auto=False))
+            )
+        for point in path.vias:
+            router.add_via(track.net, point, VIA_SIZE)
+            vias.append(Via(track.net, x=point[0], y=point[1], size=VIA_SIZE))
+    return routed, vias
+
+
+def resolve_routes(design: Design) -> Design:
+    """Replace every ``auto`` track with the path a router found for it.
+
+    Done once, before anything looks at the geometry, so the clearance check and
+    the emitted board see the same copper. A path that changed layer comes back
+    as one track per layer plus the vias between them, which is what the board
+    file wants anyway.
+
+    Routing one net at a time means an early net can take the only lane a later
+    one had, and no amount of care over the order avoids that in general. So a
+    net that finds no room is moved to the front and the whole set is routed
+    again - the cheapest form of rip-up there is, and enough for boards this
+    size. A net that fails twice is a floorplan that does not work, and says so.
+    """
+    order = [track for track in design.tracks if track.auto]
+    if not order:
+        return design
+    ripped: list[Track] = []
+    while True:
+        try:
+            routed, vias = _route_all(design, order)
+        except Blocked as blocked:
+            if blocked.track in ripped:
+                raise SystemExit(
+                    f"{design.name}: no route for {blocked.track.net} between "
+                    f"{blocked.track.points} even with first pick of the board - "
+                    "the floorplan has no lane for it"
+                ) from None
+            ripped.append(blocked.track)
+            order.remove(blocked.track)
+            order.insert(0, blocked.track)
+            continue
+        return replace(design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias)
+
+
 def emit_board(design: Design, path: Path) -> None:
     ox, oy = design.origin
     net_of: dict[tuple[str, str], str] = {}
@@ -685,6 +977,11 @@ def emit_board(design: Design, path: Path) -> None:
 
     order = ["GND", *sorted(n for n in design.nets if n != "GND")]
     codes = {name: index for index, name in enumerate(order, start=1)}
+    # KiCad names a net after the sheet path of the label that drives it, so a
+    # plain label on the root sheet becomes "/NAME"; only a power symbol keeps
+    # its bare name. Getting this wrong costs one `net_conflict` per pad in the
+    # schematic-parity check, and nothing else notices.
+    labels = {name: (name if name in POWER_SYMBOLS else f"/{name}") for name in order}
 
     lines = [
         "(kicad_pcb",
@@ -704,7 +1001,7 @@ def emit_board(design: Design, path: Path) -> None:
         '\t(net 0 "")',
     ]
     for name in order:
-        lines.append(f'\t(net {codes[name]} "{name}")')
+        lines.append(f'\t(net {codes[name]} "{labels[name]}")')
 
     for part in design.parts:
         node = footprint_definition(part.footprint)
@@ -715,11 +1012,21 @@ def emit_board(design: Design, path: Path) -> None:
         node.args.insert(2, _uuid_node(stable_uuid(design.name, "fp", part.ref)))
         _set_property(node, "Reference", part.ref)
         _set_property(node, "Value", part.value)
+        for key, value in part.fields.items():
+            _set_property(node, key, value, add=True)
         for index, pad in enumerate(node.children("pad")):
             number = str(pad.atom(0, ""))
+            # A pad carries its own absolute orientation, so turning a footprint
+            # turns its pads too. Leaving them at zero looks identical on the
+            # board - the geometry is the same either way - and is one
+            # `lib_footprint_mismatch` per rotated footprint.
+            if angle:
+                at = pad.child("at")
+                bare = [a for a in at.atoms() if isinstance(a, (int, float))]
+                at.args = [*bare[:2], round((bare[2] if len(bare) > 2 else 0.0) + angle, 4)]
             name = net_of.get((part.ref, number))
             if name:
-                pad.args.append(SNode("net", [codes[name], name]))
+                pad.args.append(SNode("net", [codes[name], labels[name]]))
             pad.args.append(_uuid_node(stable_uuid(design.name, "pad", part.ref, number, index)))
         lines.append(sexp.dumps(node, indent=1))
 
@@ -760,40 +1067,214 @@ def emit_board(design: Design, path: Path) -> None:
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _zone(design: Design, code: int) -> str:
-    """The ground pour, and the fill it is safe to state.
+ZONE_CLEARANCE = 0.4  # what the pour keeps away from copper of another net
+ZONE_SLIVER = 0.35  # a strip of plane thinner than this is not worth filling
+ZONE_WELD = 0.05  # how far neighbouring islands are grown into each other
+# Every hole is rounded outward onto this grid. Without it a diagonal track puts
+# an x edge every fraction of a millimetre, the sweep below never sees two
+# neighbouring columns agree, and the plane comes out as a thousand slivers
+# instead of a dozen rectangles. Rounding outward only ever adds clearance.
+ZONE_GRID = 0.1
 
-    The pour region is chosen so that no copper of another net can be inside it -
-    every through-hole pad sits outside it, and the only things it contains are
-    its own GND vias. That makes the filled area the outline itself, which is why
-    it can be written down rather than computed: there is nothing to subtract.
+
+def _hole_boxes(design: Design, layer: str, net: str) -> list[tuple[float, float, float, float]]:
+    """Everything of another net that this layer's pour has to keep clear of."""
+    keep = ZONE_CLEARANCE + ZONE_WELD
+
+    def grown(box, half=0.0):
+        return (
+            math.floor((box[0] - keep - half) / ZONE_GRID) * ZONE_GRID,
+            math.floor((box[1] - keep - half) / ZONE_GRID) * ZONE_GRID,
+            math.ceil((box[2] + keep + half) / ZONE_GRID) * ZONE_GRID,
+            math.ceil((box[3] + keep + half) / ZONE_GRID) * ZONE_GRID,
+        )
+
+    holes = []
+    for part in design.parts:
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            owner = next(
+                (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes), None
+            )
+            if owner == net or pad_layer(pad) not in (None, layer):
+                continue
+            holes.append(grown(pad_box(design, part, pad)))
+    for via in design.vias:
+        if via.net == net:
+            continue
+        vx, vy = via_position(design, via)
+        holes.append(grown((vx, vy, vx, vy), via.size / 2))
+    for track in design.tracks:
+        if track.net == net or track.layer != layer:
+            continue
+        points = [resolve(design, point) for point in track.points]
+        for a, b in pairwise(points):
+            # A diagonal is walked rather than boxed, so its clearance channel
+            # follows the copper instead of swallowing the square it sits in.
+            steps = max(1, math.ceil(math.dist(a, b) / 0.5))
+            for index in range(steps):
+                t0, t1 = index / steps, (index + 1) / steps
+                p = (a[0] + (b[0] - a[0]) * t0, a[1] + (b[1] - a[1]) * t0)
+                q = (a[0] + (b[0] - a[0]) * t1, a[1] + (b[1] - a[1]) * t1)
+                box = (min(p[0], q[0]), min(p[1], q[1]), max(p[0], q[0]), max(p[1], q[1]))
+                holes.append(grown(box, track.width / 2))
+    return holes
+
+
+def _fill_rectangles(design: Design, layer: str, net: str) -> list[tuple[float, float, float, float]]:
+    """The pour outline minus the holes, as a set of rectangles.
+
+    KiCad stores a zone's fill as polygons and expects each to be a single
+    outline, so a plane with a hole in the middle of it has to be cut open
+    somewhere. Sweeping x instead and emitting one rectangle per gap avoids the
+    question: every piece is convex, and neighbouring pieces are grown into each
+    other by ``ZONE_WELD`` so that the connectivity that used to come from being
+    one polygon now comes from overlapping.
+
+    The alternative - forbidding copper of another net inside the pour, so that
+    the fill is the outline itself - is what this replaced. It cost two of the
+    four example boards a routable back layer.
+    """
+    x0, y0, x1, y1 = design.pour
+    holes = [
+        hole
+        for hole in _hole_boxes(design, layer, net)
+        if hole[0] < x1 and hole[2] > x0 and hole[1] < y1 and hole[3] > y0
+    ]
+    edges = sorted({x0, x1} | {min(max(v, x0), x1) for hole in holes for v in (hole[0], hole[2])})
+
+    slabs: list[tuple[float, float, tuple[tuple[float, float], ...]]] = []
+    for left, right in pairwise(edges):
+        if right - left < GEOM_EPS:
+            continue
+        middle = (left + right) / 2
+        spans = sorted((h[1], h[3]) for h in holes if h[0] <= middle <= h[2])
+        free, cursor = [], y0
+        for top, bottom in spans:
+            if top > cursor:
+                free.append((cursor, min(top, y1)))
+            cursor = max(cursor, bottom)
+            if cursor >= y1:
+                break
+        if cursor < y1:
+            free.append((cursor, y1))
+        keep = tuple((a, b) for a, b in free if b - a >= ZONE_SLIVER)
+        if slabs and slabs[-1][2] == keep and abs(slabs[-1][1] - left) < GEOM_EPS:
+            slabs[-1] = (slabs[-1][0], right, keep)
+        else:
+            slabs.append((left, right, keep))
+
+    islands = [
+        (
+            max(left - ZONE_WELD, x0),
+            max(top - ZONE_WELD, y0),
+            min(right + ZONE_WELD, x1),
+            min(bottom + ZONE_WELD, y1),
+        )
+        for left, right, free in slabs
+        for top, bottom in free
+    ]
+    return _connected_islands(design, islands, layer, net)
+
+
+def _connected_islands(design, islands, layer: str, net: str):
+    """Drop the pieces of plane that no longer reach the net.
+
+    A track laid across the pour can fence a corner of it off. KiCad's own
+    filler calls that an island and removes it; leaving it in the file instead
+    is one `unconnected_items` error per orphan, because a zone that is two
+    separate shapes is two separate pieces of copper.
+    """
+    parent = list(range(len(islands)))
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i, j):
+        parent[find(i)] = find(j)
+
+    for i, one in enumerate(islands):
+        for j in range(i + 1, len(islands)):
+            other = islands[j]
+            if (
+                one[0] < other[2]
+                and other[0] < one[2]
+                and one[1] < other[3]
+                and other[1] < one[3]
+            ):
+                union(i, j)
+
+    anchors: list[tuple[float, float, float, float]] = []
+    for via in design.vias:
+        if via.net == net:
+            vx, vy = via_position(design, via)
+            anchors.append((vx, vy, vx, vy))
+    for part in design.parts:
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            if f"{part.ref}.{number}" not in design.nets.get(net, ()):
+                continue
+            if pad_layer(pad) in (None, layer):
+                anchors.append(pad_box(design, part, pad))
+    for track in design.tracks:
+        if track.net != net or track.layer != layer:
+            continue
+        for point in (resolve(design, p) for p in track.points):
+            anchors.append((*point, *point))
+
+    live = {
+        find(i)
+        for i, box in enumerate(islands)
+        for anchor in anchors
+        if box[0] <= anchor[2] and anchor[0] <= box[2] and box[1] <= anchor[3] and anchor[1] <= box[3]
+    }
+    return [box for i, box in enumerate(islands) if find(i) in live]
+
+
+def _zone(design: Design, code: int) -> str:
+    """The ground pour, and the fill that goes with it.
+
+    The fill is computed here rather than left for KiCad because the committed
+    board has to be complete on its own: an unfilled zone means DRC reports
+    every ground pad unconnected, and the fabrication output ships without a
+    plane. KiCad's own filler is not available - it needs a display, and the
+    container has none - so this is the same subtraction done by hand.
     """
     ox, oy = design.origin
     x0, y0, x1, y1 = design.pour
     outline = [(ox + x0, oy + y0), (ox + x1, oy + y0), (ox + x1, oy + y1), (ox + x0, oy + y1)]
     pts = " ".join(f"(xy {round(x, 4)} {round(y, 4)})" for x, y in outline)
-    return "\n".join(
-        [
-            "\t(zone",
-            f"\t\t(net {code})",
-            '\t\t(net_name "GND")',
-            '\t\t(layer "B.Cu")',
-            f'\t\t(uuid "{stable_uuid(design.name, "zone")}")',
-            "\t\t(hatch edge 0.5)",
-            "\t\t(connect_pads",
-            "\t\t\t(clearance 0.5)",
-            "\t\t)",
-            "\t\t(min_thickness 0.25)",
-            "\t\t(filled_areas_thickness no)",
-            "\t\t(fill yes",
-            "\t\t\t(thermal_gap 0.5)",
-            "\t\t\t(thermal_bridge_width 0.5)",
-            "\t\t)",
-            f"\t\t(polygon (pts {pts}))",
-            f'\t\t(filled_polygon (layer "B.Cu") (pts {pts}))',
-            "\t)",
-        ]
-    )
+    lines = [
+        "\t(zone",
+        f"\t\t(net {code})",
+        f'\t\t(net_name "{POUR_NET}")',
+        '\t\t(layer "B.Cu")',
+        f'\t\t(uuid "{stable_uuid(design.name, "zone")}")',
+        "\t\t(hatch edge 0.5)",
+        "\t\t(connect_pads",
+        f"\t\t\t(clearance {ZONE_CLEARANCE})",
+        "\t\t)",
+        f"\t\t(min_thickness {ZONE_SLIVER / 2})",
+        "\t\t(filled_areas_thickness no)",
+        "\t\t(fill yes",
+        "\t\t\t(thermal_gap 0.5)",
+        "\t\t\t(thermal_bridge_width 0.5)",
+        "\t\t)",
+        f"\t\t(polygon (pts {pts}))",
+    ]
+    for left, top, right, bottom in _fill_rectangles(design, "B.Cu", POUR_NET):
+        corners = [(left, top), (right, top), (right, bottom), (left, bottom)]
+        island = " ".join(
+            f"(xy {round(ox + x, 4)} {round(oy + y, 4)})" for x, y in corners
+        )
+        lines.append(f'\t\t(filled_polygon (layer "B.Cu") (pts {island}))')
+    lines.append("\t)")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -1127,13 +1608,355 @@ def buck_5v() -> Design:
     )
 
 
-DESIGNS = {"buck-5v": buck_5v}
+def motor_driver() -> Design:
+    """Dual H-bridge for two brushed DC motors: DRV8833PW, logic on a header.
+
+    Three things decide the floorplan.
+
+    *The package.* A TSSOP-16 brings its pins out on a 0.65 mm pitch, and the
+    gap between two adjacent pads is narrower than a track and its clearance.
+    Nothing is routed between them and nothing is searched for there either: the
+    two rows leave as a stated fan (:func:`fan`), which walks the pitch out to
+    1.3 mm at a shallow enough angle that no track cuts into its neighbour. The
+    router picks the nets up from the far end of that fan.
+
+    *The pin order.* AOUT1/AOUT2 come out of the package in the opposite order
+    to BOUT1/BOUT2, so a fan that does not cross itself lands motor A on the
+    terminal block one way round and motor B the other. Both terminals are
+    unpolarised - the silk says A and B - so the layout is allowed to decide,
+    and the schematic says so rather than leaving a reviewer to wonder.
+
+    *The plane.* The ground pour is the back of the left two thirds, under the
+    driver and the four output tracks, which is where the current and the heat
+    are. It stops at x = 64 because the fill these examples write is the pour
+    outline itself - so no foreign copper may be inside it, and the back of the
+    right hand third is where the router is allowed to cross something.
+    """
+    parts = [
+        Part(
+            "J1",
+            "Connector:Screw_Terminal_01x02",
+            "VM 2.7-10.8V",
+            "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+            sheet=(30.0, 80.0),
+            board=(92.0, 12.0, 270.0),
+            fields={
+                "MPN": "1729128",
+                "Manufacturer": "Phoenix Contact",
+                "Datasheet": "https://www.phoenixcontact.com/product/1729128",
+            },
+        ),
+        Part(
+            "C1",
+            "Device:C_Polarized",
+            "100u",
+            "Capacitor_SMD:CP_Elec_6.3x7.7",
+            sheet=(55.0, 85.0),
+            board=(70.0, 17.0, 0.0),
+            fields={
+                "Voltage": "25V",
+                "Tolerance": "20%",
+                "MPN": "EEE-FK1E101P",
+                "Manufacturer": "Panasonic",
+                "Datasheet": "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf",
+            },
+        ),
+        Part(
+            "C2",
+            "Device:C",
+            "100n",
+            "Capacitor_SMD:C_0805_2012Metric",
+            sheet=(70.0, 85.0),
+            board=(57.5, 26.5, 90.0),
+            fields={
+                "Voltage": "50V",
+                "Tolerance": "10%",
+                "MPN": "CL21B104KBCNNNC",
+                "Manufacturer": "Samsung",
+                "Datasheet": "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do",
+            },
+        ),
+        Part(
+            "C3",
+            "Device:C",
+            "10n",
+            "Capacitor_SMD:C_0805_2012Metric",
+            sheet=(85.0, 85.0),
+            board=(63.0, 27.0, 270.0),
+            fields={
+                "Voltage": "50V",
+                "Tolerance": "10%",
+                "MPN": "CL21B103KBANNNC",
+                "Manufacturer": "Samsung",
+                "Datasheet": "https://product.samsungsem.com/mlcc/CL21B103KBANNNC.do",
+            },
+        ),
+        Part(
+            "U1",
+            "Driver_Motor:DRV8833PW",
+            "DRV8833PW",
+            "Package_SO:TSSOP-16_4.4x5mm_P0.65mm",
+            sheet=(130.0, 80.0),
+            board=(44.0, 26.0, 0.0),
+            fields={
+                "MPN": "DRV8833PWR",
+                "Manufacturer": "Texas Instruments",
+                "Datasheet": "https://www.ti.com/lit/ds/symlink/drv8833.pdf",
+            },
+        ),
+        Part(
+            "C4",
+            "Device:C",
+            "1u",
+            "Capacitor_SMD:C_0805_2012Metric",
+            sheet=(175.0, 85.0),
+            board=(61.0, 24.0, 0.0),
+            fields={
+                "Voltage": "16V",
+                "Tolerance": "10%",
+                "MPN": "CL21A105KBFNNNE",
+                "Manufacturer": "Samsung",
+                "Datasheet": "https://product.samsungsem.com/mlcc/CL21A105KBFNNNE.do",
+            },
+        ),
+        Part(
+            "R1",
+            "Device:R",
+            "10k",
+            "Resistor_SMD:R_0805_2012Metric",
+            sheet=(190.0, 85.0),
+            board=(78.0, 51.0, 0.0),
+            fields={
+                "Tolerance": "1%",
+                "Power": "0.125W",
+                "MPN": "RC0805FR-0710KL",
+                "Manufacturer": "Yageo",
+                "Datasheet": "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf",
+            },
+        ),
+        Part(
+            "R2",
+            "Device:R",
+            "4k7",
+            "Resistor_SMD:R_0805_2012Metric",
+            sheet=(205.0, 85.0),
+            board=(72.0, 6.0, 0.0),
+            fields={
+                "Tolerance": "1%",
+                "Power": "0.125W",
+                "MPN": "RC0805FR-074K7L",
+                "Manufacturer": "Yageo",
+                "Datasheet": "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf",
+            },
+        ),
+        Part(
+            "D2",
+            "Device:LED",
+            "green",
+            "LED_SMD:LED_0805_2012Metric",
+            sheet=(205.0, 100.0),
+            board=(80.0, 6.0, 180.0),
+            fields={
+                "Voltage": "2.1V",
+                "Current": "1.5mA",
+                "MPN": "LTST-C170KGKT",
+                "Manufacturer": "Lite-On",
+                "Datasheet": "https://optoelectronics.liteon.com/upload/download/DS-22-98-0002/LTST-C170KGKT.pdf",
+            },
+        ),
+        Part(
+            "J2",
+            "Connector:Screw_Terminal_01x02",
+            "MOTOR A",
+            "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+            sheet=(240.0, 70.0),
+            board=(8.0, 20.0, 90.0),
+            fields={
+                "MPN": "1729128",
+                "Manufacturer": "Phoenix Contact",
+                "Datasheet": "https://www.phoenixcontact.com/product/1729128",
+            },
+        ),
+        Part(
+            "J3",
+            "Connector:Screw_Terminal_01x02",
+            "MOTOR B",
+            "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+            sheet=(240.0, 95.0),
+            board=(8.0, 38.0, 90.0),
+            fields={
+                "MPN": "1729128",
+                "Manufacturer": "Phoenix Contact",
+                "Datasheet": "https://www.phoenixcontact.com/product/1729128",
+            },
+        ),
+        Part(
+            "J4",
+            "Connector:Conn_01x08_Pin",
+            "LOGIC",
+            "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical",
+            sheet=(40.0, 45.0),
+            board=(92.0, 26.0, 0.0),
+            fields={
+                "MPN": "61300811121",
+                "Manufacturer": "Wurth Elektronik",
+                "Datasheet": "https://www.we-online.com/components/products/datasheet/61300811121.pdf",
+            },
+        ),
+    ]
+
+    nets = {
+        "VM": ["J1.1", "C1.1", "C2.1", "C3.1", "U1.12", "R2.1"],
+        # J4 is in the order the tracks arrive, so that nothing has to cross to
+        # reach it: ground at both ends, then the two signals that come round
+        # the outside of the package and the four that come straight out of it.
+        "GND": [
+            "J1.2", "C1.2", "C2.2", "U1.13", "U1.3", "U1.6", "C4.2", "D2.1", "J4.1", "J4.8",
+        ],
+        "VCP": ["U1.11", "C3.2"],
+        "VINT": ["U1.14", "C4.1", "R1.1"],
+        "nFAULT": ["U1.8", "R1.2", "J4.7"],
+        "nSLEEP": ["U1.1", "J4.2"],
+        "AIN1": ["U1.16", "J4.3"],
+        "AIN2": ["U1.15", "J4.4"],
+        "BIN2": ["U1.10", "J4.5"],
+        "BIN1": ["U1.9", "J4.6"],
+        # The package brings A out 1-then-2 down the row and B out 2-then-1, so
+        # a fan that does not cross itself lands them on opposite terminals.
+        "AOUT1": ["U1.2", "J2.2"],
+        "AOUT2": ["U1.4", "J2.1"],
+        "BOUT1": ["U1.7", "J3.1"],
+        "BOUT2": ["U1.5", "J3.2"],
+        "LED_A": ["R2.2", "D2.2"],
+    }
+
+    design = Design(
+        name="motor-driver",
+        title="Dual H-bridge, DRV8833, 2 x 1.5 A",
+        rev="A",
+        company="kicad_skills examples",
+        notes=[
+            "DRV8833PW: 1.5 A per bridge continuous, 2 A peak, VM 2.7 - 10.8 V.",
+            "AISEN and BISEN are tied to ground - no current sensing, so the",
+            "current limit is the part's own internal one.",
+            "C3 10 nF is the charge pump flying capacitor between VM and VCP;",
+            "the datasheet asks for 10 nF and nothing else will do.",
+            "C4 1 uF bypasses VINT, the internal 3.3 V regulator, which also",
+            "pulls up the open-drain nFAULT through R1.",
+            "C1 100 uF / 25 V on a rail that can reach 10.8 V - more than the",
+            "1.5x headroom, and enough bulk for the motor current steps.",
+            "The motor terminals are unpolarised. The package brings AOUT1/AOUT2",
+            "out in the opposite order to BOUT1/BOUT2, so the fan-out lands A on",
+            "J2 one way round and B on J3 the other; the silk says A and B.",
+            "The ground pour covers the driver and the output tracks. It stops",
+            "short of the connectors so the back of the right hand third is free",
+            "for the two crossings the logic needs.",
+        ],
+        parts=parts,
+        nets=nets,
+        power_flags=["VM", "GND", "VINT"],
+        board_size=(100.0, 60.0),
+        tracks=[],
+        vias=[],
+        pour=(3.0, 3.0, 97.0, 57.0),
+    )
+
+    # Snap before the fan-out is worked out: it measures from where the pads
+    # actually are, so the placement has to be final first.
+    design = design.snapped()
+
+    # -- the escape from the package ---------------------------------------
+    # 1.5 A a bridge, so an output leaves at the width of its own pad and is
+    # widened by the router once it is clear; logic carries nothing.
+    SIG, POWER = 0.3, 0.8
+    # The output side spreads to 2.0 mm because four 0.8 mm tracks start there
+    # and two of them are 0.8 mm apart from a ground via.
+    left, west = fan(
+        design,
+        "U1",
+        ["1", "2", "3", "4", "5", "6", "7", "8"],
+        lead_x=39.6,
+        column=29.0,
+        pitch=2.0,
+        centre=26.0,
+        width=SIG,
+    )
+    right, east = fan(
+        design,
+        "U1",
+        ["16", "15", "14", "13", "12", "11", "10", "9"],
+        lead_x=48.4,
+        column=53.6,
+        pitch=1.3,
+        centre=26.0,
+        width=SIG,
+    )
+
+    tracks = [*left, *right]
+    # AISEN, BISEN and GND stop at the end of the fan, on top of a via into the
+    # plane. Nothing else on this board asks the plane for anything.
+    vias = [
+        Via("GND", x=west["3"][0], y=west["3"][1]),
+        Via("GND", x=west["6"][0], y=west["6"][1]),
+        Via("GND", x=east["13"][0], y=east["13"][1]),
+    ]
+
+    # -- the supply, placed by hand ----------------------------------------
+    # Bulk, then bypass, then the pin: the loop closes at the part, so the
+    # bypass sits hard against the end of pin 12's escape.
+    tracks += [
+        Track("VM", "F.Cu", POWER, [east["12"], "C2.1"]),
+        Track("VM", "F.Cu", POWER, ["J1.1", "C1.1"], auto=True),
+        Track("VM", "F.Cu", POWER, ["C1.1", "C3.1"], auto=True),
+        Track("VM", "F.Cu", POWER, ["C3.1", "C2.1"], auto=True),
+        Track("VM", "F.Cu", SIG, ["C1.1", "R2.1"], auto=True),
+        Track("VCP", "F.Cu", SIG, [east["11"], "C3.2"], auto=True),
+        Track("VINT", "F.Cu", SIG, [east["14"], "C4.1"], auto=True),
+        Track("VINT", "F.Cu", SIG, ["C4.1", "R1.1"], auto=True),
+        Track("LED_A", "F.Cu", SIG, ["R2.2", "D2.2"], auto=True),
+    ]
+
+    # -- ground ------------------------------------------------------------
+    # Routed before the signals, because a ground pad that has to walk to find a
+    # via has already lost the loop it was there to close. Each one asks for the
+    # back of the board a couple of millimetres away and the router spends the
+    # via; the plane is under all of it.
+    tracks += [
+        Track("GND", "F.Cu", 0.5, ["C2.2", (57.5, 22.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["C4.2", (61.5, 24.05)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["C1.2", (68.0, 20.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["J1.2", (88.0, 18.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["J4.1", (88.0, 24.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["J4.8", (88.0, 46.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", SIG, ["D2.1", (83.0, 8.5)], auto=True, goal_layer="B.Cu"),
+    ]
+
+    # -- everything that simply has to arrive ------------------------------
+    tracks += [
+        Track("AOUT1", "F.Cu", POWER, [west["2"], "J2.2"], auto=True),
+        Track("AOUT2", "F.Cu", POWER, [west["4"], "J2.1"], auto=True),
+        Track("BOUT2", "F.Cu", POWER, [west["5"], "J3.2"], auto=True),
+        Track("BOUT1", "F.Cu", POWER, [west["7"], "J3.1"], auto=True),
+        Track("nSLEEP", "F.Cu", SIG, [west["1"], "J4.2"], auto=True),
+        Track("nFAULT", "F.Cu", SIG, [west["8"], "R1.2"], auto=True),
+        Track("nFAULT", "F.Cu", SIG, ["R1.2", "J4.7"], auto=True),
+        Track("AIN1", "F.Cu", SIG, [east["16"], "J4.3"], auto=True),
+        Track("AIN2", "F.Cu", SIG, [east["15"], "J4.4"], auto=True),
+        Track("BIN2", "F.Cu", SIG, [east["10"], "J4.5"], auto=True),
+        Track("BIN1", "F.Cu", SIG, [east["9"], "J4.6"], auto=True),
+    ]
+
+    return replace(design, tracks=tracks, vias=vias)
+
+
+DESIGNS = {"buck-5v": buck_5v, "motor-driver": motor_driver}
 
 
 # ---------------------------------------------------------------------------
 
 
 def write_variant(design: Design, root: Path, *, check: bool = True) -> None:
+    design = resolve_routes(design)
     if check:
         problems = check_board(design)
         if problems:
@@ -1157,7 +1980,7 @@ def main(argv: list[str] | None = None) -> int:
     for name, builder in sorted(DESIGNS.items()):
         if args.only and args.only != name:
             continue
-        design = builder()
+        design = builder().snapped()
         write_variant(design, out / name / "reviewed")
         # the degraded variant is *meant* to be wrong, so it is not checked
         write_variant(degrade(design), out / name / "as-generated", check=False)
