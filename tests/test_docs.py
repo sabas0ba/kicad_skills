@@ -16,6 +16,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "_config.yml"
 GUIDE_DIR = ROOT / "docs" / "guides"
+NAV = ROOT / "_data" / "nav.yml"
 
 # Every Markdown file the site publishes.
 PUBLISHED = sorted(
@@ -48,6 +49,34 @@ def _is_excluded(relative: str) -> bool:
             return True
     # Jekyll never publishes dot files or dot directories.
     return any(part.startswith(".") for part in Path(relative).parts)
+
+
+def _nav_entries() -> list[tuple[str, str]]:
+    """(page, url) for every entry in _data/nav.yml, read without a YAML parser.
+
+    The file is a flat list of `title` / `page` / `url` triples, nested one level
+    deep under `children`, which is little enough structure to read by hand.
+    """
+    entries: list[tuple[str, str]] = []
+    page: str | None = None
+    for line in NAV.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip().lstrip("- ")
+        if stripped.startswith("page:"):
+            page = stripped.split(":", 1)[1].strip()
+        elif stripped.startswith("url:"):
+            assert page is not None, f"a nav entry has a url but no page: {line!r}"
+            entries.append((page, stripped.split(":", 1)[1].strip()))
+            page = None
+    return entries
+
+
+def _published_url(page: str) -> str:
+    """Where Jekyll publishes a Markdown file under the plugins in _config.yml."""
+    path = Path(page)
+    if path.name == "README.md":  # jekyll-readme-index makes it the directory index
+        parent = path.parent.as_posix()
+        return "/" if parent == "." else f"/{parent}/"
+    return "/" + path.with_suffix(".html").as_posix()
 
 
 def _links(md: Path) -> list[str]:
@@ -134,3 +163,47 @@ def test_the_guides_index_links_every_guide():
 
 def test_the_readme_links_the_guides_index():
     assert "docs/guides/README.md" in (ROOT / "README.md").read_text(encoding="utf-8")
+
+
+def test_the_site_shell_is_present():
+    """The theme supplies the body styling; these files are everything around it.
+
+    Losing one is not a build failure - Jekyll falls back to the theme's own
+    layout and stylesheet - so the site would quietly go back to looking like an
+    unstyled Markdown dump.
+    """
+    for path in (
+        "_layouts/default.html",
+        "assets/css/style.scss",
+        "_data/nav.yml",
+        "assets/logo.svg",
+        "assets/favicon.svg",
+    ):
+        assert (ROOT / path).exists(), f"{path} is missing"
+
+    layout = (ROOT / "_layouts" / "default.html").read_text(encoding="utf-8")
+    for asset in ("/assets/logo.svg", "/assets/favicon.svg", "/assets/css/style.css"):
+        assert asset in layout, f"the layout no longer links {asset}"
+
+    style = (ROOT / "assets" / "css" / "style.scss").read_text(encoding="utf-8")
+    assert '@import "jekyll-theme-primer"' in style, (
+        "the stylesheet shadows the theme's own, so it has to import it back in"
+    )
+
+
+@pytest.mark.parametrize("page,url", _nav_entries(), ids=lambda value: value)
+def test_every_nav_entry_points_at_a_published_page(page: str, url: str):
+    """A nav link into an excluded path 404s exactly like a body link does."""
+    assert (ROOT / page).exists(), f"_data/nav.yml -> {page} does not exist"
+    assert not _is_excluded(page), f"_data/nav.yml -> {page} is excluded from the site"
+    assert url == _published_url(page), (
+        f"_data/nav.yml -> {page} is published at {_published_url(page)}, not {url}"
+    )
+
+
+def test_the_nav_lists_every_guide():
+    """Same rule as the guides index: a guide nobody can navigate to is invisible."""
+    pages = {page for page, _ in _nav_entries()}
+    for guide in sorted(GUIDE_DIR.glob("*.md")):
+        relative = guide.relative_to(ROOT).as_posix()
+        assert relative in pages, f"{guide.name} is not in _data/nav.yml"

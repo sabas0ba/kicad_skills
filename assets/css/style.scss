@@ -1,0 +1,370 @@
+---
+# The empty front matter is what makes Jekyll compile this file. It shadows the
+# copy the theme ships, so the import below is what pulls Primer in: the page
+# body keeps rendering exactly like a Markdown file on github.com, and
+# everything after the import is the shell around it (header, sidebar, footer)
+# plus the dark palette Primer 0.6 has no notion of.
+---
+
+@import "jekyll-theme-primer";
+
+/* ------------------------------------------------------------------ tokens */
+
+:root {
+  --page-bg: #ffffff;
+  --surface: #f6f8fa;
+  --surface-sunken: #eef2f6;
+  --border: #d0d7de;
+  --border-muted: #e4e8ed;
+  --fg: #1f2328;
+  --fg-muted: #5a6672;
+  --link: #0969da;
+  --brand: #0b5f7d;
+  --brand-bright: #7dd3fc;
+  --header-bg: #0c2532;
+  --header-fg: #cfdfe9;
+  --header-rule: rgba(255, 255, 255, 0.1);
+  --shell-max: 84rem;
+  --header-height: 3.25rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page-bg: #0d1117;
+    --surface: #161b22;
+    --surface-sunken: #12171e;
+    --border: #30363d;
+    --border-muted: #262c34;
+    --fg: #e6edf3;
+    --fg-muted: #9198a1;
+    --link: #58a6ff;
+    --brand: #7dd3fc;
+  }
+}
+
+/* ------------------------------------------------------------------- shell */
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  color: var(--fg);
+  background-color: var(--page-bg);
+}
+
+a { color: var(--link); }
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+}
+
+.skip-link:focus {
+  left: 0.75rem;
+  top: 0.75rem;
+  z-index: 30;
+  padding: 0.5rem 0.9rem;
+  color: var(--fg);
+  background: var(--page-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+/* Header --------------------------------------------------------------- */
+
+/* One flat slate in both colour schemes - the same the logo tile is drawn on,
+   so the mark sits on the bar rather than in a box of its own. Flat on purpose:
+   a vertical gradient across a bar this short reads as a chrome bevel. */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--header-bg);
+  border-bottom: 1px solid var(--header-rule);
+}
+
+.site-header-inner {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  max-width: var(--shell-max);
+  min-height: var(--header-height);
+  padding: 0.45rem 1.5rem;
+  margin: 0 auto;
+}
+
+.site-brand {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.6rem;
+  align-items: center;
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.site-brand-mark {
+  width: 30px;
+  height: 30px;
+}
+
+.site-brand-name {
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.site-header-right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.25rem;
+  align-items: center;
+  margin-left: auto;
+  font-size: 0.875rem;
+}
+
+.site-topnav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1.1rem;
+  align-items: center;
+}
+
+.site-header-right a {
+  color: var(--header-fg);
+  text-decoration: none;
+  opacity: 0.82;
+}
+
+.site-header-right a:hover,
+.site-header-right a[aria-current="page"] {
+  color: #ffffff;
+  opacity: 1;
+}
+
+.site-header-right a[aria-current="page"] {
+  text-decoration: underline;
+  text-underline-offset: 0.4em;
+  text-decoration-color: var(--brand-bright);
+  text-decoration-thickness: 2px;
+}
+
+.site-repo-link::after {
+  content: " \2197";
+  font-size: 0.8em;
+}
+
+/* Body grid ------------------------------------------------------------ */
+
+.site-body {
+  display: grid;
+  flex: 1 0 auto;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 3rem;
+  width: 100%;
+  max-width: var(--shell-max);
+  padding: 2.25rem 1.5rem 4rem;
+  margin: 0 auto;
+}
+
+.site-sidebar,
+.site-toc {
+  display: none;
+}
+
+@media (min-width: 64rem) {
+  .site-body { grid-template-columns: 13.5rem minmax(0, 1fr); }
+  .site-sidebar { display: block; }
+  .site-topnav { display: none; }
+}
+
+@media (min-width: 82rem) {
+  .site-body { grid-template-columns: 13.5rem minmax(0, 1fr) 12.5rem; }
+  .site-toc { display: block; }
+}
+
+.site-toc[hidden] { display: none; }
+
+/* Sidebar -------------------------------------------------------------- */
+
+.site-sidebar,
+.site-toc {
+  position: sticky;
+  top: calc(var(--header-height) + 2.25rem);
+  align-self: start;
+  max-height: calc(100vh - var(--header-height) - 3rem);
+  overflow-y: auto;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.site-sidebar a {
+  display: block;
+  padding: 0.2rem 0;
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+
+.site-sidebar a:hover { color: var(--link); }
+
+.site-sidebar .site-sidebar-section {
+  margin-top: 1.15rem;
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.site-sidebar .site-sidebar-section:first-child { margin-top: 0; }
+
+.site-sidebar ul {
+  padding: 0;
+  margin: 0.15rem 0 0;
+  list-style: none;
+  border-left: 1px solid var(--border);
+}
+
+.site-sidebar li a { padding-left: 0.85rem; }
+
+.site-sidebar a[aria-current="page"] {
+  font-weight: 600;
+  color: var(--link);
+}
+
+.site-sidebar li a[aria-current="page"] {
+  margin-left: -1px;
+  border-left: 2px solid var(--link);
+}
+
+/* On this page --------------------------------------------------------- */
+
+.site-toc-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+}
+
+.site-toc ul {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+  border-left: 1px solid var(--border);
+}
+
+.site-toc a {
+  display: block;
+  padding: 0.2rem 0 0.2rem 0.85rem;
+  color: var(--fg-muted);
+  text-decoration: none;
+}
+
+.site-toc a:hover { color: var(--link); }
+
+/* Content -------------------------------------------------------------- */
+
+.site-main {
+  min-width: 0;
+  color: var(--fg);
+}
+
+.site-main > h1:first-child {
+  margin-top: 0;
+}
+
+/* Footer --------------------------------------------------------------- */
+
+.site-footer {
+  flex: 0 0 auto;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.site-footer-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.5rem;
+  justify-content: space-between;
+  max-width: var(--shell-max);
+  padding: 1.25rem 1.5rem;
+  margin: 0 auto;
+  font-size: 0.8125rem;
+  color: var(--fg-muted);
+}
+
+.site-footer-inner p { margin: 0; }
+
+/* ------------------------------------------------- Primer, in the dark */
+
+/* Primer 0.6 is light-only and writes its colours out literally, so the dark
+   scheme is a matching override for each rule that names one. Selectors are
+   copied from the theme on purpose: same specificity, later in the file. */
+@media (prefers-color-scheme: dark) {
+  .markdown-body { color: var(--fg); }
+
+  .markdown-body h1,
+  .markdown-body h2 { border-bottom-color: var(--border-muted); }
+
+  .markdown-body h6,
+  .markdown-body blockquote { color: var(--fg-muted); }
+
+  .markdown-body blockquote { border-left-color: var(--border); }
+
+  .markdown-body hr { background-color: var(--border); }
+
+  .markdown-body code,
+  .markdown-body tt { background-color: rgba(110, 118, 129, 0.4); }
+
+  .markdown-body .highlight pre,
+  .markdown-body pre { background-color: var(--surface); }
+
+  .markdown-body .highlight { background-color: transparent; }
+
+  .markdown-body table th,
+  .markdown-body table td { border-color: var(--border); }
+
+  .markdown-body table tr {
+    background-color: var(--page-bg);
+    border-top-color: var(--border);
+  }
+
+  .markdown-body table tr:nth-child(2n) { background-color: var(--surface); }
+
+  /* Primer paints a white plate behind every image so transparent PNGs stay
+     readable. On a dark page that plate is a white box around each badge. */
+  .markdown-body img { background-color: transparent; }
+
+  .markdown-body kbd {
+    color: var(--fg);
+    background-color: var(--surface);
+    border-color: var(--border);
+    border-bottom-color: var(--border);
+    box-shadow: inset 0 -1px 0 var(--border);
+  }
+
+  /* Rouge: the theme ships the light GitHub palette, this is the dark one. */
+  .highlight .c, .highlight .cd, .highlight .cm, .highlight .c1,
+  .highlight .cp, .highlight .cs { color: #8b949e; }
+  .highlight .k, .highlight .kc, .highlight .kd, .highlight .kn,
+  .highlight .kp, .highlight .kr, .highlight .kv,
+  .highlight .o, .highlight .ow { color: #ff7b72; }
+  .highlight .s, .highlight .s1, .highlight .s2, .highlight .sb,
+  .highlight .sc, .highlight .sd, .highlight .se, .highlight .sh,
+  .highlight .si, .highlight .sx, .highlight .sr,
+  .highlight .ss { color: #a5d6ff; }
+  .highlight .m, .highlight .mb, .highlight .mf, .highlight .mh,
+  .highlight .mi, .highlight .mo, .highlight .mx,
+  .highlight .il { color: #79c0ff; }
+  .highlight .na, .highlight .nb, .highlight .no, .highlight .nv,
+  .highlight .vc, .highlight .vg, .highlight .vi { color: #79c0ff; }
+  .highlight .nc, .highlight .nd, .highlight .ne, .highlight .nf,
+  .highlight .nl, .highlight .kt { color: #d2a8ff; }
+  .highlight .nt { color: #7ee787; }
+  .highlight .nn, .highlight .bp, .highlight .gh, .highlight .gu,
+  .highlight .gp, .highlight .go { color: #8b949e; }
+  .highlight .gi { color: #aff5b4; background-color: #033a16; }
+  .highlight .gd { color: #ffdcd7; background-color: #67060c; }
+  .highlight .gr, .highlight .gt { color: #ff7b72; }
+  .highlight .err { color: #f85149; background-color: transparent; }
+  .highlight .w { color: #484f58; }
+}

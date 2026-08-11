@@ -140,6 +140,22 @@ AGENTS.md, docs/**), all enforced by `tests/test_docs.py`:
 `make site` renders it locally with the same pinned gem set Pages uses, which is
 how those three were found in the first place.
 
+The shell around that Markdown is four small files, and nothing in them
+generates content:
+
+| File | What it is |
+| --- | --- |
+| `_layouts/default.html` | header, sidebar, footer and the client-side "on this page" list, shadowing the copy `jekyll-theme-primer` ships |
+| `assets/css/style.scss` | imports the theme (so the body still renders like github.com) and adds the shell plus a dark palette |
+| `_data/nav.yml` | the sidebar and the small-screen header nav |
+| `assets/logo.svg`, `assets/favicon.svg` | the mark, in the header, in the README heading and as the favicon |
+
+**Adding a guide means adding it to `_data/nav.yml`** as well as to the guides
+index — `tests/test_docs.py` fails otherwise, the same way it does for the
+index. Every entry names both the Markdown file it points at and the URL Jekyll
+publishes it under, and the test checks that the two agree and that the target
+is a page the site actually serves.
+
 `bin/install-skills.sh` renders `docs/guides/` into Claude Code's skill layout
 (`.claude/skills/<name>/SKILL.md`, symlinks, git-ignored). Never edit that copy:
 it is generated, and `make skills` regenerates it.
