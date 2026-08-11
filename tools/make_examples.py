@@ -99,6 +99,10 @@ class Part:
     # two-pin symbol; a forty-pin one draws its pin numbers just outside the
     # body, and a label parked 2.54 mm out lands on top of them.
     stub: float = STUB
+    # Whether a pin this design does not use gets a no-connect flag. Off by
+    # default: on a two-pin part an unused pin is a mistake, and on a 48 pin one
+    # it is most of them.
+    no_connect: bool = False
 
     @property
     def library(self) -> str:
@@ -439,9 +443,19 @@ def emit_schematic(design: Design) -> str:
         drawn: set[tuple[float, float]] = set()
         for pin in pins:
             net = net_of.get((part.ref, pin.number))
-            if net is None:
-                continue
             end, out = pin_geometry(part, pin)
+            if net is None:
+                # A pin the design does not use is a decision, and KiCad wants
+                # to see it made: without the flag, ERC reports every one of
+                # them and the ones that matter are lost in the ones that do
+                # not. Drawn once per point, like the wires above.
+                if part.no_connect and end not in drawn:
+                    drawn.add(end)
+                    body.append(
+                        f"  (no_connect (at {end[0]} {end[1]}) "
+                        f'(uuid "{stable_uuid(design.name, "nc", part.ref, pin.number)}"))'
+                    )
+                continue
             if end in drawn:
                 if claimed[end][0] != net:
                     raise SystemExit(
@@ -908,10 +922,11 @@ def fan(
     ref: str,
     pins: list[str],
     *,
-    lead_x: float,
+    lead: float,
     column: float,
     pitch: float,
     centre: float,
+    axis: str = "x",
     widths: dict[str, float] | None = None,
     width: float = 0.3,
     slope: float = 2.2,
@@ -934,12 +949,21 @@ def fan(
     therefore leaves narrow and widens once it is clear, which is what the
     assertion below is checking rather than trusting.
 
+    ``axis`` is the direction the escape runs in: "x" for a row of pads down the
+    side of a package, "y" for one along its top or bottom. ``lead`` and
+    ``column`` are coordinates along it; ``centre`` and ``pitch`` are across it.
+
     Returns the escape tracks and, per pin, the point the router picks up from.
     """
     widths = widths or {}
-    direction = -1.0 if column < lead_x else 1.0
+    across = 1 if axis == "x" else 0
+
+    def at(along: float, offset: float) -> tuple[float, float]:
+        return (along, offset) if axis == "x" else (offset, along)
+
+    direction = -1.0 if column < lead else 1.0
     row = min(
-        abs(pad_position(design, f"{ref}.{a}")[1] - pad_position(design, f"{ref}.{b}")[1])
+        abs(pad_position(design, f"{ref}.{a}")[across] - pad_position(design, f"{ref}.{b}")[across])
         for a, b in pairwise(pins)
     )
     span = row * math.cos(math.atan2(1.0, slope))
@@ -950,21 +974,22 @@ def fan(
                 f"{design.name}: {ref} pins {a} and {b} are {row:.3f} mm apart, which at "
                 f"slope {slope} leaves {span:.3f} mm across the turn and they need {need:.3f}"
             )
+
     tracks: list[Track] = []
     ends: dict[str, tuple[float, float]] = {}
     for index, number in enumerate(pins):
         pad = f"{ref}.{number}"
-        _, pad_y = pad_position(design, pad)
-        target_y = round(centre + (index - (len(pins) - 1) / 2) * pitch, 4)
-        bend_x = round(lead_x + direction * abs(target_y - pad_y) * slope, 4)
-        points: list[tuple[float, float] | str] = [pad, (lead_x, pad_y)]
-        if abs(target_y - pad_y) > GEOM_EPS:
-            points.append((bend_x, target_y))
-        if abs(column - bend_x) > GEOM_EPS:
-            points.append((column, target_y))
+        offset = pad_position(design, pad)[across]
+        target = round(centre + (index - (len(pins) - 1) / 2) * pitch, 4)
+        bend = round(lead + direction * abs(target - offset) * slope, 4)
+        points: list[tuple[float, float] | str] = [pad, at(lead, offset)]
+        if abs(target - offset) > GEOM_EPS:
+            points.append(at(bend, target))
+        if abs(column - bend) > GEOM_EPS:
+            points.append(at(column, target))
         net = next(name for name, nodes in design.nets.items() if pad in nodes)
         tracks.append(Track(net, "F.Cu", widths.get(number, width), points))
-        ends[number] = (column, target_y)
+        ends[number] = at(column, target)
     return tracks, ends
 
 
@@ -2023,7 +2048,7 @@ def motor_driver() -> Design:
         design,
         "U1",
         ["1", "2", "3", "4", "5", "6", "7", "8"],
-        lead_x=39.6,
+        lead=39.6,
         column=29.0,
         pitch=2.0,
         centre=26.0,
@@ -2033,7 +2058,7 @@ def motor_driver() -> Design:
         design,
         "U1",
         ["16", "15", "14", "13", "12", "11", "10", "9"],
-        lead_x=48.4,
+        lead=48.4,
         column=53.6,
         pitch=1.3,
         centre=26.0,
@@ -2667,7 +2692,7 @@ def opamp_filter() -> Design:
             design,
             ref,
             ["1", "2", "3"],
-            lead_x=cx - 3.4,
+            lead=cx - 3.4,
             column=cx - 6.0,
             pitch=1.9,
             centre=cy,
@@ -2677,7 +2702,7 @@ def opamp_filter() -> Design:
             design,
             ref,
             ["5", "4"],
-            lead_x=cx + 3.4,
+            lead=cx + 3.4,
             column=cx + 6.0,
             pitch=2.8,
             centre=cy,
