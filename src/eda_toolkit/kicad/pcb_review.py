@@ -153,8 +153,9 @@ RULE_SPEC: dict[str, RuleSpec] = {
     ),
     "layout.decoupling_via": RuleSpec(
         "a decoupling capacitor's ground pad is further than the limit from the "
-        "nearest via on that net, so the return loop runs through track instead "
-        "of the plane. Only evaluated when a ground pour and vias exist",
+        "nearest via on that net, measured from the pad edge, so the return loop "
+        "runs through track instead of the plane. Only evaluated when a ground "
+        "pour exists, and skipped where the pad's own layer already carries it",
         "warning",
         threshold="max_decoupling_via_mm",
     ),
@@ -947,7 +948,11 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
             continue
         cosine = max(-1.0, min(1.0, vectors[0][0] * vectors[1][0] + vectors[0][1] * vectors[1][1]))
         angle = math.degrees(math.acos(cosine))
-        if angle < limit - 1e-6:
+        # Half a degree of slack, not an epsilon. The angle comes out of two
+        # normalised vectors and an arc cosine, so a corner drawn at exactly 90
+        # degrees lands a ten-thousandth under it - and a right angle reported as
+        # tighter than a right angle is a finding nobody can act on.
+        if angle < limit - 0.5:
             acute.append(
                 f"{first.net or '(no net)'} at "
                 f"({round(point[0], 2)}, {round(point[1], 2)}): {round(angle)} deg"
@@ -1075,14 +1080,26 @@ def rule_decoupling_via(ctx: PcbContext) -> list[Finding]:
         vias = [v for v in board.vias if v.net == pad.net]
         if not vias:
             continue
-        distance = min(math.dist((pad.x, pad.y), (v.x, v.y)) for v in vias)
+        # Measure to the edge of the pad, not its centre. A bulk electrolytic has
+        # a pad two and a half millimetres tall, so a via placed as close as it
+        # can physically go is still 1.5 mm from the centre - the rule would ask
+        # for a via inside the pad it is meant to sit beside.
+        x0, y0, x1, y1 = pad.bbox(angle_offset=fp.angle)
+        distance = min(
+            math.dist(
+                (min(max(v.x, x0), x1), min(max(v.y, y0), y1)),
+                (v.x, v.y),
+            )
+            for v in vias
+        )
         if distance > limit:
             findings.append(
                 Finding(
                     "layout.decoupling_via",
                     "warning",
-                    f"{fp.ref}: nearest {pad.net} via is {round(distance, 2)} mm from its "
-                    f"ground pad (limit {limit} mm) - the return loop runs through that track",
+                    f"{fp.ref}: nearest {pad.net} via is {round(distance, 2)} mm from the "
+                    f"edge of its ground pad (limit {limit} mm) - the return loop runs "
+                    f"through that track",
                     location=fp.ref,
                     details={"distance_mm": round(distance, 2), "limit_mm": limit},
                 )

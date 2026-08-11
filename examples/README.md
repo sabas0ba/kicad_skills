@@ -13,8 +13,8 @@ is the evidence: that the rules catch what they claim to catch, and that fixing
 what they report converges.
 
 ```bash
-./bin/eda.sh gate examples/buck-5v/reviewed     --policy ai-generated --text
-./bin/eda.sh gate examples/buck-5v/as-generated --policy ai-generated --text
+./bin/eda.sh gate examples/buck-5v/reviewed     --policy examples/buck-5v/gate.toml --text
+./bin/eda.sh gate examples/buck-5v/as-generated --policy examples/buck-5v/gate.toml --text
 ```
 
 Regenerate them with:
@@ -32,12 +32,12 @@ real parts, not simplified copies — which is why it runs inside the container.
 
 LM2596S-5, catch diode, output inductor, screw terminals in and out.
 
-**Schematic — done.** Under KiCad's own ERC:
+Under KiCad's own ERC and DRC, and the `ai-generated` policy:
 
-| | error | warning | info |
+| | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **0** | **0** | **0** |
-| `as-generated` | 3 | 3 | 14 |
+| `reviewed` | **PASS** | 0 / 0 / 0 | 0 / 1 / 7 |
+| `as-generated` | **FAIL**, 6 blocking | 3 / 3 / 14 | 0 / 5 / 8 |
 
 What separates them, and which check finds it:
 
@@ -49,10 +49,28 @@ What separates them, and which check finds it:
 | no title block, no design notes | `readability.title_block`, `spec.no_design_notes` |
 | no tolerance / voltage / current rating, no MPN | `spec.missing_rating`, `spec.missing_part_number` |
 | capacitors chosen without derating the rail | `spec.voltage_derating` |
+| no ground pour | `layout.no_ground_plane` |
+| parts off the placement grid, turned to 37 degrees | `layout.off_grid_placement`, `layout.odd_rotation` |
+| power routed at signal width | `track.thin_power` |
+| routing left half finished | `route.stub`, `route.acute_angle` |
 
-**Board — not finished.** The floorplan and the ground pour are in place, but the
-routing is still being worked: `reviewed` does not pass DRC yet. Do not read the
-board half of this example as a reference until this note says otherwise.
+`reviewed` carries one waiver, in [`buck-5v/gate.toml`](https://github.com/sabas0ba/kicad_skills/blob/main/examples/buck-5v/gate.toml):
+`layout.decoupling_distance` on U1.4, because that pin is FB — a sense input, not
+a supply — and the rule cannot tell the two apart from the board alone. That is
+the mechanism working as intended: the finding is not silenced, it is answered.
+
+### What building it changed in the toolkit
+
+Laying out a real board found four things the rules and the parser had wrong:
+
+* `sexp.dumps` wrote every string unquoted, so KiCad refused the generated file.
+* `layout.decoupling_via` measured to the pad *centre*. A bulk electrolytic has a
+  2.5 mm pad, so the rule asked for a via inside the pad it was meant to sit beside.
+* `route.acute_angle` compared against 90° with a 1e-6 epsilon, and a corner drawn
+  at exactly 90° comes out of the arc cosine a ten-thousandth under it.
+* `layout.decoupling_via` fired on every capacitor sitting in a pour on its own
+  layer, where there is no via to be near — 26 findings across the KiCad demo
+  corpus, 18 of them false.
 
 ## Still to come
 

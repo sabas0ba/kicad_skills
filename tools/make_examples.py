@@ -555,6 +555,114 @@ def resolve(design: Design, point: tuple[float, float] | str) -> tuple[float, fl
     return pad_position(design, point) if isinstance(point, str) else point
 
 
+def _segment_distance(a1, a2, b1, b2) -> float:
+    """Shortest distance between two segments, 0 when they cross."""
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    d1, d2 = cross(b1, b2, a1), cross(b1, b2, a2)
+    d3, d4 = cross(a1, a2, b1), cross(a1, a2, b2)
+    if ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0)):
+        return 0.0
+
+    def point_to_segment(p, s, e):
+        dx, dy = e[0] - s[0], e[1] - s[1]
+        length2 = dx * dx + dy * dy
+        if length2 == 0:
+            return math.dist(p, s)
+        u = max(0.0, min(1.0, ((p[0] - s[0]) * dx + (p[1] - s[1]) * dy) / length2))
+        return math.dist(p, (s[0] + u * dx, s[1] + u * dy))
+
+    return min(
+        point_to_segment(a1, b1, b2),
+        point_to_segment(a2, b1, b2),
+        point_to_segment(b1, a1, a2),
+        point_to_segment(b2, a1, a2),
+    )
+
+
+def check_board(design: Design, clearance: float = 0.2) -> list[str]:
+    """Everything KiCad's DRC would call a short, found without leaving Python.
+
+    Each round trip through the real DRC costs a container start and the best
+    part of a minute; the routing needs dozens. This is the same question asked
+    of the same geometry - does copper of one net come within `clearance` of
+    another - so the slow check confirms the layout rather than discovering it.
+    """
+    segments = []
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        for a, b in pairwise(points):
+            segments.append((track.net, track.layer, track.width, a, b))
+
+    pads = []
+    for part in design.parts:
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            net = None
+            for name, nodes in design.nets.items():
+                if f"{part.ref}.{number}" in nodes:
+                    net = name
+            pads.append((net, f"{part.ref}.{number}", pad_box(design, part, pad)))
+
+    problems = []
+    for i, (net, layer, width, a, b) in enumerate(segments):
+        for other_net, other_layer, other_width, c, d in segments[i + 1 :]:
+            if net == other_net or layer != other_layer:
+                continue
+            gap = _segment_distance(a, b, c, d) - width / 2 - other_width / 2
+            if gap < clearance:
+                problems.append(
+                    f"{net} and {other_net} come within {max(gap, 0):.2f} mm: "
+                    f"{a}-{b} against {c}-{d}"
+                )
+        for pad_net, label, box in pads:
+            if pad_net is None or pad_net == net:
+                continue
+            gap = _segment_to_box(a, b, box) - width / 2
+            if gap < clearance:
+                problems.append(
+                    f"{net} track {a}-{b} comes within {max(gap, 0):.2f} mm of {label} ({pad_net})"
+                )
+    return sorted(set(problems))
+
+
+def _segment_to_box(a, b, box) -> float:
+    """Distance from a segment to an axis-aligned pad rectangle."""
+    x0, y0, x1, y1 = box
+    corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    inside = all(x0 <= p[0] <= x1 and y0 <= p[1] <= y1 for p in (a, b))
+    if inside:
+        return 0.0
+    return min(_segment_distance(a, b, c, d) for c, d in pairwise([*corners, corners[0]]))
+
+
+def pad_box(design: Design, part: Part, pad: SNode) -> tuple[float, float, float, float]:
+    """A pad's extent on the board, the footprint's own rotation included."""
+    cx, cy = pad_position_of(design, part, pad)
+    size = [a for a in pad.child("size").atoms() if isinstance(a, (int, float))]
+    w, h = (float(size[0]), float(size[1] if len(size) > 1 else size[0]))
+    angle = part.board[2]
+    at = pad.child("at")
+    atoms = [a for a in (at.atoms() if at else []) if isinstance(a, (int, float))]
+    if len(atoms) > 2:
+        angle += float(atoms[2])
+    if round(abs(angle) % 180) == 90:
+        w, h = h, w
+    return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
+
+
+def pad_position_of(design: Design, part: Part, pad: SNode) -> tuple[float, float]:
+    at = pad.child("at")
+    atoms = [a for a in (at.atoms() if at else []) if isinstance(a, (int, float))]
+    px, py = (float(atoms[0]), float(atoms[1])) if len(atoms) >= 2 else (0.0, 0.0)
+    bx, by, angle = part.board
+    rx, ry = _rotate(px, py, angle)
+    return (round(bx + rx, 4), round(by + ry, 4))
+
+
 def emit_board(design: Design, path: Path) -> None:
     ox, oy = design.origin
     net_of: dict[tuple[str, str], str] = {}
@@ -744,13 +852,20 @@ UNDERRATED = {"C1": "220u", "C3": "220u"}
 def buck_5v() -> Design:
     """12 V to 5 V at 2 A: LM2596S-5, catch diode, output inductor.
 
-    The floorplan is what makes the rest work. The two screw terminals are
-    through-hole and sit outside the pour at the far left and right; everything
-    between them is surface mount, so B.Cu carries nothing but the ground pour
-    and the vias that drop into it. That means every ground pad reaches the plane
-    straight down through a via of its own instead of running a track across the
-    board, and it means the filled area is the pour outline itself, with nothing
-    to subtract - which is what lets the fill be written rather than computed.
+    Two things drive the floorplan.
+
+    The TO-263 brings all five pins out of one edge on a 1.7 mm pitch, so nothing
+    can be routed *past* the pin field - a track crossing it lands on the pads
+    either side. Each pin leaves at its own y into a channel of its own. The
+    circuit is then folded into two rows, input above and output below, so the
+    switch node and the feedback trace run *parallel* down the board instead of
+    having to cross: laid out in one row they cannot both get from the pin field
+    to the output without one going over the other.
+
+    The second is the pour. Only the two screw terminals are through-hole and
+    both sit outside it, so B.Cu carries nothing but the plane and the vias into
+    it - which is what lets the filled area be the pour outline itself, with
+    nothing to subtract.
     """
     RIGHT = 168.91  # where the output half of the sheet starts
     parts = [
@@ -760,7 +875,7 @@ def buck_5v() -> Design:
             "12V IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(38.1, 66.04),
-            board=(7.0, 18.0, 180.0),
+            board=(10.0, 12.0, 180.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -773,7 +888,7 @@ def buck_5v() -> Design:
             "220u",
             "Capacitor_SMD:CP_Elec_8x10.5",
             sheet=(63.5, 71.12),
-            board=(22.0, 12.0, 0.0),
+            board=(32.0, 12.0, 0.0),
             fields={
                 "Voltage": "35V",
                 "Tolerance": "20%",
@@ -788,7 +903,9 @@ def buck_5v() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(78.74, 71.12),
-            board=(31.0, 12.0, 0.0),
+            # stood on end beside U1's VIN pin: the input loop is the one that
+            # has to be short, and this is the only spot the fan-out leaves free
+            board=(50.0, 7.0, 90.0),
             fields={
                 "Voltage": "50V",
                 "Tolerance": "10%",
@@ -803,7 +920,7 @@ def buck_5v() -> Design:
             "LM2596S-5",
             "Package_TO_SOT_SMD:TO-263-5_TabPin3",
             sheet=(109.22, 66.04),
-            board=(42.0, 13.0, 0.0),
+            board=(62.0, 12.0, 0.0),
             fields={
                 "MPN": "LM2596SX-5.0/NOPB",
                 "Manufacturer": "Texas Instruments",
@@ -816,7 +933,7 @@ def buck_5v() -> Design:
             "SS34",
             "Diode_SMD:D_SMA",
             sheet=(140.97, 76.2),
-            board=(54.0, 24.0, 270.0),
+            board=(58.0, 36.0, 0.0),
             fields={
                 "MPN": "SS34",
                 "Manufacturer": "Vishay",
@@ -829,7 +946,7 @@ def buck_5v() -> Design:
             "33u",
             "Inductor_SMD:L_12x12mm_H8mm",
             sheet=(154.94, 66.04),
-            board=(66.0, 13.0, 0.0),
+            board=(76.0, 36.0, 0.0),
             fields={
                 "Current": "3A",
                 "Tolerance": "20%",
@@ -839,27 +956,12 @@ def buck_5v() -> Design:
             },
         ),
         Part(
-            "C3",
-            "Device:C_Polarized",
-            "220u",
-            "Capacitor_SMD:CP_Elec_8x10.5",
-            sheet=(RIGHT, 71.12),
-            board=(78.0, 12.0, 0.0),
-            fields={
-                "Voltage": "16V",
-                "Tolerance": "20%",
-                "MPN": "EEE-FK1C221P",
-                "Manufacturer": "Panasonic",
-                "Datasheet": "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf",
-            },
-        ),
-        Part(
             "C4",
             "Device:C",
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(RIGHT + 15.24, 71.12),
-            board=(71.0, 12.0, 0.0),
+            board=(90.0, 36.0, 0.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "10%",
@@ -869,12 +971,27 @@ def buck_5v() -> Design:
             },
         ),
         Part(
+            "C3",
+            "Device:C_Polarized",
+            "220u",
+            "Capacitor_SMD:CP_Elec_8x10.5",
+            sheet=(RIGHT, 71.12),
+            board=(100.0, 36.0, 0.0),
+            fields={
+                "Voltage": "16V",
+                "Tolerance": "20%",
+                "MPN": "EEE-FK1C221P",
+                "Manufacturer": "Panasonic",
+                "Datasheet": "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf",
+            },
+        ),
+        Part(
             "R1",
             "Device:R",
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(RIGHT + 30.48, 71.12),
-            board=(66.0, 27.0, 0.0),
+            board=(100.0, 46.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -889,7 +1006,7 @@ def buck_5v() -> Design:
             "green",
             "LED_SMD:LED_0805_2012Metric",
             sheet=(RIGHT + 30.48, 88.9),
-            board=(73.0, 27.0, 0.0),
+            board=(107.0, 46.0, 180.0),
             angle=270.0,
             fields={
                 "Voltage": "2.1V",
@@ -905,7 +1022,7 @@ def buck_5v() -> Design:
             "5V OUT",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(RIGHT + 45.72, 66.04),
-            board=(93.0, 18.0, 0.0),
+            board=(116.0, 36.0, 0.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -923,42 +1040,52 @@ def buck_5v() -> Design:
     }
 
     # 2 A of output current needs copper, not a signal trace: 1.0 mm of 35 um
-    # outer-layer copper carries about 2.7 A at a 10 C rise (IPC-2221). The LED
-    # branch is the one place a thinner trace is right, and it is still 0.4 mm
-    # because it hangs off a power rail.
+    # outer-layer copper carries about 2.7 A at a 10 C rise (IPC-2221). Feedback
+    # and the LED branch carry nothing and stay narrow, but not below 0.4 mm,
+    # because they hang off a rail.
     W, SIG = 1.0, 0.4
     tracks = [
-        # Input rail runs left to right along the top of the SMD band.
-        Track("+12V", "F.Cu", W, ["J1.1", (14.0, 15.0), (14.0, 8.5), "C1.1"]),
-        Track("+12V", "F.Cu", W, ["C1.1", "C2.1"]),
-        Track("+12V", "F.Cu", W, ["C2.1", (36.0, 8.5), (36.0, 10.46), "U1.1"]),
-        # Switch node: short and fat, straight down to the diode and across.
-        Track("SW", "F.Cu", W, ["U1.2", (48.0, 15.54), (48.0, 24.0), "D1.1"]),
-        Track("SW", "F.Cu", W, ["D1.1", (60.0, 24.0), (60.0, 13.0), "L1.1"]),
-        # Output rail, and the feedback tap back to U1.
+        # Input rail across the top, stepping over each capacitor's ground pad.
+        Track("+12V", "F.Cu", W, ["J1.1", (10.0, 4.0), (28.3, 4.0), "C1.1"]),
+        Track("+12V", "F.Cu", W, [(28.3, 4.0), (47.0, 4.0), (47.0, 7.95), "C2.1"]),
+        Track("+12V", "F.Cu", W, ["C2.1", (52.0, 7.95), (52.0, 8.6), "U1.1"]),
+        # SW and FB leave the pin field into parallel channels and run down the
+        # board together - never across each other.
+        Track("SW", "F.Cu", W, ["U1.2", (44.0, 10.3), (44.0, 36.0), "D1.1"]),
+        Track("SW", "F.Cu", W, ["D1.1", (56.0, 44.0), (71.05, 44.0), "L1.1"]),
+        Track("+5V", "F.Cu", SIG, ["U1.4", (47.0, 13.7), (47.0, 26.0), (88.0, 26.0), (88.0, 36.0)]),
+        # Output rail across the bottom row.
         Track("+5V", "F.Cu", W, ["L1.2", "C4.1"]),
-        Track("+5V", "F.Cu", W, ["C4.1", "C3.1"]),
-        Track("+5V", "F.Cu", W, ["C3.1", (86.0, 8.5), (86.0, 15.0), "J2.1"]),
-        Track("+5V", "F.Cu", SIG, ["U1.4", (48.0, 10.46), (48.0, 5.0), (71.0, 5.0), "C4.1"]),
-        Track("+5V", "F.Cu", SIG, ["C4.1", (66.0, 20.0), "R1.1"]),
+        Track("+5V", "F.Cu", W, ["C4.1", (89.05, 30.0), (96.3, 30.0), "C3.1"]),
+        Track("+5V", "F.Cu", W, [(96.3, 30.0), (116.0, 30.0), "J2.1"]),
+        Track("+5V", "F.Cu", SIG, ["C3.1", (96.3, 42.0), (99.088, 42.0), "R1.1"]),
         Track("LED_A", "F.Cu", SIG, ["R1.2", "D2.2"]),
-        # Ground never travels: each pad drops into the pour beside it. Only the
-        # two through-hole terminals, which sit outside the pour, run any copper.
-        Track("GND", "F.Cu", W, ["J1.2", (14.0, 21.0)]),
-        Track("GND", "F.Cu", W, ["J2.2", (86.0, 21.0)]),
+        # Ground: a stub from each pad to a via of its own, straight into the
+        # pour. Only the two through-hole terminals, outside the pour, run far.
+        Track("GND", "F.Cu", W, ["J1.2", (5.0, 50.0), (16.0, 50.0)]),
+        Track("GND", "F.Cu", W, ["J2.2", (121.0, 50.0), (110.0, 50.0)]),
+        Track("GND", "F.Cu", W, ["U1.3", (51.0, 12.0)]),
+        Track("GND", "F.Cu", W, ["U1.5", (54.35, 20.0)]),
+        Track("GND", "F.Cu", W, [(63.5, 12.0), (63.5, 20.0)]),  # the TO-263 tab
+        Track("GND", "F.Cu", W, ["C1.2", (35.7, 14.6)]),
+        Track("GND", "F.Cu", W, ["C2.2", (50.0, 4.4)]),
+        Track("GND", "F.Cu", W, ["D1.2", (60.0, 31.0)]),
+        Track("GND", "F.Cu", W, ["C4.2", (90.95, 38.0)]),
+        Track("GND", "F.Cu", W, ["C3.2", (103.7, 38.6)]),
+        Track("GND", "F.Cu", SIG, ["D2.1", (107.938, 50.0)]),
     ]
-    # A via beside every ground pad, all of them inside the pour.
     vias = [
-        Via("GND", 14.0, 21.0),
-        Via("GND", 24.6, 12.0),
-        Via("GND", 32.0, 12.0),
-        Via("GND", 42.0, 18.0),
-        Via("GND", 38.0, 17.0),
-        Via("GND", 54.0, 27.5),
-        Via("GND", 72.0, 12.0),
-        Via("GND", 80.6, 12.0),
-        Via("GND", 86.0, 21.0),
-        Via("GND", 74.5, 27.0),
+        Via("GND", x=16.0, y=50.0),
+        Via("GND", x=110.0, y=50.0),
+        Via("GND", x=51.0, y=12.0),
+        Via("GND", x=54.35, y=20.0),
+        Via("GND", x=63.5, y=20.0),
+        Via("GND", x=35.7, y=14.6),
+        Via("GND", x=50.0, y=4.4),
+        Via("GND", x=60.0, y=31.0),
+        Via("GND", x=90.95, y=38.0),
+        Via("GND", x=103.7, y=38.6),
+        Via("GND", x=107.938, y=50.0),
     ]
 
     return Design(
@@ -975,16 +1102,16 @@ def buck_5v() -> Design:
             "D1 catches the inductor current. SS34 is 3 A / 40 V, above both the 2 A load",
             "and the 12 V input.",
             "Power copper is 1.0 mm, good for 2.7 A at a 10 C rise (IPC-2221).",
-            "Only the two screw terminals are through-hole, and both sit outside the",
-            "ground pour, so B.Cu carries nothing but the plane and the vias into it.",
+            "Input row above, output row below: SW and FB then run down the board in",
+            "parallel channels instead of having to cross each other.",
         ],
         parts=parts,
         nets=nets,
         power_flags=["+12V", "GND", "+5V"],
-        board_size=(100.0, 36.0),
+        board_size=(126.0, 56.0),
         tracks=tracks,
         vias=vias,
-        pour=(12.0, 2.0, 88.0, 34.0),
+        pour=(15.0, 2.0, 112.0, 54.0),
     )
 
 
@@ -994,7 +1121,14 @@ DESIGNS = {"buck-5v": buck_5v}
 # ---------------------------------------------------------------------------
 
 
-def write_variant(design: Design, root: Path) -> None:
+def write_variant(design: Design, root: Path, *, check: bool = True) -> None:
+    if check:
+        problems = check_board(design)
+        if problems:
+            raise SystemExit(
+                f"{design.name}: the layout shorts {len(problems)} pair(s):\n  "
+                + "\n  ".join(problems)
+            )
     root.mkdir(parents=True, exist_ok=True)
     (root / f"{design.name}.kicad_sch").write_text(emit_schematic(design), encoding="utf-8")
     (root / f"{design.name}.kicad_pro").write_text(emit_project(design), encoding="utf-8")
@@ -1013,7 +1147,8 @@ def main(argv: list[str] | None = None) -> int:
             continue
         design = builder()
         write_variant(design, out / name / "reviewed")
-        write_variant(degrade(design), out / name / "as-generated")
+        # the degraded variant is *meant* to be wrong, so it is not checked
+        write_variant(degrade(design), out / name / "as-generated", check=False)
         print(f"{name}: wrote as-generated/ and reviewed/")
     return 0
 

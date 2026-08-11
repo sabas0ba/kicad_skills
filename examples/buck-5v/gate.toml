@@ -1,0 +1,12 @@
+# The policy this example is held to, and the one thing it is allowed to fail.
+name = "buck-5v"
+extends = "ai-generated"
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+location = "U1.4"
+reason = """U1.4 is FB, the feedback sense input of a fixed-output LM2596 - not a \
+supply pin. It is deliberately tied to the output at the load end, where the \
+regulation is wanted, and putting a capacitor next to it would filter the \
+control loop. The rule cannot tell a sense pin from a supply pin off the board \
+alone, so this one is judged by hand."""
