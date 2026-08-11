@@ -57,6 +57,15 @@ STUB = 2.54  # how far a wire runs from a pin before its label
 SCH_VERSION = 20250114
 NAMESPACE = uuid.UUID("6f1a0f3e-0000-4000-8000-000000000000")
 
+# What produced the committed output, and when. Both are frozen here rather than
+# read from the clock so that regenerating an unchanged design still produces an
+# unchanged file - bump them when you regenerate, or pass --generated-on /
+# --generated-by. They matter most on the `as-generated` variant: it is a record
+# of what a generator of this vintage actually wrote, and a year from now that
+# is the only thing that dates it.
+GENERATED_ON = "2026-08-11"
+GENERATED_BY = "Claude Code"
+
 GEOM_EPS = 1e-6
 VIA_SIZE = 0.8  # what the router drops when it has to change layer
 POUR_NET = "GND"  # the net every ground pour in these examples belongs to
@@ -148,6 +157,12 @@ class Design:
     # zone-to-edge clearance is not something the hand-written fill applies.
     pour: tuple[float, float, float, float] | None = None
     origin: tuple[float, float] = (100.0, 60.0)  # top-left of the board on the sheet
+    # Free-text lines stamped into both title blocks as comments. `date`, `title`
+    # and the rest are the *design's* - a generator that leaves them blank is a
+    # finding - so provenance goes in the comment fields, which no rule reads and
+    # which survive being opened in KiCad.
+    provenance: tuple[str, ...] = ()
+    date: str = ""
 
     def part(self, ref: str) -> Part:
         return next(p for p in self.parts if p.ref == ref)
@@ -324,6 +339,27 @@ def _property(name: str, value: str, x: float, y: float, hide: bool) -> str:
     return f'    (property "{name}" "{escaped}" (at {x} {y} 0) {_effects(hide)})'
 
 
+def _title_block(design: Design, indent: str) -> list[str]:
+    """The title block both files share, with anything unset left out.
+
+    A field the design does not state is *absent* rather than empty, because
+    `readability.title_block` reads exactly these four and the degraded variant
+    is supposed to fail it. The provenance comments are not among them.
+    """
+    fields = [
+        ("title", design.title),
+        ("date", design.date),
+        ("rev", design.rev),
+        ("company", design.company),
+    ]
+    body = [f'{indent}\t({name} "{value}")' for name, value in fields if value]
+    body += [
+        f'{indent}\t(comment {number} "{text}")'
+        for number, text in enumerate(design.provenance, start=1)
+    ]
+    return [f"{indent}(title_block", *body, f"{indent})"] if body else []
+
+
 def emit_schematic(design: Design) -> str:
     root_uuid = stable_uuid(design.name, "sheet")
     lines = [
@@ -332,15 +368,9 @@ def emit_schematic(design: Design) -> str:
         '  (paper "A4")',
     ]
 
-    if design.title or design.rev or design.company:
-        lines += [
-            "  (title_block",
-            f'    (title "{design.title}")',
-            '    (date "2024-01-01")',
-            f'    (rev "{design.rev}")',
-            f'    (company "{design.company}")',
-            "  )",
-        ]
+    block = _title_block(design, "  ")
+    if block:
+        lines += block
 
     used: dict[str, SNode] = {}
     for part in design.parts:
@@ -996,6 +1026,7 @@ def emit_board(design: Design, path: Path) -> None:
         "\t\t(legacy_teardrops no)",
         "\t)",
         '\t(paper "A4")',
+        *_title_block(design, "\t"),
         BOARD_LAYERS,
         "\t(setup",
         "\t\t(pad_to_mask_clearance 0)",
@@ -1325,6 +1356,7 @@ def degrade(design: Design) -> Design:
         title="",
         rev="",
         company="",
+        date="",
         notes=[],
         parts=parts,
         power_flags=[],
@@ -1984,13 +2016,27 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", help="directory to write the examples into")
     parser.add_argument("--only", help="generate just this design")
+    parser.add_argument(
+        "--generated-on",
+        default=GENERATED_ON,
+        help="the date stamped into both variants (default: %(default)s)",
+    )
+    parser.add_argument(
+        "--generated-by",
+        default=GENERATED_BY,
+        help="what to credit the output to (default: %(default)s)",
+    )
     args = parser.parse_args(argv)
 
+    stamp = (
+        f"generated {args.generated_on} by {args.generated_by}",
+        "from tools/make_examples.py in sabas0ba/kicad_skills",
+    )
     out = Path(args.output)
     for name, builder in sorted(DESIGNS.items()):
         if args.only and args.only != name:
             continue
-        design = builder().snapped()
+        design = replace(builder().snapped(), provenance=stamp, date=args.generated_on)
         write_variant(design, out / name / "reviewed")
         # the degraded variant is *meant* to be wrong, so it is not checked
         write_variant(degrade(design), out / name / "as-generated", check=False)

@@ -2,10 +2,12 @@
   (uuid "ec98644d-848c-5056-a4cb-c829189be5c3")
   (paper "A4")
   (title_block
-    (title "12 V to 5 V buck converter, 2 A")
-    (date "2024-01-01")
-    (rev "A")
-    (company "kicad_skills examples")
+  	(title "12 V to 5 V buck converter, 2 A")
+  	(date "2026-08-11")
+  	(rev "A")
+  	(company "kicad_skills examples")
+  	(comment 1 "generated 2026-08-11 by Claude Code")
+  	(comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
   )
   (lib_symbols
     (symbol "Connector:Screw_Terminal_01x02"

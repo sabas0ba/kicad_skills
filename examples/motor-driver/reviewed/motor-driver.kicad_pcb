@@ -7,6 +7,14 @@
 		(legacy_teardrops no)
 	)
 	(paper "A4")
+	(title_block
+		(title "Dual H-bridge, DRV8833, 2 x 1.5 A")
+		(date "2026-08-11")
+		(rev "A")
+		(company "kicad_skills examples")
+		(comment 1 "generated 2026-08-11 by Claude Code")
+		(comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
+	)
 	(layers
 		(0 "F.Cu" signal)
 		(2 "B.Cu" signal)

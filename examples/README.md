@@ -36,6 +36,27 @@ and the images below with:
 The generator reads KiCad's own symbol and footprint libraries, so these are the
 real parts, not simplified copies — which is why it runs inside the container.
 
+## When these were made, and by what
+
+Both variants carry it in their title block, in the comment fields, on the
+schematic and on the board:
+
+```
+(comment 1 "generated 2026-08-11 by Claude Code")
+(comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
+```
+
+It matters most on `as-generated`. That variant is a record of what a generator
+of this vintage actually produced, and the point of keeping it is to be able to
+say later how much has changed — which needs a date on it. The stamp is frozen
+in `GENERATED_ON` / `GENERATED_BY` at the top of the generator rather than read
+from the clock, so regenerating an unchanged design still produces an unchanged
+file; bump them when you regenerate, or pass `--generated-on` / `--generated-by`.
+
+The design's own `title`, `date`, `rev` and `company` are a separate thing and
+stay empty on `as-generated` — a generator that leaves them blank is one of the
+findings, and the stamp deliberately does not paper over it.
+
 ## buck-5v — 12 V to 5 V at 2 A
 
 LM2596S-5, catch diode, output inductor, screw terminals in and out.
