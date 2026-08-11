@@ -116,6 +116,75 @@ Laying out a real board found four things the rules and the parser had wrong:
   layer, where there is no via to be near — 26 findings across the KiCad demo
   corpus, 18 of them false.
 
+## motor-driver — dual H-bridge, DRV8833, 2 × 1.5 A
+
+Two brushed DC motors, screw terminals out, an eight pin logic header, and the
+charge pump, bypass and pull-up the datasheet asks for.
+
+| | verdict | schematic (e/w/i) | board (e/w/i) |
+| --- | --- | --- | --- |
+| `reviewed` | **FAIL**, 7 blocking | 0 / 3 / 0 | 0 / 5 / 6 |
+| `as-generated` | **FAIL**, 38 blocking | 3 / 4 / 15 | 8 / 20 / 7 |
+
+`reviewed` does not pass, and is committed failing on purpose. Under KiCad's
+own checks it is spotless — zero DRC violations, zero unconnected items, zero
+schematic-parity findings, on both 9.0.9 and 10.0.4 — so everything left is
+this toolkit's own opinion about a board KiCad is happy with. That is the
+interesting part, and papering over it with waivers would throw it away. What
+each finding turns into is decided once all five examples exist.
+
+| as-generated | reviewed |
+| --- | --- |
+| ![schematic, as generated](motor-driver/images/schematic-as-generated.jpg) | ![schematic, reviewed](motor-driver/images/schematic-reviewed.jpg) |
+| ![board front, as generated](motor-driver/images/board-front-as-generated.jpg) | ![board front, reviewed](motor-driver/images/board-front-reviewed.jpg) |
+| ![board back, as generated](motor-driver/images/board-back-as-generated.jpg) | ![board back, reviewed](motor-driver/images/board-back-reviewed.jpg) |
+
+The back layer is worth looking at on its own. It is a ground pour with the
+clearance around every foreign track and pad cut out of it, computed rather
+than assumed — which is what lets the four signals that have to cross
+something cross it.
+
+### What this one is honest about
+
+This is the first example that cannot be drawn on one signal layer. A DRV8833
+brings VM, GND, VCP and VINT out in the *middle* of a row that also carries
+four logic inputs, so whichever way round the connectors go, something has to
+cross something. Three consequences show up in the findings, and all three are
+real:
+
+* **`track.thin_power`** — nothing leaves a TSSOP-16 wider than 0.3 mm. Two
+  0.4 mm tracks and the clearance between them do not fit in a 0.65 mm row
+  once the row starts to spread, so every pin escapes narrow and widens when
+  it is clear. The rule counts the narrowest millimetre of the net and does
+  not know the wide part is a millimetre away.
+* **`layout.decoupling_distance` ×3** — the same 0.65 mm pitch is why. The
+  escape has to walk the row out to a pitch a bypass capacitor can straddle
+  before one can be placed, and that walk is five millimetres. The usual
+  answer is a capacitor on the *back* of the board under the pins; this
+  generator can only place parts on the front.
+* **`analog.missing_decoupling` and `layout.decoupling_distance` on VCP** —
+  VCP is a charge pump output and C3 is its flying capacitor, wired to VM
+  rather than to ground. It is not decoupling and there is nothing to be
+  near.
+
+`route.acute_angle` is the fourth, and is the router's: it turns in 45°
+steps and the fan-out leaves at 24°, so a corner between the two is sharper
+than 90°. Whether that is worth reporting on a signal net is one of the
+questions the rule pass has to answer.
+
+### What building it changed in the toolkit
+
+* **The board net names were wrong.** KiCad names a net after the sheet path
+  of the label driving it — `/VM`, not `VM` — and only a power symbol keeps
+  its bare name. That was 35 `net_conflict` findings on this board and none
+  on buck-5v, because buck-5v's rails all came from power symbols.
+* **Rotated footprints did not carry their pads' orientation**, which is one
+  `lib_footprint_mismatch` each. Fixing it took buck-5v from three DRC
+  warnings to none.
+* **Footprints had none of the symbol's fields on them.** KiCad's own "update
+  PCB from schematic" copies them across and then its parity check compares
+  the two; without them that is one finding per field per part.
+
 ## Still to come
 
-`motor-driver`, `pico-carrier`, `opamp-filter`, `fpga-audio` — in that order.
+`pico-carrier`, `opamp-filter`, `fpga-audio` — in that order.
