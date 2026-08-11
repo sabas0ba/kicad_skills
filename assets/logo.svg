@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="32" height="32" role="img" aria-label="kicad_skills">
+  <title>kicad_skills</title>
+  <defs>
+    <linearGradient id="board" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14415A"/>
+      <stop offset="1" stop-color="#091620"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="62" height="62" rx="15" fill="url(#board)"/>
+  <rect x="1" y="1" width="62" height="62" rx="15" fill="none" stroke="#38BDF8" stroke-opacity=".35" stroke-width="2"/>
+  <g fill="none" stroke="#38BDF8" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 26H12"/>
+    <path d="M21 38h-6l-6 6"/>
+    <path d="M43 26h6l6-6"/>
+    <path d="M43 38h9"/>
+    <path d="M32 21V12"/>
+    <path d="M32 43v9"/>
+  </g>
+  <g fill="#F5A524">
+    <circle cx="10" cy="26" r="3.3"/>
+    <circle cx="7.5" cy="45.5" r="3.3"/>
+    <circle cx="56.5" cy="18.5" r="3.3"/>
+    <circle cx="54" cy="38" r="3.3"/>
+    <circle cx="32" cy="10" r="3.3"/>
+    <circle cx="32" cy="54" r="3.3"/>
+  </g>
+  <rect x="21" y="21" width="22" height="22" rx="5" fill="#091620" stroke="#7DD3FC" stroke-width="3.4"/>
+  <circle cx="27" cy="27" r="2.3" fill="#F5A524"/>
+</svg>

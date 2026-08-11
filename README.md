@@ -1,4 +1,4 @@
-# kicad_skills — a containerised circuit-design toolkit
+# ![](assets/logo.svg) kicad_skills — a containerised circuit-design toolkit
 
 [![CI](https://github.com/sabas0ba/kicad_skills/actions/workflows/ci.yml/badge.svg)](https://github.com/sabas0ba/kicad_skills/actions/workflows/ci.yml)
 [![pins](https://github.com/sabas0ba/kicad_skills/actions/workflows/pins.yml/badge.svg)](https://github.com/sabas0ba/kicad_skills/actions/workflows/pins.yml)
