@@ -206,6 +206,63 @@ questions the rule pass has to answer.
   PCB from schematic" copies them across and then its parity check compares
   the two; without them that is one finding per field per part.
 
+## pico-carrier — Raspberry Pi Pico, every pin broken out
+
+A carrier board: the module, two twenty-pin headers beside it, and a 5 V input
+that reaches VSYS the way the Pico datasheet asks for.
+
+| | verdict | schematic (e/w/i) | board (e/w/i) |
+| --- | --- | --- | --- |
+| `reviewed` | **FAIL**, 11 blocking | 0 / 3 / 0 | 0 / 9 / 7 |
+| `as-generated` | **FAIL**, 47 blocking | 3 / 7 / 12 | 14 / 16 / 7 |
+
+Under KiCad's own checks `reviewed` has no errors and no unconnected items, on
+9.0.9 and 10.0.4 — one `lib_footprint_mismatch` on the module and two silkscreen
+warnings are all that is left. As with the motor driver, it is committed failing
+the gate on purpose.
+
+| as-generated | reviewed |
+| --- | --- |
+| ![schematic, as generated](pico-carrier/images/schematic-as-generated.jpg) | ![schematic, reviewed](pico-carrier/images/schematic-reviewed.jpg) |
+| ![board front, as generated](pico-carrier/images/board-front-as-generated.jpg) | ![board front, reviewed](pico-carrier/images/board-front-reviewed.jpg) |
+| ![board back, as generated](pico-carrier/images/board-back-as-generated.jpg) | ![board back, reviewed](pico-carrier/images/board-back-reviewed.jpg) |
+
+### What this one is honest about
+
+Most of a carrier is one job done forty times, and the findings are about the
+few places where it is not:
+
+* **`analog.missing_decoupling` and `layout.no_decoupling` on VBUS and
+  ADC_VREF** — both are rails the *module* drives and this board merely exposes.
+  The rules cannot tell a supply this board makes from one it is handed, so they
+  ask for a capacitor on a net whose source is somewhere else entirely.
+* **`layout.decoupling_distance` on U1.36 and U1.39** — 9 and 10 mm, and there is
+  nowhere nearer: the header sits between the module pin and any part, by
+  design. The capacitors are placed as close as the geometry allows, immediately
+  outboard of the header pins they bypass.
+* **`layout.off_grid_placement`** — the module's pads are on a 2.54 mm pitch, so
+  its origin cannot also sit on 0.5 mm, and the headers have to line up with the
+  pads rather than with the grid. Two footprints, both correct.
+
+### What building it changed in the toolkit
+
+* **The pinout is read out of the symbol, not typed.** Forty pins typed a second
+  time is forty chances to swap two of them, and nothing downstream would
+  notice — the board would simply be a different, self-consistent board.
+* **Stacked pins are drawn once.** The Pico symbol brings its seven grounds out
+  at one point; seven wires and seven ground symbols on that point read as one
+  and review as seven.
+* **The reference and value now go above and below the symbol**, measured from
+  its pins. A fixed offset is right for a two-pin part and lands in the middle
+  of the pin labels of a forty-pin one.
+* **A power symbol turns to face the way its pin leaves.** KiCad draws them
+  pointing down and puts the rail name underneath, which on a twenty-pin header
+  is the next pin's label.
+* **Footprint uuids are remapped as a set, references included.** KiCad's
+  `(group ...)` lists its members by uuid, and the Pico footprint has six of
+  them; replacing pad uuids one at a time leaves the groups naming things that
+  are no longer there.
+
 ## Still to come
 
-`pico-carrier`, `opamp-filter`, `fpga-audio` — in that order.
+`opamp-filter`, `fpga-audio` — in that order.

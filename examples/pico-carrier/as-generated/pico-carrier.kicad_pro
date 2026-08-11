@@ -1,0 +1,5 @@
+{
+  "board": {"design_settings": {"rules": {"min_track_width": 0.15}}},
+  "meta": {"filename": "pico-carrier.kicad_pro", "version": 1},
+  "sheets": [["f86b03a2-2f64-5dc5-a6a7-b575bc25ae3a", "Root"]]
+}

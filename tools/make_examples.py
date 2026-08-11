@@ -95,6 +95,10 @@ class Part:
     board: tuple[float, float, float]  # x, y, rotation on the board
     angle: float = 0.0  # symbol rotation on the sheet
     fields: dict[str, str] = field(default_factory=dict)
+    # How far a wire runs off each pin before its label. The default clears a
+    # two-pin symbol; a forty-pin one draws its pin numbers just outside the
+    # body, and a label parked 2.54 mm out lands on top of them.
+    stub: float = STUB
 
     @property
     def library(self) -> str:
@@ -163,6 +167,16 @@ class Design:
     # which survive being opened in KiCad.
     provenance: tuple[str, ...] = ()
     date: str = ""
+    # Where the design notes start on the sheet. Below the circuit, never beside
+    # it - and how far below depends on how tall the circuit is.
+    notes_at: tuple[float, float] = (25.4, 110.0)
+    # Where the row of PWR_FLAGs starts. They need a clear strip of sheet, and
+    # which strip is clear depends on how big the circuit is.
+    flags_at: tuple[float, float] = (38.1, 118.11)
+    # The grid `snapped` puts footprints on. A board whose placement is set by a
+    # module's own 2.54 mm pad pitch cannot also sit on 0.5 mm, and pretending
+    # otherwise moves the pads off the pins they have to land on.
+    board_grid: float | None = BOARD_GRID
 
     def part(self, ref: str) -> Part:
         return next(p for p in self.parts if p.ref == ref)
@@ -185,6 +199,12 @@ class Design:
         """
         return replace(
             self,
+            # The PWR_FLAG row is wire and pin like anything else, so it is on
+            # the same grid as everything else or it is three off-grid findings.
+            flags_at=(
+                round(round(self.flags_at[0] / GRID) * GRID, 4),
+                round(round(self.flags_at[1] / GRID) * GRID, 4),
+            ),
             parts=[
                 replace(
                     part,
@@ -192,9 +212,11 @@ class Design:
                         round(round(part.sheet[0] / GRID) * GRID, 4),
                         round(round(part.sheet[1] / GRID) * GRID, 4),
                     ),
-                    board=(
-                        round(round(part.board[0] / BOARD_GRID) * BOARD_GRID, 4),
-                        round(round(part.board[1] / BOARD_GRID) * BOARD_GRID, 4),
+                    board=part.board
+                    if self.board_grid is None
+                    else (
+                        round(round(part.board[0] / self.board_grid) * self.board_grid, 4),
+                        round(round(part.board[1] / self.board_grid) * self.board_grid, 4),
                         part.board[2],
                     ),
                 )
@@ -313,7 +335,12 @@ def pin_geometry(part: Part, pin: PinDef) -> tuple[tuple[float, float], tuple[fl
     end = transform_pin(pin.x, pin.y, sx, sy, part.angle, "")
     away = math.radians(pin.angle + 180)
     out = transform_pin(
-        pin.x + math.cos(away) * STUB, pin.y + math.sin(away) * STUB, sx, sy, part.angle, ""
+        pin.x + math.cos(away) * part.stub,
+        pin.y + math.sin(away) * part.stub,
+        sx,
+        sy,
+        part.angle,
+        "",
     )
     return (round(end[0], 4), round(end[1], 4)), (round(out[0], 4), round(out[1], 4))
 
@@ -322,7 +349,12 @@ def pin_geometry(part: Part, pin: PinDef) -> tuple[tuple[float, float], tuple[fl
 # schematic emission
 # ---------------------------------------------------------------------------
 
-POWER_SYMBOLS = {"GND": "power:GND", "+5V": "power:+5V", "+12V": "power:+12V"}
+POWER_SYMBOLS = {
+    "GND": "power:GND",
+    "+3V3": "power:+3V3",
+    "+5V": "power:+5V",
+    "+12V": "power:+12V",
+}
 
 
 def _effects(hide: bool = False, justify: str = "") -> str:
@@ -400,11 +432,24 @@ def emit_schematic(design: Design) -> str:
 
     for part in design.parts:
         pins = symbol_pins(part.lib_id)
+        # A symbol may bring several pins out at one point - the Pico draws its
+        # seven grounds that way, and KiCad calls them stacked. One wire and one
+        # ground symbol is what that means; seven of each on the same coordinate
+        # is a drawing that reads as one and reviews as seven.
+        drawn: set[tuple[float, float]] = set()
         for pin in pins:
             net = net_of.get((part.ref, pin.number))
             if net is None:
                 continue
             end, out = pin_geometry(part, pin)
+            if end in drawn:
+                if claimed[end][0] != net:
+                    raise SystemExit(
+                        f"{design.name}: {part.ref}.{pin.number} is stacked on "
+                        f"{claimed[end][1]} but is on {net}, not {claimed[end][0]}"
+                    )
+                continue
+            drawn.add(end)
             # Both ends matter: a pin landing on someone else's stub joins the
             # two nets just as surely as two stubs meeting.
             for point in (end, out):
@@ -417,7 +462,18 @@ def emit_schematic(design: Design) -> str:
             body.append(_wire(design, part.ref, pin.number, end, out))
             if net in POWER_SYMBOLS:
                 power_index += 1
-                body.append(_power_symbol(design, POWER_SYMBOLS[net], net, out, power_index))
+                step = (out[0] - end[0], out[1] - end[1])
+                length = math.hypot(*step) or 1.0
+                body.append(
+                    _power_symbol(
+                        design,
+                        POWER_SYMBOLS[net],
+                        net,
+                        out,
+                        power_index,
+                        (round(step[0] / length), round(step[1] / length)),
+                    )
+                )
             else:
                 body.append(_label(design, net, part.ref, pin.number, out))
         body.append(_symbol_instance(design, part, pins))
@@ -430,10 +486,10 @@ def emit_schematic(design: Design) -> str:
         # notes ran straight through the input section - which no rule catches,
         # because nothing about it changes the netlist. It is only visible by
         # looking at the plot, which is why the plot is in the documentation.
-        y = 110.0 + index * 5.08
+        y = design.notes_at[1] + index * 5.08
         escaped = note.replace('"', '\\"')
         body.append(
-            f'  (text "{escaped}" (at 25.4 {round(y, 2)} 0) '
+            f'  (text "{escaped}" (at {design.notes_at[0]} {round(y, 2)} 0) '
             f'{_effects(justify="left top")} (uuid "{stable_uuid(design.name, "note", index)}"))'
         )
 
@@ -458,17 +514,25 @@ def _label(design: Design, net: str, ref: str, number: str, at) -> str:
     )
 
 
-def _power_symbol(design: Design, lib_id: str, net: str, at, index: int) -> str:
+def _power_symbol(design: Design, lib_id: str, net: str, at, index: int, away=(0.0, 1.0)) -> str:
+    """A ground or rail symbol, turned to point the way the wire left the pin.
+
+    KiCad draws these pointing down and puts the rail name below them. On a pin
+    that leaves sideways that name lands on the next pin's label - which on a
+    twenty-pin header is most of them. Turning the symbol takes the name with it.
+    """
     ref = f"#PWR{index:02d}"
     uid = stable_uuid(design.name, "power", index)
     root = stable_uuid(design.name, "sheet")
+    angle = {(0.0, 1.0): 0, (-1.0, 0.0): 90, (0.0, -1.0): 180, (1.0, 0.0): 270}.get(away, 0)
+    label = (round(at[0] + away[0] * 3.81, 4), round(at[1] + away[1] * 3.81, 4))
     return "\n".join(
         [
-            f'  (symbol (lib_id "{lib_id}") (at {at[0]} {at[1]} 0) (unit 1)',
+            f'  (symbol (lib_id "{lib_id}") (at {at[0]} {at[1]} {angle}) (unit 1)',
             "    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)",
             f'    (uuid "{uid}")',
             _property("Reference", ref, at[0], at[1], True),
-            _property("Value", net, at[0], at[1] + 3.81, False),
+            _property("Value", net, label[0], label[1], False),
             _property("Footprint", "", at[0], at[1], True),
             _property("Datasheet", "", at[0], at[1], True),
             f'    (pin "1" (uuid "{uid}-p"))',
@@ -485,8 +549,8 @@ def _power_flag(design: Design, net: str, index: int) -> str:
     Without one, ERC reports every power_in pin on an externally supplied rail as
     undriven - which is exactly what the as-generated variant leaves behind.
     """
-    x = 38.1 + index * 12.7
-    y = 118.11
+    x = design.flags_at[0] + index * 15.24
+    y = design.flags_at[1]
     ref = f"#FLG{index:02d}"
     uid = stable_uuid(design.name, "flag", index)
     root = stable_uuid(design.name, "sheet")
@@ -510,15 +574,24 @@ def _power_flag(design: Design, net: str, index: int) -> str:
 
 
 def _symbol_instance(design: Design, part: Part, pins: list[PinDef]) -> str:
+    """The symbol, with its two visible fields clear of everything else.
+
+    A fixed 6.35 mm above and below the origin is right for a two-pin part and
+    lands in the middle of the pin labels of a forty-pin one. Measuring the pins
+    instead puts the reference above the symbol and the value below it whatever
+    size it is - which is where a reader looks for them anyway.
+    """
     x, y = part.sheet
+    ends = [pin_geometry(part, pin)[0][1] for pin in pins] or [y]
+    top, bottom = min(*ends, y), max(*ends, y)
     uid = stable_uuid(design.name, "symbol", part.ref)
     root = stable_uuid(design.name, "sheet")
     lines = [
         f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}) (unit 1)',
         "    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)",
         f'    (uuid "{uid}")',
-        _property("Reference", part.ref, x, y - 6.35, False),
-        _property("Value", part.value, x, y + 6.35, False),
+        _property("Reference", part.ref, x, round(top - 2.54, 4), False),
+        _property("Value", part.value, x, round(bottom + 2.54, 4), False),
         _property("Footprint", part.footprint, x, y, True),
         _property("Datasheet", part.fields.get("Datasheet", "~"), x, y, True),
     ]
@@ -1000,6 +1073,35 @@ def resolve_routes(design: Design) -> Design:
         )
 
 
+def _reuuid(node: SNode, *salt: object) -> None:
+    """Give every uuid in a footprint a new, stable value - references included.
+
+    A footprint placed twice cannot keep the library's uuids, and a footprint
+    whose uuids are simply replaced cannot keep its groups: KiCad's `(group ...)`
+    lists its members by uuid, and a group that names uuids the file no longer
+    contains is a footprint that no longer matches its library copy. The Pico
+    module has six of them. So the whole subtree is remapped at once, and the
+    member lists are remapped with it.
+    """
+    mapping: dict[str, str] = {}
+
+    def collect(current: SNode) -> None:
+        if current.name == "uuid":
+            for atom in current.atoms():
+                mapping.setdefault(str(atom), stable_uuid(*salt, atom))
+        for child in current.children():
+            collect(child)
+
+    def rewrite(current: SNode) -> None:
+        if current.name in ("uuid", "members"):
+            current.args = [mapping.get(str(a), a) for a in current.args]
+        for child in current.children():
+            rewrite(child)
+
+    collect(node)
+    rewrite(node)
+
+
 def emit_board(design: Design, path: Path) -> None:
     ox, oy = design.origin
     net_of: dict[tuple[str, str], str] = {}
@@ -1043,6 +1145,7 @@ def emit_board(design: Design, path: Path) -> None:
         node.args.insert(
             1, SNode("at", [round(ox + bx, 4), round(oy + by, 4)] + ([angle] if angle else []))
         )
+        _reuuid(node, design.name, "fp", part.ref)
         node.args.insert(2, _uuid_node(stable_uuid(design.name, "fp", part.ref)))
         _set_property(node, "Reference", part.ref)
         _set_property(node, "Value", part.value)
@@ -1061,7 +1164,10 @@ def emit_board(design: Design, path: Path) -> None:
             name = net_of.get((part.ref, number))
             if name:
                 pad.args.append(SNode("net", [codes[name], labels[name]]))
-            pad.args.append(_uuid_node(stable_uuid(design.name, "pad", part.ref, number, index)))
+            if pad.child("uuid") is None:
+                pad.args.append(
+                    _uuid_node(stable_uuid(design.name, "pad", part.ref, number, index))
+                )
         lines.append(sexp.dumps(node, indent=1))
 
     width, height = design.board_size
@@ -1991,7 +2097,273 @@ def motor_driver() -> Design:
     return replace(design, tracks=tracks, vias=vias)
 
 
-DESIGNS = {"buck-5v": buck_5v, "motor-driver": motor_driver}
+PICO = "MCU_Module:RaspberryPi_Pico"
+# What the module's own pin names become as net names. Everything else keeps the
+# symbol's name, which is already what a Pico datasheet calls it. AGND is not
+# among them: it is the ADC's return and the module already joins it to GND
+# internally, so a carrier that ties the two again has two power outputs wired
+# together - which is what KiCad's ERC says, and it is right. It goes to the
+# header on its own, and what to do with it is the user's decision.
+PICO_NET = {"GND": "GND", "3V3": "+3V3"}
+
+
+def pico_net(name: str) -> str:
+    """The net a Pico pin belongs on, from the name the symbol gives it.
+
+    Reading the pinout out of the symbol rather than typing it again is not
+    laziness: forty pins typed twice is forty chances to swap two of them, and
+    nothing downstream would notice - the netlist would simply be a different,
+    self-consistent board.
+    """
+    if name in PICO_NET:
+        return PICO_NET[name]
+    if name.startswith("GPIO"):
+        return "GP" + name.removeprefix("GPIO").split("_")[0]
+    return name
+
+
+def pico_carrier() -> Design:
+    """A Raspberry Pi Pico carrier: every pin broken out, and a supply for it.
+
+    A carrier is mostly one job done forty times - each module pad to the header
+    pad beside it - and the interesting parts are at the edges of that.
+
+    *The pinout is read, not typed.* The nets come from the symbol's own pin
+    names, so the header is wired to the module by construction. The right hand
+    header runs the other way up, because the module numbers its right side from
+    the bottom and a header numbers itself from the top; that reversal is the
+    one place a carrier board is easy to get wrong, and it is one line here.
+
+    *Seven grounds, one wire.* The Pico symbol stacks its ground pins at a single
+    point. Drawing seven wires and seven ground symbols on that point reads as
+    one and reviews as seven, so :func:`emit_schematic` draws it once.
+
+    *The supply.* An external 5 V feeds VSYS through a Schottky, which is what
+    the Pico datasheet asks for - the diode is what keeps USB and the external
+    supply from fighting when both are present. C1 is the bulk that goes with
+    it, C2 bypasses the module's own 3.3 V, and D3 says the rail is up.
+    """
+    pins = {pin.number: pin.name for pin in symbol_pins(PICO)}
+    left = [str(n) for n in range(1, 21)]  # module pins 1-20, top to bottom
+    right = [str(n) for n in range(40, 20, -1)]  # 40 down to 21, top to bottom
+
+    parts = [
+        Part(
+            "U1",
+            PICO,
+            "Pico",
+            "Module:RaspberryPi_Pico_SMD",
+            sheet=(150.0, 100.0),
+            board=(26.0, 34.13, 0.0),
+            stub=7.62,
+            fields={
+                "MPN": "SC0915",
+                "Manufacturer": "Raspberry Pi",
+                "Datasheet": "https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf",
+            },
+        ),
+        Part(
+            "J3",
+            "Connector:Conn_01x20_Pin",
+            "GP0-GP15",
+            "Connector_PinHeader_2.54mm:PinHeader_1x20_P2.54mm_Vertical",
+            sheet=(60.0, 100.0),
+            board=(10.0, 10.0, 0.0),
+            stub=7.62,
+            fields={
+                "MPN": "61302011121",
+                "Manufacturer": "Wurth Elektronik",
+                "Datasheet": "https://www.we-online.com/components/products/datasheet/61302011121.pdf",
+            },
+        ),
+        Part(
+            "J4",
+            "Connector:Conn_01x20_Pin",
+            "GP16-GP28, PWR",
+            "Connector_PinHeader_2.54mm:PinHeader_1x20_P2.54mm_Vertical",
+            sheet=(240.0, 100.0),
+            board=(42.0, 10.0, 0.0),
+            stub=7.62,
+            fields={
+                "MPN": "61302011121",
+                "Manufacturer": "Wurth Elektronik",
+                "Datasheet": "https://www.we-online.com/components/products/datasheet/61302011121.pdf",
+            },
+        ),
+        Part(
+            "J1",
+            "Connector:Screw_Terminal_01x02",
+            "5V IN",
+            "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+            sheet=(60.0, 40.0),
+            board=(72.0, 11.0, 270.0),
+            fields={
+                "MPN": "1729128",
+                "Manufacturer": "Phoenix Contact",
+                "Datasheet": "https://www.phoenixcontact.com/product/1729128",
+            },
+        ),
+        Part(
+            "D1",
+            "Device:D_Schottky",
+            "SS14",
+            "Diode_SMD:D_SMA",
+            sheet=(90.0, 40.0),
+            board=(56.0, 11.0, 180.0),
+            fields={
+                "Voltage": "40V",
+                "Current": "1A",
+                "MPN": "SS14",
+                "Manufacturer": "Vishay",
+                "Datasheet": "https://www.vishay.com/docs/88746/ss12.pdf",
+            },
+        ),
+        Part(
+            "C1",
+            "Device:C",
+            "22u",
+            "Capacitor_SMD:C_1210_3225Metric",
+            sheet=(115.0, 45.0),
+            board=(46.0, 12.54, 90.0),
+            fields={
+                "Voltage": "16V",
+                "Tolerance": "20%",
+                "MPN": "CL32A226KAJNNNE",
+                "Manufacturer": "Samsung",
+                "Datasheet": "https://product.samsungsem.com/mlcc/CL32A226KAJNNNE.do",
+            },
+        ),
+        Part(
+            "C2",
+            "Device:C",
+            "100n",
+            "Capacitor_SMD:C_0805_2012Metric",
+            sheet=(200.0, 45.0),
+            board=(46.0, 20.0, 0.0),
+            fields={
+                "Voltage": "25V",
+                "Tolerance": "10%",
+                "MPN": "CL21B104KBCNNNC",
+                "Manufacturer": "Samsung",
+                "Datasheet": "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do",
+            },
+        ),
+        Part(
+            "R1",
+            "Device:R",
+            "1k",
+            "Resistor_SMD:R_0805_2012Metric",
+            sheet=(225.0, 45.0),
+            board=(56.0, 20.0, 0.0),
+            fields={
+                "Tolerance": "1%",
+                "Power": "0.125W",
+                "MPN": "RC0805FR-071KL",
+                "Manufacturer": "Yageo",
+                "Datasheet": "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf",
+            },
+        ),
+        Part(
+            "D3",
+            "Device:LED",
+            "green",
+            "LED_SMD:LED_0805_2012Metric",
+            sheet=(225.0, 60.0),
+            board=(64.0, 20.0, 180.0),
+            fields={
+                "Voltage": "2.1V",
+                "Current": "1.2mA",
+                "MPN": "LTST-C170KGKT",
+                "Manufacturer": "Lite-On",
+                "Datasheet": "https://optoelectronics.liteon.com/upload/download/DS-22-98-0002/LTST-C170KGKT.pdf",
+            },
+        ),
+    ]
+
+    # Every module pin, on the net its own name says it is on, and on the header
+    # pad beside it. J4 counts down because the module counts its right hand
+    # side up.
+    nets: dict[str, list[str]] = {}
+    for index, number in enumerate(left, start=1):
+        nets.setdefault(pico_net(pins[number]), []).extend([f"U1.{number}", f"J3.{index}"])
+    for index, number in enumerate(right, start=1):
+        nets.setdefault(pico_net(pins[number]), []).extend([f"U1.{number}", f"J4.{index}"])
+
+    nets["+5V"] = ["J1.1", "D1.1"]
+    nets["VSYS"] += ["D1.2", "C1.1"]
+    nets["+3V3"] += ["C2.1", "R1.1"]
+    nets["GND"] += ["J1.2", "C1.2", "C2.2", "D3.1"]
+    nets["LED_P"] = ["R1.2", "D3.2"]
+
+    design = Design(
+        name="pico-carrier",
+        title="Raspberry Pi Pico carrier, 5 V in",
+        rev="A",
+        company="kicad_skills examples",
+        notes=[
+            "Every module pin is brought out 1:1 to the header beside it. J4 counts",
+            "down against the module: the Pico numbers its right hand side from the",
+            "bottom and a pin header numbers itself from the top.",
+            "5 V reaches VSYS through D1, which is what the Pico datasheet asks for",
+            "- it stops USB and the external supply fighting when both are plugged",
+            "in, at the cost of a diode drop. C1 22 uF / 16 V is the bulk that goes",
+            "with it, small enough to sit against the pin, which an electrolytic is",
+            "not. C2 bypasses the module's own 3.3 V and D3 says that rail is up.",
+            "AGND goes to the header on its own: the module already joins it to GND,",
+            "and doing it again here is two power outputs wired together.",
+        ],
+        parts=parts,
+        nets=nets,
+        power_flags=["+5V", "VSYS", "ADC_VREF"],
+        board_size=(82.0, 68.0),
+        tracks=[],
+        vias=[],
+        pour=(3.0, 3.0, 79.0, 65.0),
+        notes_at=(20.0, 152.0),
+        flags_at=(133.0, 30.0),
+        # The module's 2.54 mm pad pitch decides where everything goes; snapping
+        # to 0.5 mm would move the headers off the pins they exist to reach.
+        board_grid=None,
+    ).snapped()
+
+    SIG, POWER = 0.3, 0.8
+    tracks: list[Track] = []
+    # The breakout itself: each module pad straight across to its header pad.
+    for header, numbers in (("J3", left), ("J4", right)):
+        for index, number in enumerate(numbers, start=1):
+            net = pico_net(pins[number])
+            width = POWER if net in ("GND", "VSYS", "VBUS", "+3V3") else SIG
+            tracks.append(Track(net, "F.Cu", width, [f"U1.{number}", f"{header}.{index}"]))
+
+    # The supply, placed by hand.
+    tracks += [
+        Track("+5V", "F.Cu", POWER, ["J1.1", "D1.1"], auto=True),
+        Track("VSYS", "F.Cu", POWER, ["D1.2", "J4.2"], auto=True),
+        Track("VSYS", "F.Cu", POWER, ["C1.1", "D1.2"], auto=True),
+        Track("+3V3", "F.Cu", POWER, ["C2.1", "J4.5"], auto=True),
+        Track("+3V3", "F.Cu", SIG, ["C2.1", "R1.1"], auto=True),
+        Track("LED_P", "F.Cu", SIG, ["R1.2", "D3.2"], auto=True),
+    ]
+    # Ground: every pad drops straight through to the plane under it.
+    for pad, target in (
+        ("C1.2", (49.0, 17.0)),
+        ("C2.2", (48.5, 20.0)),
+        ("D3.1", (68.0, 24.0)),
+        ("J1.2", (66.0, 17.0)),
+    ):
+        tracks.append(Track("GND", "F.Cu", 0.5, [pad, target], auto=True, goal_layer="B.Cu"))
+    # The module's own ground pads are surface mount and reach the plane through
+    # the header pins they are wired to, which are through-hole and sit in it
+    # already - so those need no via of their own. J1 is the same. Only the four
+    # surface mount parts out on the right have to drill down.
+    return replace(design, tracks=tracks)
+
+
+DESIGNS = {
+    "buck-5v": buck_5v,
+    "motor-driver": motor_driver,
+    "pico-carrier": pico_carrier,
+}
 
 
 # ---------------------------------------------------------------------------
