@@ -47,7 +47,10 @@ FOOTPRINT_DIR = Path("/usr/share/kicad/footprints")
 
 GRID = 1.27  # KiCad's default schematic grid, 50 mil
 STUB = 2.54  # how far a wire runs from a pin before its label
-SCH_VERSION = 20231120  # KiCad 8 format: read by every version in the CI matrix
+# The oldest format in the CI matrix, which is KiCad 9's. It cannot be older:
+# the symbols are copied verbatim out of that release's libraries, so a file
+# stamped KiCad 8 is parsed as KiCad 8 and rejected for tokens it now contains.
+SCH_VERSION = 20250114
 NAMESPACE = uuid.UUID("6f1a0f3e-0000-4000-8000-000000000000")
 
 
@@ -174,6 +177,11 @@ def symbol_definition(lib_id: str) -> SNode:
     else:
         flat = copy.deepcopy(node)
 
+    # `extends` names a parent that exists in the library and not in the
+    # schematic, so it has to go once the parent has been folded in. KiCad 10
+    # ignores the leftover; KiCad 9 refuses to open the file at all, with no
+    # message beyond "Failed to load schematic".
+    flat.args = [a for a in flat.args if not (isinstance(a, SNode) and a.name == "extends")]
     flat.args[0] = lib_id
     return flat
 
@@ -268,7 +276,7 @@ def _property(name: str, value: str, x: float, y: float, hide: bool) -> str:
 def emit_schematic(design: Design) -> str:
     root_uuid = stable_uuid(design.name, "sheet")
     lines = [
-        f'(kicad_sch (version {SCH_VERSION}) (generator "eda-toolkit") (generator_version "8.0")',
+        f'(kicad_sch (version {SCH_VERSION}) (generator "eda-toolkit") (generator_version "9.0")',
         f'  (uuid "{root_uuid}")',
         '  (paper "A4")',
     ]
@@ -337,7 +345,11 @@ def emit_schematic(design: Design) -> str:
         body.append(_power_flag(design, net, index))
 
     for index, note in enumerate(design.notes, start=1):
-        y = 24.0 + index * 5.08
+        # Below the circuit, not beside it. Started at the top of the sheet the
+        # notes ran straight through the input section - which no rule catches,
+        # because nothing about it changes the netlist. It is only visible by
+        # looking at the plot, which is why the plot is in the documentation.
+        y = 110.0 + index * 5.08
         escaped = note.replace('"', '\\"')
         body.append(
             f'  (text "{escaped}" (at 25.4 {round(y, 2)} 0) '

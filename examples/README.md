@@ -17,12 +17,20 @@ what they report converges.
 ./bin/eda.sh gate examples/buck-5v/as-generated --policy examples/buck-5v/gate.toml --text
 ```
 
-Regenerate them with:
+Regenerate the projects with:
 
 ```bash
 docker run --rm -u $(id -u):$(id -g) -v "$PWD:/work" -w /work \
   -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
   --entrypoint python3 eda-toolkit:9.0.9 tools/make_examples.py examples/
+```
+
+and the images below with:
+
+```bash
+./bin/eda.sh sch render examples/buck-5v/reviewed -o build/render/reviewed/sch --dpi 150
+./bin/eda.sh pcb render examples/buck-5v/reviewed -o build/render/reviewed/pcb \
+    --dpi 300 --views front back --no-3d --no-sheet
 ```
 
 The generator reads KiCad's own symbol and footprint libraries, so these are the
@@ -38,6 +46,42 @@ Under KiCad's own ERC and DRC, and the `ai-generated` policy:
 | --- | --- | --- | --- |
 | `reviewed` | **PASS** | 0 / 0 / 0 | 0 / 1 / 7 |
 | `as-generated` | **FAIL**, 6 blocking | 3 / 3 / 14 | 0 / 5 / 8 |
+
+### The two, side by side
+
+Everything below is this repository's own output — `eda sch render` and
+`eda pcb render`, run on the two variants and cropped. Nothing is drawn by hand.
+
+**The schematic.** Left is what a generator leaves; right is after the loop. The
+empty title block, the parts stacked on each other at the bottom right, and the
+absence of any note explaining a single value are all visible before reading one
+finding:
+
+| as-generated | reviewed |
+| --- | --- |
+| ![schematic, as generated](buck-5v/images/schematic-as-generated.jpg) | ![schematic, reviewed](buck-5v/images/schematic-reviewed.jpg) |
+
+**The board, front copper.** The same circuit, the same nets. On the left the
+power rails are routed at signal width, J1 and D1 sit at 37°, and several tracks
+simply stop in mid-air. On the right the power copper is 1.0 mm, every part is
+square to the grid, and each ground stub ends in a via:
+
+| as-generated | reviewed |
+| --- | --- |
+| ![board front, as generated](buck-5v/images/board-front-as-generated.jpg) | ![board front, reviewed](buck-5v/images/board-front-reviewed.jpg) |
+
+**The board, back copper.** This is the ground plane, and the reason the
+floorplan is what it is. Only the two screw terminals are through-hole, and both
+sit outside the pour, so the bottom layer carries nothing but the plane and the
+vias dropping into it. The generated variant has no pour at all:
+
+| as-generated | reviewed |
+| --- | --- |
+| ![board back, as generated](buck-5v/images/board-back-as-generated.jpg) | ![board back, reviewed](buck-5v/images/board-back-reviewed.jpg) |
+
+Both variants also produce a complete fabrication package —
+`eda pcb fab examples/buck-5v/reviewed -o fab/` writes the gerbers, the Excellon
+drill file, the pick-and-place and the BOM.
 
 What separates them, and which check finds it:
 

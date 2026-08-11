@@ -1,4 +1,4 @@
-(kicad_sch (version 20231120) (generator "eda-toolkit") (generator_version "8.0")
+(kicad_sch (version 20250114) (generator "eda-toolkit") (generator_version "9.0")
   (uuid "ec98644d-848c-5056-a4cb-c829189be5c3")
   (paper "A4")
   (lib_symbols
@@ -1140,7 +1140,6 @@
         )
       )
       (embedded_fonts no)
-      (extends "SB120")
     )
     (symbol "Regulator_Switching:LM2596S-5"
       (exclude_from_sim no)
@@ -1317,7 +1316,6 @@
         )
       )
       (embedded_fonts no)
-      (extends "LM2596S-12")
     )
     (symbol "power:+12V"
       (power)
