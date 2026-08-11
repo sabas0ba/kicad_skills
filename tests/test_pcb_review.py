@@ -426,6 +426,18 @@ def test_decoupling_without_a_via_to_the_plane():
     assert pcb_review.rule_decoupling_via(ctx_for(board)) == []
 
 
+def test_a_cap_already_sitting_in_the_pour_needs_no_via():
+    """Two-layer boards poured on both sides made this the noisiest rule in the
+    suite until the pad's own layer was taken into account."""
+    caps = [pad("1", 10, 10, "+3V3"), pad("2", 11, 10, "GND")]
+    board = board_from(
+        footprints=[footprint("C1", 10, 10, caps)],
+        zones=[pcb.Zone(net="GND", layers=["F.Cu", "B.Cu"], filled=True)],
+        vias=[pcb.Via(30, 30, 0.6, 0.3, ["F.Cu", "B.Cu"], 1, "GND")],
+    )
+    assert pcb_review.rule_decoupling_via(ctx_for(board)) == []
+
+
 def test_a_net_routed_at_three_widths():
     board = board_from(
         tracks=[

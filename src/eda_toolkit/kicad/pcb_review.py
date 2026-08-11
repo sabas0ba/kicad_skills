@@ -1044,9 +1044,20 @@ def rule_decoupling_via(ctx: PcbContext) -> list[Finding]:
     through the ground plane. A ground pad that has to travel millimetres of
     track to find a via has more inductance in the path than the part removes,
     however close the capacitor sits to the pin.
+
+    A capacitor sitting on a layer that already carries the pour needs no via at
+    all - its pad drops straight into the copper. Running this over the demo
+    corpus without that exemption made it the noisiest rule in the whole suite,
+    and most of what it reported was two-layer boards poured on both sides.
     """
     board = ctx.board
-    if not any(ctx.net_class_of(z.net) == "ground" for z in board.zones if not z.keepout):
+    ground_zone_layers = {
+        layer
+        for z in board.zones
+        if not z.keepout and ctx.net_class_of(z.net) == "ground"
+        for layer in z.layers
+    }
+    if not ground_zone_layers:
         return []  # no plane to reach: layout.no_ground_plane covers that case
     if not board.vias:
         return []
@@ -1059,6 +1070,8 @@ def rule_decoupling_via(ctx: PcbContext) -> list[Finding]:
         if "power" not in nets or "ground" not in nets:
             continue
         pad = nets["ground"]
+        if _pad_layers(pad, board) & ground_zone_layers:
+            continue  # the pad is already in the pour
         vias = [v for v in board.vias if v.net == pad.net]
         if not vias:
             continue
