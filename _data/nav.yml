@@ -26,12 +26,19 @@
     - title: Board review
       page: docs/guides/kicad-pcb-review.md
       url: /docs/guides/kicad-pcb-review.html
+    - title: The design gate
+      page: docs/guides/kicad-design-gate.md
+      url: /docs/guides/kicad-design-gate.html
     - title: Fabrication output
       page: docs/guides/kicad-fabrication-output.md
       url: /docs/guides/kicad-fabrication-output.html
     - title: The container
       page: docs/guides/eda-environment.md
       url: /docs/guides/eda-environment.html
+
+- title: Worked examples
+  page: examples/README.md
+  url: /examples/
 
 - title: Example output
   page: docs/examples/README.md

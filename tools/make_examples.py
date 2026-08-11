@@ -680,7 +680,12 @@ def check_board(design: Design, clearance: float = 0.2) -> list[str]:
         vx, vy = via_position(design, via)
         half = via.size / 2
         pads.append(
-            (via.net, None, f"via{index} at ({vx}, {vy})", (vx - half, vy - half, vx + half, vy + half))
+            (
+                via.net,
+                None,
+                f"via{index} at ({vx}, {vy})",
+                (vx - half, vy - half, vx + half, vy + half),
+            )
         )
     for part in design.parts:
         node = footprint_definition(part.footprint)
@@ -690,9 +695,7 @@ def check_board(design: Design, clearance: float = 0.2) -> list[str]:
             for name, nodes in design.nets.items():
                 if f"{part.ref}.{number}" in nodes:
                     net = name
-            pads.append(
-                (net, pad_layer(pad), f"{part.ref}.{number}", pad_box(design, part, pad))
-            )
+            pads.append((net, pad_layer(pad), f"{part.ref}.{number}", pad_box(design, part, pad)))
 
     def shares(one: str | None, other: str | None) -> bool:
         return one is None or other is None or one == other
@@ -856,9 +859,7 @@ def fan(
             points.append((bend_x, target_y))
         if abs(column - bend_x) > GEOM_EPS:
             points.append((column, target_y))
-        net = next(
-            name for name, nodes in design.nets.items() if pad in nodes
-        )
+        net = next(name for name, nodes in design.nets.items() if pad in nodes)
         tracks.append(Track(net, "F.Cu", widths.get(number, width), points))
         ends[number] = (column, target_y)
     return tracks, ends
@@ -964,7 +965,9 @@ def resolve_routes(design: Design) -> Design:
             order.remove(blocked.track)
             order.insert(0, blocked.track)
             continue
-        return replace(design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias)
+        return replace(
+            design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
+        )
 
 
 def emit_board(design: Design, path: Path) -> None:
@@ -1122,7 +1125,9 @@ def _hole_boxes(design: Design, layer: str, net: str) -> list[tuple[float, float
     return holes
 
 
-def _fill_rectangles(design: Design, layer: str, net: str) -> list[tuple[float, float, float, float]]:
+def _fill_rectangles(
+    design: Design, layer: str, net: str
+) -> list[tuple[float, float, float, float]]:
     """The pour outline minus the holes, as a set of rectangles.
 
     KiCad stores a zone's fill as polygons and expects each to be a single
@@ -1200,12 +1205,7 @@ def _connected_islands(design, islands, layer: str, net: str):
     for i, one in enumerate(islands):
         for j in range(i + 1, len(islands)):
             other = islands[j]
-            if (
-                one[0] < other[2]
-                and other[0] < one[2]
-                and one[1] < other[3]
-                and other[1] < one[3]
-            ):
+            if one[0] < other[2] and other[0] < one[2] and one[1] < other[3] and other[1] < one[3]:
                 union(i, j)
 
     anchors: list[tuple[float, float, float, float]] = []
@@ -1231,7 +1231,10 @@ def _connected_islands(design, islands, layer: str, net: str):
         find(i)
         for i, box in enumerate(islands)
         for anchor in anchors
-        if box[0] <= anchor[2] and anchor[0] <= box[2] and box[1] <= anchor[3] and anchor[1] <= box[3]
+        if box[0] <= anchor[2]
+        and anchor[0] <= box[2]
+        and box[1] <= anchor[3]
+        and anchor[1] <= box[3]
     }
     return [box for i, box in enumerate(islands) if find(i) in live]
 
@@ -1269,9 +1272,7 @@ def _zone(design: Design, code: int) -> str:
     ]
     for left, top, right, bottom in _fill_rectangles(design, "B.Cu", POUR_NET):
         corners = [(left, top), (right, top), (right, bottom), (left, bottom)]
-        island = " ".join(
-            f"(xy {round(ox + x, 4)} {round(oy + y, 4)})" for x, y in corners
-        )
+        island = " ".join(f"(xy {round(ox + x, 4)} {round(oy + y, 4)})" for x, y in corners)
         lines.append(f'\t\t(filled_polygon (layer "B.Cu") (pts {island}))')
     lines.append("\t)")
     return "\n".join(lines)
@@ -1725,7 +1726,7 @@ def motor_driver() -> Design:
             "10k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(190.0, 85.0),
-            board=(78.0, 51.0, 0.0),
+            board=(60.0, 40.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -1811,7 +1812,16 @@ def motor_driver() -> Design:
         # reach it: ground at both ends, then the two signals that come round
         # the outside of the package and the four that come straight out of it.
         "GND": [
-            "J1.2", "C1.2", "C2.2", "U1.13", "U1.3", "U1.6", "C4.2", "D2.1", "J4.1", "J4.8",
+            "J1.2",
+            "C1.2",
+            "C2.2",
+            "U1.13",
+            "U1.3",
+            "U1.6",
+            "C4.2",
+            "D2.1",
+            "J4.1",
+            "J4.8",
         ],
         "VCP": ["U1.11", "C3.2"],
         "VINT": ["U1.14", "C4.1", "R1.1"],
@@ -1855,10 +1865,10 @@ def motor_driver() -> Design:
         parts=parts,
         nets=nets,
         power_flags=["VM", "GND", "VINT"],
-        board_size=(100.0, 60.0),
+        board_size=(100.0, 50.0),
         tracks=[],
         vias=[],
-        pour=(3.0, 3.0, 97.0, 57.0),
+        pour=(3.0, 3.0, 97.0, 47.0),
     )
 
     # Snap before the fan-out is worked out: it measures from where the pads
@@ -1927,7 +1937,7 @@ def motor_driver() -> Design:
         Track("GND", "F.Cu", 0.5, ["C1.2", (68.0, 20.5)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", 0.5, ["J1.2", (88.0, 18.5)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", 0.5, ["J4.1", (88.0, 24.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["J4.8", (88.0, 46.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["J4.8", (88.0, 45.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", SIG, ["D2.1", (83.0, 8.5)], auto=True, goal_layer="B.Cu"),
     ]
 
