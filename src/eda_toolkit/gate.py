@@ -264,16 +264,56 @@ def policy_from_dict(data: dict[str, Any], *, default_name: str = "custom") -> P
     )
 
 
+def catalogue() -> dict[str, dict[str, Any]]:
+    """Every rule the reviews can produce, and what each policy does to it.
+
+    This is the answer to "what is actually checked, and which of it stops me":
+    the condition each rule tests, the severity it reports, the threshold that
+    tunes it, and the built-in policies under which it blocks. It is assembled
+    from the review modules rather than written out, so it cannot drift from
+    them - `eda gate --list-rules` prints it.
+    """
+    from .kicad import pcb_review, sch_review
+
+    out: dict[str, dict[str, Any]] = {}
+    for origin, module in (("schematic", sch_review), ("board", pcb_review)):
+        for rule_id, spec in module.RULE_SPEC.items():
+            entry = out.setdefault(rule_id, {"origin": origin, **spec.to_dict()})
+            if entry["origin"] != origin:
+                entry["origin"] = "schematic + board"  # internal.* comes from both
+            if spec.threshold:
+                entry["threshold_default"] = module.THRESHOLDS[spec.threshold]
+
+    for rule_id, entry in out.items():
+        # Judge the rule at the worst severity it can report. A rule KiCad grades
+        # for us (erc.*, drc.*) can always come back as an error.
+        graded = [s for s in entry["severity"].split(" / ") if s in SEVERITY_ORDER]
+        declared = min(graded, key=SEVERITY_ORDER.__getitem__) if graded else "error"
+        entry["context_only"] = rule_id in CONTEXT_RULES
+        entry["blocks_under"] = [
+            name
+            for name, policy in BUILTIN_POLICIES.items()
+            if policy.limits.get(_effective(policy, rule_id, declared)) == 0
+        ]
+    return out
+
+
+def _effective(policy: Policy, rule_id: str, declared: str) -> str:
+    finding = {"rule": rule_id, "severity": declared}
+    if rule_id in CONTEXT_RULES:
+        return declared
+    return policy.effective_severity(finding)
+
+
 def _apply(policy: Policy, findings: list[dict[str, Any]], origin: str) -> list[dict[str, Any]]:
     out = []
     for finding in findings:
         entry = dict(finding)
         entry["origin"] = origin
         entry["reported_severity"] = finding.get("severity", "info")
-        if finding.get("rule") in CONTEXT_RULES:
-            entry["severity"] = entry["reported_severity"]
-        else:
-            entry["severity"] = policy.effective_severity(finding)
+        entry["severity"] = _effective(
+            policy, str(finding.get("rule", "")), entry["reported_severity"]
+        )
         waiver = policy.waiver_for(finding)
         if waiver is not None:
             entry["waiver"] = waiver.to_dict()

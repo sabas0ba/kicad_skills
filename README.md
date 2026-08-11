@@ -160,8 +160,15 @@ $ ./bin/eda.sh gate hardware/ --policy ai-generated --text
 None of that is something ERC or DRC has an opinion about, which is exactly why
 a design can be ERC-clean, DRC-clean and still be one no engineer would sign.
 `(reported as warning)` is the policy at work — and a waiver without a stated
-reason is refused, so nothing is passed over quietly. See the
-[design gate guide](docs/guides/kicad-design-gate.md).
+reason is refused, so nothing is passed over quietly.
+
+`eda gate --list-rules` prints the whole contract: every rule, the exact
+condition that makes it fire, the threshold that tunes it and its default, and
+the policies under which it blocks. It is assembled from the rule modules, and
+`tests/test_rule_spec.py` reads their source, so a rule the catalogue does not
+describe — or an entry no rule produces — fails the build. See the
+[design gate guide](docs/guides/kicad-design-gate.md) for the evaluation rules
+and the exit codes.
 
 **Simulate before committing to a part value** — the −3 dB corner, the phase
 margin and the tolerance spread come back as numbers, not a picture to squint at.
@@ -309,7 +316,8 @@ Provenance and licensing of these images: [`docs/examples/README.md`](docs/examp
 ```
 eda doctor                                    tool versions in the environment
 eda gate         TARGET [--policy NAME|FILE] [--text] [--threshold KEY=VALUE]
-                        [--collapse N] [-o verdict.json] [--list-policies]
+                        [--collapse N] [-o verdict.json]
+eda gate         --list-policies | --list-rules [--text]
 eda diff         OLD NEW -o DIR [--dpi 150] [--no-images]
 eda report       TARGET -o DIR [--dpi 200] [--glb] [--simulation NETLIST]
                               [--no-3d] [--no-per-layer] [--no-bom] [--title T]

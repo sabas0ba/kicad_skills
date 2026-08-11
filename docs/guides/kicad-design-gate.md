@@ -28,6 +28,64 @@ blocks, or it appears under `waived` next to the sentence somebody wrote to
 excuse it — in a file in the repository, so excusing a violation is a diff a
 reviewer sees rather than a step a generator can skip.
 
+## What it checks, exactly
+
+```bash
+./bin/eda.sh gate --list-rules          # JSON: every rule, in full
+./bin/eda.sh gate --list-rules --text   # the same, readable
+```
+
+That is the specification, not a summary of one. Each entry states the rule's
+id, which review produces it, **the exact condition that makes it fire**, the
+severity it reports, the `--threshold` key that tunes it with its default value,
+and the built-in policies under which it blocks:
+
+```json
+"spec.voltage_derating": {
+  "origin": "schematic",
+  "checks": "a capacitor whose stated voltage rating is below the highest rail its nets name ('error'), or below that rail times the derating factor ('warning'). Rails that state no voltage are not judged",
+  "severity": "error / warning",
+  "threshold": "capacitor_derating_factor",
+  "threshold_default": 1.5,
+  "context_only": false,
+  "blocks_under": ["default", "ai-generated", "fabrication"]
+}
+```
+
+It is assembled from the review modules rather than written out beside them, and
+`tests/test_rule_spec.py` reads the rule sources themselves: a rule that emits an
+id the catalogue does not describe, a catalogue entry no rule produces any more,
+a threshold named by no rule, or a policy pattern matching no rule, is a **test
+failure**. The catalogue cannot drift from the code.
+
+## What it asserts
+
+Given a target and a policy, `eda gate` does exactly this:
+
+1. Run the **schematic review** and the **board review**. Either one whose file
+   is absent is recorded as `skipped`; if *both* are absent that is an error
+   (exit `1`), not a pass.
+2. For each finding, decide its **effective severity**:
+   * a rule listed in `CONTEXT_RULES` keeps the severity it reported — these
+     describe the design rather than fault it, and no policy can promote them;
+   * otherwise, the longest `severity` pattern in the policy that matches the
+     rule id wins; with no match, the finding keeps its own severity.
+3. Move every finding matched by a **waiver** out of the verdict and into
+   `waived`. A waiver matches on the rule id (glob) and optionally on a substring
+   of the location, and must carry a `reason`.
+4. **Count** the findings that remain, by effective severity.
+5. For each entry in the policy's `limits`, assert `count[severity] <= limit`.
+   A severity with no limit is not asserted on. Everything counted at a severity
+   whose limit was exceeded is listed under `blocking`.
+6. `pass` is true when no limit was exceeded.
+
+Exit codes: **`0`** the design meets the policy · **`2`** it does not · **`1`**
+usage or file error (unknown policy, malformed policy, nothing to review).
+
+The JSON carries both severities for every finding — `reported_severity` is what
+the rule said, `severity` is what the policy decided — so a report can show one
+and gate on the other.
+
 ## The loop
 
 Generating a design and reviewing it afterwards produces a design that was
@@ -126,7 +184,9 @@ point of the file.
 ## What the gate adds over the two reviews
 
 The rules below exist because ERC and DRC have no opinion about any of them. A
-design can be ERC-clean, DRC-clean and still be one no engineer would sign.
+design can be ERC-clean, DRC-clean and still be one no engineer would sign. The
+tables say what each rule is *for*; `--list-rules` says what each one *does*, to
+the letter.
 
 **Schematic readability** — none of this changes the netlist, which is exactly
 why nothing else catches it:

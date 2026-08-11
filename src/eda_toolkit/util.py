@@ -106,6 +106,31 @@ class Finding:
         return out
 
 
+@dataclasses.dataclass(frozen=True)
+class RuleSpec:
+    """What one rule inspects, and the condition under which it says so.
+
+    The prose in a rule's docstring explains *why* it exists; this says *what it
+    does*, in the terms someone has to know to predict whether their design will
+    trip it. ``tests/test_rule_spec.py`` keeps the two sets in step: a rule that
+    emits an id with no entry here, or an entry naming an id no rule emits, is a
+    test failure rather than a documentation drift.
+    """
+
+    checks: str  # the condition that produces the finding
+    severity: str  # the severity it reports when it does
+    threshold: str | None = None  # the THRESHOLDS key that tunes it, if any
+    dynamic: bool = False  # id is completed at runtime (erc.*, drc.*)
+
+    def to_dict(self) -> dict[str, Any]:
+        out: dict[str, Any] = {"checks": self.checks, "severity": self.severity}
+        if self.threshold:
+            out["threshold"] = self.threshold
+        if self.dynamic:
+            out["dynamic"] = True
+        return out
+
+
 def sort_findings(findings: Iterable[Finding]) -> list[Finding]:
     order = {s: i for i, s in enumerate(SEVERITIES)}
     return sorted(findings, key=lambda f: (order[f.severity], f.rule, f.location or ""))

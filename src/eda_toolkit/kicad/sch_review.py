@@ -10,7 +10,14 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ..util import COLLAPSE_LIMIT, Finding, collapse_findings, sort_findings, summarize
+from ..util import (
+    COLLAPSE_LIMIT,
+    Finding,
+    RuleSpec,
+    collapse_findings,
+    sort_findings,
+    summarize,
+)
 from . import kicad_cli, schematic
 from . import netlist as netlist_mod
 
@@ -34,6 +41,146 @@ THRESHOLDS: dict[str, float] = {
 
 # Geometry lives on a 1/100 mm world; anything below this is file noise.
 GEOM_TOL = 0.01
+
+# Every rule id here is built from a literal prefix, so none has to be declared
+# the way pcb_review's DRC buckets do.
+DYNAMIC_RULE_IDS: tuple[str, ...] = ()
+
+# Every finding this module can produce, and the condition that produces it.
+# This is the checkable half of the documentation: tests/test_rule_spec.py fails
+# if a rule emits an id that is missing here, or if an id here is emitted by no
+# rule. `eda gate --list-rules` prints it.
+RULE_SPEC: dict[str, RuleSpec] = {
+    # -- KiCad's own ERC ---------------------------------------------------
+    "erc.*": RuleSpec(
+        "one entry per violation KiCad's own ERC reports, keeping its type and severity",
+        "as KiCad graded it",
+        dynamic=True,
+    ),
+    "erc.unavailable": RuleSpec("kicad-cli was not available, so ERC did not run", "info"),
+    # -- annotation and fields --------------------------------------------
+    "schematic.duplicate_reference": RuleSpec(
+        "two symbols share a reference and are not units of one part", "error"
+    ),
+    "schematic.unannotated": RuleSpec("a symbol whose reference is empty or ends in '?'", "error"),
+    "schematic.missing_value": RuleSpec("a part with an empty Value field", "warning"),
+    "schematic.missing_footprint": RuleSpec(
+        "a part that is on the board, is not DNP, and has no Footprint", "warning"
+    ),
+    "schematic.missing_datasheet": RuleSpec(
+        "a U/IC/Q/D/Y/L part whose Datasheet field is empty or '~'", "info"
+    ),
+    "schematic.dnp": RuleSpec(
+        "a part marked do-not-populate, listed so it is not forgotten", "info"
+    ),
+    # -- connectivity ------------------------------------------------------
+    "net.single_pin": RuleSpec(
+        "a net that reaches exactly one pin: 'warning' when KiCad named it "
+        "(unconnected-(U1-Pad3)), 'info' when a human did",
+        "warning / info",
+    ),
+    "net.no_driver": RuleSpec(
+        "a multi-pin net whose pins are all of electrical type 'input'", "warning"
+    ),
+    "power.no_ground": RuleSpec("no net classifies as ground (GND/VSS/AGND...)", "error"),
+    "power.no_supply": RuleSpec("no net classifies as a supply (+3V3/VCC/VDD...)", "warning"),
+    "power.many_supplies": RuleSpec("more than six distinct supply nets", "info"),
+    "power.unused_rail": RuleSpec(
+        "a power or ground net that reaches no component pin at all", "warning"
+    ),
+    # -- circuit practice --------------------------------------------------
+    "analog.missing_decoupling": RuleSpec(
+        "an IC supply net with no capacitor that also touches ground", "warning"
+    ),
+    "analog.i2c_pullup": RuleSpec(
+        "a net named SDA/SCL (optionally I2Cn_ prefixed) with no resistor on it", "warning"
+    ),
+    "analog.led_no_series_resistor": RuleSpec(
+        "an LED with no resistor on the nets either terminal reaches", "warning"
+    ),
+    # -- drawing readability ----------------------------------------------
+    "readability.off_grid_pin": RuleSpec(
+        "a symbol pin whose x or y is not a multiple of the grid; KiCad connects "
+        "on exact coordinates, so a wire meeting it only appears to",
+        "warning",
+        threshold="grid_mm",
+    ),
+    "readability.off_grid_wire": RuleSpec(
+        "a wire vertex off the grid, so it cannot meet an on-grid pin",
+        "warning",
+        threshold="grid_mm",
+    ),
+    "readability.off_grid_junction": RuleSpec(
+        "a junction dot off the grid, joining nothing where it stands",
+        "warning",
+        threshold="grid_mm",
+    ),
+    "readability.off_grid_label": RuleSpec(
+        "a label off the grid, so it names no wire", "info", threshold="grid_mm"
+    ),
+    "readability.diagonal_wire": RuleSpec(
+        "a wire segment whose ends differ in both x and y", "info"
+    ),
+    "readability.missing_junction": RuleSpec(
+        "a wire end that lies in the interior of another wire with no junction "
+        "dot there; KiCad treats that as crossing, not connected",
+        "warning",
+    ),
+    "readability.dangling_wire": RuleSpec(
+        "a wire end that coincides with no pin, label, junction, no-connect, "
+        "sheet pin, bus entry or other wire",
+        "warning",
+    ),
+    "readability.overlapping_symbols": RuleSpec(
+        "two symbols on one sheet whose pin extents, grown by the margin, overlap in both axes",
+        "warning",
+        threshold="symbol_margin_mm",
+    ),
+    "readability.outside_page": RuleSpec(
+        "a symbol, label or wire vertex outside the page rectangle, so it is "
+        "absent from the plotted sheet and the PDF",
+        "warning",
+    ),
+    "readability.sheet_density": RuleSpec(
+        "one sheet carrying more non-power symbols than the limit",
+        "info",
+        threshold="max_symbols_per_sheet",
+    ),
+    "readability.unnamed_nets": RuleSpec(
+        "of ten or more multi-pin nets, the fraction carrying a human-chosen "
+        "name is below the limit",
+        "info",
+        threshold="min_named_net_ratio",
+    ),
+    "readability.title_block": RuleSpec(
+        "the root sheet's title block is missing a title, rev, date or company", "info"
+    ),
+    # -- specification -----------------------------------------------------
+    "spec.missing_rating": RuleSpec(
+        "a non-DNP R without tolerance/power, C without voltage/tolerance, or L "
+        "without a current rating, read from the symbol's fields",
+        "info",
+    ),
+    "spec.missing_part_number": RuleSpec(
+        "a non-DNP U/IC/Q/D/Y/K/J/SW part with no MPN, manufacturer or distributor field",
+        "info",
+    ),
+    "spec.voltage_derating": RuleSpec(
+        "a capacitor whose stated voltage rating is below the highest rail its "
+        "nets name ('error'), or below that rail times the derating factor "
+        "('warning'). Rails that state no voltage are not judged",
+        "error / warning",
+        threshold="capacitor_derating_factor",
+    ),
+    "spec.no_design_notes": RuleSpec(
+        "no sheet carries a text note and no part carries a description, so the "
+        "reasoning behind the values is recorded nowhere",
+        "info",
+    ),
+    "internal.*": RuleSpec(
+        "a rule raised an exception; reported instead of failing the review", "info", dynamic=True
+    ),
+}
 
 
 def rule(func: Callable[[ReviewContext], list[Finding]]):

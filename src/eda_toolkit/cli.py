@@ -79,6 +79,27 @@ def _render_gate(payload: dict[str, Any]) -> None:
             print(f"  {finding['rule']}: {finding['waiver']['reason']}")
 
 
+def _render_rules(catalogue: dict[str, Any]) -> None:
+    print("# every rule the reviews can produce\n")
+    for origin in ("schematic", "board", "schematic + board"):
+        entries = {k: v for k, v in catalogue.items() if v["origin"] == origin}
+        if not entries:
+            continue
+        print(f"## {origin}")
+        for rule_id, entry in sorted(entries.items()):
+            blocks = ", ".join(entry["blocks_under"]) or "nothing"
+            tune = (
+                f" [--threshold {entry['threshold']}={entry.get('threshold_default')}]"
+                if entry.get("threshold")
+                else ""
+            )
+            context = " (context only: never promoted)" if entry["context_only"] else ""
+            print(f"  {rule_id}  -  {entry['severity']}{tune}{context}")
+            print(f"      checks: {entry['checks']}")
+            print(f"      blocks under: {blocks}")
+        print()
+
+
 def cmd_gate(args: argparse.Namespace) -> int:
     from . import gate as gate_mod
 
@@ -87,6 +108,9 @@ def cmd_gate(args: argparse.Namespace) -> int:
             {name: p.description for name, p in sorted(gate_mod.BUILTIN_POLICIES.items())},
             as_json=True,
         )
+        return 0
+    if args.list_rules:
+        emit(gate_mod.catalogue(), as_json=args.json, text_renderer=_render_rules)
         return 0
     if not args.target:
         raise EdaError("gate needs a target (or --list-policies)")
@@ -557,6 +581,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--list-policies", action="store_true", help="print the built-in policies and exit"
+    )
+    p.add_argument(
+        "--list-rules",
+        action="store_true",
+        help="print every rule, what it checks, what tunes it and which policies "
+        "block on it, then exit",
     )
     p.add_argument("--no-cli", action="store_true")
     p.add_argument(

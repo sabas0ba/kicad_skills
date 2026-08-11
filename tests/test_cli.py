@@ -189,3 +189,20 @@ def test_a_threshold_that_is_not_a_number_is_a_usage_error(capsys):
         code, _out, err = run(["pcb", "review", "x", "--threshold", spec], capsys)
         assert code == 1
         assert "--threshold" in err
+
+
+def test_gate_lists_every_rule_with_what_it_checks(capsys):
+    code, out, _ = run(["gate", "--list-rules"], capsys)
+    assert code == 0
+    catalogue = json.loads(out)
+    entry = catalogue["readability.missing_junction"]
+    assert entry["origin"] == "schematic"
+    assert "junction" in entry["checks"]
+    assert entry["blocks_under"] == ["ai-generated"]
+
+
+def test_gate_list_rules_has_a_readable_form(capsys):
+    code, out, _ = run(["gate", "--list-rules", "--text"], capsys)
+    assert code == 0
+    assert "## schematic" in out and "## board" in out
+    assert "--threshold grid_mm=1.27" in out

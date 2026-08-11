@@ -8,7 +8,14 @@ from collections import Counter, defaultdict
 from collections.abc import Callable
 from typing import Any
 
-from ..util import COLLAPSE_LIMIT, Finding, collapse_findings, sort_findings, summarize
+from ..util import (
+    COLLAPSE_LIMIT,
+    Finding,
+    RuleSpec,
+    collapse_findings,
+    sort_findings,
+    summarize,
+)
 from . import electrical, kicad_cli, pcb
 from . import netlist as netlist_mod
 
@@ -36,6 +43,146 @@ THRESHOLDS = {
 
 # Copper geometry is stored in nm; anything below this is file noise.
 GEOM_TOL = 0.001
+
+# `rule_drc` builds its ids from a bucket name held in a variable, so unlike
+# every other rule here its prefixes cannot be read out of the source. They are
+# declared instead; tests/test_rule_spec.py requires each to be in RULE_SPEC.
+DYNAMIC_RULE_IDS = ("drc.*", "drc.unconnected.*", "drc.parity.*")
+
+# Every finding this module can produce, and the condition that produces it.
+# tests/test_rule_spec.py keeps it honest; `eda gate --list-rules` prints it.
+RULE_SPEC: dict[str, RuleSpec] = {
+    # -- KiCad's own DRC ---------------------------------------------------
+    "drc.*": RuleSpec(
+        "one entry per violation KiCad's own DRC reports, keeping its type and severity",
+        "as KiCad graded it",
+        dynamic=True,
+    ),
+    "drc.unconnected.*": RuleSpec(
+        "a ratsnest connection KiCad's DRC found unrouted", "error", dynamic=True
+    ),
+    "drc.parity.*": RuleSpec(
+        "a disagreement between the board and the schematic (net, footprint, part)",
+        "as KiCad graded it",
+        dynamic=True,
+    ),
+    "drc.unavailable": RuleSpec("kicad-cli was not available, so DRC did not run", "info"),
+    # -- the board itself --------------------------------------------------
+    "board.no_outline": RuleSpec("there is no Edge.Cuts geometry at all", "error"),
+    "board.size": RuleSpec("the outline's bounding size, reported as context", "info"),
+    "board.tiny_outline": RuleSpec("the outline is under 5 mm in either axis", "warning"),
+    "board.copper_outside_outline": RuleSpec(
+        "a track end, via or pad lies outside the closed outline, so it would be "
+        "milled away; measured against the flattened Edge.Cuts, cutouts included",
+        "error",
+    ),
+    "board.edge_clearance": RuleSpec(
+        "copper whose own half-width leaves less than the limit to the outline",
+        "warning",
+        threshold="min_edge_clearance_mm",
+    ),
+    # -- fab capability ----------------------------------------------------
+    "track.below_minimum": RuleSpec(
+        "a track segment narrower than the fab minimum", "error", threshold="min_track_mm"
+    ),
+    "track.thin_power": RuleSpec(
+        "a power or ground track under 0.4 mm, reported with the current it "
+        "actually carries at a 10 C rise (IPC-2221) from the board's own stackup",
+        "warning",
+    ),
+    "via.small_drill": RuleSpec(
+        "a via drilled smaller than the fab minimum", "warning", threshold="min_via_drill_mm"
+    ),
+    "via.annular_ring": RuleSpec(
+        "a via whose (size - drill)/2 is under the limit",
+        "warning",
+        threshold="min_annular_ring_mm",
+    ),
+    "fab.many_drill_sizes": RuleSpec(
+        "more distinct drill diameters than the limit, which costs money",
+        "info",
+        threshold="max_drill_sizes",
+    ),
+    # -- routing -----------------------------------------------------------
+    "route.unrouted_net": RuleSpec(
+        "a net with pads on two or more footprints and no track, via or zone. "
+        "Only evaluated when DRC could not run; DRC is authoritative",
+        "error",
+    ),
+    "route.no_tracks": RuleSpec("the board has no routed tracks at all", "warning"),
+    "route.layer_usage": RuleSpec("track segments per copper layer, as context", "info"),
+    "route.stub": RuleSpec(
+        "a track end meeting no pad, via or other track, on a net with no pour on "
+        "that layer to land in",
+        "warning",
+    ),
+    "route.acute_angle": RuleSpec(
+        "two same-net segments meeting at an interior angle below the limit: an "
+        "acid trap, and a discontinuity for anything fast",
+        "info",
+        threshold="min_track_angle_deg",
+    ),
+    "route.mixed_track_widths": RuleSpec("a net routed at three or more distinct widths", "info"),
+    # -- placement ---------------------------------------------------------
+    "layout.outside_outline": RuleSpec("a footprint origin outside the board outline", "error"),
+    "layout.pad_collision": RuleSpec(
+        "pads of two different footprints whose extents overlap on a shared layer",
+        "warning",
+    ),
+    "layout.off_grid_placement": RuleSpec(
+        "a footprint origin that is not a multiple of the placement grid",
+        "info",
+        threshold="placement_grid_mm",
+    ),
+    "layout.odd_rotation": RuleSpec(
+        "a footprint turned to something other than a multiple of the step",
+        "info",
+        threshold="rotation_step_deg",
+    ),
+    "layout.double_sided_assembly": RuleSpec(
+        "footprints on the bottom side, which costs an assembly pass", "info"
+    ),
+    # -- power integrity ---------------------------------------------------
+    "layout.no_decoupling": RuleSpec(
+        "an IC supply pad with no capacitor footprint on that net", "warning"
+    ),
+    "layout.decoupling_distance": RuleSpec(
+        "the nearest decoupling capacitor to an IC supply pad is further than the limit",
+        "warning",
+        threshold="max_decoupling_distance_mm",
+    ),
+    "layout.decoupling_via": RuleSpec(
+        "a decoupling capacitor's ground pad is further than the limit from the "
+        "nearest via on that net, so the return loop runs through track instead "
+        "of the plane. Only evaluated when a ground pour and vias exist",
+        "warning",
+        threshold="max_decoupling_via_mm",
+    ),
+    "layout.no_ground_plane": RuleSpec("no ground zone anywhere on the board", "warning"),
+    "layout.unfilled_zone": RuleSpec(
+        "a ground zone with fill enabled but no computed fill in the file", "warning"
+    ),
+    "layout.ground_plane": RuleSpec("the ground zones that do exist, as context", "info"),
+    # -- silkscreen and mechanical ----------------------------------------
+    "silk.over_pad": RuleSpec(
+        "a visible silkscreen string whose estimated extent overlaps a pad on the "
+        "same side; ink on a pad keeps solder off it",
+        "warning",
+    ),
+    "silk.text_too_small": RuleSpec(
+        "visible silkscreen shorter than the screen printer's limit",
+        "warning",
+        threshold="min_silk_text_height_mm",
+    ),
+    "silk.missing_reference": RuleSpec(
+        "a non-virtual footprint with no silkscreen text of its own", "info"
+    ),
+    "mechanical.no_mounting_holes": RuleSpec("no H*/MH* footprint on the board", "info"),
+    "test.no_testpoints": RuleSpec("no TP* footprint on the board", "info"),
+    "internal.*": RuleSpec(
+        "a rule raised an exception; reported instead of failing the review", "info", dynamic=True
+    ),
+}
 
 
 def rule(func: Callable[[PcbContext], list[Finding]]):

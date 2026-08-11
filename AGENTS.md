@@ -53,6 +53,13 @@ what a part has to state to be orderable belongs in `spec.*`. Anything tunable
 goes in the module's `THRESHOLDS` dict rather than as a literal in the rule, so
 `--threshold key=value` reaches it.
 
+Every rule id also needs an entry in the module's `RULE_SPEC`, saying what
+condition produces it, the severity it reports and the threshold that tunes it.
+That table is what `eda gate --list-rules` prints, and `tests/test_rule_spec.py`
+parses the rule sources to enforce it in both directions — an id with no entry,
+an entry no rule emits, a threshold no rule names, or a policy pattern matching
+no rule, all fail. It also checks that the guides only name rules that exist.
+
 Then decide what the rule does to `eda gate`. A rule that *describes* the design
 rather than faulting it (`board.size`, `layout.ground_plane`) must be added to
 `CONTEXT_RULES` in `src/eda_toolkit/gate.py`, or a policy could promote it into
