@@ -1,0 +1,49 @@
+# The policy this example is held to, and what it is allowed to fail - each
+# with the engineering argument, so a reviewer can disagree with something.
+name = "motor-driver"
+extends = "ai-generated"
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+reason = """A TSSOP-16 at 0.65 mm pitch has to walk its rows out to a routable \
+pitch before anything can be placed against them, and that walk is the distance \
+the rule measures. On two layers with parts on one side these are the closest \
+positions that exist; the four-layer answer (caps on the back, under the pins) \
+is out of this generator's reach. U1.11 is also the charge pump: C3 sits \
+between VCP and VM because the datasheet says exactly that."""
+
+[[waivers]]
+rule = "layout.decoupling_via"
+location = "C1"
+reason = """C1 is the bulk electrolytic on VM. Its ground pad reaches the plane \
+through the pour-side via 4 mm away; a via inside that distance would sit in \
+the screw terminal's courtyard. The bypass loop that matters at switching \
+speed is C2's, which passes."""
+
+[[waivers]]
+rule = "readability.label_only"
+reason = """The generator draws a wire wherever two pins face each other on one \
+axis with a clear run. Between a TSSOP and edge connectors no such run exists, \
+so this sheet is still mostly labels. Real fix - a schematic router that can \
+bend without making things worse - is future work; the finding is kept \
+visible rather than silenced."""
+
+[[waivers]]
+rule = "route.acute_angle"
+reason = """The corners under 90 degrees are where the stated escape fans meet \
+the 45-degree routing grid. At this fab's geometry they are not acid traps; \
+they are the signature of the fan, judged on the plot."""
+
+[[waivers]]
+rule = "route.return_path"
+reason = """Two logic inputs cross the channels the back-layer crossings cut in \
+the plane. They carry PWM at tens of kilohertz over a few millimetres of gap; \
+the loop growth is accepted for a two-layer demonstration board and would be \
+re-layered for a product."""
+
+[[waivers]]
+rule = "track.thin_power"
+reason = """The narrow run on VM is the branch feeding the power LED through \
+R2: about 2 mA in a track good for 1 A at a 10 C rise. The rule reads the net \
+class, not the branch current, and on this branch the number is three orders \
+of magnitude inside the limit."""

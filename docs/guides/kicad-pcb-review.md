@@ -95,7 +95,7 @@ mismatches).
 | Rule | Default threshold | Meaning |
 | --- | --- | --- |
 | `track.below_minimum` | 0.15 mm | tracks the fab cannot make |
-| `track.thin_power` | 0.4 mm | power/ground tracks that may not carry the current |
+| `track.thin_power` | 10 mm neck | a contiguous run of power/ground track under 0.4 mm longer than the neck allowance — pad entries and fine-pitch escapes pass, thin trunks fail |
 | `via.small_drill` / `via.annular_ring` | 0.3 mm / 0.13 mm | via geometry vs fab capability |
 | `board.edge_clearance` | 0.3 mm | copper too close to the outline (measured against the real Edge.Cuts geometry - arcs, circles and cutouts included, not a bounding box) |
 | `board.copper_outside_outline` | — | copper past the outline entirely: it would be milled away |
@@ -116,6 +116,8 @@ mismatches).
 | `route.stub` | — | a track end reaching no pad, via or other track |
 | `route.acute_angle` | 90 deg | corners that trap etchant and step the impedance |
 | `route.mixed_track_widths` | 3 widths | a net nobody decided the width of |
+| `route.detour` | 2.5x | routed copper against the minimum spanning tree of the net's pads — the scenic tour an autorouter leaves |
+| `route.return_path` | 10 mm | on a two-layer board, signal track running over cuts in the other layer's ground fill: the return current detours and the loop grows |
 
 Override any threshold: `--threshold min_track_mm=0.2 --threshold max_decoupling_distance_mm=3`.
 The full set: `min_track_mm`, `min_via_drill_mm`, `min_annular_ring_mm`,

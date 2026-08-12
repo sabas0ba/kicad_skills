@@ -129,6 +129,92 @@ def test_decoupling_present_is_silent():
     assert sch_review.rule_decoupling(ctx) == []
 
 
+def test_decoupling_trusts_pin_types_over_names():
+    """VREF is named like a rail; the pin types say it is an op-amp output."""
+    ctx = make_ctx(
+        {
+            "VREF": [
+                node("U2", "1", "output"),
+                node("U2", "4", "input"),
+                node("R5", "2"),
+                node("U1", "3", "input"),
+            ],
+            "GND": [node("U2", "5", "power_in")],
+        }
+    )
+    assert sch_review.rule_decoupling(ctx) == []
+
+
+def test_decoupling_still_reads_names_when_types_are_absent():
+    """A netlist with no pin types falls back to the old name-based judgment."""
+    ctx = make_ctx(
+        {
+            "+5V": [node("U1", "8", ""), node("R1", "1", "")],
+            "GND": [node("U1", "4", "")],
+            "A": [node("U1", "1", "")],
+            "B": [node("U1", "2", "")],
+            "C": [node("U1", "3", "")],
+            "D": [node("U1", "5", "")],
+            "E": [node("U1", "6", "")],
+        }
+    )
+    assert [f.rule for f in sch_review.rule_decoupling(ctx)] == ["analog.missing_decoupling"]
+
+
+def test_no_dc_path_flags_a_floating_ac_output():
+    ctx = make_ctx(
+        {
+            "OUT_AC": [node("C6", "2"), node("J3", "1")],
+            "OUT": [node("U1", "1", "output"), node("C6", "1")],
+            "IN_DC": [node("C3", "2"), node("R5", "1"), node("R1", "1")],
+        }
+    )
+    findings = sch_review.rule_no_dc_path(ctx)
+    assert [f.location for f in findings] == ["OUT_AC"]
+    # IN_DC has a resistor on it, OUT has the op-amp: both have a DC path
+
+
+def test_single_pin_net_with_a_no_connect_flag_is_a_decision():
+    doc = sheet(symbols=[placed("U1", 0, 0, [pin("7", GRID, GRID)])])
+    doc.no_connects = [(GRID, GRID)]
+    ctx = make_ctx_with_docs({"unconnected-(U1-Pad7)": [node("U1", "7")]}, [doc])
+    assert sch_review.rule_single_pin_nets(ctx) == []
+
+
+def test_single_pin_net_without_the_flag_still_fires():
+    doc = sheet(symbols=[placed("U1", 0, 0, [pin("7", GRID, GRID)])])
+    ctx = make_ctx_with_docs({"unconnected-(U1-Pad7)": [node("U1", "7")]}, [doc])
+    assert [f.rule for f in sch_review.rule_single_pin_nets(ctx)] == ["net.single_pin"]
+
+
+def test_label_only_reads_the_wire_graph():
+    """Ten stubs with labels fire; the same pins joined by wires do not."""
+    stubs = sheet(
+        symbols=[
+            placed(f"R{i}", 0, i * 10, [pin("1", 0.0, i * 10.0), pin("2", 5.08, i * 10.0)])
+            for i in range(1, 7)
+        ],
+        wires=[[(0.0, i * 10.0), (-2.54, i * 10.0)] for i in range(1, 7)]
+        + [[(5.08, i * 10.0), (7.62, i * 10.0)] for i in range(1, 7)],
+        labels=[Label(text=f"N{i}", kind="local", x=-2.54, y=i * 10.0) for i in range(1, 7)]
+        + [Label(text=f"M{i}", kind="local", x=7.62, y=i * 10.0) for i in range(1, 7)],
+    )
+    findings = sch_review.rule_label_only(sheet_ctx(stubs))
+    assert [f.rule for f in findings] == ["readability.label_only"]
+
+    wired = sheet(
+        symbols=[
+            placed(f"R{i}", 0, i * 10, [pin("1", 0.0, i * 10.0), pin("2", 5.08, i * 10.0)])
+            for i in range(1, 7)
+        ]
+        + [placed(f"C{i}", 20, i * 10, [pin("1", 20.0, i * 10.0)]) for i in range(1, 7)],
+        wires=[[(5.08, i * 10.0), (20.0, i * 10.0)] for i in range(1, 7)]
+        + [[(0.0, i * 10.0), (-2.54, i * 10.0)] for i in range(1, 7)],
+        labels=[Label(text=f"N{i}", kind="local", x=-2.54, y=i * 10.0) for i in range(1, 7)],
+    )
+    assert sch_review.rule_label_only(sheet_ctx(wired)) == []
+
+
 def test_i2c_without_pullups():
     ctx = make_ctx(
         {

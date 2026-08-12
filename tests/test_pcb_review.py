@@ -90,6 +90,93 @@ def test_thin_power_tracks_warn():
     assert "track.thin_power" in rules_of(pcb_review.rule_track_width(ctx))
 
 
+def test_a_short_power_neck_is_allowed():
+    """A pad entry or an escape may neck down; only a long thin run is the track."""
+    ctx = ctx_for(
+        board_from(
+            tracks=[
+                track(1, 1, 4, 1, width=0.25, net="+5V"),  # 3 mm neck
+                track(4, 1, 30, 1, width=0.8, net="+5V"),
+            ]
+        )
+    )
+    assert "track.thin_power" not in rules_of(pcb_review.rule_track_width(ctx))
+
+
+def test_detour_flags_the_scenic_route():
+    parts = [
+        footprint("R1", 5, 5, [pad("1", 5, 5, "SIG")]),
+        footprint("R2", 15, 5, [pad("1", 15, 5, "SIG")]),
+    ]
+    scenic = ctx_for(
+        board_from(
+            footprints=parts,
+            tracks=[
+                track(5, 5, 5, 35, net="SIG"),
+                track(5, 35, 15, 35, net="SIG"),
+                track(15, 35, 15, 5, net="SIG"),
+            ],
+        )
+    )
+    findings = pcb_review.rule_detour(scenic)
+    assert [f.rule for f in findings] == ["route.detour"]
+    assert "SIG" in findings[0].details["examples"][0]
+
+    direct = ctx_for(board_from(footprints=parts, tracks=[track(5, 5, 15, 5, net="SIG")]))
+    assert pcb_review.rule_detour(direct) == []
+
+
+def test_detour_leaves_poured_nets_alone():
+    """A net with a pour is stitched, not routed; length says nothing there."""
+    parts = [
+        footprint("R1", 5, 5, [pad("1", 5, 5, "+5V")]),
+        footprint("R2", 15, 5, [pad("1", 15, 5, "+5V")]),
+    ]
+    ctx = ctx_for(
+        board_from(
+            footprints=parts,
+            tracks=[
+                track(5, 5, 5, 35, net="+5V"),
+                track(5, 35, 15, 35, net="+5V"),
+                track(15, 35, 15, 5, net="+5V"),
+            ],
+            zones=[pcb.Zone(net="+5V", layers=["F.Cu"], filled=True)],
+        )
+    )
+    assert pcb_review.rule_detour(ctx) == []
+
+
+def _plane_zone(cut=False):
+    """A B.Cu ground pour over (0,0)-(50,40); optionally with a slot cut out."""
+    outline = [(0.0, 0.0), (50.0, 0.0), (50.0, 40.0), (0.0, 40.0)]
+    if cut:
+        # fill in two halves, leaving x=20..30 empty across the board
+        fills = [
+            ("B.Cu", [(0.0, 0.0), (20.0, 0.0), (20.0, 40.0), (0.0, 40.0)]),
+            ("B.Cu", [(30.0, 0.0), (50.0, 0.0), (50.0, 40.0), (30.0, 40.0)]),
+        ]
+    else:
+        fills = [("B.Cu", outline)]
+    return pcb.Zone(net="GND", layers=["B.Cu"], filled=True, outline=outline, fills=fills)
+
+
+def test_return_path_sees_the_cut():
+    crossing = [track(1, 20, 49, 20, net="SIG")]  # 10 mm of it over the slot
+    over_cut = ctx_for(
+        board_from(tracks=crossing, zones=[_plane_zone(cut=True)]),
+        thresholds={"return_path_mm": 5.0},
+    )
+    findings = pcb_review.rule_return_path(over_cut)
+    assert [f.rule for f in findings] == ["route.return_path"]
+    assert "SIG" in findings[0].details["examples"][0]
+
+    solid = ctx_for(
+        board_from(tracks=crossing, zones=[_plane_zone(cut=False)]),
+        thresholds={"return_path_mm": 5.0},
+    )
+    assert pcb_review.rule_return_path(solid) == []
+
+
 def test_small_vias_and_annular_rings():
     vias = [
         pcb.Via(x=5, y=5, size=0.45, drill=0.25, layers=["F.Cu", "B.Cu"], net_code=1, net="GND")

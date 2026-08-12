@@ -63,8 +63,8 @@ NAMESPACE = uuid.UUID("6f1a0f3e-0000-4000-8000-000000000000")
 # --generated-by. They matter most on the `as-generated` variant: it is a record
 # of what a generator of this vintage actually wrote, and a year from now that
 # is the only thing that dates it.
-GENERATED_ON = "2026-08-11"
-GENERATED_BY = "Claude Code (claude-opus-5)"
+GENERATED_ON = "2026-08-12"
+GENERATED_BY = "Claude Code (claude-fable-5)"
 
 GEOM_EPS = 1e-6
 GEOM_TOL = 0.001  # two points this close on the sheet are the same point
@@ -190,6 +190,11 @@ class Design:
     # wrong in ways that are a build error for the reviewed one - dropping two
     # symbols on the same spot is the whole point of it.
     strict: bool = True
+    # Whether aligned pin pairs get a drawn wire instead of a pair of labels.
+    # Off in the degraded variant: a sheet that connects only by name is what a
+    # generator that never looked at its own plot leaves, and
+    # `readability.label_only` exists to say so.
+    draw_wires: bool = True
     # A4 fits everything so far; a part drawn in four units does not.
     paper: str = "A4"
 
@@ -442,6 +447,129 @@ def _title_block(design: Design, indent: str) -> list[str]:
     return [f"{indent}(title_block", *body, f"{indent})"] if body else []
 
 
+def _long_wires(
+    design: Design,
+) -> tuple[list[tuple[str, str, str, tuple[float, float], tuple[float, float]]], set[str]]:
+    """Aligned pin pairs that can be joined by one straight, unobstructed wire.
+
+    The alternative is a stub and a label at both ends, which is a valid netlist
+    and an unreadable drawing - `readability.label_only` counts exactly this.
+    Only the clean case is drawn: the two stubs face each other on one axis and
+    the run between them keeps clear of every other stub, symbol body, power
+    symbol and the notes block. Everything else keeps its labels, because a wire
+    that dodges around three parts to avoid a fourth is not more readable than a
+    name, it is less.
+
+    Returns the wires as (net, from, to, a, b), and the set of pins whose label
+    the wire replaces - one label per pair survives, so the net keeps its name.
+    """
+    if not design.draw_wires:
+        return [], set()
+
+    net_of: dict[tuple[str, str], str] = {}
+    for net, nodes in design.nets.items():
+        for entry in nodes:
+            ref, _, number = entry.partition(".")
+            net_of[(ref, number)] = net
+
+    stubs: dict[str, tuple[str, tuple[float, float], tuple[float, float]]] = {}
+    boxes: list[tuple[float, float, float, float]] = []
+    for part in design.parts:
+        ends = []
+        seen: set[tuple[float, float]] = set()
+        for pin in symbol_pins(part.lib_id, part.unit):
+            end, out = pin_geometry(part, pin)
+            ends.append(end)
+            net = net_of.get((part.ref, pin.number))
+            if net is None or end in seen:
+                continue
+            seen.add(end)
+            stubs[f"{part.ref}.{pin.number}"] = (net, end, out)
+            if net in POWER_SYMBOLS:
+                # a power symbol stands on the stub end, its body extending
+                # onward in the stub's own direction - not sideways over the
+                # neighbouring rows
+                length = math.hypot(out[0] - end[0], out[1] - end[1]) or 1.0
+                dx = (out[0] - end[0]) / length
+                dy = (out[1] - end[1]) / length
+                tip = (out[0] + 5.08 * dx, out[1] + 5.08 * dy)
+                boxes.append(
+                    (
+                        min(out[0], tip[0]) - 1.9 * abs(dy),
+                        min(out[1], tip[1]) - 1.9 * abs(dx),
+                        max(out[0], tip[0]) + 1.9 * abs(dy),
+                        max(out[1], tip[1]) + 1.9 * abs(dx),
+                    )
+                )
+        if ends:
+            xs = [e[0] for e in ends]
+            ys = [e[1] for e in ends]
+            boxes.append((min(xs) - 1.27, min(ys) - 1.27, max(xs) + 1.27, max(ys) + 1.27))
+    for index, net in enumerate(design.power_flags, start=1):
+        x = design.flags_at[0] + index * 15.24
+        y = design.flags_at[1]
+        stubs[f"#FLG{index:02d}"] = (net, (x, y + 2.54), (x, y))
+        boxes.append((x - 3.81, y - 3.81, x + 3.81, y + 3.81))
+    if design.notes:
+        widest = max(len(note) for note in design.notes)
+        boxes.append(
+            (
+                design.notes_at[0] - 1.27,
+                design.notes_at[1] - 1.27,
+                design.notes_at[0] + widest * 1.1,
+                design.notes_at[1] + (len(design.notes) + 1) * 5.08,
+            )
+        )
+
+    def clear(a: tuple[float, float], b: tuple[float, float], skip: set[str]) -> bool:
+        for owner, (_, end, out) in stubs.items():
+            if owner in skip:
+                continue
+            if _segment_distance(a, b, end, out) < 1.27 - GEOM_EPS:
+                return False
+        return all(_segment_to_box(a, b, box) >= GEOM_EPS for box in boxes)
+
+    candidates = []
+    for net, nodes in design.nets.items():
+        owners = [entry for entry in nodes if entry in stubs]
+        for i, a in enumerate(owners):
+            _, a_end, a_out = stubs[a]
+            a_dir = (a_out[0] - a_end[0], a_out[1] - a_end[1])
+            for b in owners[i + 1 :]:
+                _, b_end, b_out = stubs[b]
+                b_dir = (b_out[0] - b_end[0], b_out[1] - b_end[1])
+                span = (b_out[0] - a_out[0], b_out[1] - a_out[1])
+                length = math.hypot(*span)
+                if length < GEOM_EPS:
+                    continue  # the stubs already meet
+                # the run continues a's stub and arrives against b's
+                if abs(a_dir[0] * span[1] - a_dir[1] * span[0]) > GEOM_EPS:
+                    continue
+                if a_dir[0] * span[0] + a_dir[1] * span[1] <= 0:
+                    continue
+                if b_dir[0] * span[0] + b_dir[1] * span[1] >= 0:
+                    continue
+                candidates.append((length, net, a, b, a_out, b_out))
+
+    used: set[str] = set()
+    accepted: list[tuple[str, str, str, tuple[float, float], tuple[float, float]]] = []
+    dropped: set[str] = set()
+    for _length, net, a, b, a_out, b_out in sorted(candidates, key=lambda c: c[0]):
+        if a in used or b in used:
+            continue
+        if not clear(a_out, b_out, {a, b}):
+            continue
+        if any(
+            _segment_distance(a_out, b_out, la, lb) < 1.27 - GEOM_EPS
+            for _, _, _, la, lb in accepted
+        ):
+            continue
+        used.update((a, b))
+        accepted.append((net, a, b, a_out, b_out))
+        dropped.add(b)
+    return accepted, dropped
+
+
 def schematic_shorts(design: Design) -> list[str]:
     """Every place two nets touch on the sheet.
 
@@ -476,6 +604,8 @@ def schematic_shorts(design: Design) -> list[str]:
         x = design.flags_at[0] + index * 15.24
         y = design.flags_at[1]
         wires.append((net, f"#FLG{index:02d}", (x, y), (x, y + 2.54)))
+    for net, a, b, a_out, b_out in _long_wires(design)[0]:
+        wires.append((net, f"{a}-{b}", a_out, b_out))
 
     def touches(a0, a1, b0, b1) -> bool:
         return any(_segment_to_point(b0, b1, point) < GEOM_TOL for point in (a0, a1)) or any(
@@ -533,6 +663,9 @@ def emit_schematic(design: Design) -> str:
 
     body: list[str] = []
     power_index = 0
+    longs, replaced = _long_wires(design)
+    for _net, a, b, a_out, b_out in longs:
+        body.append(_wire(design, "run", f"{a}-{b}", a_out, b_out))
     # Two stubs that happen to end on the same coordinate silently become one
     # net, and the design is quietly not the design any more. Catch it here
     # rather than in ERC, where it surfaces as a puzzle about net names.
@@ -553,7 +686,8 @@ def emit_schematic(design: Design) -> str:
                 # to see it made: without the flag, ERC reports every one of
                 # them and the ones that matter are lost in the ones that do
                 # not. Drawn once per point, like the wires above.
-                if part.no_connect and end not in drawn:
+                declared_nc = pin.etype == "no_connect"
+                if (part.no_connect or declared_nc) and end not in drawn:
                     drawn.add(end)
                     body.append(
                         f"  (no_connect (at {end[0]} {end[1]}) "
@@ -592,7 +726,7 @@ def emit_schematic(design: Design) -> str:
                         (round(step[0] / length), round(step[1] / length)),
                     )
                 )
-            else:
+            elif f"{part.ref}.{pin.number}" not in replaced:
                 body.append(_label(design, net, part.ref, pin.number, out))
         body.append(_symbol_instance(design, part, pins))
 
@@ -1647,6 +1781,7 @@ def degrade(design: Design) -> Design:
         company="",
         date="",
         strict=False,
+        draw_wires=False,
         notes=[],
         parts=parts,
         power_flags=[],
@@ -2597,6 +2732,7 @@ def opamp_filter() -> Design:
             "Capacitor_SMD:C_0805_2012Metric",
             (55.0, 100.0),
             (16.0, 18.0, 90.0),
+            angle=90.0,
             Voltage="25V",
             Tolerance="10%",
             MPN="CL21B105KBFNNNE",
@@ -2706,6 +2842,7 @@ def opamp_filter() -> Design:
             "Capacitor_SMD:C_0805_2012Metric",
             (195.0, 100.0),
             (60.0, 18.0, 90.0),
+            angle=90.0,
             Voltage="25V",
             Tolerance="10%",
             MPN="CL21B105KBFNNNE",
@@ -2719,6 +2856,7 @@ def opamp_filter() -> Design:
             "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
             (225.0, 100.0),
             (72.0, 18.0, 0.0),
+            angle=180.0,
             MPN="61300211121",
             Manufacturer="Wurth Elektronik",
             Datasheet="https://www.we-online.com/components/products/datasheet/61300211121.pdf",
@@ -2788,6 +2926,32 @@ def opamp_filter() -> Design:
             },
         ),
         _passive(
+            "R7",
+            "Device:R",
+            "100k",
+            "Resistor_SMD:R_0805_2012Metric",
+            (45.0, 120.0),
+            (12.0, 26.0, 90.0),
+            Tolerance="1%",
+            Power="0.125W",
+            MPN="RC0805FR-07100KL",
+            Manufacturer="Yageo",
+            Datasheet=YAGEO,
+        ),
+        _passive(
+            "R6",
+            "Device:R",
+            "100k",
+            "Resistor_SMD:R_0805_2012Metric",
+            (225.0, 140.0),
+            (70.0, 27.0, 90.0),
+            Tolerance="1%",
+            Power="0.125W",
+            MPN="RC0805FR-07100KL",
+            Manufacturer="Yageo",
+            Datasheet=YAGEO,
+        ),
+        _passive(
             "C7",
             "Device:C",
             "100n",
@@ -2804,13 +2968,25 @@ def opamp_filter() -> Design:
 
     nets = {
         "+5V": ["J2.1", "R3.1", "C5.1", "C7.1", "U1.2", "U2.2"],
-        "GND": ["J2.2", "J1.2", "J3.2", "R4.2", "C4.2", "C5.2", "C7.2", "U1.5", "U2.5"],
-        "IN": ["J1.1", "C3.1"],
+        "GND": [
+            "J2.2",
+            "J1.2",
+            "J3.2",
+            "R4.2",
+            "R6.2",
+            "R7.2",
+            "C4.2",
+            "C5.2",
+            "C7.2",
+            "U1.5",
+            "U2.5",
+        ],
+        "IN": ["J1.1", "C3.1", "R7.1"],
         "IN_DC": ["C3.2", "R5.1", "R1.1"],
         "X": ["R1.2", "R2.1", "C1.1"],
         "FILT_IN": ["R2.2", "C2.1", "U1.3"],
         "OUT": ["U1.1", "U1.4", "C1.2", "C6.1"],
-        "OUT_AC": ["C6.2", "J3.1"],
+        "OUT_AC": ["C6.2", "J3.1", "R6.1"],
         "MID": ["R3.2", "R4.1", "C4.1", "U2.3"],
         "VREF": ["U2.1", "U2.4", "R5.2", "C2.2"],
     }
@@ -2831,6 +3007,9 @@ def opamp_filter() -> Design:
             "50k source impedance - the filter would not be this filter.",
             "C3 and C6 couple in and out, so the header sees no DC. R5 sets the",
             "input's own operating point at VREF and loads the source with 100k.",
+            "R6 and R7 bleed the far sides of the coupling caps to ground:",
+            "without them those nodes float at whatever they last charged to,",
+            "and plugging anything in pops.",
         ],
         parts=parts,
         nets=nets,
@@ -2878,6 +3057,7 @@ def opamp_filter() -> Design:
     tracks = [
         *escapes,
         Track("IN", "F.Cu", SIG, ["J1.1", "C3.1"], auto=True),
+        Track("IN", "F.Cu", SIG, ["J1.1", "R7.1"], auto=True),
         Track("IN_DC", "F.Cu", SIG, ["C3.2", "R1.1"], auto=True),
         Track("IN_DC", "F.Cu", SIG, ["C3.2", "R5.1"], auto=True),
         Track("X", "F.Cu", SIG, ["R1.2", "R2.1"], auto=True),
@@ -2888,6 +3068,7 @@ def opamp_filter() -> Design:
         Track("OUT", "F.Cu", SIG, [u1w["1"], "C1.2"], auto=True),
         Track("OUT", "F.Cu", SIG, [u1e["4"], "C6.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["C6.2", "J3.1"], auto=True),
+        Track("OUT_AC", "F.Cu", SIG, ["J3.1", "R6.1"], auto=True),
         Track("VREF", "F.Cu", SIG, [u2w["1"], u2e["4"]], auto=True),
         Track("VREF", "F.Cu", SIG, [u2w["1"], "C2.2"], auto=True),
         Track("VREF", "F.Cu", SIG, [u2w["1"], "R5.2"], auto=True),
@@ -2903,6 +3084,8 @@ def opamp_filter() -> Design:
     for pad, target in (
         ("J1.2", (12.0, 24.0)),
         ("J3.2", (68.0, 24.0)),
+        ("R6.2", (70.0, 32.0)),
+        ("R7.2", (12.0, 30.0)),
         ("J2.2", (66.0, 12.0)),
         ("C5.2", (53.0, 9.0)),
         ("C7.2", (61.0, 33.0)),
@@ -3105,7 +3288,10 @@ def fpga_audio() -> Design:
         cap("C2", "100n", (140.0, 45.0), (22.0, 20.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C3", "10u", (60.0, 70.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
         cap("C4", "100n", (85.0, 70.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C5", "100n", (165.0, 70.0), (61.0, 54.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C5", "100n", (165.0, 70.0), (56.0, 43.0, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C17", "10u", (165.0, 45.0), (59.0, 43.0, 90.0), "16V", "CL10A106MQ8NNNC"),
+        res("R3", "100R", (190.0, 45.0), (63.0, 50.0, 90.0), "RC0603FR-07100RL"),
+        res("R4", "10k", (330.0, 240.0), (56.0, 74.0, 0.0), "RC0603FR-0710KL"),
         cap("C6", "100n", (255.0, 45.0), (57.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C7", "100n", (285.0, 45.0), (61.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C8", "100n", (255.0, 270.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
@@ -3113,9 +3299,9 @@ def fpga_audio() -> Design:
         cap("C10", "100n", (300.0, 70.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C11", "100n", (370.0, 70.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C16", "100n", (395.0, 70.0), (84.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C12", "1u", (300.0, 180.0), (60.0, 50.0, 0.0), "16V", "CL10A105KB8NNNC"),
-        cap("C13", "2u2", (330.0, 180.0), (84.0, 45.0, 0.0), "16V", "CL10A225KO8NNNC"),
-        cap("C14", "2u2", (360.0, 180.0), (84.0, 40.5, 90.0), "16V", "CL10A225KO8NNNC"),
+        cap("C12", "2u2", (300.0, 180.0), (60.0, 50.0, 0.0), "16V", "CL10A225KO8NNNC"),
+        cap("C13", "2u2", (330.0, 180.0), (84.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
+        cap("C14", "2u2", (360.0, 180.0), (84.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
         res("R1", "10k", (110.0, 150.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
         res("R2", "10k", (140.0, 150.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
         cap("C15", "100n", (140.0, 70.0), (57.0, 50.0, 180.0), "25V", "CL10B104KB8NNNC"),
@@ -3145,9 +3331,12 @@ def fpga_audio() -> Design:
             "U2.1",
             "C10.1",
             "C11.1",
+            "R4.1",
             "C16.1",
         ],
-        "+1V2": ["U3.5", "C3.1", "C4.1", "C15.1", "C5.1", "U1.5", "U1.30", "U1.29"],
+        "+1V2": ["U3.5", "C3.1", "C4.1", "C15.1", "U1.5", "U1.30", "R3.1"],
+        # the PLL supply is filtered from the core rail, not tied to it
+        "VCCPLL": ["R3.2", "C5.1", "C17.1", "U1.29"],
         "GND": [
             "J1.2",
             "C1.2",
@@ -3168,14 +3357,17 @@ def fpga_audio() -> Design:
             "U2.3",
             "C10.2",
             "C15.2",
+            "C17.2",
             "C11.2",
             "C16.2",
             "C12.2",
-            "C13.2",
+            "C14.2",
             "J2.2",
             "J3.6",
         ],
-        "SPI_SS": ["U1.16", "U4.1", "J3.1"],
+        # R4 holds the flash deselected while the FPGA is in reset and its
+        # pins are still floating - without it the boot bus is a lottery
+        "SPI_SS": ["U1.16", "U4.1", "J3.1", "R4.2"],
         "SPI_SCK": ["U1.15", "U4.6", "J3.2"],
         "SPI_SI": ["U1.17", "U4.5", "J3.3"],
         "SPI_SO": ["U1.14", "U4.2", "J3.4"],
@@ -3191,9 +3383,11 @@ def fpga_audio() -> Design:
         "OUTL": ["U2.6", "J2.3"],
         "OUTR": ["U2.7", "J2.1"],
         "LDOO": ["U2.18", "C12.1"],
+        # the flying capacitor sits between CAPP and CAPM; the reservoir from
+        # VNEG to ground - the inverter cannot run with either elsewhere
         "CAPP": ["U2.2", "C13.1"],
-        "VNEG": ["U2.5", "C14.2"],
-        "CAPM": ["U2.4", "C14.1"],
+        "CAPM": ["U2.4", "C13.2"],
+        "VNEG": ["U2.5", "C14.1"],
         # The codec's mode pins are strapped rather than driven: 16-bit I2S,
         # no de-emphasis, normal filter, un-muted.
         "FMT": ["U2.16"],
@@ -3231,10 +3425,11 @@ def fpga_audio() -> Design:
             "0.2 mm clearance - a fine-line process, and the reason a 7 mm chip",
             "needs 25 mm of board around it before anything else can be placed.",
             "Two rails: 3.3 V in for the I/O banks, the codec and the flash, and",
-            "1.2 V from U3 for the core, with C15 and C5 on the two VCC pins and",
-            "on VCCPLL - which the datasheet would rather see filtered from the",
-            "core rail than tied straight to it, and is a thing this board is",
-            "not doing.",
+            "1.2 V from U3 for the core, with C15 on the VCC pins. VCCPLL is",
+            "filtered from the core rail through R3 with C17 and C5 at the pin,",
+            "which is what keeps core switching noise out of the PLL.",
+            "R4 holds the flash chip select up while the FPGA is still",
+            "configuring and its pins are floating.",
             "U1 boots from U4 over its own SPI port; J3 is that bus plus CRESET,",
             "so the flash can be written in circuit. R1 and R2 hold CRESET and",
             "CDONE up, both being open drain.",
@@ -3371,11 +3566,12 @@ def fpga_audio() -> Design:
                 ("C4.1", "U1.5"),
                 ("C4.1", "C15.1"),
                 ("C15.1", "U1.30"),
-                ("C15.1", "C5.1"),
-                ("C5.1", "U1.29"),
+                ("C15.1", "R3.1"),
             ],
         ),
-        ("SPI_SS", SIG, [("U1.16", "U4.1"), ("U4.1", "J3.1")]),
+        ("VCCPLL", SIG, [("R3.2", "C17.1"), ("C17.1", "C5.1"), ("C5.1", "U1.29")]),
+        ("SPI_SS", SIG, [("U1.16", "U4.1"), ("U4.1", "J3.1"), ("J3.1", "R4.2")]),
+        ("+3V3", SIG, [("C8.1", "R4.1")]),
         ("SPI_SCK", SIG, [("U1.15", "U4.6"), ("U4.6", "J3.2")]),
         ("SPI_SI", SIG, [("U1.17", "U4.5"), ("U4.5", "J3.3")]),
         ("SPI_SO", SIG, [("U1.14", "U4.2"), ("U4.2", "J3.4")]),
@@ -3390,8 +3586,8 @@ def fpga_audio() -> Design:
         ("OUTR", SIG, [("U2.7", "J2.1")]),
         ("LDOO", SIG, [("U2.18", "C12.1")]),
         ("CAPP", SIG, [("U2.2", "C13.1")]),
-        ("VNEG", SIG, [("U2.5", "C14.2")]),
-        ("CAPM", SIG, [("U2.4", "C14.1")]),
+        ("CAPM", SIG, [("U2.4", "C13.2")]),
+        ("VNEG", SIG, [("U2.5", "C14.1")]),
     ]
     for net, width, pairs in routes:
         for a, b in pairs:
@@ -3404,8 +3600,9 @@ def fpga_audio() -> Design:
         ("U3.2", (16.0, 27.0)),
         ("C3.2", (25.0, 30.0)),
         ("C4.2", (22.5, 36.0)),
-        ("C5.2", (64.0, 54.0)),
+        ("C5.2", (56.0, 40.8)),
         ("C15.2", (54.0, 50.0)),
+        ("C17.2", (59.0, 40.8)),
         ("C6.2", (59.0, 43.5)),
         ("C7.2", (64.0, 46.0)),
         ("C8.2", (46.0, 71.0)),
@@ -3425,7 +3622,7 @@ def fpga_audio() -> Design:
         ("C11.2", (85.0, 31.0)),
         ("C16.2", (84.0, 52.0)),
         ("C12.2", (60.0, 53.0)),
-        ("C13.2", (87.0, 45.0)),
+        ("C14.2", (87.0, 47.0)),
         ("J2.2", (89.5, 45.5)),
         ("J3.6", (78.0, 70.0)),
     ):

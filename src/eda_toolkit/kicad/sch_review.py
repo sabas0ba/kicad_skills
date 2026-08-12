@@ -37,6 +37,9 @@ THRESHOLDS: dict[str, float] = {
     "min_named_net_ratio": 0.4,
     # A capacitor wants this much headroom over the rail it sits on.
     "capacitor_derating_factor": 1.5,
+    # Above this fraction of label-stub connections, the sheet is a name table
+    # rather than a drawing. KiCad's own demo projects sit well under it.
+    "max_label_ratio": 0.5,
 }
 
 # Geometry lives on a 1/100 mm world; anything below this is file noise.
@@ -76,7 +79,8 @@ RULE_SPEC: dict[str, RuleSpec] = {
     # -- connectivity ------------------------------------------------------
     "net.single_pin": RuleSpec(
         "a net that reaches exactly one pin: 'warning' when KiCad named it "
-        "(unconnected-(U1-Pad3)), 'info' when a human did",
+        "(unconnected-(U1-Pad3)), 'info' when a human did. A pin carrying a "
+        "no-connect flag on the sheet is a stated decision and is not reported",
         "warning / info",
     ),
     "net.no_driver": RuleSpec(
@@ -90,7 +94,17 @@ RULE_SPEC: dict[str, RuleSpec] = {
     ),
     # -- circuit practice --------------------------------------------------
     "analog.missing_decoupling": RuleSpec(
-        "an IC supply net with no capacitor that also touches ground", "warning"
+        "an IC supply net with no capacitor that also touches ground. When the "
+        "netlist carries pin electrical types, only power_in pins ask for one, "
+        "and a net an output pin drives is never asked - a capacitor on an "
+        "op-amp output is a stability problem, not decoupling",
+        "warning",
+    ),
+    "analog.no_dc_path": RuleSpec(
+        "a net every pin of which belongs to a capacitor or a connector, so "
+        "nothing sets its DC level - an AC-coupled output with no bleed "
+        "resistor is the usual case",
+        "warning",
     ),
     "analog.i2c_pullup": RuleSpec(
         "a net named SDA/SCL (optionally I2Cn_ prefixed) with no resistor on it", "warning"
@@ -151,6 +165,15 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "name is below the limit",
         "info",
         threshold="min_named_net_ratio",
+    ),
+    "readability.label_only": RuleSpec(
+        "more than max_label_ratio of the sheet's signal connections are a "
+        "stub ending in a net label rather than a drawn wire between pins. A "
+        "valid netlist, and a drawing that reads as a name table - the most "
+        "recognisable mark of a generated sheet. Power-symbol hookups are "
+        "exempt: that is what power symbols are for",
+        "warning",
+        threshold="max_label_ratio",
     ),
     "readability.title_block": RuleSpec(
         "the root sheet's title block is missing a title, rev, date or company", "info"
@@ -406,11 +429,21 @@ def rule_single_pin_nets(ctx: ReviewContext) -> list[Finding]:
     outnumbered the real ones by more than 20:1.
     """
     findings = []
+    flagged = {(round(x, 2), round(y, 2)) for doc in ctx.docs for x, y in doc.no_connects}
+    pin_at: dict[tuple[str, str], tuple[float, float]] = {}
+    if flagged:
+        for doc in ctx.docs:
+            for sym in doc.symbols:
+                for pin in sym.pins:
+                    pin_at[(sym.reference, pin.number)] = (round(pin.x, 2), round(pin.y, 2))
     for net in ctx.nets:
         if net["pin_count"] != 1:
             continue
         node = net["nodes"][0]
         auto_named = bool(AUTO_NET_NAME.match(net["name"]))
+        if auto_named and pin_at.get((node["ref"], node["pin"])) in flagged:
+            # the sheet says so with a no-connect flag: a decision, not a defect
+            continue
         findings.append(
             Finding(
                 "net.single_pin",
@@ -458,15 +491,31 @@ def rule_floating_inputs(ctx: ReviewContext) -> list[Finding]:
 
 @rule
 def rule_decoupling(ctx: ReviewContext) -> list[Finding]:
-    """Every IC supply pin should have a local decoupling capacitor."""
+    """Every IC supply pin should have a local decoupling capacitor.
+
+    Judged from evidence before names. A net is a supply *for this IC* when the
+    IC reaches it through a ``power_in`` pin; a name that merely looks like a
+    rail (VREF, VBUS on a carrier) is not enough once the netlist carries pin
+    types. And a net that some ``output`` pin drives is never asked to add a
+    capacitor: a reference made by an op-amp is decoupled at one's peril - the
+    capacitor lands inside somebody's control loop.
+    """
     findings = []
+    driven_by_output = {
+        net["name"]
+        for net in ctx.nets
+        if any(node.get("type") == "output" for node in net["nodes"])
+    }
     for ref in ctx.ic_refs():
         supply_nets = set()
         for pin in ctx.pins_by_ref[ref]:
             net_name = pin["net"]
             kind = netlist_mod.classify_net(net_name)
-            is_supply = pin.get("type") == "power_in" or kind == "power"
-            if is_supply and kind != "ground":
+            if kind == "ground" or net_name in driven_by_output:
+                continue
+            ptype = pin.get("type") or ""
+            is_supply = ptype == "power_in" if ptype else kind == "power"
+            if is_supply:
                 supply_nets.add(net_name)
         for net_name in sorted(supply_nets):
             caps = [r for r in ctx.refs_on_net(net_name) if ctx.is_capacitor(r)]
@@ -485,6 +534,149 @@ def rule_decoupling(ctx: ReviewContext) -> list[Finding]:
                     )
                 )
     return findings
+
+
+@rule
+def rule_no_dc_path(ctx: ReviewContext) -> list[Finding]:
+    """A node that nothing biases.
+
+    A net whose every pin belongs to a capacitor or a connector has no DC path
+    to anywhere: whatever charge it starts with is what it keeps. The usual way
+    to build one is an AC-coupled output taken straight to a connector - it
+    works on the bench, drifts with leakage, and pops on connection. A bleed
+    resistor is the one-part answer, and its absence is invisible to ERC
+    because the connectivity is perfectly valid.
+    """
+    findings = []
+    for net in ctx.nets:
+        nodes = net["nodes"]
+        if len(nodes) < 2:
+            continue
+        if netlist_mod.classify_net(net["name"]) != "signal":
+            continue
+        prefixes = {ctx.prefix(node["ref"]) for node in nodes}
+        if not prefixes <= {"C", "J", "P"} or "C" not in prefixes:
+            continue
+        findings.append(
+            Finding(
+                "analog.no_dc_path",
+                "warning",
+                f"every pin on {net['name']} is a capacitor or connector - "
+                "nothing sets its DC level, so it floats until something "
+                "leaks; a bleed resistor to a rail fixes it",
+                location=net["name"],
+            )
+        )
+    return findings
+
+
+def _wire_components(
+    docs,
+) -> tuple[dict[tuple[float, float], tuple[float, float]], _SegmentIndex]:
+    """Union-find over the drawn wires: which points are one piece of copper."""
+    segments = [seg for doc in docs for seg in _wire_segments(doc)]
+    parent: dict[tuple[float, float], tuple[float, float]] = {}
+
+    def key(point: tuple[float, float]) -> tuple[float, float]:
+        return (round(point[0], 2), round(point[1], 2))
+
+    def find(a):
+        parent.setdefault(a, a)
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+
+    def union(a, b):
+        parent[find(a)] = find(b)
+
+    for a, b in segments:
+        union(key(a), key(b))
+    index = _SegmentIndex(segments)
+    # an endpoint resting on the middle of another wire joins it
+    for a, b in segments:
+        for end in (key(a), key(b)):
+            cell = (index._cell(end[0]), index._cell(end[1]))
+            for other in index.cells.get(cell, ()):
+                seg = index.segments[other]
+                if _on_interior(end, *seg):
+                    union(end, key(seg[0]))
+    # resolve every key fully before handing the map out
+    return {k: find(k) for k in list(parent)}, index
+
+
+@rule
+def rule_label_only(ctx: ReviewContext) -> list[Finding]:
+    """A sheet that connects by name rather than by wire.
+
+    Every connection here is a pin, a stub, and a net label; the reader is left
+    to grep. The netlist is exactly as valid as a drawn one, which is why no
+    electrical check minds, and it is the single most recognisable mark of a
+    generated schematic. Counted over the wire graph: a wire piece joining two
+    or more component pins is a drawn connection, a piece with one pin and a
+    label is a label stub. Power-symbol hookups are exempt - a rail *should* be
+    a symbol, not a wire across the page.
+    """
+    if not ctx.docs:
+        return []
+    limit = ctx.thresholds["max_label_ratio"]
+    roots, index = _wire_components(ctx.docs)
+
+    def root_of(point: tuple[float, float]):
+        k = (round(point[0], 2), round(point[1], 2))
+        if k in roots:
+            return roots[k]
+        cell = (index._cell(k[0]), index._cell(k[1]))
+        for other in index.cells.get(cell, ()):
+            seg = index.segments[other]
+            if _on_interior(k, *seg):
+                return roots.get((round(seg[0][0], 2), round(seg[0][1], 2)))
+        return None
+
+    from collections import Counter as _Counter
+
+    part_pins: _Counter = _Counter()
+    power_pins: set = set()
+    labelled: set = set()
+    for doc in ctx.docs:
+        for sym in doc.symbols:
+            for pin in sym.pins:
+                root = root_of((pin.x, pin.y))
+                if root is None:
+                    continue
+                if sym.is_power:
+                    power_pins.add(root)
+                else:
+                    part_pins[root] += 1
+        for label in doc.labels:
+            root = root_of((label.x, label.y))
+            if root is not None:
+                labelled.add(root)
+
+    drawn = sum(1 for root, count in part_pins.items() if count >= 2)
+    stubs = sum(
+        1
+        for root, count in part_pins.items()
+        if count == 1 and root in labelled and root not in power_pins
+    )
+    total = drawn + stubs
+    # A five-part sheet with three named nets is idiomatic, not machine-drawn;
+    # the pattern this rule is after only means anything at scale.
+    if total < 10:
+        return []
+    ratio = stubs / total
+    if ratio <= limit:
+        return []
+    return [
+        Finding(
+            "readability.label_only",
+            "warning",
+            f"{stubs} of {total} signal connections are a stub ending in a "
+            f"label ({ratio:.0%}, limit {limit:.0%}) - the circuit reads as a "
+            "name table, not a drawing",
+            details={"stubs": stubs, "drawn": drawn, "ratio": round(ratio, 3)},
+        )
+    ]
 
 
 @rule

@@ -1,0 +1,50 @@
+# The policy this example is held to, and what it is allowed to fail - each
+# with the engineering argument, so a reviewer can disagree with something.
+name = "opamp-filter"
+extends = "ai-generated"
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+location = "U1.2"
+reason = """A SOT-23-5 puts its supply pin in the middle of a 0.95 mm row; the \
+escape has to clear the package before C5 can sit against it, and 7.3 mm is \
+what that geometry leaves on two layers."""
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+location = "U2.2"
+reason = """Same package, same escape: C7 is as close to U2's supply as the \
+row allows."""
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+location = "U2.1"
+reason = """VREF is U2's output - the buffered half-rail - not a supply. A \
+capacitor placed against it would sit inside the buffer's control loop. The \
+schematic-side rule reads pin types and no longer asks; the board file \
+carries no pin types, so the board-side rule cannot know."""
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+location = "U2.4"
+reason = """U2.4 is the inverting input tied back to the output - the same \
+VREF node, judged above."""
+
+[[waivers]]
+rule = "readability.label_only"
+reason = """The signal chain - jack, coupling cap, the two filter resistors, \
+the op-amp, the output cap, the jack - is now drawn as real wires. What is \
+still labelled are the shunt elements hanging between rows (C1, C2, C4, the \
+VREF divider), where a straight clear run does not exist. Kept visible as \
+the measure of what the generator still cannot draw."""
+
+[[waivers]]
+rule = "route.acute_angle"
+reason = """Corners where the SOT-23 escape fans meet the 45-degree routing \
+grid; the fan geometry, not an etch problem."""
+
+[[waivers]]
+rule = "track.thin_power"
+reason = """The narrow +5V run feeds the 100k/100k reference divider: 25 \
+microamps in a track good for 1 A at a 10 C rise. The width was chosen by \
+the escape, and the current is four orders inside the limit."""

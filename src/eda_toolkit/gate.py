@@ -144,6 +144,8 @@ _AI_BLOCKING = (
     "route.stub",
     "route.acute_angle",
     "route.mixed_track_widths",
+    "route.detour",
+    "route.return_path",
     "via.small_drill",
     "via.annular_ring",
     "track.thin_power",

@@ -1,0 +1,51 @@
+# The policy this example is held to, and what it is allowed to fail - each
+# with the engineering argument, so a reviewer can disagree with something.
+name = "pico-carrier"
+extends = "ai-generated"
+
+[[waivers]]
+rule = "analog.missing_decoupling"
+location = "ADC_VREF"
+reason = """ADC_VREF is the module's own internally filtered reference, brought \
+to the header so the user can decide whether to commit it to a capacitor or \
+drive it. Deciding for them is exactly what a carrier should not do."""
+
+[[waivers]]
+rule = "layout.no_decoupling"
+reason = """VBUS is made by the module's USB connector and merely exposed \
+here. The board-side rule reads net names and cannot see that no pin of this \
+board's making drives it; the schematic-side rule reads pin types and no \
+longer asks."""
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+reason = """The header sits between the module pin and any possible capacitor \
+- that is what a breakout is. C1 and C2 sit immediately outboard of the pins \
+they serve; the 9-10 mm the rule measures is the header's own width."""
+
+[[waivers]]
+rule = "layout.off_grid_placement"
+reason = """The module's pads are on a 2.54 mm pitch, so its origin cannot \
+also sit on the 0.5 mm placement grid, and the headers have to line up with \
+the module's pads rather than with the grid. Two footprints, both correct."""
+
+[[waivers]]
+rule = "readability.label_only"
+reason = """A 1:1 breakout of forty pins is a name table by nature - the \
+information a reader wants is exactly 'which name is on which pin'. Drawing \
+forty parallel wires would say less, not more."""
+
+[[waivers]]
+rule = "route.acute_angle"
+reason = """One corner where a supply track leaves the diode pad diagonally; \
+judged on the plot, not an etch risk at this geometry."""
+
+[[waivers]]
+rule = "silk.over_pad"
+reason = """The overlap is inside the Pico module's own library footprint, \
+between its silk outline and its pads; not this layout's doing."""
+
+[[waivers]]
+rule = "track.thin_power"
+reason = """The narrow run is the +3V3 branch feeding the power LED through \
+R1: about a milliamp in a track good for 1 A at a 10 C rise."""

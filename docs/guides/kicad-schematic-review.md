@@ -78,7 +78,8 @@ references, library symbol mismatches, off-grid endpoints, bus errors.
 | --- | --- |
 | `net.single_pin` | net reaches exactly one pin — usually a wiring mistake |
 | `net.no_driver` | a net with only input pins, nothing drives it |
-| `analog.missing_decoupling` | an IC supply net with no capacitor to ground |
+| `analog.missing_decoupling` | an IC supply net with no capacitor to ground — judged from pin electrical types when the netlist has them, and never asked of a net an output pin drives |
+| `analog.no_dc_path` | a net whose every pin is a capacitor or connector: nothing sets its DC level |
 | `analog.i2c_pullup` | a net named SDA/SCL with no resistor on it |
 | `analog.led_no_series_resistor` | LED with no current limiting on either terminal |
 | `power.no_ground` / `power.no_supply` / `power.many_supplies` | rail sanity |
@@ -100,6 +101,7 @@ nothing to say about them, and why a generated sheet fails them so reliably:
 | `readability.unnamed_nets` | most multi-pin nets still carry generated names |
 | `readability.sheet_density` | one sheet holding more than a reader can follow |
 | `readability.title_block` | no title, revision, date or company |
+| `readability.label_only` | most connections are a stub ending in a label, not a drawn wire — a valid netlist that reads as a name table |
 
 **Part specification** — a value is not a specification. `C3 = 100n` is the same
 line for the 16 V part that fails on a 24 V rail and the 50 V part that does not:

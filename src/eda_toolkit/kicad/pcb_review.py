@@ -39,6 +39,17 @@ THRESHOLDS = {
     "max_decoupling_via_mm": 1.5,
     # Interior angle below which a corner is an acid trap and an impedance step.
     "min_track_angle_deg": 90.0,
+    # A power net may neck down this many millimetres in total (pad entries,
+    # fine-pitch escapes); beyond it the neck is the track.
+    "power_neck_mm": 10.0,
+    # Routed copper length over the minimum spanning tree of the net's pads.
+    # Above this the route is taking the scenic tour an autorouter leaves. The
+    # MST ignores obstacles, so honest routing runs well over 1x; on KiCad's
+    # own demo corpus, 4x is where human boards stop and machine tours begin.
+    "detour_ratio": 4.0,
+    # How far a signal may run over gaps in the other layer's ground fill
+    # before the return current's detour is worth a finding.
+    "return_path_mm": 10.0,
 }
 
 # Copper geometry is stored in nm; anything below this is file noise.
@@ -86,9 +97,13 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "a track segment narrower than the fab minimum", "error", threshold="min_track_mm"
     ),
     "track.thin_power": RuleSpec(
-        "a power or ground track under 0.4 mm, reported with the current it "
-        "actually carries at a 10 C rise (IPC-2221) from the board's own stackup",
+        "a power or ground net with a contiguous run of track under 0.4 mm "
+        "longer than power_neck_mm, reported with the current the thinnest "
+        "actually carries at a 10 C rise (IPC-2221) from the board's own "
+        "stackup. Short necks - pad entries, fine-pitch escapes - are what "
+        "the allowance is for",
         "warning",
+        threshold="power_neck_mm",
     ),
     "via.small_drill": RuleSpec(
         "a via drilled smaller than the fab minimum", "warning", threshold="min_via_drill_mm"
@@ -123,6 +138,22 @@ RULE_SPEC: dict[str, RuleSpec] = {
         threshold="min_track_angle_deg",
     ),
     "route.mixed_track_widths": RuleSpec("a net routed at three or more distinct widths", "info"),
+    "route.detour": RuleSpec(
+        "a net whose routed copper is longer than detour_ratio times the "
+        "minimum spanning tree of its pads, by more than 10 mm - the scenic "
+        "tour an autorouter takes where a person would go round the block. "
+        "Nets with a pour and ground nets are not judged",
+        "warning",
+        threshold="detour_ratio",
+    ),
+    "route.return_path": RuleSpec(
+        "on a two-layer board with a filled ground pour, a signal track that "
+        "runs more than return_path_mm in total over the pour's clearance cuts "
+        "on the opposite layer - the return current has to go round the gap, "
+        "and the loop grows by the detour",
+        "warning",
+        threshold="return_path_mm",
+    ),
     # -- placement ---------------------------------------------------------
     "layout.outside_outline": RuleSpec("a footprint origin outside the board outline", "error"),
     "layout.pad_collision": RuleSpec(
@@ -331,6 +362,34 @@ def rule_track_width(ctx: PcbContext) -> list[Finding]:
     ]
     if power_tracks:
         narrow = [t for t in power_tracks if t.width < 0.4]
+        # A short neck is what a pad entry or a fine-pitch escape looks like;
+        # only a *contiguous* narrow run longer than the allowance is really
+        # the track. Summing per net would damn a wide rail for having many
+        # pins, each with its own few-millimetre escape.
+        neck = ctx.thresholds["power_neck_mm"]
+        parent: dict[tuple, tuple] = {}
+
+        def find(a):
+            parent.setdefault(a, a)
+            while parent[a] != a:
+                parent[a] = parent[parent[a]]
+                a = parent[a]
+            return a
+
+        def key(net, point):
+            return (net, round(point[0], 2), round(point[1], 2))
+
+        for t in narrow:
+            a, b = key(t.net, t.start), key(t.net, t.end)
+            parent[find(a)] = find(b)
+        run_len: dict[tuple, float] = defaultdict(float)
+        run_net: dict[tuple, str] = {}
+        for t in narrow:
+            root = find(key(t.net, t.start))
+            run_len[root] += t.length
+            run_net[root] = t.net
+        over = {run_net[root] for root, length in run_len.items() if length > neck}
+        narrow = [t for t in narrow if t.net in over]
         if narrow:
             by_net = Counter(t.net for t in narrow)
             # Say what the width actually buys rather than only that it is thin:
@@ -349,9 +408,10 @@ def rule_track_width(ctx: PcbContext) -> list[Finding]:
                 Finding(
                     "track.thin_power",
                     "warning",
-                    f"power/ground tracks narrower than 0.4 mm - the thinnest is "
-                    f"{thinnest.width} mm on {thinnest.layer}, good for {amps:.2f} A "
-                    f"at a 10 C rise (IPC-2221)",
+                    f"power/ground net(s) with a contiguous run of track "
+                    f"narrower than 0.4 mm longer than {neck} mm - the thinnest "
+                    f"is {thinnest.width} mm on {thinnest.layer}, good for "
+                    f"{amps:.2f} A at a 10 C rise (IPC-2221)",
                     details={
                         "nets": dict(by_net.most_common(10)),
                         "thinnest_mm": thinnest.width,
@@ -1183,3 +1243,181 @@ def info(target: str | os.PathLike[str]) -> dict[str, Any]:
         key=lambda n: n["name"],
     )
     return data
+
+
+def _group_finding(rule_name: str, severity: str, message: str, items: list[str]) -> Finding:
+    """One finding for a whole category, carrying the count and some examples."""
+    return Finding(
+        rule_name,
+        severity,
+        message,
+        details={"count": len(items), "examples": items[:8]},
+    )
+
+
+def _mst_length(points: list[tuple[float, float]]) -> float:
+    """Length of the Euclidean minimum spanning tree - the shortest a net's
+    routing could conceivably be, ignoring obstacles."""
+    if len(points) < 2:
+        return 0.0
+    in_tree = [points[0]]
+    rest = list(points[1:])
+    best = {p: math.dist(points[0], p) for p in rest}
+    total = 0.0
+    while rest:
+        nearest = min(rest, key=lambda p: best[p])
+        total += best[nearest]
+        rest.remove(nearest)
+        in_tree.append(nearest)
+        for p in rest:
+            d = math.dist(nearest, p)
+            if d < best[p]:
+                best[p] = d
+    return total
+
+
+# Below this much excess copper the tour is not worth talking about, whatever
+# the ratio says - a 3 mm net routed at 9 mm is fine.
+_DETOUR_FLOOR_MM = 10.0
+
+
+@rule
+def rule_detour(ctx: PcbContext) -> list[Finding]:
+    """Routing that goes the long way round.
+
+    DRC has no opinion about a track that wanders: it is exactly as legal at
+    three times the length. A person notices immediately - the long diagonal
+    across open board is the signature of an autorouter that found *a* path and
+    stopped. Measured against the minimum spanning tree of the net's pads,
+    which no real route beats, so the ratio is a true lower bound on the tour.
+    """
+    limit = ctx.thresholds["detour_ratio"]
+    zoned = {z.net for z in ctx.board.zones if not z.keepout}
+    routed_len: dict[str, float] = defaultdict(float)
+    for track in ctx.board.tracks:
+        if track.net:
+            routed_len[track.net] += track.length
+    offenders = []
+    for net, pads in sorted(ctx.pads_by_net.items()):
+        if net in zoned or ctx.net_class_of(net) == "ground":
+            continue  # a pour reshapes the question
+        points = sorted({(round(p.x, 3), round(p.y, 3)) for _, p in pads})
+        routed = routed_len.get(net, 0.0)
+        if len(points) < 2 or routed <= 0:
+            continue
+        shortest = _mst_length(points)
+        if shortest < 0.5:
+            continue
+        ratio = routed / shortest
+        if ratio > limit and routed - shortest > _DETOUR_FLOOR_MM:
+            offenders.append(
+                f"{net}: {routed:.1f} mm routed for {shortest:.1f} mm of net ({ratio:.1f}x)"
+            )
+    if not offenders:
+        return []
+    return [
+        _group_finding(
+            "route.detour",
+            "warning",
+            f"{len(offenders)} net(s) routed at more than {limit}x the length "
+            "they need - the scenic tour reads as machine routing",
+            offenders,
+        )
+    ]
+
+
+def _inside(point: tuple[float, float], polygon: list[tuple[float, float]]) -> bool:
+    """Ray casting; edges count as inside, which errs toward covered."""
+    x, y = point
+    inside = False
+    for (x1, y1), (x2, y2) in zip(polygon, polygon[1:] + polygon[:1], strict=False):
+        if (y1 > y) != (y2 > y):
+            cross = (x2 - x1) * (y - y1) / (y2 - y1) + x1
+            if x <= cross:
+                inside = not inside
+    return inside
+
+
+@rule
+def rule_return_path(ctx: PcbContext) -> list[Finding]:
+    """A signal running over a hole in its own return plane.
+
+    Current comes back under the trace when it can. Where the opposite layer's
+    pour has been cut - by another track's clearance channel, mostly - the
+    return has to go round the cut, the loop area grows by the detour, and both
+    emission and coupling grow with it. Judged only on two-layer boards with a
+    filled ground pour, where "the other layer" is well defined; the gaps are
+    the difference between the pour's outline and its computed fill.
+    """
+    copper = ctx.board.copper_layers or []
+    if len(copper) != 2:
+        return []
+    limit = ctx.thresholds["return_path_mm"]
+    step = 1.0
+    plane: dict[str, list[tuple[tuple[float, ...], list[tuple[float, float]], bool]]] = {}
+    for zone in ctx.board.zones:
+        if zone.keepout or ctx.net_class_of(zone.net) != "ground" or not zone.fills:
+            continue
+        for layer in zone.layers:
+            entries = plane.setdefault(layer, [])
+            if zone.outline:
+                xs = [x for x, _ in zone.outline]
+                ys = [y for _, y in zone.outline]
+                entries.append(((min(xs), min(ys), max(xs), max(ys)), zone.outline, True))
+            for fill_layer, points in zone.fills:
+                if fill_layer != layer or not points:
+                    continue
+                xs = [x for x, _ in points]
+                ys = [y for _, y in points]
+                entries.append(((min(xs), min(ys), max(xs), max(ys)), points, False))
+    if not plane:
+        return []
+
+    def covered(point: tuple[float, float], layer: str) -> bool | None:
+        """True over fill, False over a cut, None outside the pour entirely."""
+        in_outline = False
+        for bbox, polygon, is_outline in plane.get(layer, ()):
+            if not (bbox[0] <= point[0] <= bbox[2] and bbox[1] <= point[1] <= bbox[3]):
+                continue
+            if not _inside(point, polygon):
+                continue
+            if is_outline:
+                in_outline = True
+            else:
+                return True
+        return False if in_outline else None
+
+    other = {copper[0]: copper[1], copper[1]: copper[0]}
+    exposed: dict[str, float] = defaultdict(float)
+    for track in ctx.board.tracks:
+        if not track.net or ctx.net_class_of(track.net) != "signal":
+            continue
+        if track.layer not in other or other[track.layer] not in plane:
+            continue
+        length = track.length
+        samples = max(2, int(length / step) + 1)
+        for index in range(samples):
+            t = (index + 0.5) / samples
+            point = (
+                track.start[0] + (track.end[0] - track.start[0]) * t,
+                track.start[1] + (track.end[1] - track.start[1]) * t,
+            )
+            if covered(point, other[track.layer]) is False:
+                exposed[track.net] += length / samples
+    offenders = [
+        f"{net}: {mm:.1f} mm over cuts in the plane"
+        for net, mm in sorted(exposed.items(), key=lambda kv: -kv[1])
+        if mm > limit
+    ]
+    if not offenders:
+        return []
+    return [
+        _group_finding(
+            "route.return_path",
+            "warning",
+            f"{len(offenders)} signal net(s) run more than {limit} mm over "
+            "gaps in the other layer's ground fill - the return current goes "
+            "round the gap and the loop grows by the detour",
+            offenders,
+        )
+    ]

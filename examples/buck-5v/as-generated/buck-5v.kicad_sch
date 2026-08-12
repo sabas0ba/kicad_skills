@@ -2,7 +2,7 @@
   (uuid "ec98644d-848c-5056-a4cb-c829189be5c3")
   (paper "A4")
   (title_block
-  	(comment 1 "generated 2026-08-11 by Claude Code (claude-opus-5)")
+  	(comment 1 "generated 2026-08-12 by Claude Code (claude-fable-5)")
   	(comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
   )
   (lib_symbols

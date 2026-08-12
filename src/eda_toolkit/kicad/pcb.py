@@ -132,6 +132,10 @@ class Zone:
     priority: int = 0
     keepout: bool = False
     fill_enabled: bool = True
+    # The drawn outline, and the computed fill per layer. The difference between
+    # the two is where the pour was asked for and is not: the clearance cuts.
+    outline: list[tuple[float, float]] = field(default_factory=list)
+    fills: list[tuple[str, list[tuple[float, float]]]] = field(default_factory=list)
 
 
 @dataclass
@@ -449,14 +453,36 @@ def parse(path: str | os.PathLike[str]) -> Board:
         code = int(zone.value("net", default=0) or 0)
         fill = zone.child("fill")
         fill_atoms = fill.atoms() if fill else []
+
+        def _points(node) -> list[tuple[float, float]]:
+            pts = node.child("pts")
+            out = []
+            for xy in pts.children("xy") if pts else []:
+                atoms = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                if len(atoms) >= 2:
+                    out.append((float(atoms[0]), float(atoms[1])))
+            return out
+
+        outline: list[tuple[float, float]] = []
+        for poly in zone.children("polygon"):
+            outline = _points(poly)
+            break
+        fills = []
+        for filled_poly in zone.walk("filled_polygon"):
+            layer = str(filled_poly.value("layer", default=""))
+            points = _points(filled_poly)
+            if layer and points:
+                fills.append((layer, points))
         board.zones.append(
             Zone(
                 net=str(zone.value("net_name", default=board.nets.get(code, ""))),
                 layers=_layer_list(zone.child("layers")) or _layer_list(zone.child("layer")),
-                filled=any(True for _ in zone.walk("filled_polygon")),
+                filled=bool(fills),
                 priority=int(zone.value("priority", default=0) or 0),
                 keepout=zone.child("keepout") is not None,
                 fill_enabled=bool(fill_atoms and fill_atoms[0] is True),
+                outline=outline,
+                fills=fills,
             )
         )
 
