@@ -30,12 +30,6 @@ also sit on the 0.5 mm placement grid, and the headers have to line up with \
 the module's pads rather than with the grid. Two footprints, both correct."""
 
 [[waivers]]
-rule = "readability.label_only"
-reason = """A 1:1 breakout of forty pins is a name table by nature - the \
-information a reader wants is exactly 'which name is on which pin'. Drawing \
-forty parallel wires would say less, not more."""
-
-[[waivers]]
 rule = "route.acute_angle"
 reason = """One corner where a supply track leaves the diode pad diagonally; \
 judged on the plot, not an etch risk at this geometry."""

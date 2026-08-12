@@ -84,12 +84,16 @@ the point of writing them down is to say which:
   `route.return_path`: the parser keeps the pour's outline *and* its computed
   fill, and the difference between them is exactly where the plane is not.
 * **Decoupling geometry** (already ruled: `layout.decoupling_distance`,
-  `layout.decoupling_via`). The three fine-pitch boards all fail it for the
-  same reason — the escape from the package spends the distance budget before
-  a capacitor can be placed. On two layers, with parts on one side, this is a
-  fact of the package, not a placement mistake; the real-world fix is caps on
-  the back under the pins, which this generator cannot yet place. **Waived**
-  per project, with that reason.
+  `layout.decoupling_via`). The three fine-pitch boards all fail the distance
+  rule for the same reason — the escape from the package spends the distance
+  budget before a capacitor can be placed. On two layers, with parts on one
+  side, this is a fact of the package, not a placement mistake; the real-world
+  fix is caps on the back under the pins, which this generator cannot yet
+  place. **Waived** per project, with that reason. The *via* half is now
+  **fixed** where it was failing: on the FPGA board every 0603's ground via
+  is anchored against its own pad, on the far side from the supply pad, with
+  the 1.2 mm stub as the whole loop — placed as a declared via next to the
+  pad rather than found by the router at the end of a track.
 * **Power track width** (`track.thin_power`). The rule used to damn a rail for
   its narrowest millimetre, which on a fine-pitch board is the escape neck it
   cannot avoid. Now it measures the longest *contiguous* narrow run against a
@@ -109,12 +113,28 @@ the point of writing them down is to say which:
   mark of a generated schematic, and until now nothing measured it. Every pin
   got a stub and a label; the reader greps. Now the **rule**
   `readability.label_only` (fraction of label-stub connections over the wire
-  graph, power symbols exempt), and half the **fix**: the generator now draws
-  a real wire wherever two pins of a net face each other on one axis with a
-  clear run, and keeps labels elsewhere. The `reviewed/` sheets are partly
-  wired; `as-generated/` stays a pure name table, which is what the rule is
-  for. Wiring the *unaligned* rest is open — it needs a schematic router with
-  taste, and a wire that dodges three parts is worse than a name.
+  graph, power symbols exempt), and the **fix**: a sheet router. Each signal
+  net becomes a tree of straight, L-, Z- and detour-shaped runs on the
+  schematic grid — legs leave a pin along its own stub, escape distances
+  stagger so a bus does not fight over one column, every pin reserves a
+  runway another net may cross but not ride along, and three ends meeting on
+  a point get their junction dot. One label per wire fragment survives,
+  because the label is what names the net. The result: buck, motor and op-amp
+  sheets fully wired; the Pico carrier wired 31 of 33 nets (the two module
+  control pins whose route would lap the module symbol keep their labels);
+  the FPGA board 16 of 19 (the programming header and CRESET stay named,
+  which is what a human does with a far corner connector). `as-generated/`
+  stays a pure name table, which is what the rule is for.
+* **What trying to draw the wires found** — four placement defects no rule
+  had caught, each invisible until a wire had to be drawn through it: the
+  buck's LED was drawn upside down, its ground symbol pointing up into the
+  resistor above it; both breakout headers (Pico J4, FPGA J3) faced *away*
+  from everything they connect to — fixed with mirrored symbols, which the
+  generator could not draw at all before; the FPGA sheet's notes printed
+  straight over the 1.2 V regulator and its capacitors; and its programming
+  header sat inside the title block. The router now treats the sheet frame,
+  the title block and the notes as obstacles, so a wire cannot be drawn onto
+  them either.
 * **A bypass capacitor's sheet position says nothing about which pin it
   serves** — C6 near U1 on the board is C6 in a column of capacitors on the
   sheet. Splitting the iCE40 into its four library units (banks + supplies)
@@ -150,7 +170,9 @@ the point of writing them down is to say which:
 
 | finding | disposition |
 | --- | --- |
-| connections by name, not wire | rule `readability.label_only` + partial fix (aligned pairs drawn) |
+| connections by name, not wire | rule `readability.label_only` + fixed (sheet router: wire trees, junction dots, mirrored connectors) |
+| inverted LED, headers facing away, notes over parts, connector in the title block | fixed — found by the router, not by a rule |
+| ground vias at the end of a track | fixed on fpga-audio (vias anchored beside each capacitor's ground pad) |
 | floating AC-coupled node | rule `analog.no_dc_path` + fixed (R6 on opamp-filter) |
 | scenic-route routing | rule `route.detour` |
 | signals over plane cuts | rule `route.return_path` (parser now keeps zone outline + fill) |

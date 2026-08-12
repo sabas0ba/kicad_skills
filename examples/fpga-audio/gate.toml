@@ -12,19 +12,6 @@ answer is capacitors on the back under the pins, which needs the four-layer \
 board this example deliberately is not."""
 
 [[waivers]]
-rule = "layout.decoupling_via"
-reason = """Same geometry: the ground vias sit at the first clear spot past \
-each capacitor's escape. Closer positions are inside the fan's clearance."""
-
-[[waivers]]
-rule = "readability.label_only"
-reason = """The FPGA is drawn in four units and almost nothing on this sheet \
-faces anything across a straight clear run, so the generator's wire-drawing \
-finds one pair. The sheet stays a name table; a schematic router that can \
-bend without making it worse is future work, and the finding is kept visible \
-as the measure of it."""
-
-[[waivers]]
 rule = "route.acute_angle"
 reason = """Corners where the four stated escape fans meet the 45-degree \
 routing grid; the fan geometry, judged on the plot, not an etch risk at this \

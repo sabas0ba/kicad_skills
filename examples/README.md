@@ -72,8 +72,8 @@ Under KiCad's own ERC and DRC, and the `ai-generated` policy:
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 1 finding waived | 0 / 0 / 0 | 0 / 1 / 6 |
-| `as-generated` | **FAIL**, 26 blocking | — | — |
+| `reviewed` | **PASS**, 1 finding waived | 0 / 0 / 0 | 0 / 1 / 5 |
+| `as-generated` | **FAIL**, 27 blocking | — | — |
 
 ### The two, side by side
 
@@ -151,12 +151,12 @@ charge pump, bypass and pull-up the datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 8 findings waived | 0 / 2 / 0 | 0 / 7 / 6 |
-| `as-generated` | **FAIL**, 27 blocking | — | — |
+| `reviewed` | **PASS**, 7 findings waived | 0 / 2 / 0 | 0 / 6 / 6 |
+| `as-generated` | **FAIL**, 33 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
 unconnected items, zero parity findings, on 9.0.9 and 10.0.4. What the gate
-still found is now *answered* rather than pending: eight waivers in
+still found is now *answered* rather than pending: seven waivers in
 [`motor-driver/gate.toml`](https://github.com/sabas0ba/kicad_skills/blob/main/examples/motor-driver/gate.toml),
 each carrying the engineering argument — the charge pump wired the way the
 datasheet asks, the escape geometry of a 0.65 mm package, a 2 mA LED branch on
@@ -221,8 +221,8 @@ that reaches VSYS the way the Pico datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 10 findings waived | 0 / 3 / 0 | 0 / 10 / 7 |
-| `as-generated` | **FAIL**, 27 blocking | — | — |
+| `reviewed` | **PASS**, 9 findings waived | 0 / 1 / 0 | 0 / 9 / 7 |
+| `as-generated` | **FAIL**, 37 blocking | — | — |
 
 Under KiCad's own checks `reviewed` has no errors and no unconnected items, on
 9.0.9 and 10.0.4 — one `lib_footprint_mismatch` on the module and two silkscreen
@@ -280,11 +280,11 @@ filter is referenced to.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 7 findings waived | 0 / 1 / 0 | 0 / 6 / 6 |
-| `as-generated` | **FAIL**, 30 blocking | — | — |
+| `reviewed` | **PASS**, 6 findings waived | 0 / 0 / 0 | 0 / 6 / 6 |
+| `as-generated` | **FAIL**, 37 blocking | — | — |
 
-`reviewed` passes KiCad's own DRC with nothing at all — no violations, no
-unconnected items, no parity findings.
+`reviewed` passes KiCad's own DRC with one silkscreen-clearance warning — no
+errors, no unconnected items, no parity findings.
 
 | as-generated | reviewed |
 | --- | --- |
@@ -307,14 +307,14 @@ unconnected items, no parity findings.
 * **`analog.missing_decoupling` on VREF** — same net, same reason.
 
 The most recognisable generated-schematic trait — **every connection a label,
-not a wire** — is now both measured and half-fixed. `readability.label_only`
+not a wire** — is now both measured and fixed. `readability.label_only`
 counts it (this sheet was 96% labels; KiCad's own demo sheets pass), and the
-generator now draws a real wire wherever two pins face each other on one axis
-with a clear run: the signal chain from jack to jack reads as a drawn line,
-and the ratio fell to 71%. The shunt elements hanging between rows are still
-names, which the waiver in `gate.toml` says plainly. This round also added R6
-and R7 — the coupling caps' far sides previously floated, which the new
-`analog.no_dc_path` rule now catches from the netlist alone.
+generator routes the sheet: every one of this design's eight signal nets is a
+drawn wire tree, from the jack through the filter to the jack, with junction
+dots where the trees branch, and the rule no longer fires at all. One label
+per net survives, because the label is what names the net. This round also
+added R6 and R7 — the coupling caps' far sides previously floated, which the
+new `analog.no_dc_path` rule now catches from the netlist alone.
 
 ## fpga-audio — iCE40UP5K to PCM5102A, I2S out
 
@@ -323,8 +323,8 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 7 findings waived | 0 / 3 / 0 | 0 / 8 / 6 |
-| `as-generated` | **FAIL**, 23 blocking | — | — |
+| `reviewed` | **PASS**, 5 findings waived | 0 / 2 / 0 | 0 / 11 / 6 |
+| `as-generated` | **FAIL**, 28 blocking | — | — |
 
 Under KiCad's own checks `reviewed` has no DRC errors, nothing unconnected and
 no schematic-parity findings; silkscreen warnings between the fans are all
@@ -357,20 +357,24 @@ open in KiCad rather than take on trust.
 
 The findings that follow from it, at the scale a 48-pin part gives them:
 
-* **`layout.decoupling_distance` × 16** and **`layout.decoupling_via` × 9** —
-  the escape has to walk the row out to a routable pitch before a capacitor can
-  be placed against it, and that walk is most of the budget. The same finding
-  as the motor driver and the op-amp filter, three package sizes apart, which is
-  what makes it a pattern rather than three boards' bad luck.
+* **`layout.decoupling_distance` × 16** — the escape has to walk the row out
+  to a routable pitch before a capacitor can be placed against it, and that
+  walk is most of the budget. The same finding as the motor driver and the
+  op-amp filter, three package sizes apart, which is what makes it a pattern
+  rather than three boards' bad luck. The *via* half of the same complaint —
+  `layout.decoupling_via`, nine of them at first — is gone outright: every
+  0603's ground via now sits anchored against its own pad, on the far side
+  from the supply, with a 1.2 mm stub as the whole loop.
 * **`track.thin_power` at 0.2 mm** — nothing leaves this package wider.
 * **`net.single_pin` × 31** — every unused pin has a net of its own, named
   `unconnected-(U1A-IOT_36b-Pad25)` by KiCad. A no-connect flag is a decision,
   not a defect, and the rule cannot tell.
 * **`erc.pin_to_pin` on VCCPLL** — KiCad's iCE40 symbol declares VCCPLL a power
-  *output*, so joining it to the regulator's output is two power outputs wired
+  *output*, so tying it to the regulator's output is two power outputs wired
   together. The datasheet would rather see it filtered from the core rail than
-  tied to it; this board ties it, and both the ERC finding and the design
-  shortcut are real.
+  tied to it, and the review round agreed with both: the reviewed board now
+  takes VCCPLL through a 100 Ω / 10 µF + 100 nF RC from the core rail, which
+  retired the ERC finding and the noise path in one move.
 
 ### What building it changed in the toolkit
 
@@ -416,8 +420,10 @@ the board-side rule keeps its blindness and the waivers say so.
 And the two things no rule caught at all became rules in the review round:
 
 * **Every connection a label, not a wire** → `readability.label_only`, plus a
-  generator that now draws the straight clear runs (0 findings on KiCad's own
-  demo sheets; 71–100% on these, waived with the reason stated).
+  sheet router in the generator (straight, L-, Z- and detour-shaped wire
+  trees with junction dots; 0 findings on KiCad's own demo sheets, and now 0
+  on every `reviewed/` sheet — the handful of nets still labelled are the
+  cross-sheet hauls a human would label too).
 * **Autorouted-looking routing** → `route.detour` (routed length against the
   minimum spanning tree of the net's pads; 0 findings on the demo corpus at
   the shipped 4x) and `route.return_path` (signal over cuts in the other

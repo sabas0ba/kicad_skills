@@ -21,14 +21,6 @@ the screw terminal's courtyard. The bypass loop that matters at switching \
 speed is C2's, which passes."""
 
 [[waivers]]
-rule = "readability.label_only"
-reason = """The generator draws a wire wherever two pins face each other on one \
-axis with a clear run. Between a TSSOP and edge connectors no such run exists, \
-so this sheet is still mostly labels. Real fix - a schematic router that can \
-bend without making things worse - is future work; the finding is kept \
-visible rather than silenced."""
-
-[[waivers]]
 rule = "route.acute_angle"
 reason = """The corners under 90 degrees are where the stated escape fans meet \
 the 45-degree routing grid. At this fab's geometry they are not acid traps; \

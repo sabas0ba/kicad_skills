@@ -32,6 +32,7 @@ import math
 import re
 import sys
 import uuid
+from collections import defaultdict
 from dataclasses import dataclass, field, replace
 from itertools import pairwise
 from pathlib import Path
@@ -95,6 +96,10 @@ class Part:
     sheet: tuple[float, float]  # symbol origin on the sheet
     board: tuple[float, float, float]  # x, y, rotation on the board
     angle: float = 0.0  # symbol rotation on the sheet
+    # Symbol mirror on the sheet ("x" or "y"), applied after the rotation. A
+    # connector drawn on the right of the sheet needs its pins facing left, and
+    # rotating it instead would reverse the pin order top to bottom.
+    mirror: str = ""
     fields: dict[str, str] = field(default_factory=dict)
     # How far a wire runs off each pin before its label. The default clears a
     # two-pin symbol; a forty-pin one draws its pin numbers just outside the
@@ -387,7 +392,7 @@ def pin_geometry(part: Part, pin: PinDef) -> tuple[tuple[float, float], tuple[fl
     the same transform means rotation and mirroring need no separate handling.
     """
     sx, sy = part.sheet
-    end = transform_pin(pin.x, pin.y, sx, sy, part.angle, "")
+    end = transform_pin(pin.x, pin.y, sx, sy, part.angle, part.mirror)
     away = math.radians(pin.angle + 180)
     out = transform_pin(
         pin.x + math.cos(away) * part.stub,
@@ -395,7 +400,7 @@ def pin_geometry(part: Part, pin: PinDef) -> tuple[tuple[float, float], tuple[fl
         sx,
         sy,
         part.angle,
-        "",
+        part.mirror,
     )
     return (round(end[0], 4), round(end[1], 4)), (round(out[0], 4), round(out[1], 4))
 
@@ -447,25 +452,43 @@ def _title_block(design: Design, indent: str) -> list[str]:
     return [f"{indent}(title_block", *body, f"{indent})"] if body else []
 
 
-def _long_wires(
-    design: Design,
-) -> tuple[list[tuple[str, str, str, tuple[float, float], tuple[float, float]]], set[str]]:
-    """Aligned pin pairs that can be joined by one straight, unobstructed wire.
+# Beyond this a wire crosses the whole sheet and a name is clearer. What
+# counts as "the whole sheet" depends on the sheet: an A3 drawing earns its
+# size by having further to go.
+MAX_WIRE_MM = {"A4": 160.0, "A3": 260.0}
+WIRE_CLEAR = 1.27  # how far a drawn wire keeps from copper it does not touch
 
-    The alternative is a stub and a label at both ends, which is a valid netlist
-    and an unreadable drawing - `readability.label_only` counts exactly this.
-    Only the clean case is drawn: the two stubs face each other on one axis and
-    the run between them keeps clear of every other stub, symbol body, power
-    symbol and the notes block. Everything else keeps its labels, because a wire
-    that dodges around three parts to avoid a fourth is not more readable than a
-    name, it is less.
 
-    Returns the wires as (net, from, to, a, b), and the set of pins whose label
-    the wire replaces - one label per pair survives, so the net keeps its name.
+def _crosses(a0, a1, b0, b1) -> bool:
+    """Strict interior crossing - the one contact two nets are allowed to have.
+
+    KiCad joins wires that share an endpoint or meet a junction; two wires that
+    simply cross stay separate nets, and every real schematic uses that.
     """
-    if not design.draw_wires:
-        return [], set()
 
+    def orient(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    d1, d2 = orient(b0, b1, a0), orient(b0, b1, a1)
+    d3, d4 = orient(a0, a1, b0), orient(a0, a1, b1)
+    eps = GEOM_EPS
+    return ((d1 > eps and d2 < -eps) or (d1 < -eps and d2 > eps)) and (
+        (d3 > eps and d4 < -eps) or (d3 < -eps and d4 > eps)
+    )
+
+
+def _sheet_obstacles(
+    design: Design,
+) -> tuple[
+    dict[str, tuple[str, tuple[float, float], tuple[float, float]]],
+    list[tuple[float, float, float, float]],
+]:
+    """What a sheet wire must respect: every stub, and every box it may not enter.
+
+    Returns the stubs by pin owner (net, pin end, stub tip) and the keep-out
+    boxes - one per symbol body, one per power-symbol graphic (extended the way
+    the symbol points), one per power flag, one around the notes block.
+    """
     net_of: dict[tuple[str, str], str] = {}
     for net, nodes in design.nets.items():
         for entry in nodes:
@@ -486,9 +509,6 @@ def _long_wires(
             seen.add(end)
             stubs[f"{part.ref}.{pin.number}"] = (net, end, out)
             if net in POWER_SYMBOLS:
-                # a power symbol stands on the stub end, its body extending
-                # onward in the stub's own direction - not sideways over the
-                # neighbouring rows
                 length = math.hypot(out[0] - end[0], out[1] - end[1]) or 1.0
                 dx = (out[0] - end[0]) / length
                 dy = (out[1] - end[1]) / length
@@ -520,54 +540,323 @@ def _long_wires(
                 design.notes_at[1] + (len(design.notes) + 1) * 5.08,
             )
         )
+    # The sheet frame: a wire drawn along the border prints on the border.
+    width, height = {"A4": (297.0, 210.0), "A3": (420.0, 297.0)}.get(design.paper, (297.0, 210.0))
+    margin = 12.0
+    boxes += [
+        (-margin, -margin, width + margin, margin),
+        (-margin, height - margin, width + margin, height + margin),
+        (-margin, -margin, margin, height + margin),
+        (width - margin, -margin, width + margin, height + margin),
+        # the title block, bottom right
+        (width - 190.0, height - 26.0, width + margin, height + margin),
+    ]
+    return stubs, boxes
 
-    def clear(a: tuple[float, float], b: tuple[float, float], skip: set[str]) -> bool:
-        for owner, (_, end, out) in stubs.items():
-            if owner in skip:
-                continue
-            if _segment_distance(a, b, end, out) < 1.27 - GEOM_EPS:
+
+def plan_wires(
+    design: Design,
+) -> tuple[
+    list[tuple[str, tuple[float, float], tuple[float, float]]], set[str], list[tuple[float, float]]
+]:
+    """Draw each signal net as a wire tree, with bends, and say what it costs.
+
+    The stub-and-label sheet is a valid netlist and an unreadable drawing -
+    `readability.label_only` measures exactly that. This routes instead: for
+    every net that is not a power rail, the pins are joined into a tree of
+    straight, L- and Z-shaped runs on the schematic grid, each leg leaving along
+    its pin's own stub direction, crossing other nets only at right-angle
+    transversals and keeping ``WIRE_CLEAR`` from everything it does not touch.
+    A pin no clean run reaches keeps its label - a wire that dodges three parts
+    to avoid a fourth reads worse than a name - and one label per net always
+    survives, because the label is what names the net for the board.
+
+    Returns the wire segments, the pins whose label the tree replaces, and the
+    junction dots (three or more wire ends meeting on one point).
+    """
+    if not design.draw_wires:
+        return [], set(), []
+
+    stubs, boxes = _sheet_obstacles(design)
+    max_wire = MAX_WIRE_MM.get(design.paper, 160.0)
+
+    # Each pin also reserves a short runway past its tip: the corridor another
+    # wire would have to leave free for this pin to be reachable at all. A
+    # wire riding along someone else's runway is what walls a bus row off.
+    reach: dict[str, tuple[float, float]] = {}
+    for owner, (_net, end, out) in stubs.items():
+        length = math.hypot(out[0] - end[0], out[1] - end[1]) or 1.0
+        hx = (out[0] - end[0]) / length
+        hy = (out[1] - end[1]) / length
+        reach[owner] = (out[0] + 4 * GRID * hx, out[1] + 4 * GRID * hy)
+
+    accepted: list[tuple[str, tuple[float, float], tuple[float, float]]] = []
+
+    def valid(polyline: list[tuple[float, float]], net: str, skip: set[str]) -> bool:
+        joints = {polyline[0], polyline[-1]}
+        for a, b in pairwise(polyline):
+            if math.dist(a, b) < GEOM_EPS:
                 return False
-        return all(_segment_to_box(a, b, box) >= GEOM_EPS for box in boxes)
+            for box in boxes:
+                if _segment_to_box(a, b, box) < GEOM_EPS:
+                    return False
+            for owner, (other_net, end, out) in stubs.items():
+                if owner in skip:
+                    continue
+                # The stub and its runway are checked apart: joined, the pin
+                # tip becomes an interior point, and a wire through the tip
+                # would count as a clean crossing when it is in fact a tap.
+                exempt = other_net == net and (end in joints or out in joints)
+                for s0, s1 in ((end, out), (out, reach[owner])):
+                    if _segment_distance(a, b, s0, s1) >= WIRE_CLEAR - GEOM_EPS:
+                        continue
+                    if exempt:
+                        continue  # meeting our own tree at the joint is the point
+                    if other_net != net and _crosses(a, b, s0, s1):
+                        continue  # a transversal crossing is not a connection
+                    return False
+            for other_net, s0, s1 in accepted:
+                near = _segment_distance(a, b, s0, s1) < WIRE_CLEAR - GEOM_EPS
+                if not near:
+                    continue
+                if other_net == net and (s0 in joints or s1 in joints):
+                    continue
+                if other_net != net and _crosses(a, b, s0, s1):
+                    continue
+                return False
+        return True
 
-    candidates = []
-    for net, nodes in design.nets.items():
-        owners = [entry for entry in nodes if entry in stubs]
-        for i, a in enumerate(owners):
-            _, a_end, a_out = stubs[a]
-            a_dir = (a_out[0] - a_end[0], a_out[1] - a_end[1])
-            for b in owners[i + 1 :]:
-                _, b_end, b_out = stubs[b]
-                b_dir = (b_out[0] - b_end[0], b_out[1] - b_end[1])
-                span = (b_out[0] - a_out[0], b_out[1] - a_out[1])
-                length = math.hypot(*span)
-                if length < GEOM_EPS:
-                    continue  # the stubs already meet
-                # the run continues a's stub and arrives against b's
-                if abs(a_dir[0] * span[1] - a_dir[1] * span[0]) > GEOM_EPS:
-                    continue
-                if a_dir[0] * span[0] + a_dir[1] * span[1] <= 0:
-                    continue
-                if b_dir[0] * span[0] + b_dir[1] * span[1] >= 0:
-                    continue
-                candidates.append((length, net, a, b, a_out, b_out))
+    def candidates(a_out, a_dir, b_out, b_dir) -> list[list[tuple[float, float]]]:
+        """Rectilinear runs from a's stub tip to b's, worst case four bends.
 
-    used: set[str] = set()
-    accepted: list[tuple[str, str, str, tuple[float, float], tuple[float, float]]] = []
+        Each pin may first *escape* - continue a grid-multiple past its stub tip
+        along its own direction, which is how a wire clears the pins beside it -
+        and the escape points are joined by the two L orders and a mid-span Z.
+        Two rules keep the result readable: the first leg must not double back
+        over a's stub (perpendicular is fine - that is just a corner at the
+        tip), and the last leg must not arrive from behind b - a wire reaching
+        a pin through its own symbol is what the box check exists to refuse,
+        but refusing to propose it is cheaper.
+        """
+        la = math.hypot(*a_dir) or 1.0
+        lb = math.hypot(*b_dir) or 1.0
+        a_hat = (a_dir[0] / la, a_dir[1] / la)
+        b_hat = (b_dir[0] / lb, b_dir[1] / lb)
+        out: list[list[tuple[float, float]]] = []
+
+        def add(points: list[tuple[float, float]]) -> None:
+            run = [points[0]]
+            for point in points[1:]:
+                if math.dist(point, run[-1]) > GEOM_EPS:
+                    run.append(point)
+            if len(run) < 2:
+                return
+            first = (run[1][0] - run[0][0], run[1][1] - run[0][1])
+            if first[0] * a_hat[0] + first[1] * a_hat[1] < -GEOM_EPS:
+                return  # doubles back over a's stub
+            last = (run[-1][0] - run[-2][0], run[-1][1] - run[-2][1])
+            if last[0] * b_hat[0] + last[1] * b_hat[1] > GEOM_EPS:
+                return  # arrives at b from behind, through the symbol
+            out.append(run)
+
+        def elbows(p, q) -> list[list[tuple[float, float]]]:
+            if abs(p[0] - q[0]) < GEOM_EPS or abs(p[1] - q[1]) < GEOM_EPS:
+                return [[p, q]]
+            return [[p, (q[0], p[1]), q], [p, (p[0], q[1]), q]]
+
+        # Escape distances are staggered so that a whole bus leaving one pin
+        # column does not fight over a single vertical; the channel offsets go
+        # out far enough to clear a large symbol body sideways.
+        escapes = tuple(k * GRID for k in range(11))
+        offsets = [k * GRID for n in range(1, 9) for k in (-4 * n, 4 * n)]
+        for ka in escapes:
+            for kb in escapes:
+                a_esc = (a_out[0] + ka * a_hat[0], a_out[1] + ka * a_hat[1])
+                b_esc = (b_out[0] + kb * b_hat[0], b_out[1] + kb * b_hat[1])
+                for middle in elbows(a_esc, b_esc):
+                    add([a_out, *middle, b_out])
+                # detours: a parallel channel a few grid steps aside - the only
+                # way past a part that sits square between two pins that face
+                # the same way (a resistor feeding the LED below it)
+                for off in offsets:
+                    add(
+                        [
+                            a_out,
+                            a_esc,
+                            (a_esc[0] + off, a_esc[1]),
+                            (a_esc[0] + off, b_esc[1]),
+                            b_esc,
+                            b_out,
+                        ]
+                    )
+                    add(
+                        [
+                            a_out,
+                            a_esc,
+                            (a_esc[0], a_esc[1] + off),
+                            (b_esc[0], a_esc[1] + off),
+                            b_esc,
+                            b_out,
+                        ]
+                    )
+        # Zs through the mid-span, for pin rows that face each other. Several
+        # jog columns, tried centre-out: two parallel Zs cannot share one, and
+        # a bus is exactly many parallel Zs.
+        lanes = [0] + [s * k for k in range(1, 20) for s in (-1, 1)]
+        if abs(a_hat[0]) > abs(a_hat[1]):
+            mid0 = round(round((a_out[0] + b_out[0]) / 2 / GRID) * GRID, 4)
+            for k in lanes:
+                mid = round(mid0 + k * GRID, 4)
+                add([a_out, (mid, a_out[1]), (mid, b_out[1]), b_out])
+        else:
+            mid0 = round(round((a_out[1] + b_out[1]) / 2 / GRID) * GRID, 4)
+            for k in lanes:
+                mid = round(mid0 + k * GRID, 4)
+                add([a_out, (a_out[0], mid), (b_out[0], mid), b_out])
+        return out
+
+    def span(net: str) -> float:
+        outs = [stubs[owner][2] for owner in design.nets[net] if owner in stubs]
+        if not outs:
+            return 0.0
+        xs = [p[0] for p in outs]
+        ys = [p[1] for p in outs]
+        return (max(xs) - min(xs)) + (max(ys) - min(ys))
+
     dropped: set[str] = set()
-    for _length, net, a, b, a_out, b_out in sorted(candidates, key=lambda c: c[0]):
-        if a in used or b in used:
+    # Local nets first: a decoupling hop is one short wire wherever it goes,
+    # but a cross-sheet run drawn early walls off the corridor a whole bus
+    # needed. The long hauls route last and keep their labels when boxed out.
+    order = sorted((n for n in design.nets if n not in POWER_SYMBOLS), key=lambda n: (span(n), n))
+    for net in order:
+        owners = [entry for entry in design.nets[net] if entry in stubs]
+        if len(owners) < 2:
             continue
-        if not clear(a_out, b_out, {a, b}):
-            continue
-        if any(
-            _segment_distance(a_out, b_out, la, lb) < 1.27 - GEOM_EPS
-            for _, _, _, la, lb in accepted
-        ):
-            continue
-        used.update((a, b))
-        accepted.append((net, a, b, a_out, b_out))
-        dropped.add(b)
-    return accepted, dropped
+        # Merge whichever two fragments join most cheaply, wherever they are -
+        # seeded growth dies with its seed, and a rail whose regulator pin is
+        # boxed in should still get its capacitors chained to each other.
+        comp = {owner: owner for owner in owners}
+
+        def find(owner: str, comp: dict[str, str] = comp) -> str:
+            while comp[owner] != owner:
+                comp[owner] = comp[comp[owner]]
+                owner = comp[owner]
+            return owner
+
+        # Each fragment carries exactly one label; a merge drops the loser's.
+        carrier = {owner: owner for owner in owners}
+        # Wires only ever accumulate, so a pair with no clean run this round
+        # will not have one next round either.
+        hopeless: set[tuple[str, str]] = set()
+        ranked: dict[tuple[str, str], list[tuple[float, list]]] = {}
+        while True:
+            best = None
+            for i, a in enumerate(owners):
+                _, a_end, a_out = stubs[a]
+                a_dir = (a_out[0] - a_end[0], a_out[1] - a_end[1])
+                for b in owners[i + 1 :]:
+                    if (a, b) in hopeless or find(a) == find(b):
+                        continue
+                    if (a, b) not in ranked:
+                        _, b_end, b_out = stubs[b]
+                        b_dir = (b_out[0] - b_end[0], b_out[1] - b_end[1])
+                        runs = candidates(a_out, a_dir, b_out, b_dir)
+                        runs += [list(reversed(c)) for c in candidates(b_out, b_dir, a_out, a_dir)]
+                        manhattan = abs(b_out[0] - a_out[0]) + abs(b_out[1] - a_out[1])
+                        costed = []
+                        for run in runs:
+                            length = sum(math.dist(p, q) for p, q in pairwise(run))
+                            if length > max_wire or length > 2.0 * manhattan + 20.0:
+                                continue
+                            costed.append((length + 6.0 * (len(run) - 2), run))
+                        costed.sort(key=lambda item: item[0])
+                        ranked[(a, b)] = costed
+                    found = False
+                    for cost, run in ranked[(a, b)]:
+                        if best is not None and cost >= best[0]:
+                            found = True  # cheaper ones may still win next round
+                            break
+                        if valid(run, net, {a, b}):
+                            best = (cost, a, b, run)
+                            found = True
+                            break
+                    if not found:
+                        hopeless.add((a, b))
+            if best is None:
+                break  # remaining fragments keep their labels
+            _, a, b, run = best
+            for p, q in pairwise(run):
+                accepted.append((net, p, q))
+            ra, rb = find(a), find(b)
+            dropped.add(carrier[rb])
+            comp[rb] = ra
+    # Two runs of one net may lawfully share a stretch of line - a second
+    # branch leaving the same pin rides the first before it turns. Drawn as
+    # two overlapping wires that confuses KiCad 9's connectivity outright, so
+    # collinear same-net segments are unioned into maximal clean runs first.
+    # The escape arithmetic also leaves float dust on some coordinates, and a
+    # wire 2e-14 off its pin is a wire KiCad has to be lucky to connect.
+    merged: list[tuple[str, tuple[float, float], tuple[float, float]]] = []
+    spans: dict[tuple[str, str, float], list[tuple[float, float]]] = defaultdict(list)
+    for net, p, q in accepted:
+        p = (round(p[0], 4), round(p[1], 4))
+        q = (round(q[0], 4), round(q[1], 4))
+        if abs(p[0] - q[0]) < GEOM_TOL:
+            spans[(net, "v", p[0])].append(tuple(sorted((p[1], q[1]))))
+        elif abs(p[1] - q[1]) < GEOM_TOL:
+            spans[(net, "h", p[1])].append(tuple(sorted((p[0], q[0]))))
+        elif math.dist(p, q) > GEOM_TOL:
+            merged.append((net, p, q))
+    for (net, axis, c), intervals in spans.items():
+        intervals.sort()
+        lo, hi = intervals[0]
+        for nlo, nhi in intervals[1:]:
+            if nlo <= hi + GEOM_TOL:
+                hi = max(hi, nhi)
+            else:
+                merged.append((net, (c, lo), (c, hi)) if axis == "v" else (net, (lo, c), (hi, c)))
+                lo, hi = nlo, nhi
+        merged.append((net, (c, lo), (c, hi)) if axis == "v" else (net, (lo, c), (hi, c)))
+    accepted = merged
+
+    # A wire that ends on another wire's middle - or a pin tip the union just
+    # swallowed - is a tee. KiCad's editor splits a wire wherever a branch
+    # tees into it, and KiCad 9's connectivity *requires* files drawn that
+    # way: a wire that runs through a junction connects on one side of it
+    # only. So find every tee point, then split our wires the way the editor
+    # would have.
+    ends = {pt for _net, s0, s1 in accepted for pt in (s0, s1)}
+    ends.update(out for _net, _end, out in stubs.values())
+    tee_points: set[tuple[float, float]] = set()
+    for _net, s0, s1 in accepted:
+        for point in ends:
+            if point not in (s0, s1) and _segment_to_point(s0, s1, point) < GEOM_TOL:
+                tee_points.add(point)
+    cut: list[tuple[str, tuple[float, float], tuple[float, float]]] = []
+    for net, p, q in accepted:
+        interior = [
+            pt for pt in tee_points if pt not in (p, q) and _segment_to_point(p, q, pt) < GEOM_TOL
+        ]
+        along = sorted(
+            [p, *interior, q],
+            key=lambda t: (t[0] - p[0]) ** 2 + (t[1] - p[1]) ** 2,
+        )
+        for a, b in pairwise(along):
+            if math.dist(a, b) > GEOM_TOL:
+                cut.append((net, a, b))
+    accepted = cut
+
+    # One label per wire fragment survives: the label is what names the net.
+    # With the wires split at every tee, a junction dot is simply any point
+    # where three or more ends - wire or pin stub - now meet.
+    junction_count: dict[tuple[float, float], int] = defaultdict(int)
+    for _net, p, q in accepted:
+        junction_count[p] += 1
+        junction_count[q] += 1
+    for _owner, (_net, _end, out) in stubs.items():
+        junction_count[out] += 1
+    junctions = sorted(point for point, count in junction_count.items() if count >= 3)
+    return accepted, dropped, junctions
 
 
 def schematic_shorts(design: Design) -> list[str]:
@@ -604,8 +893,8 @@ def schematic_shorts(design: Design) -> list[str]:
         x = design.flags_at[0] + index * 15.24
         y = design.flags_at[1]
         wires.append((net, f"#FLG{index:02d}", (x, y), (x, y + 2.54)))
-    for net, a, b, a_out, b_out in _long_wires(design)[0]:
-        wires.append((net, f"{a}-{b}", a_out, b_out))
+    for index, (net, p0, p1) in enumerate(plan_wires(design)[0]):
+        wires.append((net, f"run {index} of {net}", p0, p1))
 
     def touches(a0, a1, b0, b1) -> bool:
         return any(_segment_to_point(b0, b1, point) < GEOM_TOL for point in (a0, a1)) or any(
@@ -663,9 +952,17 @@ def emit_schematic(design: Design) -> str:
 
     body: list[str] = []
     power_index = 0
-    longs, replaced = _long_wires(design)
-    for _net, a, b, a_out, b_out in longs:
-        body.append(_wire(design, "run", f"{a}-{b}", a_out, b_out))
+    segments, replaced, junctions = plan_wires(design)
+    for index, (net, p0, p1) in enumerate(segments):
+        body.append(_wire(design, "run", f"{net}-{index}", p0, p1))
+    for point in junctions:
+        # KiCad joins wires that share an endpoint whether or not the dot is
+        # drawn, but a reader does not: three ends meeting without a dot read
+        # as a crossing, and a crossing reads as no connection.
+        body.append(
+            f"  (junction (at {point[0]} {point[1]}) (diameter 0) (color 0 0 0 0) "
+            f'(uuid "{stable_uuid(design.name, "junction", point[0], point[1])}"))'
+        )
     # Two stubs that happen to end on the same coordinate silently become one
     # net, and the design is quietly not the design any more. Catch it here
     # rather than in ERC, where it surfaces as a puzzle about net names.
@@ -838,8 +1135,9 @@ def _symbol_instance(design: Design, part: Part, pins: list[PinDef]) -> str:
     top, bottom = min(*ends, y), max(*ends, y)
     uid = stable_uuid(design.name, "symbol", part.ref, part.unit)
     root = stable_uuid(design.name, "sheet")
+    mirror = f" (mirror {part.mirror})" if part.mirror else ""
     lines = [
-        f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}) (unit {part.unit})',
+        f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}){mirror} (unit {part.unit})',
         "    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)",
         f'    (uuid "{uid}")',
         _property("Reference", part.ref, x, round(top - 2.54, 4), False),
@@ -1963,7 +2261,7 @@ def buck_5v() -> Design:
             "LED_SMD:LED_0805_2012Metric",
             sheet=(RIGHT + 30.48, 88.9),
             board=(107.0, 46.0, 180.0),
-            angle=270.0,
+            angle=90.0,
             fields={
                 "Voltage": "2.1V",
                 "Current": "3mA",
@@ -2068,6 +2366,8 @@ def buck_5v() -> Design:
         tracks=tracks,
         vias=vias,
         pour=(15.0, 2.0, 112.0, 54.0),
+        # The empty strip above the converter row; the default lands on the notes.
+        flags_at=(60.0, 35.0),
     )
 
 
@@ -2331,6 +2631,8 @@ def motor_driver() -> Design:
         tracks=[],
         vias=[],
         pour=(3.0, 3.0, 97.0, 47.0),
+        # Top right, clear of the logic header; the default lands on the notes.
+        flags_at=(230.0, 35.0),
     )
 
     # Snap before the fan-out is worked out: it measures from where the pads
@@ -2508,6 +2810,7 @@ def pico_carrier() -> Design:
             sheet=(240.0, 100.0),
             board=(42.0, 10.0, 0.0),
             stub=7.62,
+            mirror="y",
             fields={
                 "MPN": "61302011121",
                 "Manufacturer": "Wurth Elektronik",
@@ -2643,7 +2946,8 @@ def pico_carrier() -> Design:
         tracks=[],
         vias=[],
         pour=(3.0, 3.0, 79.0, 65.0),
-        notes_at=(20.0, 152.0),
+        # High enough that the last line stays inside the sheet frame.
+        notes_at=(20.0, 146.0),
         flags_at=(133.0, 30.0),
         # The module's 2.54 mm pad pitch decides where everything goes; snapping
         # to 0.5 mm would move the headers off the pins they exist to reach.
@@ -3237,8 +3541,10 @@ def fpga_audio() -> Design:
             "Connector:Conn_01x06_Pin",
             "SPI PROG",
             "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
-            sheet=(330.0, 270.0),
+            # Clear of the title block, which owns the bottom right corner.
+            sheet=(370.0, 245.0),
             board=(74.0, 66.0, 0.0),
+            mirror="y",
             fields={
                 "MPN": "61300611121",
                 "Manufacturer": "Wurth Elektronik",
@@ -3447,7 +3753,9 @@ def fpga_audio() -> Design:
         pour=(3.0, 3.0, 91.0, 81.0),
         # Four units of one symbol and twenty-odd parts do not fit on A4.
         paper="A3",
-        notes_at=(18.0, 22.0),
+        # Bottom left, under the crystal: started at the top of the sheet the
+        # notes printed straight over the 1.2 V regulator and its capacitors.
+        notes_at=(18.0, 195.0),
         flags_at=(150.0, 30.0),
     ).snapped()
 
@@ -3522,9 +3830,34 @@ def fpga_audio() -> Design:
     # The exposed pad is the ground, and it is stitched rather than routed.
     vias = [Via("GND", x=cx + dx, y=cy + dy) for dx in (-1.0, 0.0, 1.0) for dy in (-1.0, 0.0, 1.0)]
 
+    # A decoupling capacitor's ground via sits against its own pad, on the far
+    # side from the supply pad. The loop the capacitor exists to close runs
+    # pad, via, plane; a via at the end of a routed track puts that track's
+    # inductance inside the loop, which is what `layout.decoupling_via` measures.
+    anchored = []
+    for cref in ("C1", "C2", "C3", "C9", "C10", "C11", "C15"):
+        supply = pad_position(design, f"{cref}.1")
+        ground = pad_position(design, f"{cref}.2")
+        length = math.hypot(ground[0] - supply[0], ground[1] - supply[1]) or 1.0
+        ux = (ground[0] - supply[0]) / length
+        uy = (ground[1] - supply[1]) / length
+        offset = (round(1.2 * ux, 4), round(1.2 * uy, 4))
+        vias.append(Via("GND", pad=f"{cref}.2", offset=offset))
+        anchored.append(
+            Track(
+                "GND",
+                "F.Cu",
+                0.4,
+                [
+                    f"{cref}.2",
+                    (round(ground[0] + offset[0], 4), round(ground[1] + offset[1], 4)),
+                ],
+            )
+        )
+
     # Every endpoint goes through `end`, which returns the far end of a pin's
     # escape when it has one and the pad itself when it does not.
-    tracks = [*escapes]
+    tracks = [*escapes, *anchored]
     routes = [
         ("+3V3", POWER, [("J1.1", "C1.1"), ("C1.1", "U3.1"), ("C1.1", "C2.1"), ("C2.1", "U3.3")]),
         (
@@ -3595,18 +3928,13 @@ def fpga_audio() -> Design:
 
     for pad, target in (
         ("J1.2", (12.0, 12.0)),
-        ("C1.2", (18.0, 12.0)),
-        ("C2.2", (25.0, 20.0)),
         ("U3.2", (16.0, 27.0)),
-        ("C3.2", (25.0, 30.0)),
         ("C4.2", (22.5, 36.0)),
         ("C5.2", (56.0, 40.8)),
-        ("C15.2", (54.0, 50.0)),
         ("C17.2", (59.0, 40.8)),
         ("C6.2", (59.0, 43.5)),
         ("C7.2", (64.0, 46.0)),
         ("C8.2", (46.0, 71.0)),
-        ("C9.2", (36.0, 10.0)),
         ("X1.2", (30.0, 10.0)),
         ("U4.4", (37.0, 75.0)),
         # The codec's grounds - two real ones and three mode pins strapped low -
@@ -3618,8 +3946,6 @@ def fpga_audio() -> Design:
         ("U2.10", (82.0, 33.5)),
         ("U2.9", (82.0, 37.5)),
         ("U2.3", (82.0, 42.5)),
-        ("C10.2", (60.0, 27.0)),
-        ("C11.2", (85.0, 31.0)),
         ("C16.2", (84.0, 52.0)),
         ("C12.2", (60.0, 53.0)),
         ("C14.2", (87.0, 47.0)),
