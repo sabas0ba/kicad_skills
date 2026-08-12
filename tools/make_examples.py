@@ -64,9 +64,10 @@ NAMESPACE = uuid.UUID("6f1a0f3e-0000-4000-8000-000000000000")
 # of what a generator of this vintage actually wrote, and a year from now that
 # is the only thing that dates it.
 GENERATED_ON = "2026-08-11"
-GENERATED_BY = "Claude Code"
+GENERATED_BY = "Claude Code (claude-opus-5)"
 
 GEOM_EPS = 1e-6
+GEOM_TOL = 0.001  # two points this close on the sheet are the same point
 VIA_SIZE = 0.8  # what the router drops when it has to change layer
 POUR_NET = "GND"  # the net every ground pour in these examples belongs to
 
@@ -103,6 +104,10 @@ class Part:
     # default: on a two-pin part an unused pin is a mistake, and on a 48 pin one
     # it is most of them.
     no_connect: bool = False
+    # Which unit of a multi-unit symbol this is. A design lists the same
+    # reference once per unit, each with its own place on the sheet; the board
+    # only ever sees the first of them, because there is one footprint.
+    unit: int = 1
 
     @property
     def library(self) -> str:
@@ -181,9 +186,26 @@ class Design:
     # module's own 2.54 mm pad pitch cannot also sit on 0.5 mm, and pretending
     # otherwise moves the pads off the pins they have to land on.
     board_grid: float | None = BOARD_GRID
+    # Whether the sheet has to be right. The degraded variant is allowed to be
+    # wrong in ways that are a build error for the reviewed one - dropping two
+    # symbols on the same spot is the whole point of it.
+    strict: bool = True
+    # A4 fits everything so far; a part drawn in four units does not.
+    paper: str = "A4"
 
     def part(self, ref: str) -> Part:
         return next(p for p in self.parts if p.ref == ref)
+
+    def footprints(self) -> list[Part]:
+        """One part per reference: the board has one of each, however many
+        units the sheet draws it in."""
+        seen: set[str] = set()
+        out = []
+        for part in self.parts:
+            if part.ref not in seen:
+                seen.add(part.ref)
+                out.append(part)
+        return out
 
     def snapped(self) -> Design:
         """The same design on the two grids: 1.27 mm on the sheet, 0.5 mm on the board.
@@ -307,9 +329,33 @@ class PinDef:
     angle: float
 
 
-def symbol_pins(lib_id: str) -> list[PinDef]:
+def symbol_units(lib_id: str) -> int:
+    """How many units the symbol is drawn in.
+
+    A big part is drawn as several boxes - the iCE40 as four - and each is
+    placed separately with its own pins. Emitting all of them as unit 1 makes a
+    schematic KiCad reads as one unit with forty-eight pins, which is not what
+    the netlist says, and the parity check disagrees about every pin that was
+    supposed to be in a unit that was never placed.
+    """
+    units = {0}
+    for sub in symbol_definition(lib_id).children("symbol"):
+        name = str(sub.atom(0, ""))
+        parts = name.rsplit("_", 2)
+        if len(parts) == 3 and parts[1].isdigit():
+            units.add(int(parts[1]))
+    return max(units) or 1
+
+
+def symbol_pins(lib_id: str, unit: int | None = None) -> list[PinDef]:
     out: list[PinDef] = []
     for sub in symbol_definition(lib_id).children("symbol"):
+        name = str(sub.atom(0, ""))
+        parts = name.rsplit("_", 2)
+        this = int(parts[1]) if len(parts) == 3 and parts[1].isdigit() else 0
+        # unit 0 is the shared drawing, which carries no pins worth placing twice
+        if unit is not None and this not in (unit, 0):
+            continue
         for pin in sub.children("pin"):
             at = pin.child("at")
             atoms = at.atoms() if at else [0, 0, 0]
@@ -396,12 +442,70 @@ def _title_block(design: Design, indent: str) -> list[str]:
     return [f"{indent}(title_block", *body, f"{indent})"] if body else []
 
 
+def schematic_shorts(design: Design) -> list[str]:
+    """Every place two nets touch on the sheet.
+
+    The stub-collision check inside :func:`emit_schematic` compares endpoints,
+    which catches two pins landing on the same point and nothing else. A wire
+    that *ends on another wire* joins the two nets just as surely, and on a
+    sheet where every pin drags an eight millimetre stub behind it that is the
+    common case rather than the exotic one. It is invisible afterwards: the
+    netlist is self-consistent, the board is built from it, and the only sign is
+    KiCad's schematic-parity check disagreeing about a net name.
+
+    Crossings are not connections - KiCad joins wires that meet, not wires that
+    cross - so only shared endpoints and T-junctions count here.
+    """
+    net_of: dict[tuple[str, str], str] = {}
+    for net, nodes in design.nets.items():
+        for entry in nodes:
+            ref, _, number = entry.partition(".")
+            net_of[(ref, number)] = net
+
+    wires: list[tuple[str, str, tuple[float, float], tuple[float, float]]] = []
+    for part in design.parts:
+        seen: set[tuple[float, float]] = set()
+        for pin in symbol_pins(part.lib_id, part.unit):
+            net = net_of.get((part.ref, pin.number))
+            end, out = pin_geometry(part, pin)
+            if net is None or end in seen:
+                continue
+            seen.add(end)
+            wires.append((net, f"{part.ref}.{pin.number}", end, out))
+    for index, net in enumerate(design.power_flags, start=1):
+        x = design.flags_at[0] + index * 15.24
+        y = design.flags_at[1]
+        wires.append((net, f"#FLG{index:02d}", (x, y), (x, y + 2.54)))
+
+    def touches(a0, a1, b0, b1) -> bool:
+        return any(_segment_to_point(b0, b1, point) < GEOM_TOL for point in (a0, a1)) or any(
+            _segment_to_point(a0, a1, point) < GEOM_TOL for point in (b0, b1)
+        )
+
+    problems = []
+    for index, (net, owner, a0, a1) in enumerate(wires):
+        for other, other_owner, b0, b1 in wires[index + 1 :]:
+            if net == other or not touches(a0, a1, b0, b1):
+                continue
+            problems.append(f"{owner} ({net}) touches {other_owner} ({other})")
+    return sorted(set(problems))
+
+
+def _segment_to_point(a, b, point) -> float:
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    length2 = dx * dx + dy * dy
+    if length2 == 0:
+        return math.dist(point, a)
+    u = max(0.0, min(1.0, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length2))
+    return math.dist(point, (a[0] + u * dx, a[1] + u * dy))
+
+
 def emit_schematic(design: Design) -> str:
     root_uuid = stable_uuid(design.name, "sheet")
     lines = [
         f'(kicad_sch (version {SCH_VERSION}) (generator "eda-toolkit") (generator_version "9.0")',
         f'  (uuid "{root_uuid}")',
-        '  (paper "A4")',
+        f'  (paper "{design.paper}")',
     ]
 
     block = _title_block(design, "  ")
@@ -435,7 +539,7 @@ def emit_schematic(design: Design) -> str:
     claimed: dict[tuple[float, float], tuple[str, str]] = {}
 
     for part in design.parts:
-        pins = symbol_pins(part.lib_id)
+        pins = symbol_pins(part.lib_id, part.unit)
         # A symbol may bring several pins out at one point - the Pico draws its
         # seven grounds that way, and KiCad calls them stacked. One wire and one
         # ground symbol is what that means; seven of each on the same coordinate
@@ -457,7 +561,7 @@ def emit_schematic(design: Design) -> str:
                     )
                 continue
             if end in drawn:
-                if claimed[end][0] != net:
+                if claimed[end][0] != net and design.strict:
                     raise SystemExit(
                         f"{design.name}: {part.ref}.{pin.number} is stacked on "
                         f"{claimed[end][1]} but is on {net}, not {claimed[end][0]}"
@@ -468,7 +572,7 @@ def emit_schematic(design: Design) -> str:
             # two nets just as surely as two stubs meeting.
             for point in (end, out):
                 owner = claimed.setdefault(point, (net, f"{part.ref}.{pin.number}"))
-                if owner[0] != net:
+                if owner[0] != net and design.strict:
                     raise SystemExit(
                         f"{design.name}: {part.ref}.{pin.number} ({net}) and {owner[1]} "
                         f"({owner[0]}) both touch {point} - move one of them"
@@ -598,10 +702,10 @@ def _symbol_instance(design: Design, part: Part, pins: list[PinDef]) -> str:
     x, y = part.sheet
     ends = [pin_geometry(part, pin)[0][1] for pin in pins] or [y]
     top, bottom = min(*ends, y), max(*ends, y)
-    uid = stable_uuid(design.name, "symbol", part.ref)
+    uid = stable_uuid(design.name, "symbol", part.ref, part.unit)
     root = stable_uuid(design.name, "sheet")
     lines = [
-        f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}) (unit 1)',
+        f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}) (unit {part.unit})',
         "    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)",
         f'    (uuid "{uid}")',
         _property("Reference", part.ref, x, round(top - 2.54, 4), False),
@@ -616,7 +720,7 @@ def _symbol_instance(design: Design, part: Part, pins: list[PinDef]) -> str:
         lines.append(f'    (pin "{pin.number}" (uuid "{uid}-p{pin.number}"))')
     lines.append(
         f'    (instances (project "{design.name}" '
-        f'(path "/{root}" (reference "{part.ref}") (unit 1))))'
+        f'(path "/{root}" (reference "{part.ref}") (unit {part.unit}))))'
     )
     lines.append("  )")
     return "\n".join(lines)
@@ -804,7 +908,7 @@ def check_board(design: Design, clearance: float = 0.2) -> list[str]:
                 (vx - half, vy - half, vx + half, vy + half),
             )
         )
-    for part in design.parts:
+    for part in design.footprints():
         node = footprint_definition(part.footprint)
         for pad in node.children("pad"):
             number = str(pad.atom(0, ""))
@@ -848,12 +952,16 @@ def check_board(design: Design, clearance: float = 0.2) -> list[str]:
 
 
 def _boxes_near(one, other, clearance: float) -> bool:
-    return (
-        one[0] - clearance < other[2]
-        and other[0] - clearance < one[2]
-        and one[1] - clearance < other[3]
-        and other[1] - clearance < one[3]
-    )
+    """Whether two axis-aligned rectangles come within ``clearance``.
+
+    The distance between them, not the overlap of the two grown by it: growing
+    both and asking whether they intersect measures along the axes, and two pads
+    that meet at a corner - which is every pair on the corner of a QFN - are
+    further apart than that makes them look.
+    """
+    dx = max(0.0, one[0] - other[2], other[0] - one[2])
+    dy = max(0.0, one[1] - other[3], other[1] - one[3])
+    return math.hypot(dx, dy) < clearance
 
 
 def _segment_to_box(a, b, box) -> float:
@@ -1009,7 +1117,7 @@ class Blocked(Exception):
 def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Track]], list[Via]]:
     """Route every ``auto`` track in ``order``, or say which one had no room."""
     router = autoroute.Router(*design.board_size)
-    for part in design.parts:
+    for part in design.footprints():
         node = footprint_definition(part.footprint)
         for pad in node.children("pad"):
             number = str(pad.atom(0, ""))
@@ -1021,6 +1129,14 @@ def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Trac
             router.add(autoroute.Obstacle(x0, y0, x1, y1, net, pad_layer(pad)))
     for via in design.vias:
         router.add_via(via.net, via_position(design, via), via.size)
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            if pad_layer(pad) is None:
+                # a through-hole pad is a drilled hole, and hole-to-hole applies
+                # to it exactly as it does to a via
+                box = pad_box(design, part, pad)
+                router.via_sites.append(((box[0] + box[2]) / 2, (box[1] + box[3]) / 2))
     for track in design.tracks:
         if track.auto:
             continue
@@ -1153,6 +1269,26 @@ def emit_board(design: Design, path: Path) -> None:
     # schematic-parity check, and nothing else notices.
     labels = {name: (name if name in POWER_SYMBOLS else f"/{name}") for name in order}
 
+    # Every pin the design does not use gets the name KiCad's own netlister
+    # gives it: reference, unit letter when the symbol has more than one, pin
+    # name and pad number.
+    spares: dict[tuple[str, str], str] = {}
+    for part in design.parts:
+        units = symbol_units(part.lib_id)
+        letter = chr(64 + part.unit) if units > 1 else ""
+        for pin in symbol_pins(part.lib_id, part.unit):
+            if (part.ref, pin.number) in net_of:
+                continue
+            if not part.no_connect and pin.etype != "no_connect":
+                continue
+            clean = pin.name.replace("~{", "").replace("}", "")
+            spares[(part.ref, pin.number)] = (
+                f"unconnected-({part.ref}{letter}-{clean}-Pad{pin.number})"
+            )
+    for index, name in enumerate(sorted(set(spares.values())), start=len(order) + 1):
+        codes[name] = index
+        labels[name] = name
+
     lines = [
         "(kicad_pcb",
         "\t(version 20241229)",
@@ -1171,10 +1307,10 @@ def emit_board(design: Design, path: Path) -> None:
         "\t)",
         '\t(net 0 "")',
     ]
-    for name in order:
+    for name in [*order, *sorted(set(spares.values()))]:
         lines.append(f'\t(net {codes[name]} "{labels[name]}")')
 
-    for part in design.parts:
+    for part in design.footprints():
         node = footprint_definition(part.footprint)
         bx, by, angle = part.board
         node.args.insert(
@@ -1199,6 +1335,11 @@ def emit_board(design: Design, path: Path) -> None:
             name = net_of.get((part.ref, number))
             if name:
                 pad.args.append(SNode("net", [codes[name], labels[name]]))
+            elif number and (spare := spares.get((part.ref, number))):
+                # A pad the schematic marked no-connect still has a net there -
+                # KiCad invents one per pin - and a board that leaves the pad
+                # bare disagrees with the netlist about every one of them.
+                pad.args.append(SNode("net", [codes[spare], spare]))
             if pad.child("uuid") is None:
                 pad.args.append(
                     _uuid_node(stable_uuid(design.name, "pad", part.ref, number, index))
@@ -1265,7 +1406,7 @@ def _hole_boxes(design: Design, layer: str, net: str) -> list[tuple[float, float
         )
 
     holes = []
-    for part in design.parts:
+    for part in design.footprints():
         node = footprint_definition(part.footprint)
         for pad in node.children("pad"):
             number = str(pad.atom(0, ""))
@@ -1385,7 +1526,7 @@ def _connected_islands(design, islands, layer: str, net: str):
         if via.net == net:
             vx, vy = via_position(design, via)
             anchors.append((vx, vy, vx, vy))
-    for part in design.parts:
+    for part in design.footprints():
         node = footprint_definition(part.footprint)
         for pad in node.children("pad"):
             number = str(pad.atom(0, ""))
@@ -1480,11 +1621,17 @@ def degrade(design: Design) -> Design:
     for index, part in enumerate(design.parts):
         sx, sy = part.sheet
         bx, by, angle = part.board
+        # Every fourth part is turned to a nonsense angle - except a fine-pitch
+        # one, whose escape is stated rather than searched for and which turns
+        # into a board no router can finish. `as-generated` is meant to be a bad
+        # board, and a board is only bad if it exists.
+        pads = len(footprint_definition(part.footprint).children("pad"))
+        turned = 37.0 if index % 4 == 0 and pads <= 8 else angle
         parts.append(
             replace(
                 part,
                 sheet=(round(sx + OFF_GRID[0], 4), round(sy + OFF_GRID[1], 4)),
-                board=(round(bx + 0.23, 3), round(by - 0.17, 3), 37.0 if index % 4 == 0 else angle),
+                board=(round(bx + 0.23, 3), round(by - 0.17, 3), turned),
                 fields={"Datasheet": part.fields.get("Datasheet", "~")},
                 value=UNDERRATED.get(part.ref, part.value),
             )
@@ -1499,6 +1646,7 @@ def degrade(design: Design) -> Design:
         rev="",
         company="",
         date="",
+        strict=False,
         notes=[],
         parts=parts,
         power_flags=[],
@@ -2796,27 +2944,35 @@ def fpga_audio() -> Design:
     of the core's supply noise.
     """
     parts = [
-        Part(
-            "U1",
-            ICE40,
-            "iCE40UP5K",
-            "Package_DFN_QFN:QFN-48-1EP_7x7mm_P0.5mm_EP3.5x3.5mm",
-            sheet=(150.0, 105.0),
-            board=(40.0, 40.0, 0.0),
-            stub=8.89,
-            no_connect=True,
-            fields={
-                "MPN": "ICE40UP5K-SG48ITR",
-                "Manufacturer": "Lattice Semiconductor",
-                "Datasheet": "https://www.latticesemi.com/view_document?document_id=51968",
-            },
+        *(
+            Part(
+                "U1",
+                ICE40,
+                "iCE40UP5K",
+                "Package_DFN_QFN:QFN-48-1EP_7x7mm_P0.5mm_EP3.5x3.5mm",
+                sheet=where,
+                board=(40.0, 40.0, 0.0),
+                stub=6.35,
+                no_connect=True,
+                unit=unit,
+                fields={
+                    "MPN": "ICE40UP5K-SG48ITR",
+                    "Manufacturer": "Lattice Semiconductor",
+                    "Datasheet": "https://www.latticesemi.com/view_document?document_id=51968",
+                },
+            )
+            # Bank 0 faces the codec, bank 1 faces the flash, bank 2 is here for
+            # its VCCIO pin alone, and the supplies are a box of their own.
+            for unit, where in enumerate(
+                [(200.0, 110.0), (200.0, 215.0), (60.0, 110.0), (110.0, 45.0)], start=1
+            )
         ),
         Part(
             "U2",
             "Audio:PCM5102A",
             "PCM5102A",
             "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
-            sheet=(255.0, 105.0),
+            sheet=(330.0, 110.0),
             board=(72.0, 40.0, 180.0),
             stub=6.35,
             fields={
@@ -2845,7 +3001,7 @@ def fpga_audio() -> Design:
             "Memory_Flash:W25Q32JVSS",
             "W25Q32JV",
             "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
-            sheet=(150.0, 190.0),
+            sheet=(200.0, 270.0),
             board=(40.0, 72.0, 0.0),
             fields={
                 "MPN": "W25Q32JVSSIQ",
@@ -2858,8 +3014,8 @@ def fpga_audio() -> Design:
             "Oscillator:ASE-xxxMHz",
             "12MHz",
             "Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm",
-            sheet=(60.0, 150.0),
-            board=(14.0, 56.0, 0.0),
+            sheet=(60.0, 180.0),
+            board=(30.0, 14.0, 0.0),
             fields={
                 "Tolerance": "50ppm",
                 "MPN": "ASE-12.000MHZ-L-C-T",
@@ -2885,7 +3041,7 @@ def fpga_audio() -> Design:
             "Connector:Conn_01x03_Pin",
             "AUDIO OUT",
             "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
-            sheet=(295.0, 105.0),
+            sheet=(395.0, 110.0),
             board=(89.0, 38.0, 0.0),
             fields={
                 "MPN": "61300311121",
@@ -2898,7 +3054,7 @@ def fpga_audio() -> Design:
             "Connector:Conn_01x06_Pin",
             "SPI PROG",
             "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
-            sheet=(255.0, 190.0),
+            sheet=(330.0, 270.0),
             board=(74.0, 66.0, 0.0),
             fields={
                 "MPN": "61300611121",
@@ -2945,24 +3101,24 @@ def fpga_audio() -> Design:
         )
 
     parts += [
-        cap("C1", "10u", (85.0, 45.0), (14.0, 16.0, 0.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C2", "100n", (110.0, 45.0), (22.0, 20.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C1", "10u", (95.0, 45.0), (18.0, 16.0, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C2", "100n", (140.0, 45.0), (22.0, 20.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C3", "10u", (60.0, 70.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
         cap("C4", "100n", (85.0, 70.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C5", "100n", (110.0, 70.0), (61.0, 54.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C6", "100n", (200.0, 45.0), (57.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C7", "100n", (225.0, 45.0), (61.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C8", "100n", (150.0, 220.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C9", "100n", (60.0, 175.0), (20.0, 56.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C10", "100n", (255.0, 60.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C11", "100n", (280.0, 60.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C16", "100n", (280.0, 175.0), (84.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C12", "1u", (280.0, 145.0), (60.0, 50.0, 0.0), "16V", "CL10A105KB8NNNC"),
-        cap("C13", "2u2", (255.0, 145.0), (84.0, 45.0, 0.0), "16V", "CL10A225KO8NNNC"),
-        cap("C14", "2u2", (230.0, 145.0), (84.0, 40.5, 90.0), "16V", "CL10A225KO8NNNC"),
-        res("R1", "10k", (110.0, 130.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
-        res("R2", "10k", (135.0, 130.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
-        cap("C15", "100n", (135.0, 70.0), (57.0, 50.0, 180.0), "25V", "CL10B104KB8NNNC"),
+        cap("C5", "100n", (165.0, 70.0), (61.0, 54.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C6", "100n", (255.0, 45.0), (57.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C7", "100n", (285.0, 45.0), (61.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C8", "100n", (255.0, 270.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C9", "100n", (95.0, 180.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C10", "100n", (300.0, 70.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C11", "100n", (370.0, 70.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C16", "100n", (395.0, 70.0), (84.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C12", "1u", (300.0, 180.0), (60.0, 50.0, 0.0), "16V", "CL10A105KB8NNNC"),
+        cap("C13", "2u2", (330.0, 180.0), (84.0, 45.0, 0.0), "16V", "CL10A225KO8NNNC"),
+        cap("C14", "2u2", (360.0, 180.0), (84.0, 40.5, 90.0), "16V", "CL10A225KO8NNNC"),
+        res("R1", "10k", (110.0, 150.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
+        res("R2", "10k", (140.0, 150.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
+        cap("C15", "100n", (140.0, 70.0), (57.0, 50.0, 180.0), "25V", "CL10B104KB8NNNC"),
     ]
 
     nets = {
@@ -3025,7 +3181,7 @@ def fpga_audio() -> Design:
         "SPI_SO": ["U1.14", "U4.2", "J3.4"],
         "CRESET": ["U1.8", "R1.2", "J3.5"],
         "CDONE": ["U1.7", "R2.2"],
-        "CLK12": ["X1.3", "U1.20"],
+        "CLK12": ["X1.3", "U1.37"],
         # On the east side, in the order the codec wants them: a bus that
         # leaves the package already in the right order does not cross itself.
         "I2S_SCK": ["U1.36", "U2.12"],
@@ -3191,6 +3347,9 @@ def fpga_audio() -> Design:
                 ("C16.1", "U2.1"),
                 ("C10.1", "U2.17"),
                 ("R2.1", "C8.1"),
+                # ...and this is what joins the input side to the bank supplies.
+                # Without it +3V3 is two islands that the schematic calls one net.
+                ("C8.1", "U1.22"),
                 ("C8.1", "U4.8"),
                 ("C8.1", "U4.3"),
                 ("U4.3", "U4.7"),
@@ -3218,7 +3377,7 @@ def fpga_audio() -> Design:
         ("SPI_SO", SIG, [("U1.14", "U4.2"), ("U4.2", "J3.4")]),
         ("CRESET", SIG, [("U1.8", "R1.2"), ("R1.2", "J3.5")]),
         ("CDONE", SIG, [("U1.7", "R2.2")]),
-        ("CLK12", SIG, [("X1.3", "U1.20")]),
+        ("CLK12", SIG, [("X1.3", "U1.37")]),
         ("I2S_SCK", SIG, [("U1.36", "U2.12")]),
         ("I2S_BCK", SIG, [("U1.35", "U2.13")]),
         ("I2S_DIN", SIG, [("U1.34", "U2.14")]),
@@ -3236,7 +3395,7 @@ def fpga_audio() -> Design:
 
     for pad, target in (
         ("J1.2", (12.0, 12.0)),
-        ("C1.2", (17.0, 16.0)),
+        ("C1.2", (18.0, 12.0)),
         ("C2.2", (25.0, 20.0)),
         ("U3.2", (16.0, 27.0)),
         ("C3.2", (25.0, 30.0)),
@@ -3246,19 +3405,24 @@ def fpga_audio() -> Design:
         ("C6.2", (59.0, 43.5)),
         ("C7.2", (64.0, 46.0)),
         ("C8.2", (46.0, 71.0)),
-        ("C9.2", (20.0, 59.0)),
-        ("X1.2", (17.0, 59.0)),
+        ("C9.2", (36.0, 10.0)),
+        ("X1.2", (30.0, 10.0)),
         ("U4.4", (37.0, 75.0)),
-        ("U2.19", (61.0, 45.0)),
-        ("U2.9", (84.5, 32.0)),
-        ("U2.10", (82.0, 30.0)),
-        ("U2.3", (83.0, 43.0)),
+        # The codec's grounds - two real ones and three mode pins strapped low -
+        # drop through beside their own escapes rather than walking west into a
+        # corridor that four other nets are already using.
+        ("U2.19", (62.5, 43.5)),
+        ("U2.11", (62.5, 35.5)),
+        ("U2.16", (62.5, 40.5)),
+        ("U2.10", (82.0, 33.5)),
+        ("U2.9", (82.0, 37.5)),
+        ("U2.3", (82.0, 42.5)),
         ("C10.2", (60.0, 27.0)),
         ("C11.2", (85.0, 31.0)),
         ("C16.2", (84.0, 52.0)),
         ("C12.2", (60.0, 53.0)),
         ("C13.2", (87.0, 45.0)),
-        ("J2.2", (92.0, 41.0)),
+        ("J2.2", (89.5, 45.5)),
         ("J3.6", (78.0, 70.0)),
     ):
         tracks.append(Track("GND", "F.Cu", 0.4, [end(pad), target], auto=True, goal_layer="B.Cu"))
@@ -3278,6 +3442,11 @@ DESIGNS = {
 
 
 def write_variant(design: Design, root: Path, *, check: bool = True) -> None:
+    shorts = schematic_shorts(design) if check else []
+    if shorts:
+        raise SystemExit(
+            f"{design.name}: the sheet shorts {len(shorts)} pair(s):\n  " + "\n  ".join(shorts)
+        )
     design = resolve_routes(design)
     if check:
         problems = check_board(design)
@@ -3316,7 +3485,13 @@ def main(argv: list[str] | None = None) -> int:
     for name, builder in sorted(DESIGNS.items()):
         if args.only and args.only != name:
             continue
-        design = replace(builder().snapped(), provenance=stamp, date=args.generated_on)
+        # Routed once, then degraded: the copper stays where the router put it
+        # and the parts move out from under it, which is what a generator that
+        # never looked at its own output leaves behind - and is also the
+        # difference between a minute and half an hour on the fine-pitch board.
+        design = resolve_routes(
+            replace(builder().snapped(), provenance=stamp, date=args.generated_on)
+        )
         write_variant(design, out / name / "reviewed")
         # the degraded variant is *meant* to be wrong, so it is not checked
         write_variant(degrade(design), out / name / "as-generated", check=False)
