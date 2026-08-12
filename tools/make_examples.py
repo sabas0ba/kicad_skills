@@ -3243,13 +3243,17 @@ def fpga_audio() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=["+3V3"],
+        # GND has no power-output pin on it either: every ground here is a
+        # power *input*, and without a flag ERC says so.
+        power_flags=["+3V3", "GND"],
         board_size=(94.0, 84.0),
         tracks=[],
         vias=[],
         pour=(3.0, 3.0, 91.0, 81.0),
-        notes_at=(18.0, 20.0),
-        flags_at=(35.0, 60.0),
+        # Four units of one symbol and twenty-odd parts do not fit on A4.
+        paper="A3",
+        notes_at=(18.0, 22.0),
+        flags_at=(150.0, 30.0),
     ).snapped()
 
     # Everything that lands on the QFN's escape lands at 0.2 mm: the escape

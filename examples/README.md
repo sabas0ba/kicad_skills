@@ -301,6 +301,99 @@ label, not a wire.** Ten parts in a row with net names beside them is a valid
 netlist and a poor drawing, and it is the most recognisable thing about a
 schematic a program wrote. Nothing in `readability.*` looks for it yet.
 
-## Still to come
+## fpga-audio — iCE40UP5K to PCM5102A, I2S out
 
-`fpga-audio`.
+An FPGA, an I2S DAC, the SPI flash the FPGA boots from, a 12 MHz oscillator and
+a 1.2 V regulator for the core — on two layers.
+
+| | verdict | schematic (e/w/i) | board (e/w/i) |
+| --- | --- | --- | --- |
+| `reviewed` | **FAIL**, 8 blocking | 1 / 4 / 0 | 0 / 8 / 6 |
+| `as-generated` | **FAIL**, 25 blocking | 2 / 10 / 5 | 5 / 16 / 7 |
+
+Under KiCad's own checks `reviewed` has no DRC errors, nothing unconnected and
+no schematic-parity findings; four silkscreen warnings from the library
+footprints are all that is left.
+
+| as-generated | reviewed |
+| --- | --- |
+| ![schematic, as generated](fpga-audio/images/schematic-as-generated.jpg) | ![schematic, reviewed](fpga-audio/images/schematic-reviewed.jpg) |
+| ![board front, as generated](fpga-audio/images/board-front-as-generated.jpg) | ![board front, reviewed](fpga-audio/images/board-front-reviewed.jpg) |
+| ![board back, as generated](fpga-audio/images/board-back-as-generated.jpg) | ![board back, reviewed](fpga-audio/images/board-back-reviewed.jpg) |
+
+### What this one is honest about
+
+**A 0.5 mm pitch QFN with pads on four sides is not a two layer board.** A real
+iCE40 design drops each pin straight into an inner layer; with no inner layer
+all forty-eight have to fan out on the top, at 0.2 mm track and 0.2 mm
+clearance, which is a fine-line process. The cost is the first thing you see in
+the plot: a 7 mm chip needs a 26 mm square of board around it before anything
+else can be placed, and everything that talks to it is pushed to the edges.
+
+That is the answer to "can it be done on two layers": yes, and you would not
+want to. The board is here because the answer is worth having in a form you can
+open in KiCad rather than take on trust.
+
+The findings that follow from it, at the scale a 48-pin part gives them:
+
+* **`layout.decoupling_distance` × 16** and **`layout.decoupling_via` × 9** —
+  the escape has to walk the row out to a routable pitch before a capacitor can
+  be placed against it, and that walk is most of the budget. The same finding
+  as the motor driver and the op-amp filter, three package sizes apart, which is
+  what makes it a pattern rather than three boards' bad luck.
+* **`track.thin_power` at 0.2 mm** — nothing leaves this package wider.
+* **`net.single_pin` × 31** — every unused pin has a net of its own, named
+  `unconnected-(U1A-IOT_36b-Pad25)` by KiCad. A no-connect flag is a decision,
+  not a defect, and the rule cannot tell.
+* **`erc.pin_to_pin` on VCCPLL** — KiCad's iCE40 symbol declares VCCPLL a power
+  *output*, so joining it to the regulator's output is two power outputs wired
+  together. The datasheet would rather see it filtered from the core rail than
+  tied to it; this board ties it, and both the ERC finding and the design
+  shortcut are real.
+
+### What building it changed in the toolkit
+
+Five things, each of which had been quietly producing a board that was not the
+board the schematic described:
+
+* **Two nets touching on the sheet is not something an endpoint check can see.**
+  A wire that ends *on* another wire joins them, and where every pin drags a
+  stub behind it that is the common case. `schematic_shorts` looks for it now
+  and found three here — one had merged the 1.2 V and 3.3 V rails, and the only
+  visible sign was KiCad's parity check disagreeing about a net name.
+* **A symbol drawn in four units has to be placed four times.** All 48 pins
+  under `(unit 1)` leaves three quarters of them in units that were never
+  placed: 25 parity findings, and a sheet nobody can read.
+* **A pin the design does not use still has a net**, and a board that leaves the
+  pad bare disagrees with the netlist about every one of them.
+* **A QFN counts anticlockwise**, so its east and north rows run bottom-to-top
+  and right-to-left; handing them to the fan-out in number order made every
+  escape on those sides cross every other one.
+* **Two rectangles that meet at a corner are further apart than growing both and
+  asking whether they intersect makes them look** — which is every pair of pads
+  on the corner of a QFN.
+
+## What the five of them say together
+
+Three findings appear on every board that has a fine-pitch part, and they all
+trace to the same fact — the escape from the package eats the distance budget
+before any component can be placed:
+
+| | motor-driver | opamp-filter | fpga-audio |
+| --- | --- | --- | --- |
+| package | TSSOP-16, 0.65 mm | SOT-23-5, 0.95 mm | QFN-48, 0.5 mm |
+| `layout.decoupling_distance` | 3 | 4 | 16 |
+| `track.thin_power` | 0.3 mm | 0.2 mm | 0.2 mm |
+
+And two blind spots show up from opposite directions: `analog.missing_decoupling`
+asks for a capacitor on VBUS and ADC_VREF, which the *Pico module* drives and
+this board only exposes; and on VREF, which is an op-amp output, not a supply.
+The rules know what a supply net looks like and not who is driving it.
+
+Two more that no rule catches at all, both visible in the plots above:
+
+* **Every connection on these schematics is a label, not a wire.** A valid
+  netlist and a poor drawing, and the most recognisable thing about a schematic
+  a program wrote.
+* **The routing is autorouted-looking** — long diagonals crossing open board
+  where a person would have gone round. DRC has nothing to say about it.
