@@ -160,7 +160,8 @@ def test_fab_preview_plots_every_exported_layer(project_copy, tmp_path):
     )
     preview = next(s["output"] for s in manifest["steps"] if s["step"] == "preview")
     assert preview["errors"] == []
-    assert len(preview["images"]) == len(fab.gerber_layers(pcb.parse(project_copy)))
+    board = pcb.parse(pcb.find_board(project_copy))
+    assert len(preview["images"]) == len(fab.gerber_layers(board))
     assert Path(preview["contact_sheet"]).stat().st_size > 1000
 
     from PIL import Image
@@ -184,8 +185,8 @@ def test_transparent_render_keeps_the_board_and_drops_the_backdrop(project_copy,
 
     with Image.open(result["images"][0]["path"]) as im:
         assert im.mode == "RGBA"
-        assert im.getpixel((2, 2))[3] == 0
-        assert any(im.getpixel((x, y))[3] == 255 for x in range(im.width) for y in range(im.height))
+        assert im.getpixel((2, 2))[3] == 0  # the corner is backdrop, never artwork
+        assert im.getchannel("A").getextrema() == (0, 255)  # and the board itself is opaque
 
 
 def test_fab_layer_selection_follows_the_board(example_pcb):
