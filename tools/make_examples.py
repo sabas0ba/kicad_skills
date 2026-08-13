@@ -2081,8 +2081,17 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
         ends[points[0]] += 1
         ends[points[-1]] += 1
     # A cut moves copper off the square path, and what it moves toward may be
-    # a via that only cleared the original corner. Foreign vias by net.
+    # a via or a pad that only cleared the original corner.
     foreign_vias = [(via.net, via_position(design, via), via.size / 2) for via in design.vias]
+    foreign_pads: list[tuple[str | None, tuple[float, float, float, float]]] = []
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            owner = next(
+                (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes), None
+            )
+            foreign_pads.append((owner, pad_box(design, part, pad)))
 
     tracks = []
     for track, points in zip(design.tracks, resolved, strict=True):
@@ -2108,6 +2117,9 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
             blocked = any(
                 net != track.net and _segment_to_point(p1, p2, at) < track.width / 2 + radius + 0.25
                 for net, at, radius in foreign_vias
+            ) or any(
+                owner != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
+                for owner, box in foreign_pads
             )
             if blocked:
                 out.append(corner)  # the square corner was the clear shape here
