@@ -45,6 +45,11 @@ eda pcb render "$PROJECT" -o "$OUT/art" --dpi 120 --views front copper-front > "
 have "$OUT/art.json" "len(d['images']) >= 5 and not d['errors'] and 'contact_sheet' in d"
 test -s "$OUT/art/contact-sheet.png"
 
+step "board render on a transparent background"
+eda pcb render "$PROJECT" -o "$OUT/art-clear" --dpi 100 --views front --no-3d --background transparent > "$OUT/art-clear.json"
+have "$OUT/art-clear.json" "not d['errors'] and d['background'] == 'transparent'"
+python3 -c "from PIL import Image; im = Image.open('$OUT/art-clear/front.png'); assert im.mode == 'RGBA' and im.getpixel((2, 2))[3] == 0, im.mode"
+
 step "GLB 3D model"
 eda pcb glb "$PROJECT" -o "$OUT/board.glb" > "$OUT/glb.json"
 have "$OUT/glb.json" "d['bytes'] > 1000"
@@ -89,10 +94,13 @@ step "bill of materials"
 eda sch bom "$PROJECT" -o "$OUT/bom.csv" > "$OUT/bom.json"
 have "$OUT/bom.json" "d['total_parts'] == 5 and d['line_items'] >= 3"
 
-step "fabrication package"
-eda pcb fab "$PROJECT" -o "$OUT/fab" > "$OUT/fab.json"
-have "$OUT/fab.json" "d['ok'] and {s['step'] for s in d['steps']} >= {'gerbers','drill','position','bom'}"
+step "fabrication package (with a dark layer preview)"
+eda pcb fab "$PROJECT" -o "$OUT/fab" --preview --preview-dpi 100 --background black > "$OUT/fab.json"
+have "$OUT/fab.json" "d['ok'] and {s['step'] for s in d['steps']} >= {'gerbers','drill','position','preview','bom'}"
 test -s "$OUT/fab/gerbers/drill-report.txt"
+test -s "$OUT/fab/preview/contact-sheet.png"
+# the pictures are for us, not for the board house
+python3 -c "import zipfile; n = zipfile.ZipFile('$OUT/fab/example-fab.zip').namelist(); assert n and not any(x.startswith('preview/') for x in n), n"
 
 step "spice simulation"
 eda sim run tests/fixtures/spice/rc_lowpass.cir -o "$OUT/sim" > "$OUT/sim.json"

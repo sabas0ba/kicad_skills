@@ -89,3 +89,36 @@ def test_info_reports_nets(example_project):
     assert nets["GND"]["class"] == "ground"
     assert nets["+5V"]["class"] == "power"
     assert nets["/MID"]["track_length_mm"] > 0
+
+
+def test_preview_images_stay_out_of_the_fab_zip(example_project, tmp_path):
+    """The board house gets the manufacturing files; the pictures are for us.
+
+    The zip is assembled from whatever landed in the output directory, so
+    seeding the preview directory tests the exclusion without kicad-cli - every
+    export step fails on the host.
+    """
+    import zipfile
+
+    from eda_toolkit.kicad import fab
+    from eda_toolkit.util import ensure_dir
+
+    out = tmp_path / "fab"
+    ensure_dir(out / fab.PREVIEW_DIR)
+    ensure_dir(out / "gerbers")
+    (out / fab.PREVIEW_DIR / "layer-F_Cu.png").write_bytes(b"not really a png")
+    (out / "gerbers" / "example-F_Cu.gbr").write_text("G04 not really a gerber*\n")
+
+    manifest = fab.export_package(example_project, out)
+    with zipfile.ZipFile(manifest["zip"]) as zf:
+        names = zf.namelist()
+    assert "gerbers/example-F_Cu.gbr" in names
+    assert not any(name.startswith(f"{fab.PREVIEW_DIR}/") for name in names)
+
+
+def test_a_bad_background_is_refused_before_anything_is_written(example_project, tmp_path):
+    from eda_toolkit.kicad import fab
+
+    with pytest.raises(EdaError):
+        fab.export_package(example_project, tmp_path / "fab", background="puce")
+    assert not (tmp_path / "fab").exists()

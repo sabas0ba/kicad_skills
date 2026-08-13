@@ -15,7 +15,11 @@ from pathlib import Path
 from typing import Any
 
 from ..util import EdaError, ensure_dir, write_json
-from . import kicad_cli, pcb, schematic
+from . import kicad_cli, pcb, render, schematic
+
+# Preview images live here, and are the one thing kept out of the zip: the board
+# house wants the manufacturing files, not pictures of them.
+PREVIEW_DIR = "preview"
 
 # The layer set a two-sided board needs; extra copper layers are added per board.
 BASE_LAYERS = (
@@ -55,10 +59,14 @@ def export_package(
     ipc2581: bool = False,
     exclude_dnp: bool = True,
     make_zip: bool = True,
+    preview: bool = False,
+    preview_dpi: int = 200,
+    background: str = "white",
 ) -> dict[str, Any]:
     """Write the fabrication package. Individual steps may fail independently."""
     board_path = pcb.find_board(target)
     board = pcb.parse(board_path)
+    render.background_rgba(background)  # reject a typo before plotting anything
     out = ensure_dir(out_dir)
     gerber_dir = ensure_dir(out / "gerbers")
 
@@ -90,6 +98,13 @@ def export_package(
         "drill",
         lambda: [str(p) for p in _sorted_files(kicad_cli.export_drill(board_path, gerber_dir))],
     )
+    if preview:
+        step_run(
+            "preview",
+            lambda: _preview(
+                board_path, out / PREVIEW_DIR, layers, dpi=preview_dpi, background=background
+            ),
+        )
     step_run(
         "position",
         lambda: str(
@@ -130,15 +145,47 @@ def export_package(
 
     if make_zip:
         archive = out / f"{board_path.stem}-fab.zip"
+        preview_dir = out / PREVIEW_DIR
         with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
             for path in sorted(out.rglob("*")):
-                if path.is_file() and path != archive:
-                    zf.write(path, path.relative_to(out))
+                if not path.is_file() or path == archive or preview_dir in path.parents:
+                    continue
+                zf.write(path, path.relative_to(out))
         manifest["zip"] = str(archive)
 
     write_json(out / "manifest.json", manifest)
     manifest["ok"] = not manifest["errors"]
     return manifest
+
+
+def _preview(
+    board_path: Path,
+    out_dir: Path,
+    layers: Sequence[str],
+    *,
+    dpi: int,
+    background: str,
+) -> dict[str, Any]:
+    """One plot per exported Gerber layer, plus a contact sheet of the set.
+
+    A missing or misassigned layer is invisible in a file listing and obvious in
+    a picture, which is the whole point of looking before uploading. These are
+    plots of the board, not of the Gerbers themselves - same geometry, and they
+    do not depend on a Gerber viewer being installed.
+    """
+    result = render.render_board(
+        board_path,
+        out_dir,
+        views=[f"layer:{layer}" for layer in layers],
+        dpi=dpi,
+        three_d=False,
+        background=background,
+    )
+    return {
+        "images": [image["path"] for image in result["images"]],
+        "contact_sheet": result.get("contact_sheet"),
+        "errors": result["errors"],
+    }
 
 
 def _schematic_next_to(board_path: Path) -> Path | None:

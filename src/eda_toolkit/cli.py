@@ -10,6 +10,11 @@ from typing import Any
 from . import __version__
 from .util import COLLAPSE_LIMIT, EdaError, emit, ensure_dir, write_json
 
+# Spelled out here rather than imported: building the parser must not drag in
+# Pillow and pypdfium2. tests/test_cli.py keeps it in step with
+# kicad.render.BACKGROUNDS, which is where the colours actually live.
+BACKGROUND_CHOICES = ("white", "black", "transparent")
+
 # ---------------------------------------------------------------- rendering
 
 
@@ -301,6 +306,7 @@ def cmd_pcb_render(args: argparse.Namespace) -> int:
         per_layer=args.per_layer,
         glb=args.glb,
         sheet=not args.no_sheet,
+        background=args.background,
     )
     emit(payload, as_json=True)
     return 0
@@ -318,6 +324,9 @@ def cmd_pcb_fab(args: argparse.Namespace) -> int:
         ipc2581=args.ipc2581,
         exclude_dnp=not args.include_dnp,
         make_zip=not args.no_zip,
+        preview=args.preview,
+        preview_dpi=args.preview_dpi,
+        background=args.background,
     )
     emit(payload, as_json=True)
     return 0 if payload.get("ok") else 2
@@ -714,6 +723,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--per-layer", action="store_true", help="one plot per copper layer")
     p.add_argument("--glb", action="store_true", help="also export a GLB 3D model")
     p.add_argument("--no-sheet", action="store_true", help="skip the tiled contact sheet")
+    p.add_argument(
+        "--background",
+        default="white",
+        choices=list(BACKGROUND_CHOICES),
+        help="image background; the 3D views keep KiCad's own theme at white",
+    )
     p.set_defaults(func=cmd_pcb_render)
 
     p = pcb_p.add_parser("glb", help="export a GLB 3D model (viewable in a browser)")
@@ -730,6 +745,18 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--ipc2581", action="store_true", help="also export IPC-2581")
     p.add_argument("--include-dnp", action="store_true", help="keep DNP parts")
     p.add_argument("--no-zip", action="store_true")
+    p.add_argument(
+        "--preview",
+        action="store_true",
+        help="also plot every exported layer to PNG (kept out of the zip)",
+    )
+    p.add_argument("--preview-dpi", type=int, default=200)
+    p.add_argument(
+        "--background",
+        default="white",
+        choices=list(BACKGROUND_CHOICES),
+        help="background of the preview images",
+    )
     p.set_defaults(func=cmd_pcb_fab)
 
     p = pcb_p.add_parser(
