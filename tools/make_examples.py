@@ -1803,7 +1803,7 @@ def fan(
     axis: str = "x",
     widths: dict[str, float] | None = None,
     width: float = 0.3,
-    slope: float = 2.2,
+    slope: float | None = None,
     clearance: float = 0.25,
 ) -> tuple[list[Track], dict[str, tuple[float, float]]]:
     """Take one row of a fine-pitch package out to a pitch a router can use.
@@ -1815,7 +1815,10 @@ def fan(
     bends staggered so no two neighbours turn abreast. Anything shallower or
     steeper than 45 reads as an accident on the plot, and the stagger is what
     buys the spacing a shared turn could only get from a shallow angle.
-    ``slope`` is retired and ignored; it named the shallow angle this replaced.
+    ``slope`` (dx/dy of a single shared shallow turn) survives as the stated
+    exception: a QFN whose four sides each spend the whole corridor escaping
+    has no along-axis room to stagger, and the shallow turn is the only shape
+    that fits. A caller that passes it owns the `route.odd_angle` waiver.
 
     The row pitch still sets the width: two straights in a 0.65 mm row hold
     nothing wider than 0.3-0.4 mm, so a power pin leaves as wide as the row
@@ -1840,6 +1843,33 @@ def fan(
         offset = pad_position(design, f"{ref}.{number}")[across]
         target = round(centre + (index - (len(pins) - 1) / 2) * pitch, 4)
         placed.append((number, offset, target))
+
+    if slope is not None:
+        # the stated shallow-turn exception, all pins turning together
+        span = min(abs(a[1] - b[1]) for a, b in pairwise(placed)) * math.cos(math.atan2(1.0, slope))
+        for a, b in pairwise(placed):
+            need = (widths.get(a[0], width) + widths.get(b[0], width)) / 2 + clearance
+            if span < need - GEOM_EPS:
+                raise SystemExit(
+                    f"{design.name}: {ref} pins {a[0]} and {b[0]} leave {span:.3f} mm "
+                    f"across the shared turn at slope {slope} and need {need:.3f}"
+                )
+        tracks: list[Track] = []
+        ends: dict[str, tuple[float, float]] = {}
+        for number, offset, target in placed:
+            pad = f"{ref}.{number}"
+            bend = round(lead + direction * abs(target - offset) * slope, 4)
+            points: list[tuple[float, float] | str] = [pad, at(lead, offset)]
+            if abs(target - offset) > GEOM_EPS:
+                points.append(at(bend, target))
+            if abs(column - bend) > GEOM_EPS:
+                points.append(at(column, target))
+            net = next((name for name, nodes in design.nets.items() if pad in nodes), None)
+            if net is None:
+                continue
+            tracks.append(Track(net, "F.Cu", widths.get(number, width), points))
+            ends[number] = at(column, target)
+        return tracks, ends
 
     # Every bend is 45 degrees, staggered so no two neighbours turn abreast:
     # within each shift direction the pin farthest along that direction turns
@@ -2956,7 +2986,7 @@ def buck_5v() -> Design:
         Track("+5V", "F.Cu", W, ["L1.2", "C4.1"]),
         Track("+5V", "F.Cu", W, ["C4.1", (89.05, 30.0), (96.3, 30.0), "C3.1"]),
         Track(
-            "+5V", "F.Cu", W, [(96.3, 30.0), (107.0, 30.0), (107.0, 42.0), (114.0, 42.0), "J2.1"]
+            "+5V", "F.Cu", W, [(96.3, 30.0), (107.0, 30.0), (107.0, 42.0), (110.0, 42.0), "J2.1"]
         ),
         Track("+5V", "F.Cu", SIG, ["C3.1", (96.3, 42.0), (99.088, 42.0), "R1.1"]),
         Track("LED_A", "F.Cu", SIG, ["R1.2", "D2.2"]),
@@ -4350,7 +4380,7 @@ def fpga_audio() -> Design:
             "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
             # Clear of the title block, which owns the bottom right corner.
             sheet=(370.0, 245.0),
-            board=(74.0, 76.0, 0.0),
+            board=(74.0, 66.0, 0.0),
             mirror="y",
             fields={
                 "MPN": "61300611121",
@@ -4586,7 +4616,7 @@ def fpga_audio() -> Design:
         power_flags=[("+3V3", "J1.1"), ("GND", "J1.2")],
         board_size=(94.0, 84.0),
         label_nets=("I2S_SCK", "I2S_BCK", "I2S_DIN", "I2S_LRCK"),
-        route_keepout=("U2", "U4"),
+        route_keepout=(),
         tracks=[],
         vias=[],
         pour=(3.0, 3.0, 91.0, 81.0),

@@ -37,3 +37,11 @@ reason = """The whole distribution runs at 0.2 mm because nothing wider fits \
 between the escape fans. The iCE40 and the codec together draw tens of \
 milliamps; 0.2 mm carries 0.74 A at a 10 C rise, three orders above the \
 load. The width is set by the package, and the numbers say it is enough."""
+
+[[waivers]]
+rule = "route.odd_angle"
+reason = """The corners off the 45 grid are the QFN escape fans' single shared \
+shallow turn: four sides of 0.5 mm pitch each spend their whole corridor \
+escaping, so there is no along-axis room to stagger 45s and the shallow angle \
+is the only shape that fits all twelve tracks a side. The same argument the \
+acute-angle waiver makes, one rule over."""

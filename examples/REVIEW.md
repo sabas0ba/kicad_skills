@@ -263,7 +263,7 @@ performance: no wasted copper, no accidental angles.
 | widening a track mid-run | fixed — motor outputs leave the pin field at the row's full width and widen once, at the field's edge; the guide states the principle |
 | J2/J3 colliding when mated | fixed — the opamp's power header moved to the top-left edge, clear of the output header |
 | return path through the front face centre | improved — four mid-board ground vias give the sliced front pour short ways to the plane on opamp-filter |
-| routing under digital ICs | rule of thumb in the guide + `route_keepout` closes the codec's underside on fpga-audio; the flash keeps its own bus underneath, which is the unavoidable case the guide allows |
+| routing under digital ICs | rule of thumb in the guide + a `route_keepout` mechanism in the generator; on fpga-audio even the codec's underside turned out to be load-bearing corridor - with it closed the ground drops beside it lose their last lane - which is the unavoidable case the guide names |
 | GPIO/programming header interior | judged — two routing attempts at the bottom edge found no lane: that edge is the south escape fan's corridor, so the debug header keeps the one interior window that routes, and the guide states the trade |
 | capacitors with no visible owner | fixed — fpga bank caps sit beside the bank unit they feed, codec caps beside the codec, each group with its note |
 | I2S weave between FPGA and codec | fixed — the bus is names at both ends now, and the sheet reads as the pin map |
