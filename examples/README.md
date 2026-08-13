@@ -73,7 +73,7 @@ Under KiCad's own ERC and DRC, and the `ai-generated` policy:
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 1 finding waived | 0 / 0 / 0 | 0 / 1 / 6 |
-| `as-generated` | **FAIL**, 28 blocking | — | — |
+| `as-generated` | **FAIL**, 27 blocking | — | — |
 
 ### The two, side by side
 
@@ -154,7 +154,7 @@ charge pump, bypass and pull-up the datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 6 findings waived | 0 / 2 / 0 | 0 / 10 / 7 |
+| `reviewed` | **PASS**, 7 findings waived | 0 / 3 / 0 | 0 / 10 / 7 |
 | `as-generated` | **FAIL**, 32 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
@@ -224,8 +224,8 @@ that reaches VSYS the way the Pico datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 9 findings waived | 0 / 1 / 0 | 0 / 13 / 8 |
-| `as-generated` | **FAIL**, 31 blocking | — | — |
+| `reviewed` | **PASS**, 10 findings waived | 0 / 2 / 0 | 0 / 13 / 8 |
+| `as-generated` | **FAIL**, 30 blocking | — | — |
 
 Under KiCad's own checks `reviewed` has no errors and no unconnected items, on
 9.0.9 and 10.0.4 — one `lib_footprint_mismatch` on the module and two silkscreen
@@ -283,7 +283,7 @@ filter is referenced to.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 6 findings waived | 0 / 0 / 0 | 0 / 7 / 7 |
+| `reviewed` | **PASS**, 6 findings waived | 0 / 0 / 0 | 0 / 10 / 7 |
 | `as-generated` | **FAIL**, 34 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
@@ -326,8 +326,8 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 5 findings waived | 0 / 2 / 0 | 0 / 6 / 7 |
-| `as-generated` | **FAIL**, 28 blocking | — | — |
+| `reviewed` | **PASS**, 6 findings waived | 0 / 2 / 0 | 0 / 6 / 8 |
+| `as-generated` | **FAIL**, 26 blocking | — | — |
 
 Under KiCad's own checks `reviewed` has no DRC errors, nothing unconnected and
 no schematic-parity findings; silkscreen warnings between the fans are all
