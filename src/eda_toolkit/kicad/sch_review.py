@@ -40,6 +40,12 @@ THRESHOLDS: dict[str, float] = {
     # Above this fraction of label-stub connections, the sheet is a name table
     # rather than a drawing. KiCad's own demo projects sit well under it.
     "max_label_ratio": 0.5,
+    # A symbol needs this many pins in one straight row before which way the
+    # row faces is worth judging - two-pin parts face wherever they like.
+    "min_row_pins": 4,
+    # The strip inside the page edge that belongs to the drawing frame and its
+    # rulers; anything placed there prints on top of them.
+    "page_margin_mm": 10.0,
 }
 
 # Geometry lives on a 1/100 mm world; anything below this is file noise.
@@ -177,6 +183,41 @@ RULE_SPEC: dict[str, RuleSpec] = {
     ),
     "readability.title_block": RuleSpec(
         "the root sheet's title block is missing a title, rev, date or company", "info"
+    ),
+    "readability.wire_through_junction": RuleSpec(
+        "a junction dot in the interior of a wire segment instead of at a "
+        "break between two. KiCad's editor always splits the wire when a "
+        "branch tees in; KiCad 9's connectivity requires it, and connects "
+        "only one side of an unbroken wire",
+        "warning",
+    ),
+    "readability.overlapping_wires": RuleSpec(
+        "two collinear wire segments sharing more than a point of the same "
+        "line - one wire drawn over another reads as one and edits as two",
+        "warning",
+    ),
+    "readability.facing_away": RuleSpec(
+        "a single-row symbol (a connector, usually) most of whose connected "
+        "pins point away from the pins they connect to, so every wire must "
+        "double back around the body; mirroring the symbol is the fix. Info, "
+        "not warning: humans park edge connectors facing outward on purpose, "
+        "and the ai-generated policy promotes it regardless",
+        "info",
+        threshold="min_row_pins",
+    ),
+    "readability.margin_intrusion": RuleSpec(
+        "a pin or a text note inside the page's frame strip or on the title "
+        "block, where it prints over the sheet furniture. Info, not warning: "
+        "mounting holes and logos live there on purpose on human sheets, and "
+        "the ai-generated policy promotes it regardless",
+        "info",
+        threshold="page_margin_mm",
+    ),
+    "readability.text_over_symbol": RuleSpec(
+        "a text note whose estimated extent overlaps a symbol's pin box - "
+        "notes belong beside the circuit, not on it (the extent is estimated "
+        "from the string, so this is graded info, not error)",
+        "info",
     ),
     # -- specification -----------------------------------------------------
     "spec.missing_rating": RuleSpec(
@@ -1041,6 +1082,262 @@ def rule_symbol_overlap(ctx: ReviewContext) -> list[Finding]:
             "warning",
             f"{len(overlaps)} pair(s) of symbols overlap on the sheet",
             sorted(set(overlaps)),
+        )
+    ]
+
+
+@rule
+def rule_wire_through_junction(ctx: ReviewContext) -> list[Finding]:
+    """A wire drawn through a junction instead of broken at it.
+
+    KiCad's editor splits a wire the moment a branch tees into it, so files it
+    saves never contain one that runs through a junction. A generated file can,
+    and the cost is version-dependent connectivity: KiCad 10 tolerates it,
+    KiCad 9 attaches the branch to one side of the wire and silently drops
+    everything past the dot. The netlist then disagrees between versions,
+    which is about the worst failure a schematic file can have.
+    """
+    through = []
+    for doc in ctx.docs:
+        segments = _wire_segments(doc)
+        index = _SegmentIndex(segments)
+        for junction in doc.junctions:
+            cell = (index._cell(junction[0]), index._cell(junction[1]))
+            for position in index.cells.get(cell, ()):
+                if _on_interior(junction, *index.segments[position]):
+                    through.append(
+                        f"{doc.path.name}:({round(junction[0], 2)}, {round(junction[1], 2)})"
+                    )
+                    break
+    through = sorted(set(through))
+    if not through:
+        return []
+    return [
+        _group_finding(
+            "readability.wire_through_junction",
+            "warning",
+            f"{len(through)} junction(s) sit in the middle of an unbroken wire - "
+            "KiCad 9 connects only one side of it; break the wire at the dot",
+            through,
+        )
+    ]
+
+
+@rule
+def rule_overlapping_wires(ctx: ReviewContext) -> list[Finding]:
+    """Two wires drawn along the same stretch of line.
+
+    They plot as one wire and edit as two: dragging one leaves the other
+    behind, looking exactly like the connection that just moved. Nothing
+    electrical minds, which is why only a drawing check can.
+    """
+    overlaps = []
+    for doc in ctx.docs:
+        by_line: dict[tuple[str, float], list[tuple[float, float]]] = defaultdict(list)
+        for a, b in _wire_segments(doc):
+            if abs(a[0] - b[0]) <= GEOM_TOL:
+                by_line[("x", round(a[0], 2))].append(tuple(sorted((a[1], b[1]))))
+            elif abs(a[1] - b[1]) <= GEOM_TOL:
+                by_line[("y", round(a[1], 2))].append(tuple(sorted((a[0], b[0]))))
+        for (axis, coordinate), spans in by_line.items():
+            spans.sort()
+            reach = spans[0][1]
+            for lo, hi in spans[1:]:
+                if lo < reach - GEOM_TOL:
+                    overlaps.append(f"{doc.path.name}:{axis}={coordinate} near {round(lo, 2)}")
+                reach = max(reach, hi)
+    overlaps = sorted(set(overlaps))
+    if not overlaps:
+        return []
+    return [
+        _group_finding(
+            "readability.overlapping_wires",
+            "warning",
+            f"{len(overlaps)} place(s) where two wire segments overlap along one "
+            "line - drawn twice, plots as one, edits as two",
+            overlaps,
+        )
+    ]
+
+
+@rule
+def rule_facing_away(ctx: ReviewContext) -> list[Finding]:
+    """A pin row pointed away from everything it connects to.
+
+    A connector drawn with its pins facing off the sheet while its signals go
+    the other way forces every wire to lap the body - or, more usually, forces
+    the sheet back to labels. The symbol wants mirroring, which costs nothing
+    and was the difference between a wired breakout and a name table.
+    """
+    min_pins = int(ctx.thresholds["min_row_pins"])
+    pin_at: dict[tuple[str, str], tuple[float, float]] = {}
+    for doc in ctx.docs:
+        for sym in doc.symbols:
+            if not sym.is_power:
+                for pin in sym.pins:
+                    pin_at[(sym.reference, pin.number)] = pin.xy
+    nodes_by_net: dict[str, list[dict[str, Any]]] = {net["name"]: net["nodes"] for net in ctx.nets}
+    findings = []
+    for doc in ctx.docs:
+        for sym in doc.symbols:
+            if sym.is_power or len(sym.pins) < min_pins:
+                continue
+            xs = {round(p.x, 2) for p in sym.pins}
+            ys = {round(p.y, 2) for p in sym.pins}
+            if len(xs) == 1 and len(ys) >= min_pins:
+                axis, row = 0, next(iter(xs))
+                origin = sym.x
+            elif len(ys) == 1 and len(xs) >= min_pins:
+                axis, row = 1, next(iter(ys))
+                origin = sym.y
+            else:
+                continue  # pins on more than one line: not a single-row part
+            facing = row - origin
+            if abs(facing) < GEOM_TOL:
+                continue
+            toward = away = 0
+            for pin in sym.pins:
+                net = ctx.net_by_ref_pin.get((sym.reference, pin.number))
+                if not net or netlist_mod.classify_net(net) in ("power", "ground"):
+                    continue
+                partners = [
+                    pin_at[(node["ref"], node["pin"])]
+                    for node in nodes_by_net.get(net, [])
+                    if node["ref"] != sym.reference and (node["ref"], node["pin"]) in pin_at
+                ]
+                if not partners:
+                    continue
+                mean = sum(p[axis] for p in partners) / len(partners)
+                if (mean - row) * facing >= 0:
+                    toward += 1
+                else:
+                    away += 1
+            if away >= min_pins and away > toward:
+                findings.append(
+                    Finding(
+                        "readability.facing_away",
+                        "info",
+                        f"{sym.reference}: {away} of {away + toward} connected pins "
+                        "point away from the pins they connect to - mirror the "
+                        "symbol so the row faces its signals",
+                        location=sym.reference,
+                        details={"away": away, "toward": toward},
+                    )
+                )
+    return findings
+
+
+@rule
+def rule_margin_intrusion(ctx: ReviewContext) -> list[Finding]:
+    """Circuit or notes drawn on the sheet furniture.
+
+    The outer strip of the page belongs to the frame and its rulers, and the
+    bottom right corner to the title block. Anything placed there prints over
+    them - a note that runs past the frame, or a connector parked on the title
+    block, both found on real generated sheets by trying to wire them.
+    """
+    margin = ctx.thresholds["page_margin_mm"]
+    intrusions = []
+    for doc in ctx.docs:
+        if not doc.paper_size:
+            continue
+
+        def in_furniture(x: float, y: float, size: tuple[float, float] = doc.paper_size) -> bool:
+            width, height = size
+            if x < margin or y < margin or x > width - margin or y > height - margin:
+                return True
+            # KiCad's standard title block: ~110 mm wide, ~30 mm tall, bottom right
+            return x > width - 115.0 and y > height - 30.0
+
+        for sym in doc.symbols:
+            if sym.is_power:
+                continue
+            for pin in sym.pins:
+                if in_furniture(pin.x, pin.y):
+                    intrusions.append(f"{doc.path.name}:{sym.reference or sym.lib_id}")
+                    break
+        for item in doc.text_items:
+            if in_furniture(item.x, item.y):
+                snippet = item.text.splitlines()[0][:40]
+                intrusions.append(f"{doc.path.name}:text '{snippet}'")
+    intrusions = sorted(set(intrusions))
+    if not intrusions:
+        return []
+    return [
+        _group_finding(
+            "readability.margin_intrusion",
+            "info",
+            f"{len(intrusions)} item(s) sit on the page frame or the title block "
+            "and print over them",
+            intrusions,
+        )
+    ]
+
+
+def _text_extent(item: schematic.Text) -> tuple[float, float, float, float]:
+    """The box a note roughly covers, from its anchor, justify and content.
+
+    KiCad does not store the rendered extent, so this assumes the default
+    1.27 mm font: about 1.1 mm per character and 2.54 mm per line. Rough - which
+    is why the rule built on it reports info, not error.
+    """
+    lines = item.text.splitlines() or [""]
+    width = max(len(line) for line in lines) * 1.1
+    height = len(lines) * 2.54
+    justify = item.justify
+    if "left" in justify:
+        x0, x1 = item.x, item.x + width
+    elif "right" in justify:
+        x0, x1 = item.x - width, item.x
+    else:
+        x0, x1 = item.x - width / 2, item.x + width / 2
+    if "top" in justify:
+        y0, y1 = item.y, item.y + height
+    elif "bottom" in justify:
+        y0, y1 = item.y - height, item.y
+    else:
+        y0, y1 = item.y - height / 2, item.y + height / 2
+    return (x0, y0, x1, y1)
+
+
+@rule
+def rule_text_over_symbol(ctx: ReviewContext) -> list[Finding]:
+    """A design note printed over a symbol.
+
+    The note and the circuit are both right; on top of each other neither can
+    be read. Nothing about it changes the netlist, so it is only visible by
+    looking at the plot - or by estimating the text's extent, which is what
+    this does.
+    """
+    collisions = []
+    for doc in ctx.docs:
+        boxes = []
+        for sym in doc.symbols:
+            if sym.is_power:
+                continue
+            box = sym.bbox()
+            if box:
+                boxes.append((box, sym.reference or sym.lib_id))
+        for item in doc.text_items:
+            tx0, ty0, tx1, ty1 = _text_extent(item)
+            for (bx0, by0, bx1, by1), ref in boxes:
+                if (
+                    min(tx1, bx1) - max(tx0, bx0) > GEOM_TOL
+                    and min(ty1, by1) - max(ty0, by0) > GEOM_TOL
+                ):
+                    snippet = item.text.splitlines()[0][:40]
+                    collisions.append(f"{doc.path.name}:'{snippet}' over {ref}")
+                    break
+    collisions = sorted(set(collisions))
+    if not collisions:
+        return []
+    return [
+        _group_finding(
+            "readability.text_over_symbol",
+            "info",
+            f"{len(collisions)} note(s) print over a symbol - notes belong "
+            "beside the circuit, not on it",
+            collisions,
         )
     ]
 

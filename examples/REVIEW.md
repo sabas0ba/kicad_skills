@@ -171,8 +171,14 @@ the point of writing them down is to say which:
 | finding | disposition |
 | --- | --- |
 | connections by name, not wire | rule `readability.label_only` + fixed (sheet router: wire trees, junction dots, mirrored connectors) |
-| inverted LED, headers facing away, notes over parts, connector in the title block | fixed — found by the router, not by a rule |
+| inverted LED, headers facing away, notes over parts, connector in the title block | fixed — found by the router, not by a rule; the checkable parts became rules afterwards (below) |
 | ground vias at the end of a track | fixed on fpga-audio (vias anchored beside each capacitor's ground pad) |
+| a wire run through a junction — KiCad 9 connects one side only | rule `readability.wire_through_junction` |
+| two wires drawn along one line | rule `readability.overlapping_wires` |
+| a connector row facing away from its signals | rule `readability.facing_away` |
+| pins or notes on the frame strip or title block | rule `readability.margin_intrusion` |
+| a note printed over a symbol | rule `readability.text_over_symbol` |
+| what stays judgment — polarity semantics, wire-versus-label taste, router cost trade-offs | the two authoring guides, `kicad-schematic-authoring` and `kicad-pcb-authoring` |
 | floating AC-coupled node | rule `analog.no_dc_path` + fixed (R6 on opamp-filter) |
 | scenic-route routing | rule `route.detour` |
 | signals over plane cuts | rule `route.return_path` (parser now keeps zone outline + fill) |
@@ -195,6 +201,11 @@ measuring something other than machine work:
 | `route.detour` | 8 boards at a 2.5x threshold, **0 at 4x** — 4x is where human routing stops and machine tours begin, and is the shipped default |
 | `route.return_path` | 4 boards — real two-layer boards genuinely have this disease, which is why it is a warning and not an error |
 | `track.thin_power` (re-judged) | 9 boards before, 0 after — every one of the nine was a pad-entry or escape neck, which is exactly what the rule was wrong about |
+| `readability.wire_through_junction` | 0 findings — the editor splits wires at tees, so human files never contain one |
+| `readability.overlapping_wires` | 1 board, 7 spots — and they are real drawn-twice wires, not noise |
+| `readability.facing_away` | 6 boards — humans park edge connectors facing outward on purpose, so it is graded info; the ai-generated policy still blocks on it |
+| `readability.margin_intrusion` | 6 boards — mounting holes and logos live in the margins of human sheets, so info, same reasoning |
+| `readability.text_over_symbol` | 2 boards — info from the start: the text extent is estimated, not measured |
 
 Every `reviewed/` project now carries a `gate.toml` and passes
 `eda gate --policy examples/<name>/gate.toml`; every waiver in those files is

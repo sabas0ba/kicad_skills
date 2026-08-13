@@ -6,7 +6,7 @@ description: Read a KiCad schematic (.kicad_sch) to extract components, nets and
 # KiCad schematic review
 
 > One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI — [all seven](README.md). Plain Markdown: read it directly, or hand it to
+> `eda` CLI — [all of them](README.md). Plain Markdown: read it directly, or hand it to
 > whatever assistant you use.
 
 Reads `.kicad_sch` files and reviews them. Runs in the container
@@ -94,7 +94,12 @@ nothing to say about them, and why a generated sheet fails them so reliably:
 | --- | --- |
 | `readability.off_grid_pin` / `_wire` / `_junction` / `_label` | geometry off the 1.27 mm grid; KiCad connects on exact coordinates, so this draws as a connection that is not one |
 | `readability.missing_junction` | a wire ending on another wire with no junction dot — KiCad treats that as crossing |
+| `readability.wire_through_junction` | a junction in a wire's middle instead of at a break — KiCad 9 connects only one side of the wire |
+| `readability.overlapping_wires` | two wires drawn along the same stretch of line — plots as one, edits as two |
 | `readability.dangling_wire` | a wire end reaching no pin, label, junction or other wire |
+| `readability.facing_away` | a single-row symbol whose connected pins point away from their signals — the symbol wants mirroring |
+| `readability.margin_intrusion` | pins or notes on the page frame strip or the title block |
+| `readability.text_over_symbol` | a design note whose estimated extent prints over a symbol |
 | `readability.overlapping_symbols` | symbols drawn on top of each other |
 | `readability.outside_page` | items past the page border, missing from the plot and the PDF |
 | `readability.diagonal_wire` | wires that do not run orthogonally |

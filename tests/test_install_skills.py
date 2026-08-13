@@ -49,7 +49,9 @@ def test_there_is_a_guide_for_every_area():
         "eda-environment",
         "kicad-design-gate",
         "kicad-fabrication-output",
+        "kicad-pcb-authoring",
         "kicad-pcb-review",
+        "kicad-schematic-authoring",
         "kicad-schematic-review",
         "spice-simulation",
     }

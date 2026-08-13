@@ -6,7 +6,7 @@ description: Extract text, parameter tables, embedded figures and page images fr
 # Datasheet analysis
 
 > One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI — [all seven](README.md). Plain Markdown: read it directly, or hand it to
+> `eda` CLI — [all of them](README.md). Plain Markdown: read it directly, or hand it to
 > whatever assistant you use.
 
 Turns a datasheet PDF into things that can actually be read: per-page text,

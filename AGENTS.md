@@ -112,8 +112,8 @@ by accident — no KiCad 10 only tokens, and the ground pour stays filled.
 * **`docs/guides/`** — one usage guide per area, and the source of truth for how
   to *use* the toolkit well. Read the one that matches the task before doing it:
   `datasheet-analysis`, `spice-simulation`, `kicad-schematic-review`,
-  `kicad-pcb-review`, `kicad-design-gate`, `kicad-fabrication-output`,
-  `eda-environment`.
+  `kicad-schematic-authoring`, `kicad-pcb-review`, `kicad-pcb-authoring`,
+  `kicad-design-gate`, `kicad-fabrication-output`, `eda-environment`.
 * `docs/examples/` — committed sample output, regenerable with the commands
   documented there.
 

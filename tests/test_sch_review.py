@@ -562,3 +562,109 @@ def test_a_sheet_with_no_note_is_reported_once():
     ]
     doc.texts = ["fc = 1/(2 pi R C) = 1.6 kHz"]
     assert sch_review.rule_design_notes(sheet_ctx(doc)) == []
+
+
+def test_a_junction_inside_an_unbroken_wire_is_reported():
+    """The dot in a wire's middle, not at a break: KiCad 9 connects one side."""
+    unbroken = sheet(
+        wires=[[(0.0, 0.0), (25.4, 0.0)], [(12.7, 0.0), (12.7, 12.7)]],
+        junctions=[(12.7, 0.0)],
+    )
+    findings = sch_review.rule_wire_through_junction(sheet_ctx(unbroken))
+    assert [f.rule for f in findings] == ["readability.wire_through_junction"]
+
+    split = sheet(
+        wires=[
+            [(0.0, 0.0), (12.7, 0.0)],
+            [(12.7, 0.0), (25.4, 0.0)],
+            [(12.7, 0.0), (12.7, 12.7)],
+        ],
+        junctions=[(12.7, 0.0)],
+    )
+    assert sch_review.rule_wire_through_junction(sheet_ctx(split)) == []
+
+
+def test_two_wires_on_one_line_are_reported():
+    """An overlap along the line fires; segments merely chained do not."""
+    overlapping = sheet(wires=[[(0.0, 0.0), (25.4, 0.0)], [(12.7, 0.0), (38.1, 0.0)]])
+    findings = sch_review.rule_overlapping_wires(sheet_ctx(overlapping))
+    assert [f.rule for f in findings] == ["readability.overlapping_wires"]
+
+    chained = sheet(wires=[[(0.0, 0.0), (12.7, 0.0)], [(12.7, 0.0), (25.4, 0.0)]])
+    assert sch_review.rule_overlapping_wires(sheet_ctx(chained)) == []
+
+
+def test_a_connector_facing_away_from_its_signals_is_reported():
+    """Pins right of the body, partners to the left: the row wants mirroring."""
+    rows = [10.0, 12.54, 15.08, 17.62]
+    connector = placed(
+        "J1",
+        50,
+        13,
+        [pin(str(i + 1), 55.0, y) for i, y in enumerate(rows)],
+        lib_id="Connector:Conn_01x04_Pin",
+    )
+    mcu = placed(
+        "U1",
+        10,
+        13,
+        [pin(str(i + 1), 15.0, y) for i, y in enumerate(rows)],
+        lib_id="MCU:GENERIC",
+    )
+    nets = {f"SIG{i}": [node("J1", str(i + 1)), node("U1", str(i + 1))] for i in range(4)}
+    away = sheet_ctx(sheet(symbols=[connector, mcu]), nets)
+    findings = sch_review.rule_facing_away(away)
+    assert [f.location for f in findings] == ["J1"]
+
+    mirrored = placed(
+        "J1",
+        50,
+        13,
+        [pin(str(i + 1), 45.0, y) for i, y in enumerate(rows)],
+        lib_id="Connector:Conn_01x04_Pin",
+        mirror="y",
+    )
+    faced = sheet_ctx(sheet(symbols=[mirrored, mcu]), nets)
+    assert sch_review.rule_facing_away(faced) == []
+
+
+def test_furniture_intrusion_is_reported():
+    """A connector on the title block, and a note past the frame strip."""
+    from eda_toolkit.kicad.schematic import Text
+
+    doc = sheet(
+        symbols=[
+            placed("J1", 280, 195, [pin("1", 280.0, 195.0), pin("2", 280.0, 197.54)]),
+            placed("R1", 100, 100, [pin("1", 100.0, 100.0), pin("2", 105.08, 100.0)]),
+        ],
+        paper=(297.0, 210.0),
+        text_items=[Text("clearance is 0.2 mm", 20.0, 205.0, "left bottom")],
+    )
+    findings = sch_review.rule_margin_intrusion(sheet_ctx(doc))
+    assert [f.rule for f in findings] == ["readability.margin_intrusion"]
+    examples = findings[0].details["examples"]
+    assert any("J1" in e for e in examples) and any("clearance" in e for e in examples)
+
+    clear = sheet(
+        symbols=[placed("R1", 100, 100, [pin("1", 100.0, 100.0), pin("2", 105.08, 100.0)])],
+        paper=(297.0, 210.0),
+        text_items=[Text("clearance is 0.2 mm", 20.0, 150.0, "left bottom")],
+    )
+    assert sch_review.rule_margin_intrusion(sheet_ctx(clear)) == []
+
+
+def test_a_note_printed_over_a_symbol_is_reported():
+    from eda_toolkit.kicad.schematic import Text
+
+    doc = sheet(
+        symbols=[placed("U1", 60, 45, [pin("1", 55.0, 40.0), pin("2", 65.0, 50.0)])],
+        text_items=[Text("the regulator wants 1 uF on its output", 40.0, 45.0, "left")],
+    )
+    findings = sch_review.rule_text_over_symbol(sheet_ctx(doc))
+    assert [f.rule for f in findings] == ["readability.text_over_symbol"]
+
+    beside = sheet(
+        symbols=[placed("U1", 60, 45, [pin("1", 55.0, 40.0), pin("2", 65.0, 50.0)])],
+        text_items=[Text("the regulator wants 1 uF on its output", 40.0, 70.0, "left")],
+    )
+    assert sch_review.rule_text_over_symbol(sheet_ctx(beside)) == []

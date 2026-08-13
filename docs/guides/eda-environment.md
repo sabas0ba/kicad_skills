@@ -6,7 +6,7 @@ description: Set up, pin, verify and troubleshoot the containerised EDA toolchai
 # EDA environment
 
 > One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI — [all seven](README.md). Plain Markdown: read it directly, or hand it to
+> `eda` CLI — [all of them](README.md). Plain Markdown: read it directly, or hand it to
 > whatever assistant you use.
 
 Every command in this toolkit does its work **inside a container**.

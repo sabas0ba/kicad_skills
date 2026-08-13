@@ -6,7 +6,7 @@ description: Hold a generated KiCad design to a stated standard - one pass/fail 
 # The design gate
 
 > One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI — [all seven](README.md). Plain Markdown: read it directly, or hand it to
+> `eda` CLI — [all of them](README.md). Plain Markdown: read it directly, or hand it to
 > whatever assistant you use.
 
 `sch review` and `pcb review` answer *what is wrong with this design*. That is

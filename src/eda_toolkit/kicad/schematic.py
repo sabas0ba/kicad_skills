@@ -140,6 +140,16 @@ class Wire:
 
 
 @dataclass
+class Text:
+    """A free text note, with the anchor and justification it is drawn from."""
+
+    text: str
+    x: float
+    y: float
+    justify: str = ""  # "left top", "right", "" = centred both ways
+
+
+@dataclass
 class Sheet:
     name: str
     filename: str
@@ -183,6 +193,7 @@ class SchematicDoc:
     bus_entries: list[tuple[tuple[float, float], tuple[float, float]]] = field(default_factory=list)
     sheets: list[Sheet] = field(default_factory=list)
     texts: list[str] = field(default_factory=list)
+    text_items: list[Text] = field(default_factory=list)
     title_block: dict[str, str] = field(default_factory=dict)
 
     def symbol_by_ref(self, ref: str) -> Symbol | None:
@@ -408,6 +419,16 @@ def parse(path: str | Path) -> SchematicDoc:
         value = node.atom(0, "")
         if value:
             doc.texts.append(str(value))
+            at = node.child("at")
+            atoms = at.atoms() if at else []
+            if len(atoms) >= 2:
+                justify = ""
+                effects = node.child("effects")
+                if effects:
+                    j = effects.child("justify")
+                    if j:
+                        justify = " ".join(str(a) for a in j.atoms())
+                doc.text_items.append(Text(str(value), float(atoms[0]), float(atoms[1]), justify))
 
     return doc
 

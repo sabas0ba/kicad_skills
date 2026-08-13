@@ -6,7 +6,7 @@ description: Read a KiCad board (.kicad_pcb) and review the artwork - DRC, schem
 # KiCad PCB / artwork review
 
 > One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI — [all seven](README.md). Plain Markdown: read it directly, or hand it to
+> `eda` CLI — [all of them](README.md). Plain Markdown: read it directly, or hand it to
 > whatever assistant you use.
 
 Reads `.kicad_pcb` files, runs KiCad's DRC and renders the artwork so it can be
