@@ -290,8 +290,15 @@ def render(
     quality: str = "basic",
     rotate: str | None = None,
     zoom: float | None = None,
+    background: str = "opaque",
 ) -> Path:
-    """3D render to PNG. Works headless but needs the 3D models from the image."""
+    """3D render to PNG. Works headless but needs the 3D models from the image.
+
+    ``background`` is kicad-cli's own vocabulary - ``default``, ``transparent``
+    or ``opaque`` - not a colour: the 3D view is drawn on the 3D viewer's theme,
+    so the only way to get a colour of your own is ``transparent`` plus a
+    composite afterwards.
+    """
     out = Path(dest)
     ensure_dir(out.parent)
     args = [
@@ -306,7 +313,7 @@ def render(
         "--quality",
         quality,
         "--background",
-        "opaque",
+        background,
     ]
     if rotate:
         args += ["--rotate", rotate]

@@ -33,6 +33,32 @@ Whenever there is more than one image it also writes **`contact-sheet.png`**,
 every view tiled and labelled. Read that first: one image answers "is anything
 on the wrong layer" without opening a dozen files. `--no-sheet` turns it off.
 
+### Background colour
+
+`--background white|black|transparent` (default `white`) sets what the plots and
+the contact sheet are drawn on — black for reading on a dark screen, transparent
+for dropping a layer into a document or stacking two of them:
+
+```bash
+./bin/eda.sh pcb render hardware/ -o /tmp/art --background black
+./bin/eda.sh pcb render hardware/ -o /tmp/art --background transparent --no-3d
+```
+
+KiCad plots onto an unpainted PDF page, so the colour is chosen while the page
+is rasterised rather than keyed out afterwards — anti-aliased edges stay clean
+instead of fringing white, and `transparent` writes RGBA PNGs with the board
+fully opaque and only the backdrop see-through. The intermediate PDFs are
+KiCad's own output and are unaffected.
+
+Two things to know before switching:
+
+* **The 3D views have no white to replace** — they are drawn on the 3D viewer's
+  own themed background. At `white` they keep it (that is the default output);
+  `black` and `transparent` re-render them with an empty background instead.
+* **KiCad blends layer transparency against white paper when it plots**, so a
+  layer the theme draws semi-transparent comes out pale on a dark background.
+  The geometry is right; only the shade is off.
+
 `pcb electrical` does the arithmetic the width checks only gesture at, using the
 board's own stackup:
 

@@ -149,6 +149,45 @@ def test_fab_package(project_copy, tmp_path):
     assert Path(manifest["zip"]).stat().st_size > 1000
 
 
+def test_fab_preview_plots_every_exported_layer(project_copy, tmp_path):
+    from pathlib import Path
+
+    from eda_toolkit.kicad import fab, pcb
+
+    out = tmp_path / "fab"
+    manifest = fab.export_package(
+        project_copy, out, preview=True, preview_dpi=100, background="black", make_zip=False
+    )
+    preview = next(s["output"] for s in manifest["steps"] if s["step"] == "preview")
+    assert preview["errors"] == []
+    assert len(preview["images"]) == len(fab.gerber_layers(pcb.parse(project_copy)))
+    assert Path(preview["contact_sheet"]).stat().st_size > 1000
+
+    from PIL import Image
+
+    with Image.open(preview["images"][0]) as im:
+        assert im.getpixel((2, 2)) == (0, 0, 0)
+
+
+def test_transparent_render_keeps_the_board_and_drops_the_backdrop(project_copy, tmp_path):
+    result = render.render_board(
+        project_copy,
+        tmp_path / "clear",
+        views=["front"],
+        dpi=100,
+        three_d=False,
+        background="transparent",
+    )
+    assert result["errors"] == []
+
+    from PIL import Image
+
+    with Image.open(result["images"][0]["path"]) as im:
+        assert im.mode == "RGBA"
+        assert im.getpixel((2, 2))[3] == 0
+        assert any(im.getpixel((x, y))[3] == 255 for x in range(im.width) for y in range(im.height))
+
+
 def test_fab_layer_selection_follows_the_board(example_pcb):
     from eda_toolkit.kicad import fab, pcb
 

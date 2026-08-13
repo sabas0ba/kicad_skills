@@ -129,6 +129,29 @@ def test_every_subcommand_is_reachable():
     assert set(subcommands(top["sch"])) >= {"render", "pdf", "review", "bom"}
 
 
+def test_background_choices_match_the_renderer():
+    """cli.py spells the list out to stay import-light; it must not drift."""
+    from eda_toolkit.kicad import render
+
+    assert set(cli.BACKGROUND_CHOICES) == set(render.BACKGROUNDS)
+
+
+def test_background_defaults_to_white_and_rejects_anything_else():
+    parser = cli.build_parser()
+    for argv in (
+        ["pcb", "render", "board.kicad_pcb", "-o", "out"],
+        ["pcb", "fab", "board.kicad_pcb", "-o", "out"],
+    ):
+        assert parser.parse_args(argv).background == "white"
+        with pytest.raises(SystemExit):
+            parser.parse_args([*argv, "--background", "puce"])
+
+
+def test_fab_preview_is_off_by_default():
+    args = cli.build_parser().parse_args(["pcb", "fab", "board.kicad_pcb", "-o", "out"])
+    assert args.preview is False
+
+
 def test_report_defaults_are_the_useful_ones():
     args = cli.build_parser().parse_args(["report", "board.kicad_pcb", "-o", "out"])
     assert args.func is cli.cmd_report

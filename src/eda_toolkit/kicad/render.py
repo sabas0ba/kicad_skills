@@ -22,6 +22,46 @@ BOARD_VIEWS: dict[str, tuple[list[str], bool]] = {
     "outline": (["Edge.Cuts", "User.Drawings", "User.Comments"], False),
 }
 
+# Backgrounds every image in this module can be written on. KiCad plots onto an
+# unpainted PDF page, so the colour is chosen while rasterising rather than keyed
+# out afterwards - anti-aliased edges stay clean instead of fringing white.
+BACKGROUNDS: dict[str, tuple[int, int, int, int]] = {
+    "white": (255, 255, 255, 255),
+    "black": (0, 0, 0, 255),
+    "transparent": (0, 0, 0, 0),
+}
+
+
+def background_rgba(name: str) -> tuple[int, int, int, int]:
+    """Resolve a background name, rejecting typos before anything is plotted."""
+    try:
+        return BACKGROUNDS[name]
+    except KeyError:
+        raise EdaError(
+            f"unknown background {name!r}: choose one of {', '.join(BACKGROUNDS)}"
+        ) from None
+
+
+def _flatten(path: Path, fill: tuple[int, int, int, int]) -> None:
+    """Composite an image with alpha onto an opaque colour, in place."""
+    from PIL import Image
+
+    with Image.open(path) as opened:
+        if "A" not in opened.mode and opened.mode != "P":
+            return
+        image = opened.convert("RGBA")
+    flat = Image.new("RGB", image.size, fill[:3])
+    flat.paste(image, (0, 0), image)
+    flat.save(path)
+
+
+def _label_colour(fill: tuple[int, int, int, int]) -> str:
+    """Contact sheet labels have to stay legible on whatever they are drawn on."""
+    red, green, blue, alpha = fill
+    if alpha == 0:
+        return "#808080"  # the backdrop is unknown; mid grey reads on light and dark
+    return "#222222" if (0.299 * red + 0.587 * green + 0.114 * blue) > 140 else "#dddddd"
+
 
 def _short(exc: Exception, limit: int = 400) -> str:
     """kicad-cli prints its whole usage text on a bad flag; keep reports readable."""
@@ -30,16 +70,21 @@ def _short(exc: Exception, limit: int = 400) -> str:
 
 
 def pdf_to_png(
-    pdf_path: str | os.PathLike[str], out_prefix: str | os.PathLike[str], dpi: int = 300
+    pdf_path: str | os.PathLike[str],
+    out_prefix: str | os.PathLike[str],
+    dpi: int = 300,
+    *,
+    background: str = "white",
 ) -> list[str]:
     """Rasterise every page of a PDF next to ``out_prefix``."""
     import pypdfium2 as pdfium
 
+    fill = background_rgba(background)
     pdf = pdfium.PdfDocument(str(pdf_path))
     written: list[str] = []
     try:
         for index in range(len(pdf)):
-            image = pdf[index].render(scale=dpi / 72).to_pil()
+            image = pdf[index].render(scale=dpi / 72, fill_color=fill).to_pil()
             suffix = "" if len(pdf) == 1 else f"-{index + 1}"
             dest = Path(f"{out_prefix}{suffix}.png")
             ensure_dir(dest.parent)
@@ -56,7 +101,7 @@ def contact_sheet(
     *,
     columns: int = 3,
     cell: int = 700,
-    background: str = "#ffffff",
+    background: str = "white",
 ) -> Path:
     """Tile labelled images into one sheet.
 
@@ -66,6 +111,7 @@ def contact_sheet(
     """
     from PIL import Image, ImageDraw
 
+    fill = background_rgba(background)
     entries = [(label, Path(path)) for label, path in images if Path(path).exists()]
     if not entries:
         raise EdaError("no images to tile")
@@ -90,26 +136,30 @@ def contact_sheet(
     for height in row_heights:
         row_offsets.append(offset)
         offset += height + label_height
-    sheet = Image.new("RGB", (columns * cell, offset), background)
+    # Tiled in RGBA whatever the background is: pasting a transparent tile with
+    # its own alpha as the mask would multiply the alpha twice, which shows up as
+    # a darkened halo. alpha_composite blends it properly.
+    sheet = Image.new("RGBA", (columns * cell, offset), fill)
     draw = ImageDraw.Draw(sheet)
+    label_colour = _label_colour(fill)
 
     for index, (label, image) in enumerate(thumbs):
         row = index // columns
         x = (index % columns) * cell + (cell - image.width) // 2
         y = row_offsets[row] + label_height + (row_heights[row] - image.height) // 2
-        if image.mode in ("RGBA", "LA", "P"):
-            image = image.convert("RGBA")
-            sheet.paste(image, (x, y), image)
-        else:
-            sheet.paste(image, (x, y))
+        sheet.alpha_composite(image.convert("RGBA"), (x, y))
         draw.text(
             ((index % columns) * cell + 8, row_offsets[row] + 7),
             label,
-            fill="#222222",
+            fill=label_colour,
         )
 
     out = Path(dest)
     ensure_dir(out.parent)
+    # An opaque background leaves every pixel at alpha 255, so dropping the
+    # channel there costs nothing and keeps the usual sheet a plain RGB PNG.
+    if fill[3] == 255:
+        sheet = sheet.convert("RGB")
     sheet.save(out)
     return out
 
@@ -124,8 +174,10 @@ def render_board(
     per_layer: bool = False,
     glb: bool = False,
     sheet: bool = True,
+    background: str = "white",
 ) -> dict[str, Any]:
     """Plot the requested 2D views, the 3D renders, and tile them into a sheet."""
+    fill = background_rgba(background)  # reject a typo before plotting anything
     board_path = pcb.find_board(target)
     out = ensure_dir(out_dir)
     board = pcb.parse(board_path)
@@ -144,6 +196,7 @@ def render_board(
     result: dict[str, Any] = {
         "board": str(board_path),
         "out_dir": str(out),
+        "background": background,
         "images": [],
         "errors": [],
     }
@@ -151,7 +204,10 @@ def render_board(
     for view in wanted:
         if view.startswith("layer:"):
             layer = view.split(":", 1)[1]
-            layers, mirror = [layer, "Edge.Cuts"], layer.startswith("B.")
+            # Edge.Cuts goes on every plot for context - including its own, where
+            # naming it twice would just plot the outline over itself.
+            layers = [layer] if layer == "Edge.Cuts" else [layer, "Edge.Cuts"]
+            mirror = layer.startswith("B.")
             name = f"layer-{layer.replace('.', '_')}"
         else:
             if view not in BOARD_VIEWS:
@@ -166,7 +222,7 @@ def render_board(
         pdf_path = out / f"{name}.pdf"
         try:
             kicad_cli.export_pcb_pdf(board_path, pdf_path, layers, mirror=mirror)
-            pngs = pdf_to_png(pdf_path, out / name, dpi=dpi)
+            pngs = pdf_to_png(pdf_path, out / name, dpi=dpi, background=background)
         except Exception as exc:
             result["errors"].append({"view": view, "error": _short(exc)})
             continue
@@ -176,6 +232,10 @@ def render_board(
             )
 
     if three_d:
+        # The 3D view has no white to override - it is drawn on the 3D viewer's
+        # own themed background. So "white" leaves KiCad to it, and the other two
+        # ask for an empty background and fill it here.
+        bg_style = "opaque" if background == "white" else "transparent"
         for side, extra in (("top", {}), ("bottom", {}), ("top", {"rotate": "-45,0,45"})):
             label = (
                 "3d-top"
@@ -184,7 +244,9 @@ def render_board(
             )
             dest = out / f"{label}.png"
             try:
-                kicad_cli.render(board_path, dest, side=side, **extra)
+                kicad_cli.render(board_path, dest, side=side, background=bg_style, **extra)
+                if fill[3] == 255 and bg_style == "transparent":
+                    _flatten(dest, fill)
                 result["images"].append({"view": label, "path": str(dest), "kind": "3d"})
             except Exception as exc:
                 result["errors"].append({"view": label, "error": _short(exc)})
@@ -201,6 +263,7 @@ def render_board(
                 contact_sheet(
                     [(i["view"], i["path"]) for i in result["images"]],
                     out / "contact-sheet.png",
+                    background=background,
                 )
             )
         except Exception as exc:
