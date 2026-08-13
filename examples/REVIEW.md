@@ -212,3 +212,25 @@ Every `reviewed/` project now carries a `gate.toml` and passes
 one of the judgments above, stated as a reason a reviewer can disagree with.
 That is the intended shape of the mechanism: findings are either fixed,
 checked, or answered — never silently absent.
+
+## 7. The reviewer's pass, round two
+
+The project owner reviewed the regenerated set and returned a list of
+conventions the drawings and the artwork still broke. Each item went the
+same three ways as before — into the generator, into a rule where a rule can
+check it, into the authoring guides where only judgment can:
+
+| item | disposition |
+| --- | --- |
+| power symbols drawn sideways | fixed (upright symbols, jog wires, per-connector ground/rail bus columns) + rule `readability.power_symbol_orientation` — graded info because twelve of eighteen human demo sheets rotate them, and the ai-generated policy promotes it anyway |
+| PWR_FLAG parked in a labelled row | fixed — flags are wired in beside the pin the rail actually comes from; placement is judgment, so the rest is the guide |
+| ratings hidden in fields | fixed — R/C/L print voltage, tolerance and power beside the part |
+| capacitors drawn far from their IC, notes and fields colliding | guide (`kicad-schematic-authoring`), with `readability.text_over_symbol` and `margin_intrusion` catching the checkable part; per-unit capacitor adjacency stays open |
+| right-angle corners | rule `route.right_angle` (info — thirteen of eighteen human demo boards corner at 90, and this generator's own router still does; chamfering it is open) |
+| connector pins unlabeled on silk | fixed (net names beside every connector pad, outside the courtyard) + rule `silk.unlabeled_connector` |
+| indicators unlabeled | fixed — `silk_label` per part: "5V OK" beside the power LED |
+| no board name or revision | fixed (name + rev, bottom centre) + rule `silk.missing_board_id` |
+| ground pour on one face only | fixed — both faces poured, stitched by an automatic ring of edge vias + rule `layout.pour_single_sided` (context: a one-sided pour is a design choice real boards ship with) |
+| high-current return left to the pour | fixed on buck-5v — an explicit 1.0 mm ground return along the bottom edge, input terminal to output terminal |
+| feedback path stretched | verified rather than changed: the buck's FB trace is Manhattan-minimal to the output capacitor it senses; the guide records the rule of thumb (short, and never parallel to SW) |
+| clearance crowded without need, connectors not at the board edge | guides — the router's crowding cost and the connector-placement convention are stated there; neither is measurable enough to be a rule yet |
