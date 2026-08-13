@@ -476,6 +476,28 @@ def _crosses(a0, a1, b0, b1) -> bool:
     )
 
 
+def _collinear_overlap(a, b, s0, s1) -> float:
+    """How far ``a-b`` runs along the same line as ``s0-s1``, zero when apart.
+
+    Only axis-aligned segments count, which is every wire the planner draws. A
+    shared endpoint is contact, not overlap - this measures the stretch beyond
+    it, the difference between meeting a wire and riding it.
+    """
+    if abs(a[0] - b[0]) < GEOM_TOL and abs(s0[0] - s1[0]) < GEOM_TOL:
+        if abs(a[0] - s0[0]) >= GEOM_TOL:
+            return 0.0
+        lo = max(min(a[1], b[1]), min(s0[1], s1[1]))
+        hi = min(max(a[1], b[1]), max(s0[1], s1[1]))
+        return max(0.0, hi - lo)
+    if abs(a[1] - b[1]) < GEOM_TOL and abs(s0[1] - s1[1]) < GEOM_TOL:
+        if abs(a[1] - s0[1]) >= GEOM_TOL:
+            return 0.0
+        lo = max(min(a[0], b[0]), min(s0[0], s1[0]))
+        hi = min(max(a[0], b[0]), max(s0[0], s1[0]))
+        return max(0.0, hi - lo)
+    return 0.0
+
+
 def _sheet_obstacles(
     design: Design,
 ) -> tuple[
@@ -595,6 +617,14 @@ def plan_wires(
                 # tip becomes an interior point, and a wire through the tip
                 # would count as a clean crossing when it is in fact a tap.
                 exempt = other_net == net and (end in joints or out in joints)
+                # Meeting our own tree at a joint is the point of the exemption;
+                # riding along the stub itself is not. A leg collinear with the
+                # stub past the shared point draws over it - the overlap that
+                # plots as one wire and edits as two - so exempt stubs still
+                # refuse overlap. The runway stays free: an escape necessarily
+                # rides its own runway outward.
+                if exempt and _collinear_overlap(a, b, end, out) > GEOM_TOL:
+                    return False
                 for s0, s1 in ((end, out), (out, reach[owner])):
                     if _segment_distance(a, b, s0, s1) >= WIRE_CLEAR - GEOM_EPS:
                         continue
@@ -645,6 +675,9 @@ def plan_wires(
             last = (run[-1][0] - run[-2][0], run[-1][1] - run[-2][1])
             if last[0] * b_hat[0] + last[1] * b_hat[1] > GEOM_EPS:
                 return  # arrives at b from behind, through the symbol
+            legs = [(q[0] - p[0], q[1] - p[1]) for p, q in pairwise(run)]
+            if any(u[0] * v[0] + u[1] * v[1] < -GEOM_EPS for u, v in pairwise(legs)):
+                return  # a leg that turns straight back over the one before it
             out.append(run)
 
         def elbows(p, q) -> list[list[tuple[float, float]]]:
@@ -2032,7 +2065,7 @@ def emit_board(design: Design, path: Path) -> None:
         # pour picks up what the parts leave free - stitched at the edges so
         # neither face carries a floating island to act as an antenna.
         lines.append(_zone(design, codes["GND"], "B.Cu"))
-        lines.append(_zone(design, codes["GND"], "F.Cu"))
+        lines.append(_zone(design, codes["GND"], "F.Cu", smd_isolated=True))
 
     lines.extend(_board_silk(design))
 
@@ -2152,8 +2185,15 @@ ZONE_WELD = 0.05  # how far neighbouring islands are grown into each other
 ZONE_GRID = 0.1
 
 
-def _hole_boxes(design: Design, layer: str, net: str) -> list[tuple[float, float, float, float]]:
-    """Everything of another net that this layer's pour has to keep clear of."""
+def _hole_boxes(
+    design: Design, layer: str, net: str, smd_isolated: bool = False
+) -> list[tuple[float, float, float, float]]:
+    """Everything of another net that this layer's pour has to keep clear of.
+
+    With ``smd_isolated`` the pour also keeps clear of its own net's surface
+    pads - the fill for a ``thru_hole_only`` zone, where an SMD pad connects
+    through its track and never to the plane it floats on.
+    """
     keep = ZONE_CLEARANCE + ZONE_WELD
 
     def grown(box, half=0.0):
@@ -2172,7 +2212,8 @@ def _hole_boxes(design: Design, layer: str, net: str) -> list[tuple[float, float
             owner = next(
                 (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes), None
             )
-            if owner == net or pad_layer(pad) not in (None, layer):
+            same = owner == net and (not smd_isolated or pad_layer(pad) is None)
+            if same or pad_layer(pad) not in (None, layer):
                 continue
             holes.append(grown(pad_box(design, part, pad)))
     for via in design.vias:
@@ -2198,7 +2239,7 @@ def _hole_boxes(design: Design, layer: str, net: str) -> list[tuple[float, float
 
 
 def _fill_rectangles(
-    design: Design, layer: str, net: str
+    design: Design, layer: str, net: str, smd_isolated: bool = False
 ) -> list[tuple[float, float, float, float]]:
     """The pour outline minus the holes, as a set of rectangles.
 
@@ -2216,7 +2257,7 @@ def _fill_rectangles(
     x0, y0, x1, y1 = design.pour
     holes = [
         hole
-        for hole in _hole_boxes(design, layer, net)
+        for hole in _hole_boxes(design, layer, net, smd_isolated)
         if hole[0] < x1 and hole[2] > x0 and hole[1] < y1 and hole[3] > y0
     ]
     edges = sorted({x0, x1} | {min(max(v, x0), x1) for hole in holes for v in (hole[0], hole[2])})
@@ -2311,7 +2352,7 @@ def _connected_islands(design, islands, layer: str, net: str):
     return [box for i, box in enumerate(islands) if find(i) in live]
 
 
-def _zone(design: Design, code: int, layer: str = "B.Cu") -> str:
+def _zone(design: Design, code: int, layer: str = "B.Cu", smd_isolated: bool = False) -> str:
     """The ground pour, and the fill that goes with it.
 
     The fill is computed here rather than left for KiCad because the committed
@@ -2319,11 +2360,18 @@ def _zone(design: Design, code: int, layer: str = "B.Cu") -> str:
     every ground pad unconnected, and the fabrication output ships without a
     plane. KiCad's own filler is not available - it needs a display, and the
     container has none - so this is the same subtraction done by hand.
+
+    ``smd_isolated`` makes the zone connect through-hole only: on the component
+    face, a thermal spoke to a fine-pitch pad is hostage to whatever copper
+    crowds it - DRC calls the survivor a starved thermal - and every surface
+    pad already has the track it was routed with. The plane ties on at the
+    through-holes and the stitching vias instead.
     """
     ox, oy = design.origin
     x0, y0, x1, y1 = design.pour
     outline = [(ox + x0, oy + y0), (ox + x1, oy + y0), (ox + x1, oy + y1), (ox + x0, oy + y1)]
     pts = " ".join(f"(xy {round(x, 4)} {round(y, 4)})" for x, y in outline)
+    connect = "\t\t(connect_pads thru_hole_only" if smd_isolated else "\t\t(connect_pads"
     lines = [
         "\t(zone",
         f"\t\t(net {code})",
@@ -2331,7 +2379,7 @@ def _zone(design: Design, code: int, layer: str = "B.Cu") -> str:
         f'\t\t(layer "{layer}")',
         f'\t\t(uuid "{stable_uuid(design.name, "zone", layer)}")',
         "\t\t(hatch edge 0.5)",
-        "\t\t(connect_pads",
+        connect,
         f"\t\t\t(clearance {ZONE_CLEARANCE})",
         "\t\t)",
         f"\t\t(min_thickness {ZONE_SLIVER / 2})",
@@ -2342,7 +2390,7 @@ def _zone(design: Design, code: int, layer: str = "B.Cu") -> str:
         "\t\t)",
         f"\t\t(polygon (pts {pts}))",
     ]
-    for left, top, right, bottom in _fill_rectangles(design, layer, POUR_NET):
+    for left, top, right, bottom in _fill_rectangles(design, layer, POUR_NET, smd_isolated):
         corners = [(left, top), (right, top), (right, bottom), (left, bottom)]
         island = " ".join(f"(xy {round(ox + x, 4)} {round(oy + y, 4)})" for x, y in corners)
         lines.append(f'\t\t(filled_polygon (layer "{layer}") (pts {island}))')
