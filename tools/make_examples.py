@@ -109,6 +109,11 @@ class Part:
     # default: on a two-pin part an unused pin is a mistake, and on a 48 pin one
     # it is most of them.
     no_connect: bool = False
+    # What the part means, printed on the silkscreen next to it: "5V OK" on the
+    # power LED, so the board explains its own indicators. Connector pins get
+    # their net names automatically; this is for parts whose purpose the
+    # reference alone does not state.
+    silk_label: str = ""
     # Which unit of a multi-unit symbol this is. A design lists the same
     # reference once per unit, each with its own place on the sheet; the board
     # only ever sees the first of them, because there is one footprint.
@@ -166,7 +171,10 @@ class Design:
     notes: list[str]
     parts: list[Part]
     nets: dict[str, list[str]]  # net name -> ["U1.1", "C2.2", ...]
-    power_flags: list[str]  # nets that need a PWR_FLAG to satisfy ERC
+    # Nets that need a PWR_FLAG to satisfy ERC, each with the pin the power
+    # actually comes from - the flag is wired in next to that pin, because a
+    # flag parked at the sheet edge answers ERC and tells the reader nothing.
+    power_flags: list[tuple[str, str]]  # (net, "REF.PIN")
     board_size: tuple[float, float]
     tracks: list[Track]
     vias: list[Via] = field(default_factory=list)
@@ -184,9 +192,6 @@ class Design:
     # Where the design notes start on the sheet. Below the circuit, never beside
     # it - and how far below depends on how tall the circuit is.
     notes_at: tuple[float, float] = (25.4, 110.0)
-    # Where the row of PWR_FLAGs starts. They need a clear strip of sheet, and
-    # which strip is clear depends on how big the circuit is.
-    flags_at: tuple[float, float] = (38.1, 118.11)
     # The grid `snapped` puts footprints on. A board whose placement is set by a
     # module's own 2.54 mm pad pitch cannot also sit on 0.5 mm, and pretending
     # otherwise moves the pads off the pins they have to land on.
@@ -235,12 +240,6 @@ class Design:
         """
         return replace(
             self,
-            # The PWR_FLAG row is wire and pin like anything else, so it is on
-            # the same grid as everything else or it is three off-grid findings.
-            flags_at=(
-                round(round(self.flags_at[0] / GRID) * GRID, 4),
-                round(round(self.flags_at[1] / GRID) * GRID, 4),
-            ),
             parts=[
                 replace(
                     part,
@@ -426,9 +425,9 @@ def _effects(hide: bool = False, justify: str = "") -> str:
     return "(effects " + " ".join(parts) + ")"
 
 
-def _property(name: str, value: str, x: float, y: float, hide: bool) -> str:
+def _property(name: str, value: str, x: float, y: float, hide: bool, justify: str = "") -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'    (property "{name}" "{escaped}" (at {x} {y} 0) {_effects(hide)})'
+    return f'    (property "{name}" "{escaped}" (at {x} {y} 0) {_effects(hide, justify)})'
 
 
 def _title_block(design: Design, indent: str) -> list[str]:
@@ -508,28 +507,17 @@ def _sheet_obstacles(
                 continue
             seen.add(end)
             stubs[f"{part.ref}.{pin.number}"] = (net, end, out)
-            if net in POWER_SYMBOLS:
-                length = math.hypot(out[0] - end[0], out[1] - end[1]) or 1.0
-                dx = (out[0] - end[0]) / length
-                dy = (out[1] - end[1]) / length
-                tip = (out[0] + 5.08 * dx, out[1] + 5.08 * dy)
-                boxes.append(
-                    (
-                        min(out[0], tip[0]) - 1.9 * abs(dy),
-                        min(out[1], tip[1]) - 1.9 * abs(dx),
-                        max(out[0], tip[0]) + 1.9 * abs(dy),
-                        max(out[1], tip[1]) + 1.9 * abs(dx),
-                    )
-                )
         if ends:
             xs = [e[0] for e in ends]
             ys = [e[1] for e in ends]
             boxes.append((min(xs) - 1.27, min(ys) - 1.27, max(xs) + 1.27, max(ys) + 1.27))
-    for index, net in enumerate(design.power_flags, start=1):
-        x = design.flags_at[0] + index * 15.24
-        y = design.flags_at[1]
-        stubs[f"#FLG{index:02d}"] = (net, (x, y + 2.54), (x, y))
-        boxes.append((x - 3.81, y - 3.81, x + 3.81, y + 3.81))
+    # The upright power symbols, their jog wires, and the PWR_FLAGs beside
+    # their sources - one shared computation, so the planner avoids exactly
+    # what the emitter draws.
+    fixture_wires, _symbols, _flags, _junctions, fixture_boxes = power_fixtures(design)
+    for tag, net, a, b in fixture_wires:
+        stubs[tag] = (net, a, b)
+    boxes.extend(fixture_boxes)
     if design.notes:
         widest = max(len(note) for note in design.notes)
         boxes.append(
@@ -889,10 +877,8 @@ def schematic_shorts(design: Design) -> list[str]:
                 continue
             seen.add(end)
             wires.append((net, f"{part.ref}.{pin.number}", end, out))
-    for index, net in enumerate(design.power_flags, start=1):
-        x = design.flags_at[0] + index * 15.24
-        y = design.flags_at[1]
-        wires.append((net, f"#FLG{index:02d}", (x, y), (x, y + 2.54)))
+    for tag, net, a, b in power_fixtures(design)[0]:
+        wires.append((net, tag, a, b))
     for index, (net, p0, p1) in enumerate(plan_wires(design)[0]):
         wires.append((net, f"run {index} of {net}", p0, p1))
 
@@ -951,7 +937,6 @@ def emit_schematic(design: Design) -> str:
             net_of[(ref, number)] = net
 
     body: list[str] = []
-    power_index = 0
     segments, replaced, junctions = plan_wires(design)
     for index, (net, p0, p1) in enumerate(segments):
         body.append(_wire(design, "run", f"{net}-{index}", p0, p1))
@@ -1009,26 +994,40 @@ def emit_schematic(design: Design) -> str:
                         f"({owner[0]}) both touch {point} - move one of them"
                     )
             body.append(_wire(design, part.ref, pin.number, end, out))
-            if net in POWER_SYMBOLS:
-                power_index += 1
-                step = (out[0] - end[0], out[1] - end[1])
-                length = math.hypot(*step) or 1.0
-                body.append(
-                    _power_symbol(
-                        design,
-                        POWER_SYMBOLS[net],
-                        net,
-                        out,
-                        power_index,
-                        (round(step[0] / length), round(step[1] / length)),
-                    )
-                )
-            elif f"{part.ref}.{pin.number}" not in replaced:
+            pin_owner = f"{part.ref}.{pin.number}"
+            if net not in POWER_SYMBOLS and pin_owner not in replaced:
                 body.append(_label(design, net, part.ref, pin.number, out))
         body.append(_symbol_instance(design, part, pins))
 
-    for index, net in enumerate(design.power_flags, start=1):
-        body.append(_power_flag(design, net, index))
+    # The power hookups: jog and bus wires, upright symbols, flags - all from
+    # the one computation the planner and the shorts check also read.
+    fixture_wires, fixture_symbols, fixture_flags, fixture_junctions, _boxes = power_fixtures(
+        design
+    )
+    for tag, _fnet, a, b in fixture_wires:
+        body.append(_wire(design, "pwr", tag, a, b))
+    for power_index, (net, at) in enumerate(fixture_symbols, start=1):
+        body.append(_power_symbol(design, POWER_SYMBOLS[net], net, at, power_index))
+    for flag_index, (net, at) in enumerate(fixture_flags, start=1):
+        body.append(_power_flag(design, net, flag_index, at))
+    drawn_junctions = set(junctions)
+    tree_ends = {p for _net, s0, s1 in segments for p in (s0, s1)}
+    for point in fixture_junctions:
+        if point not in drawn_junctions:
+            drawn_junctions.add(point)
+            body.append(
+                f"  (junction (at {point[0]} {point[1]}) (diameter 0) (color 0 0 0 0) "
+                f'(uuid "{stable_uuid(design.name, "junction", point[0], point[1])}"))'
+            )
+    # A flag wire is a third end at its attach point when the net's tree also
+    # lands there - which needs its dot, and the planner cannot know.
+    for tag, _fnet, a, _b in fixture_wires:
+        if tag.endswith("#flag") and a in tree_ends and a not in drawn_junctions:
+            drawn_junctions.add(a)
+            body.append(
+                f"  (junction (at {a[0]} {a[1]}) (diameter 0) (color 0 0 0 0) "
+                f'(uuid "{stable_uuid(design.name, "junction", a[0], a[1])}"))'
+            )
 
     for index, note in enumerate(design.notes, start=1):
         # Below the circuit, not beside it. Started at the top of the sheet the
@@ -1063,25 +1062,162 @@ def _label(design: Design, net: str, ref: str, number: str, at) -> str:
     )
 
 
-def _power_symbol(design: Design, lib_id: str, net: str, at, index: int, away=(0.0, 1.0)) -> str:
-    """A ground or rail symbol, turned to point the way the wire left the pin.
+def _power_geometry(
+    net: str, end: tuple[float, float], out: tuple[float, float]
+) -> tuple[list[tuple[tuple[float, float], tuple[float, float]]], tuple[float, float]]:
+    """Where an upright power symbol and the wires reaching it go for one pin.
 
-    KiCad draws these pointing down and puts the rail name below them. On a pin
-    that leaves sideways that name lands on the next pin's label - which on a
-    twenty-pin header is most of them. Turning the symbol takes the name with it.
+    Convention before convenience: a rail symbol points up, a ground symbol
+    hangs down, wherever the pin happens to exit. A pin already heading the
+    right way gets the symbol on its stub tip; a sideways pin gets a short
+    vertical jog; a pin heading the wrong way sidesteps around its own body
+    first. Returns the extra wires and the symbol origin.
+    """
+    want = 1.0 if net == "GND" else -1.0  # sheet y grows downward
+    dx, dy = out[0] - end[0], out[1] - end[1]
+    length = math.hypot(dx, dy) or 1.0
+    ux, uy = dx / length, dy / length
+    if abs(ux) < GEOM_EPS and uy * want > 0:
+        return [], out
+    if abs(uy) < GEOM_EPS:
+        origin = (out[0], round(out[1] + want * 2.54, 4))
+        return [(out, origin)], origin
+    side = (round(out[0] + 3.81, 4), out[1])
+    origin = (side[0], round(out[1] + want * 5.08, 4))
+    return [(out, side), (side, origin)], origin
+
+
+def _symbol_box(net: str, at: tuple[float, float]) -> tuple[float, float, float, float]:
+    """The sheet area an upright power symbol and its value text occupy."""
+    x, y = at
+    if net == "GND":
+        return (x - 2.54, y, x + 2.54, y + 6.35)
+    return (x - 2.54, y - 7.62, x + 2.54, y)
+
+
+def power_fixtures(design: Design):
+    """Everything the power hookups add to the sheet beyond the pin stubs.
+
+    One computation shared by the emitter, the shorts checker and the wire
+    planner's obstacle map, so the three never disagree about where a jog wire
+    or a PWR_FLAG actually is.
+
+    A pin already pointing the right way gets its symbol on the stub tip. A
+    sideways pin on a multi-row part - a connector's mid-row ground, most
+    often - cannot simply jog: the symbol would land on the rows beneath it.
+    Those taps run out past the pins' approach corridors to a shared vertical
+    bus, one per net, which carries them beyond the part's extent and ends in
+    a single upright symbol in clear space. That is also how a human draws a
+    header with four grounds: one rail, four taps, one symbol.
+
+    Returns (wires, symbols, flags, junctions, boxes): wires as
+    (owner, net, a, b); symbols and flags as (net, at); junction dots where
+    a tap tees into its bus.
+    """
+    net_of: dict[tuple[str, str], str] = {}
+    for net, nodes in design.nets.items():
+        for entry in nodes:
+            ref, _, number = entry.partition(".")
+            net_of[(ref, number)] = net
+    flag_owner = {owner: net for net, owner in design.power_flags}
+
+    wires: list[tuple[str, str, tuple, tuple]] = []
+    symbols: list[tuple[str, tuple[float, float]]] = []
+    flags: list[tuple[str, tuple[float, float]]] = []
+    junctions: list[tuple[float, float]] = []
+    boxes: list[tuple[float, float, float, float]] = []
+
+    def place_flag(owner: str, net: str, at: tuple[float, float]) -> None:
+        flag = (round(at[0] + 5.08, 4), at[1])
+        wires.append((f"{owner}#flag", net, at, flag))
+        flags.append((net, flag))
+        boxes.append((flag[0] - 2.54, flag[1] - 6.35, flag[0] + 2.54, flag[1]))
+
+    for part in design.parts:
+        seen: set[tuple[float, float]] = set()
+        pin_ends: list[tuple[float, float]] = []
+        vertical: list[tuple[str, str, tuple, tuple]] = []
+        sideways: dict[tuple[str, float], list[tuple[str, tuple, tuple]]] = defaultdict(list)
+        for pin in symbol_pins(part.lib_id, part.unit):
+            net = net_of.get((part.ref, pin.number))
+            end, out = pin_geometry(part, pin)
+            pin_ends.append(end)
+            if net is None or end in seen:
+                continue
+            seen.add(end)
+            owner = f"{part.ref}.{pin.number}"
+            if net in POWER_SYMBOLS:
+                if abs(out[1] - end[1]) > GEOM_EPS:
+                    vertical.append((owner, net, end, out))
+                else:
+                    side = 1.0 if out[0] > end[0] else -1.0
+                    sideways[(net, side)].append((owner, end, out))
+            elif flag_owner.get(owner) == net:
+                # a labelled net: the flag rides a short wire off the stub tip
+                at = (out[0], round(out[1] - 2.54, 4))
+                wires.append((f"{owner}#flag", net, out, at))
+                flags.append((net, at))
+                boxes.append((at[0] - 2.54, at[1] - 6.35, at[0] + 2.54, at[1]))
+
+        for owner, net, end, out in vertical:
+            jogs, origin = _power_geometry(net, end, out)
+            for j, (a, b) in enumerate(jogs):
+                wires.append((f"{owner}#jog{j}", net, a, b))
+            symbols.append((net, origin))
+            boxes.append(_symbol_box(net, origin))
+            if flag_owner.get(owner) == net:
+                place_flag(owner, net, origin)
+
+        # One bus per (net, side): grounds take the nearest column, rails the
+        # next, so two nets never share a vertical.
+        top = min((e[1] for e in pin_ends), default=0.0)
+        bottom = max((e[1] for e in pin_ends), default=0.0)
+        lane_of_side: dict[float, int] = defaultdict(int)
+        for (net, side), taps in sorted(sideways.items()):
+            want = 1.0 if net == "GND" else -1.0
+            lane = lane_of_side[side]
+            lane_of_side[side] += 1
+            tip_x = taps[0][2][0]
+            bus_x = round(tip_x + side * (7.62 + 2.54 * lane), 4)
+            rows = sorted({out[1] for _o, _e, out in taps})
+            reach = bottom + 5.08 if want > 0 else top - 5.08
+            origin = (bus_x, round(reach + want * 2.54 * lane, 4))
+            for owner, _end, out in taps:
+                wires.append((f"{owner}#tap", net, out, (bus_x, out[1])))
+            # the bus, split at every tap the way the editor would draw it
+            stops = sorted({*rows, origin[1]})
+            for index, (a, b) in enumerate(pairwise(stops)):
+                wires.append(
+                    (f"{part.ref}#{net}{side:+.0f}bus{index}", net, (bus_x, a), (bus_x, b))
+                )
+            for row in stops[1:-1]:
+                junctions.append((bus_x, row))
+            symbols.append((net, origin))
+            boxes.append(_symbol_box(net, origin))
+            flagged = next((owner for owner, _e, _o in taps if flag_owner.get(owner) == net), None)
+            if flagged is not None:
+                place_flag(flagged, net, origin)
+    return wires, symbols, flags, junctions, boxes
+
+
+def _power_symbol(design: Design, lib_id: str, net: str, at, index: int) -> str:
+    """A ground or rail symbol, upright.
+
+    Rails point up, grounds hang down - the one orientation every reader
+    assumes. The wires bend to make that true (see `_power_geometry`); the
+    symbol itself never turns.
     """
     ref = f"#PWR{index:02d}"
     uid = stable_uuid(design.name, "power", index)
     root = stable_uuid(design.name, "sheet")
-    angle = {(0.0, 1.0): 0, (-1.0, 0.0): 90, (0.0, -1.0): 180, (1.0, 0.0): 270}.get(away, 0)
-    label = (round(at[0] + away[0] * 3.81, 4), round(at[1] + away[1] * 3.81, 4))
+    label_y = round(at[1] + (3.81 if net == "GND" else -3.81), 4)
     return "\n".join(
         [
-            f'  (symbol (lib_id "{lib_id}") (at {at[0]} {at[1]} {angle}) (unit 1)',
+            f'  (symbol (lib_id "{lib_id}") (at {at[0]} {at[1]} 0) (unit 1)',
             "    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)",
             f'    (uuid "{uid}")',
             _property("Reference", ref, at[0], at[1], True),
-            _property("Value", net, label[0], label[1], False),
+            _property("Value", net, at[0], label_y, False),
             _property("Footprint", "", at[0], at[1], True),
             _property("Datasheet", "", at[0], at[1], True),
             f'    (pin "1" (uuid "{uid}-p"))',
@@ -1092,27 +1228,24 @@ def _power_symbol(design: Design, lib_id: str, net: str, at, index: int, away=(0
     )
 
 
-def _power_flag(design: Design, net: str, index: int) -> str:
-    """A PWR_FLAG, parked on the net's label so it drives it.
+def _power_flag(design: Design, net: str, index: int, at: tuple[float, float]) -> str:
+    """A PWR_FLAG, wired in next to the source of the rail it declares.
 
-    Without one, ERC reports every power_in pin on an externally supplied rail as
-    undriven - which is exactly what the as-generated variant leaves behind.
+    Without one, ERC reports every power_in pin on an externally supplied rail
+    as undriven. It used to live in a row of labelled stubs at the sheet edge;
+    a flag belongs where the power actually comes onto the board, which is why
+    the caller hands in the point (see `power_fixtures`).
     """
-    x = design.flags_at[0] + index * 15.24
-    y = design.flags_at[1]
+    x, y = at
     ref = f"#FLG{index:02d}"
     uid = stable_uuid(design.name, "flag", index)
     root = stable_uuid(design.name, "sheet")
     lines = [
-        f"  (wire (pts (xy {x} {y}) (xy {x} {y + 2.54})) (stroke (width 0) (type default)) "
-        f'(uuid "{uid}-w"))',
-        f'  (label "{net}" (at {x} {y + 2.54} 0) {_effects(justify="left bottom")} '
-        f'(uuid "{uid}-l"))',
         f'  (symbol (lib_id "power:PWR_FLAG") (at {x} {y} 0) (unit 1)',
         "    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)",
         f'    (uuid "{uid}")',
         _property("Reference", ref, x, y, True),
-        _property("Value", "PWR_FLAG", x, y - 3.81, False),
+        _property("Value", "PWR_FLAG", x, round(y - 3.81, 4), False),
         _property("Footprint", "", x, y, True),
         _property("Datasheet", "", x, y, True),
         f'    (pin "1" (uuid "{uid}-p"))',
@@ -1131,8 +1264,11 @@ def _symbol_instance(design: Design, part: Part, pins: list[PinDef]) -> str:
     size it is - which is where a reader looks for them anyway.
     """
     x, y = part.sheet
-    ends = [pin_geometry(part, pin)[0][1] for pin in pins] or [y]
+    points = [pin_geometry(part, pin)[0] for pin in pins] or [(x, y)]
+    ends = [p[1] for p in points]
     top, bottom = min(*ends, y), max(*ends, y)
+    span_x = max(p[0] for p in points) - min(p[0] for p in points)
+    span_y = max(ends) - min(ends)
     uid = stable_uuid(design.name, "symbol", part.ref, part.unit)
     root = stable_uuid(design.name, "sheet")
     mirror = f" (mirror {part.mirror})" if part.mirror else ""
@@ -1145,8 +1281,27 @@ def _symbol_instance(design: Design, part: Part, pins: list[PinDef]) -> str:
         _property("Footprint", part.footprint, x, y, True),
         _property("Datasheet", part.fields.get("Datasheet", "~"), x, y, True),
     ]
+    # A passive's ratings belong on the page, not only in the machine-checked
+    # fields: an engineer reads "100n 50V 10%" at the part, not in a table.
+    # An upright part gets them beside the body (below the value sits the
+    # ground symbol on most capacitors); a lying one gets them under its
+    # value. Small parts only: a 48-pin symbol's block would land on pins.
+    visible = ("Voltage", "Tolerance", "Power", "Current")
+    ratings = [n for n in visible if n in part.fields]
+    upright = span_y >= span_x
+    shown = 0
     for name, value in part.fields.items():
-        if name != "Datasheet":
+        if name == "Datasheet":
+            continue
+        if name in ratings and len(pins) <= 4 and part.unit == 1:
+            if upright:
+                row = (round(x + 3.81, 4), round(y - ((len(ratings) - 1) * 1.27) + shown * 2.54, 4))
+                lines.append(_property(name, value, row[0], row[1], False, "left"))
+            else:
+                row = (x, round(bottom + 5.08 + shown * 2.54, 4))
+                lines.append(_property(name, value, row[0], row[1], False))
+            shown += 1
+        else:
             lines.append(_property(name, value, x, y, True))
     for pin in pins:
         lines.append(f'    (pin "{pin.number}" (uuid "{uid}-p{pin.number}"))')
@@ -1630,7 +1785,7 @@ def resolve_routes(design: Design) -> Design:
     """
     order = [track for track in design.tracks if track.auto]
     if not order:
-        return design
+        return replace(design, vias=[*design.vias, *_stitch_vias(design)])
     ripped: list[Track] = []
     while True:
         try:
@@ -1651,9 +1806,73 @@ def resolve_routes(design: Design) -> Design:
                 file=sys.stderr,
             )
             continue
-        return replace(
+        done = replace(
             design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
         )
+        return replace(done, vias=[*done.vias, *_stitch_vias(done)])
+
+
+def _stitch_vias(design: Design) -> list[Via]:
+    """Ground vias around the pour's rim, so no face's edge copper floats.
+
+    With ground on both faces, the front pour's rim would otherwise hang on
+    whatever pads it happens to touch; a ring of stitching vias ties the two
+    planes together at the boundary, which is also where edge-coupled noise
+    wants a short way home. Candidates every 10 mm along the rim, kept only
+    where they clear every pad, every foreign track and every existing hole.
+    """
+    if not design.pour:
+        return []
+    x0, y0, x1, y1 = design.pour
+    inset = 1.5
+    rim: list[tuple[float, float]] = []
+    step = 10.0
+    left, top, right, bottom = x0 + inset, y0 + inset, x1 - inset, y1 - inset
+    x = left
+    while x < right + 0.01:
+        rim += [(round(x, 2), round(top, 2)), (round(x, 2), round(bottom, 2))]
+        x += step
+    y = top + step
+    while y < bottom - 0.01:
+        rim += [(round(left, 2), round(y, 2)), (round(right, 2), round(y, 2))]
+        y += step
+
+    pads = []
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            net = next(
+                (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes),
+                None,
+            )
+            pads.append((pad_box(design, part, pad), net))
+    segments = []
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        segments.extend((track.net, a, b) for a, b in pairwise(points))
+    holes = [via_position(design, via) for via in design.vias]
+
+    kept: list[Via] = []
+    for vx, vy in rim:
+        radius = 0.4
+        ok = True
+        for (bx0, by0, bx1, by1), net in pads:
+            grow = 0.4 if net == POUR_NET else radius + 0.3
+            if bx0 - grow <= vx <= bx1 + grow and by0 - grow <= vy <= by1 + grow:
+                ok = False
+                break
+        if ok:
+            for net, a, b in segments:
+                if net == POUR_NET:
+                    continue
+                if _segment_to_point(a, b, (vx, vy)) < radius + 0.45:
+                    ok = False
+                    break
+        if ok and all(math.dist((vx, vy), hole) >= 1.2 for hole in holes):
+            holes.append((vx, vy))
+            kept.append(Via(POUR_NET, x=vx, y=vy))
+    return kept
 
 
 def _reuuid(node: SNode, *salt: object) -> None:
@@ -1809,10 +2028,118 @@ def emit_board(design: Design, path: Path) -> None:
         )
 
     if design.pour:
-        lines.append(_zone(design, codes["GND"]))
+        # Ground on both faces: the back is the reference plane, and the front
+        # pour picks up what the parts leave free - stitched at the edges so
+        # neither face carries a floating island to act as an antenna.
+        lines.append(_zone(design, codes["GND"], "B.Cu"))
+        lines.append(_zone(design, codes["GND"], "F.Cu"))
+
+    lines.extend(_board_silk(design))
 
     lines.append(")")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _silk_text_item(
+    design: Design, text: str, x: float, y: float, key: object, size: float = 0.8
+) -> str:
+    ox, oy = design.origin
+    thickness = round(size * 0.15, 3)
+    return (
+        f'\t(gr_text "{text}" (at {round(ox + x, 4)} {round(oy + y, 4)} 0) '
+        f'(layer "F.SilkS") (uuid "{stable_uuid(design.name, "silk", key)}") '
+        f"(effects (font (size {size} {size}) (thickness {thickness}))))"
+    )
+
+
+def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, float] | None:
+    """The footprint's courtyard extent on the board, or None without one."""
+    node = footprint_definition(part.footprint)
+    bx, by, angle = part.board
+    xs: list[float] = []
+    ys: list[float] = []
+    for line in (*node.children("fp_line"), *node.children("fp_rect")):
+        layer = line.child("layer")
+        if not layer or "CrtYd" not in str(layer.atom(0, "")):
+            continue
+        for key in ("start", "end"):
+            at = line.child(key)
+            if at:
+                atoms = [a for a in at.atoms() if isinstance(a, (int, float))]
+                if len(atoms) >= 2:
+                    rx, ry = _rotate(float(atoms[0]), float(atoms[1]), angle)
+                    xs.append(bx + rx)
+                    ys.append(by + ry)
+    if not xs:
+        return None
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _board_silk(design: Design) -> list[str]:
+    """What the silkscreen says beyond the references.
+
+    Three things a bare board has to answer without its schematic: which board
+    it is (name and revision, bottom left), which signal is on which connector
+    pin (the reverse-connection insurance), and what the indicators mean.
+    """
+    out: list[str] = []
+    if not design.rev:
+        # The degraded variant documents nothing about itself - that is one of
+        # its findings - so the whole self-description package rides on rev.
+        return out
+    out.append(
+        _silk_text_item(
+            design,
+            f"{design.name} rev {design.rev}",
+            design.board_size[0] / 2,
+            design.board_size[1] - 2.2,
+            "boardid",
+            size=1.0,
+        )
+    )
+    width, height = design.board_size
+    net_of: dict[tuple[str, str], str] = {}
+    for name, nodes in design.nets.items():
+        for entry in nodes:
+            ref, _, number = entry.partition(".")
+            net_of[(ref, number)] = name
+    for part in design.footprints():
+        if part.ref.startswith("J"):
+            node = footprint_definition(part.footprint)
+            pads = [
+                (str(pad.atom(0, "")), pad, pad_position_of(design, part, pad))
+                for pad in node.children("pad")
+            ]
+            xs = [p[0] for _n, _p, p in pads]
+            ys = [p[1] for _n, _p, p in pads]
+            # labels go perpendicular to the pad row, on the board side, and
+            # clear the whole footprint - a screw terminal's body silk would
+            # swallow a pad-edge offset
+            row_along_x = (max(xs) - min(xs)) >= (max(ys) - min(ys))
+            clear = _courtyard_box(design, part)
+            seen: set[str] = set()
+            for number, pad, (px, py) in pads:
+                net = net_of.get((part.ref, number))
+                if not net or number in seen:
+                    continue
+                seen.add(number)
+                bx0, by0, bx1, by1 = clear or pad_box(design, part, pad)
+                if row_along_x:
+                    tx = px
+                    ty = (by1 + 1.2) if height / 2 - py > 0 else (by0 - 1.2)
+                else:
+                    tx = (bx1 + 1.6) if width / 2 - px > 0 else (bx0 - 1.6)
+                    ty = py
+                out.append(_silk_text_item(design, net, tx, ty, (part.ref, number)))
+        if part.silk_label:
+            bx, by, _angle = part.board
+            dy = height / 2 - by
+            out.append(
+                _silk_text_item(
+                    design, part.silk_label, bx, by + math.copysign(2.6, dy), (part.ref, "label")
+                )
+            )
+    return out
 
 
 ZONE_CLEARANCE = 0.4  # what the pour keeps away from copper of another net
@@ -1984,7 +2311,7 @@ def _connected_islands(design, islands, layer: str, net: str):
     return [box for i, box in enumerate(islands) if find(i) in live]
 
 
-def _zone(design: Design, code: int) -> str:
+def _zone(design: Design, code: int, layer: str = "B.Cu") -> str:
     """The ground pour, and the fill that goes with it.
 
     The fill is computed here rather than left for KiCad because the committed
@@ -2001,8 +2328,8 @@ def _zone(design: Design, code: int) -> str:
         "\t(zone",
         f"\t\t(net {code})",
         f'\t\t(net_name "{POUR_NET}")',
-        '\t\t(layer "B.Cu")',
-        f'\t\t(uuid "{stable_uuid(design.name, "zone")}")',
+        f'\t\t(layer "{layer}")',
+        f'\t\t(uuid "{stable_uuid(design.name, "zone", layer)}")',
         "\t\t(hatch edge 0.5)",
         "\t\t(connect_pads",
         f"\t\t\t(clearance {ZONE_CLEARANCE})",
@@ -2015,10 +2342,10 @@ def _zone(design: Design, code: int) -> str:
         "\t\t)",
         f"\t\t(polygon (pts {pts}))",
     ]
-    for left, top, right, bottom in _fill_rectangles(design, "B.Cu", POUR_NET):
+    for left, top, right, bottom in _fill_rectangles(design, layer, POUR_NET):
         corners = [(left, top), (right, top), (right, bottom), (left, bottom)]
         island = " ".join(f"(xy {round(ox + x, 4)} {round(oy + y, 4)})" for x, y in corners)
-        lines.append(f'\t\t(filled_polygon (layer "B.Cu") (pts {island}))')
+        lines.append(f'\t\t(filled_polygon (layer "{layer}") (pts {island}))')
     lines.append("\t)")
     return "\n".join(lines)
 
@@ -2244,7 +2571,7 @@ def buck_5v() -> Design:
             "Device:R",
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
-            sheet=(RIGHT + 30.48, 71.12),
+            sheet=(RIGHT + 21.59, 71.12),
             board=(100.0, 46.0, 0.0),
             fields={
                 "Tolerance": "1%",
@@ -2259,9 +2586,10 @@ def buck_5v() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(RIGHT + 30.48, 88.9),
+            sheet=(RIGHT + 21.59, 88.9),
             board=(107.0, 46.0, 180.0),
             angle=90.0,
+            silk_label="5V OK",
             fields={
                 "Voltage": "2.1V",
                 "Current": "3mA",
@@ -2318,6 +2646,11 @@ def buck_5v() -> Design:
         # pour. Only the two through-hole terminals, outside the pour, run far.
         Track("GND", "F.Cu", W, ["J1.2", (5.0, 50.0), (16.0, 50.0)]),
         Track("GND", "F.Cu", W, ["J2.2", (121.0, 50.0), (110.0, 50.0)]),
+        # The explicit return: input ground to output ground at the same width
+        # as the forward path, so the 2 A loop does not depend on the pour
+        # alone. It rides the bottom edge, under the LED branch, crossing
+        # nothing.
+        Track("GND", "F.Cu", W, [(16.0, 50.0), (110.0, 50.0)]),
         Track("GND", "F.Cu", W, ["U1.3", (51.0, 12.0)]),
         Track("GND", "F.Cu", W, ["U1.5", (54.35, 20.0)]),
         Track("GND", "F.Cu", W, [(63.5, 12.0), (63.5, 20.0)]),  # the TO-263 tab
@@ -2361,13 +2694,12 @@ def buck_5v() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=["+12V", "GND", "+5V"],
+        power_flags=[("+12V", "J1.1"), ("GND", "J1.2"), ("+5V", "L1.2")],
         board_size=(126.0, 56.0),
         tracks=tracks,
         vias=vias,
         pour=(15.0, 2.0, 112.0, 54.0),
         # The empty strip above the converter row; the default lands on the notes.
-        flags_at=(60.0, 35.0),
     )
 
 
@@ -2403,6 +2735,7 @@ def motor_driver() -> Design:
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(30.0, 80.0),
             board=(92.0, 12.0, 270.0),
+            mirror="y",
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -2519,6 +2852,7 @@ def motor_driver() -> Design:
             "LED_SMD:LED_0805_2012Metric",
             sheet=(205.0, 100.0),
             board=(80.0, 6.0, 180.0),
+            silk_label="VM OK",
             fields={
                 "Voltage": "2.1V",
                 "Current": "1.5mA",
@@ -2626,13 +2960,12 @@ def motor_driver() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=["VM", "GND", "VINT"],
+        power_flags=[("VM", "J1.1"), ("GND", "J1.2"), ("VINT", "C4.1")],
         board_size=(100.0, 50.0),
         tracks=[],
         vias=[],
         pour=(3.0, 3.0, 97.0, 47.0),
         # Top right, clear of the logic header; the default lands on the notes.
-        flags_at=(230.0, 35.0),
     )
 
     # Snap before the fan-out is worked out: it measures from where the pads
@@ -2897,6 +3230,7 @@ def pico_carrier() -> Design:
             "LED_SMD:LED_0805_2012Metric",
             sheet=(225.0, 60.0),
             board=(64.0, 20.0, 180.0),
+            silk_label="3V3 OK",
             fields={
                 "Voltage": "2.1V",
                 "Current": "1.2mA",
@@ -2941,14 +3275,13 @@ def pico_carrier() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=["+5V", "VSYS", "ADC_VREF"],
+        power_flags=[("+5V", "J1.1"), ("VSYS", "D1.2"), ("ADC_VREF", "U1.35")],
         board_size=(82.0, 68.0),
         tracks=[],
         vias=[],
         pour=(3.0, 3.0, 79.0, 65.0),
         # High enough that the last line stays inside the sheet frame.
         notes_at=(20.0, 146.0),
-        flags_at=(133.0, 30.0),
         # The module's 2.54 mm pad pitch decides where everything goes; snapping
         # to 0.5 mm would move the headers off the pins they exist to reach.
         board_grid=None,
@@ -3234,7 +3567,7 @@ def opamp_filter() -> Design:
             "Device:R",
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
-            (45.0, 120.0),
+            (36.0, 120.0),
             (12.0, 26.0, 90.0),
             Tolerance="1%",
             Power="0.125W",
@@ -3317,13 +3650,12 @@ def opamp_filter() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=["+5V", "GND"],
+        power_flags=[("+5V", "J2.1"), ("GND", "J2.2")],
         board_size=(80.0, 45.0),
         tracks=[],
         vias=[],
         pour=(3.0, 3.0, 77.0, 42.0),
         notes_at=(18.0, 20.0),
-        flags_at=(150.0, 35.0),
     ).snapped()
 
     SIG = 0.3
@@ -3746,7 +4078,7 @@ def fpga_audio() -> Design:
         nets=nets,
         # GND has no power-output pin on it either: every ground here is a
         # power *input*, and without a flag ERC says so.
-        power_flags=["+3V3", "GND"],
+        power_flags=[("+3V3", "J1.1"), ("GND", "J1.2")],
         board_size=(94.0, 84.0),
         tracks=[],
         vias=[],
@@ -3756,7 +4088,6 @@ def fpga_audio() -> Design:
         # Bottom left, under the crystal: started at the top of the sheet the
         # notes printed straight over the 1.2 V regulator and its capacitors.
         notes_at=(18.0, 195.0),
-        flags_at=(150.0, 30.0),
     ).snapped()
 
     # Everything that lands on the QFN's escape lands at 0.2 mm: the escape

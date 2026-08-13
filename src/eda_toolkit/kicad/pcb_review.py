@@ -137,6 +137,13 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "info",
         threshold="min_track_angle_deg",
     ),
+    "route.right_angle": RuleSpec(
+        "two same-net segments meeting at a full 90 degrees - two 45s cost "
+        "nothing, and the sharp corner is a small discontinuity and a "
+        "manufacturing nick risk",
+        "info",
+        threshold="min_track_angle_deg",
+    ),
     "route.mixed_track_widths": RuleSpec("a net routed at three or more distinct widths", "info"),
     "route.detour": RuleSpec(
         "a net whose routed copper is longer than detour_ratio times the "
@@ -205,6 +212,24 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "visible silkscreen shorter than the screen printer's limit",
         "warning",
         threshold="min_silk_text_height_mm",
+    ),
+    "silk.missing_board_id": RuleSpec(
+        "no free silkscreen text at all, so the bare board states neither its "
+        "name nor its revision - ten boards on a bench, and no way to tell "
+        "which is which. Info, like the other silk-completeness rules; the "
+        "ai-generated policy promotes it regardless",
+        "info",
+    ),
+    "silk.unlabeled_connector": RuleSpec(
+        "a connector with no free silkscreen text near it: nothing says which "
+        "pin carries what, and reversed hookup is how boards die",
+        "info",
+    ),
+    "layout.pour_single_sided": RuleSpec(
+        "a two-layer board whose ground pour covers only one face - the other "
+        "face's spare copper is doing nothing, and its edge traces have no "
+        "adjacent return",
+        "info",
     ),
     "silk.missing_reference": RuleSpec(
         "a non-virtual footprint with no silkscreen text of its own", "info"
@@ -657,6 +682,78 @@ def rule_silkscreen(ctx: PcbContext) -> list[Finding]:
 
 
 @rule
+def rule_board_markings(ctx: PcbContext) -> list[Finding]:
+    """What the silkscreen says about the board itself and its connectors.
+
+    A reference designator names a part; nothing else on a generated board
+    names the *board*, or says which connector pin carries what. Both are the
+    difference between a board and a puzzle the day it is unplugged.
+    """
+    findings = []
+    free = [t for t in ctx.board.silk_texts if not t["footprint"]]
+    if not free:
+        findings.append(
+            Finding(
+                "silk.missing_board_id",
+                "info",
+                "the silkscreen carries only reference designators - no board "
+                "name, no revision, and nothing naming any connector pin",
+            )
+        )
+    unlabeled = []
+    for fp in ctx.board.footprints:
+        if not fp.ref.startswith("J") or len(fp.pads) < 2:
+            continue
+        if not any(math.hypot(t["x"] - fp.x, t["y"] - fp.y) < 12.0 for t in free):
+            unlabeled.append(fp.ref)
+    if unlabeled:
+        findings.append(
+            Finding(
+                "silk.unlabeled_connector",
+                "info",
+                f"{len(unlabeled)} connector(s) have no silkscreen text beside "
+                "them saying which pin carries what",
+                details={"refs": sorted(unlabeled)},
+            )
+        )
+    return findings
+
+
+@rule
+def rule_pour_sides(ctx: PcbContext) -> list[Finding]:
+    """Ground on one face of a two-layer board, and nothing on the other.
+
+    The unused face's spare copper costs nothing to pour, drops the ground
+    impedance, and gives edge traces a neighbouring return - if it is stitched.
+    Reported as context: plenty of working boards ship one-sided, which is why
+    this is info and not a defect.
+    """
+    board = ctx.board
+    if len(board.copper_layers) != 2:
+        return []
+    ground_layers = set()
+    for zone in board.zones:
+        if zone.keepout or not netlist_helpers_is_ground(zone.net):
+            continue
+        ground_layers.update(layer for layer in zone.layers if layer.endswith(".Cu"))
+    if not ground_layers or len(ground_layers) >= 2:
+        return []
+    return [
+        Finding(
+            "layout.pour_single_sided",
+            "info",
+            f"the ground pour covers only {sorted(ground_layers)[0]} - the other "
+            "face's spare copper is unused, and its traces have no adjacent return",
+            details={"layers": sorted(ground_layers)},
+        )
+    ]
+
+
+def netlist_helpers_is_ground(net: str) -> bool:
+    return netlist_mod.classify_net(net or "") == "ground"
+
+
+@rule
 def rule_placement(ctx: PcbContext) -> list[Finding]:
     """Footprints outside the board outline, and mixed-side assembly cost."""
     findings = []
@@ -987,6 +1084,7 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
         return []
     board = ctx.board
     acute = []
+    right = []
     for key, indices in _track_endpoints(board).items():
         if len(indices) != 2:
             continue
@@ -1017,16 +1115,31 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
                 f"{first.net or '(no net)'} at "
                 f"({round(point[0], 2)}, {round(point[1], 2)}): {round(angle)} deg"
             )
-    if not acute:
-        return []
-    return [
-        Finding(
-            "route.acute_angle",
-            "info",
-            f"{len(acute)} track corner(s) tighter than {limit} deg",
-            details={"count": len(acute), "examples": sorted(acute)[:8]},
+        elif abs(angle - 90.0) <= 0.5:
+            right.append(
+                f"{first.net or '(no net)'} at ({round(point[0], 2)}, {round(point[1], 2)})"
+            )
+    findings = []
+    if acute:
+        findings.append(
+            Finding(
+                "route.acute_angle",
+                "info",
+                f"{len(acute)} track corner(s) tighter than {limit} deg",
+                details={"count": len(acute), "examples": sorted(acute)[:8]},
+            )
         )
-    ]
+    if right:
+        findings.append(
+            Finding(
+                "route.right_angle",
+                "info",
+                f"{len(right)} track corner(s) turn a full 90 deg - two 45s cost "
+                "nothing and read as routed rather than drawn",
+                details={"count": len(right), "examples": sorted(right)[:8]},
+            )
+        )
+    return findings
 
 
 @rule

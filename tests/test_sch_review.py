@@ -668,3 +668,40 @@ def test_a_note_printed_over_a_symbol_is_reported():
         text_items=[Text("the regulator wants 1 uF on its output", 40.0, 70.0, "left")],
     )
     assert sch_review.rule_text_over_symbol(sheet_ctx(beside)) == []
+
+
+def test_a_rotated_power_symbol_is_reported():
+    turned = sheet(
+        symbols=[
+            Symbol(
+                uuid="u-p1",
+                lib_id="power:GND",
+                reference="#PWR01",
+                value="GND",
+                x=50,
+                y=50,
+                angle=90.0,
+                in_bom=False,
+                on_board=True,
+            )
+        ]
+    )
+    findings = sch_review.rule_power_symbol_orientation(sheet_ctx(turned))
+    assert [f.rule for f in findings] == ["readability.power_symbol_orientation"]
+
+    upright = sheet(
+        symbols=[
+            Symbol(
+                uuid="u-p1",
+                lib_id="power:GND",
+                reference="#PWR01",
+                value="GND",
+                x=50,
+                y=50,
+                angle=0.0,
+                in_bom=False,
+                on_board=True,
+            )
+        ]
+    )
+    assert sch_review.rule_power_symbol_orientation(sheet_ctx(upright)) == []

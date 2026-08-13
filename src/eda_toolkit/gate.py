@@ -99,6 +99,7 @@ CONTEXT_RULES = (
     "board.size",
     "layout.ground_plane",
     "layout.double_sided_assembly",
+    "layout.pour_single_sided",
     "route.layer_usage",
     "fab.many_drill_sizes",
     "mechanical.no_mounting_holes",

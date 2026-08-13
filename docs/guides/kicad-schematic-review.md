@@ -94,6 +94,7 @@ nothing to say about them, and why a generated sheet fails them so reliably:
 | --- | --- |
 | `readability.off_grid_pin` / `_wire` / `_junction` / `_label` | geometry off the 1.27 mm grid; KiCad connects on exact coordinates, so this draws as a connection that is not one |
 | `readability.missing_junction` | a wire ending on another wire with no junction dot — KiCad treats that as crossing |
+| `readability.power_symbol_orientation` | a rotated power symbol — rails point up, grounds hang down |
 | `readability.wire_through_junction` | a junction in a wire's middle instead of at a break — KiCad 9 connects only one side of the wire |
 | `readability.overlapping_wires` | two wires drawn along the same stretch of line — plots as one, edits as two |
 | `readability.dangling_wire` | a wire end reaching no pin, label, junction or other wire |

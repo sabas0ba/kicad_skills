@@ -184,6 +184,14 @@ RULE_SPEC: dict[str, RuleSpec] = {
     "readability.title_block": RuleSpec(
         "the root sheet's title block is missing a title, rev, date or company", "info"
     ),
+    "readability.power_symbol_orientation": RuleSpec(
+        "a rotated power symbol: rails point up and grounds hang down on every "
+        "sheet a reader has ever seen, and a sideways rail name lands on the "
+        "next pin's label. Info: humans rotate them freely (twelve of the "
+        "eighteen demo projects do), and the ai-generated policy promotes it "
+        "regardless",
+        "info",
+    ),
     "readability.wire_through_junction": RuleSpec(
         "a junction dot in the interior of a wire segment instead of at a "
         "break between two. KiCad's editor always splits the wire when a "
@@ -1082,6 +1090,39 @@ def rule_symbol_overlap(ctx: ReviewContext) -> list[Finding]:
             "warning",
             f"{len(overlaps)} pair(s) of symbols overlap on the sheet",
             sorted(set(overlaps)),
+        )
+    ]
+
+
+@rule
+def rule_power_symbol_orientation(ctx: ReviewContext) -> list[Finding]:
+    """Power symbols drawn sideways or upside down.
+
+    A rail points up, a ground hangs down; that is the one orientation every
+    reader assumes without looking. A generator that turns the symbol to
+    follow the wire saves itself a bend and costs the reader the convention -
+    the wire should bend instead.
+    """
+    turned = []
+    for doc in ctx.docs:
+        for sym in doc.symbols:
+            if not sym.is_power or sym.is_power_flag:
+                continue
+            if abs(sym.angle % 360) > GEOM_TOL:
+                turned.append(
+                    f"{doc.path.name}:{sym.value or sym.lib_id} at "
+                    f"({round(sym.x, 1)}, {round(sym.y, 1)}) turned {round(sym.angle)}"
+                )
+    turned = sorted(set(turned))
+    if not turned:
+        return []
+    return [
+        _group_finding(
+            "readability.power_symbol_orientation",
+            "info",
+            f"{len(turned)} power symbol(s) are rotated - rails point up, "
+            "grounds hang down; bend the wire, not the symbol",
+            turned,
         )
     ]
 

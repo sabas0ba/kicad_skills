@@ -82,6 +82,38 @@ a stub and a net label — a valid netlist and an unreadable drawing.
   KiCad has to be lucky to connect. Emit coordinates rounded (0.1 µm is
   plenty); never write raw floating-point arithmetic into the file.
 
+## Power symbols and flags
+
+* **Rails point up, grounds hang down, negative rails hang below ground** —
+  the one orientation every reader assumes without looking
+  (`readability.power_symbol_orientation`). Never turn the symbol to follow
+  the wire; bend the wire. A sideways pin gets a short jog; a connector's
+  mid-row ground runs out past the pins' approach corridors to a shared
+  vertical rail with one upright symbol beyond the body — one rail, four
+  taps, one symbol, exactly as a human draws a header with four grounds.
+* **PWR_FLAG goes where the power comes onto the board**, wired in beside
+  the source pin's symbol — the input terminal, the regulator output, the
+  diode cathode. A flag parked in a labelled row at the sheet edge answers
+  ERC and tells the reader nothing about where the rail is made.
+
+## Parts and their annotations
+
+* **Draw a capacitor next to the IC pin it serves**, in the order the board
+  places them: bypass tightest, bulk further out. A capacitor that lives in
+  a row at the top of the sheet says nothing about which pin it decouples.
+* **Ratings go on the page, not only in fields.** "100n 50V 10%" printed at
+  the part is what an engineer reads; a hidden field is what a script reads.
+  Both should exist (`spec.missing_rating` checks the fields; the page is
+  yours). Keep the printed block beside an upright part and under a lying
+  one, where the ground symbol is not.
+* **No text on other text.** References, values, ratings and net labels each
+  need their own clear ground; measure the neighbours before placing, the
+  way the reference and value are already measured from the pin extent.
+* **Around an IC, wires beat labels** unless the destination is a separate
+  functional block. When the datasheet has a reference schematic or an
+  application note, match its layout — readers know it already, and the
+  review that follows will be diffing against it in their head.
+
 ## Orientation and placement
 
 * **Point a connector's pins at its signals.** A header drawn with pins

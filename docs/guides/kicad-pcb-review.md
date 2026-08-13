@@ -115,6 +115,10 @@ mismatches).
 | `layout.decoupling_via` | 1.5 mm | decoupling ground pad to the nearest via: the return loop runs through whatever separates them |
 | `route.stub` | — | a track end reaching no pad, via or other track |
 | `route.acute_angle` | 90 deg | corners that trap etchant and step the impedance |
+| `route.right_angle` | 90 deg | corners that turn a full 90 deg — two 45s cost nothing |
+| `silk.missing_board_id` | — | no free silkscreen text: the bare board states neither name nor revision |
+| `silk.unlabeled_connector` | — | a connector with no silk text near it saying which pin carries what |
+| `layout.pour_single_sided` | — | a two-layer board pouring ground on only one face |
 | `route.mixed_track_widths` | 3 widths | a net nobody decided the width of |
 | `route.detour` | 2.5x | routed copper against the minimum spanning tree of the net's pads — the scenic tour an autorouter leaves |
 | `route.return_path` | 10 mm | on a two-layer board, signal track running over cuts in the other layer's ground fill: the return current detours and the loop grows |

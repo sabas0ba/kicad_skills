@@ -91,6 +91,44 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   pitch decide how much of the decoupling budget survives - budget them
   before placing anything else around a fine-pitch part.
 
+## Corners, clearance, and sensitive paths
+
+* **Bend at 45 degrees, not 90** (`route.right_angle`): two 45s cost nothing,
+  and the square corner is a small impedance discontinuity and an etch/nick
+  risk. Anything under 90 is worse (`route.acute_angle`).
+* **Do not crowd clearances you do not have to.** Minimum clearance is for
+  where the board leaves no choice; open board routed at minimum is asking
+  the fab to be perfect for no reason. The router's crowding cost exists for
+  exactly this — leave it on.
+* **A regulator's feedback path is a measurement.** Route it as short as the
+  geometry allows and away from the switch node; every millimetre parallel
+  to SW couples switching noise straight into the error amplifier. Sense at
+  the output capacitor where regulation is wanted, but get there directly.
+
+## The board explains itself in silk
+
+* **Name and revision on the board** (`silk.missing_board_id`) — ten bare
+  boards on a bench are identical without it.
+* **Connector pins say what they carry** (`silk.unlabeled_connector`):
+  net names beside the pins, outside the footprint's courtyard, on the board
+  side. That is the reverse-connection insurance, and it costs silkscreen.
+* **Indicators say what they indicate**: "5V OK" beside the power LED, the
+  function beside every switch. A lit LED nobody can interpret is decoration.
+
+## Connectors, pours and returns
+
+* **Power and interface connectors live on the board edge, facing out** —
+  the cable leaves the board, not crosses it. Only debug headers earn an
+  interior spot.
+* **Pour ground on both faces and stitch them** (`layout.pour_single_sided`):
+  the spare face's copper is free ground impedance, but only if a ring of
+  stitching vias ties it to the plane — an unstitched island or edge strip
+  is an antenna, not a ground (KiCad's `isolated_copper` catches the worst
+  of it).
+* **A high-current return is drawn, not assumed**: give the loop an explicit
+  ground path at the same width as its forward path, alongside it, and let
+  the pour be reinforcement rather than the only way home.
+
 ## Width, angles, and what to waive
 
 * **Power tracks get power widths** (`track.thin_power`): the rule measures

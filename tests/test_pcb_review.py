@@ -464,11 +464,13 @@ def test_pads_on_opposite_sides_do_not_collide():
     assert pcb_review.rule_pad_collision(ctx_for(board)) == []
 
 
-def test_an_acute_corner_is_reported_and_a_right_angle_is_not():
+def test_an_acute_corner_is_reported_and_a_right_angle_is_context():
     acute = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 1, 1, net="S")])
     assert pcb_review.rule_track_angles(ctx_for(acute))[0].details["count"] == 1
     right = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 5, 5, net="S")])
-    assert pcb_review.rule_track_angles(ctx_for(right)) == []
+    assert [f.rule for f in pcb_review.rule_track_angles(ctx_for(right))] == [
+        "route.right_angle"
+    ]
 
 
 def test_a_track_end_that_reaches_nothing_is_a_stub():
@@ -537,3 +539,84 @@ def test_a_net_routed_at_three_widths():
     )
     findings = pcb_review.rule_track_width_consistency(ctx_for(board))
     assert findings[0].details["examples"] == ["D0: [0.2, 0.3, 0.4]"]
+
+
+def test_a_board_with_no_free_silk_has_no_name():
+    bare = board_from(
+        silk=[{"text": "J1", "layer": "F.SilkS", "x": 5.0, "y": 5.0, "footprint": "J1"}]
+    )
+    findings = pcb_review.rule_board_markings(ctx_for(bare))
+    assert "silk.missing_board_id" in {f.rule for f in findings}
+
+    named = board_from(
+        silk=[{"text": "demo rev A", "layer": "F.SilkS", "x": 25.0, "y": 38.0, "footprint": None}]
+    )
+    assert "silk.missing_board_id" not in {f.rule for f in pcb_review.rule_board_markings(ctx_for(named))}
+
+
+def test_a_connector_with_no_nearby_silk_is_reported():
+    j1 = pcb.Footprint(
+        ref="J1",
+        value="CONN",
+        lib_id="Connector:Conn",
+        x=5.0,
+        y=20.0,
+        angle=0,
+        layer="F.Cu",
+        pads=[pad("1", 5.0, 19.0, "IN"), pad("2", 5.0, 21.0, "GND")],
+    )
+    silent = board_from(
+        footprints=[j1],
+        silk=[{"text": "demo rev A", "layer": "F.SilkS", "x": 45.0, "y": 38.0, "footprint": None}],
+    )
+    findings = pcb_review.rule_board_markings(ctx_for(silent))
+    assert any(f.rule == "silk.unlabeled_connector" for f in findings)
+
+    labelled = board_from(
+        footprints=[j1],
+        silk=[
+            {"text": "demo rev A", "layer": "F.SilkS", "x": 45.0, "y": 38.0, "footprint": None},
+            {"text": "IN", "layer": "F.SilkS", "x": 8.0, "y": 19.0, "footprint": None},
+        ],
+    )
+    assert not any(
+        f.rule == "silk.unlabeled_connector" for f in pcb_review.rule_board_markings(ctx_for(labelled))
+    )
+
+
+def test_a_one_sided_pour_is_context():
+    one = board_from(zones=[_plane_zone()])
+    findings = pcb_review.rule_pour_sides(ctx_for(one))
+    assert [f.rule for f in findings] == ["layout.pour_single_sided"]
+
+    both = board_from(
+        zones=[
+            _plane_zone(),
+            pcb.Zone(
+                net="GND",
+                layers=["F.Cu"],
+                filled=True,
+                outline=[(0.0, 0.0), (50.0, 0.0), (50.0, 40.0), (0.0, 40.0)],
+                fills=[("F.Cu", [(0.0, 0.0), (50.0, 0.0), (50.0, 40.0), (0.0, 40.0)])],
+            ),
+        ]
+    )
+    assert pcb_review.rule_pour_sides(ctx_for(both)) == []
+
+
+def test_a_right_angle_corner_is_context():
+    tracks = [
+        track(10.0, 10.0, 20.0, 10.0, net="SIG"),
+        track(20.0, 10.0, 20.0, 20.0, net="SIG"),
+    ]
+    findings = pcb_review.rule_track_angles(ctx_for(board_from(tracks=tracks)))
+    assert "route.right_angle" in {f.rule for f in findings}
+
+    mitred = [
+        track(10.0, 10.0, 18.0, 10.0, net="SIG"),
+        track(18.0, 10.0, 20.0, 12.0, net="SIG"),
+        track(20.0, 12.0, 20.0, 20.0, net="SIG"),
+    ]
+    assert "route.right_angle" not in {
+        f.rule for f in pcb_review.rule_track_angles(ctx_for(board_from(tracks=mitred)))
+    }
