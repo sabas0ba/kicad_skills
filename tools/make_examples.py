@@ -425,9 +425,11 @@ def _effects(hide: bool = False, justify: str = "") -> str:
     return "(effects " + " ".join(parts) + ")"
 
 
-def _property(name: str, value: str, x: float, y: float, hide: bool, justify: str = "") -> str:
+def _property(
+    name: str, value: str, x: float, y: float, hide: bool, justify: str = "", angle: float = 0
+) -> str:
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'    (property "{name}" "{escaped}" (at {x} {y} 0) {_effects(hide, justify)})'
+    return f'    (property "{name}" "{escaped}" (at {x} {y} {angle:g}) {_effects(hide, justify)})'
 
 
 def _title_block(design: Design, indent: str) -> list[str]:
@@ -986,6 +988,29 @@ def emit_schematic(design: Design) -> str:
     # rather than in ERC, where it surfaces as a puzzle about net names.
     claimed: dict[tuple[float, float], tuple[str, str]] = {}
 
+    # What a ratings block must not print over: every other symbol's pin box,
+    # everything the power fixtures put on the sheet, and - accumulated as the
+    # parts are drawn - every block already placed. Wires weigh lighter: a
+    # block may cross one if that is the only clean side, and the side pick
+    # prefers the side that crosses fewer.
+    part_box: dict[str, tuple[float, float, float, float]] = {}
+    for part in design.parts:
+        pts = [pin_geometry(part, pin)[0] for pin in symbol_pins(part.lib_id, part.unit)]
+        pts.append(part.sheet)
+        part_box[part.ref] = (
+            min(p[0] for p in pts) - 1.27,
+            min(p[1] for p in pts) - 1.27,
+            max(p[0] for p in pts) + 1.27,
+            max(p[1] for p in pts) + 1.27,
+        )
+    fixtures = power_fixtures(design)
+    fixture_boxes = list(fixtures[4])
+    wire_boxes = [
+        (min(a[0], b[0]) - 0.4, min(a[1], b[1]) - 0.4, max(a[0], b[0]) + 0.4, max(a[1], b[1]) + 0.4)
+        for a, b in ([(a, b) for _n, a, b in segments] + [(a, b) for _t, _n, a, b in fixtures[0]])
+    ]
+    placed_blocks: list[tuple[float, float, float, float]] = fixture_boxes
+
     for part in design.parts:
         pins = symbol_pins(part.lib_id, part.unit)
         # A symbol may bring several pins out at one point - the Pico draws its
@@ -1030,13 +1055,14 @@ def emit_schematic(design: Design) -> str:
             pin_owner = f"{part.ref}.{pin.number}"
             if net not in POWER_SYMBOLS and pin_owner not in replaced:
                 body.append(_label(design, net, part.ref, pin.number, out))
-        body.append(_symbol_instance(design, part, pins))
+        avoid = [box for ref, box in part_box.items() if ref != part.ref] + placed_blocks
+        body.append(_symbol_instance(design, part, pins, avoid, wire_boxes))
+        if len(avoid) > len(part_box) - 1 + len(placed_blocks):
+            placed_blocks.append(avoid[-1])
 
     # The power hookups: jog and bus wires, upright symbols, flags - all from
     # the one computation the planner and the shorts check also read.
-    fixture_wires, fixture_symbols, fixture_flags, fixture_junctions, _boxes = power_fixtures(
-        design
-    )
+    fixture_wires, fixture_symbols, fixture_flags, fixture_junctions, _boxes = fixtures
     for tag, _fnet, a, b in fixture_wires:
         body.append(_wire(design, "pwr", tag, a, b))
     for power_index, (net, at) in enumerate(fixture_symbols, start=1):
@@ -1164,7 +1190,9 @@ def power_fixtures(design: Design):
         flag = (round(at[0] + 5.08, 4), at[1])
         wires.append((f"{owner}#flag", net, at, flag))
         flags.append((net, flag))
-        boxes.append((flag[0] - 2.54, flag[1] - 6.35, flag[0] + 2.54, flag[1]))
+        # the box reaches one text row above the graphic: the value label sits
+        # up there, clear of the rail symbol's own label one row below it
+        boxes.append((flag[0] - 2.54, flag[1] - 8.89, flag[0] + 2.54, flag[1]))
 
     for part in design.parts:
         seen: set[tuple[float, float]] = set()
@@ -1190,7 +1218,7 @@ def power_fixtures(design: Design):
                 at = (out[0], round(out[1] - 2.54, 4))
                 wires.append((f"{owner}#flag", net, out, at))
                 flags.append((net, at))
-                boxes.append((at[0] - 2.54, at[1] - 6.35, at[0] + 2.54, at[1]))
+                boxes.append((at[0] - 2.54, at[1] - 8.89, at[0] + 2.54, at[1]))
 
         for owner, net, end, out in vertical:
             jogs, origin = _power_geometry(net, end, out)
@@ -1273,12 +1301,14 @@ def _power_flag(design: Design, net: str, index: int, at: tuple[float, float]) -
     ref = f"#FLG{index:02d}"
     uid = stable_uuid(design.name, "flag", index)
     root = stable_uuid(design.name, "sheet")
+    # One text row above the rail symbols' own labels: a flag stands beside a
+    # rail symbol by construction, and on the same row the two names collide.
     lines = [
         f'  (symbol (lib_id "power:PWR_FLAG") (at {x} {y} 0) (unit 1)',
         "    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)",
         f'    (uuid "{uid}")',
         _property("Reference", ref, x, y, True),
-        _property("Value", "PWR_FLAG", x, round(y - 3.81, 4), False),
+        _property("Value", "PWR_FLAG", round(x + 1.27, 4), round(y - 6.35, 4), False, "right"),
         _property("Footprint", "", x, y, True),
         _property("Datasheet", "", x, y, True),
         f'    (pin "1" (uuid "{uid}-p"))',
@@ -1288,13 +1318,24 @@ def _power_flag(design: Design, net: str, index: int, at: tuple[float, float]) -
     return "\n".join(lines)
 
 
-def _symbol_instance(design: Design, part: Part, pins: list[PinDef]) -> str:
+def _symbol_instance(
+    design: Design,
+    part: Part,
+    pins: list[PinDef],
+    avoid: list[tuple[float, float, float, float]] | None = None,
+    wires: list[tuple[float, float, float, float]] | None = None,
+) -> str:
     """The symbol, with its two visible fields clear of everything else.
 
     A fixed 6.35 mm above and below the origin is right for a two-pin part and
     lands in the middle of the pin labels of a forty-pin one. Measuring the pins
     instead puts the reference above the symbol and the value below it whatever
     size it is - which is where a reader looks for them anyway.
+
+    ``avoid`` lists the boxes the ratings block must not print over - the other
+    symbols and the power fixtures. Text on a rotated symbol is counter-rotated
+    back to horizontal, the way the editor keeps fields readable when a part
+    turns.
     """
     x, y = part.sheet
     points = [pin_geometry(part, pin)[0] for pin in pins] or [(x, y)]
@@ -1305,12 +1346,13 @@ def _symbol_instance(design: Design, part: Part, pins: list[PinDef]) -> str:
     uid = stable_uuid(design.name, "symbol", part.ref, part.unit)
     root = stable_uuid(design.name, "sheet")
     mirror = f" (mirror {part.mirror})" if part.mirror else ""
+    text_angle = part.angle % 180  # 90/270 need the counter-turn, 0/180 do not
     lines = [
         f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}){mirror} (unit {part.unit})',
         "    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)",
         f'    (uuid "{uid}")',
-        _property("Reference", part.ref, x, round(top - 2.54, 4), False),
-        _property("Value", part.value, x, round(bottom + 2.54, 4), False),
+        _property("Reference", part.ref, x, round(top - 2.54, 4), False, angle=text_angle),
+        _property("Value", part.value, x, round(bottom + 2.54, 4), False, angle=text_angle),
         _property("Footprint", part.footprint, x, y, True),
         _property("Datasheet", part.fields.get("Datasheet", "~"), x, y, True),
     ]
@@ -1322,20 +1364,53 @@ def _symbol_instance(design: Design, part: Part, pins: list[PinDef]) -> str:
     visible = ("Voltage", "Tolerance", "Power", "Current")
     ratings = [n for n in visible if n in part.fields]
     upright = span_y >= span_x
+    # The block goes beside the body, on whichever side prints over nothing.
+    # The right side is the habit; a neighbour there sends it left.
+    side, justify = 1.0, "left"
+    block: tuple[float, float, float, float] | None = None
+    if upright and ratings and avoid is not None:
+        rows = len(ratings)
+        # 1.45 mm per glyph is the default font's real advance; undersizing it
+        # here let two blocks land one millimetre apart and read as one word
+        width = max(len(v) for n, v in part.fields.items() if n in ratings) * 1.45 + 0.5
+        y0, y1 = y - (rows - 1) * 1.27 - 1.27, y - (rows - 1) * 1.27 + (rows - 1) * 2.54 + 1.27
+
+        def hits(x0, x1, boxes):
+            return sum(1 for b in boxes if x0 < b[2] and b[0] < x1 and y0 < b[3] and b[1] < y1)
+
+        options = [
+            ((x + 3.81, x + 3.81 + width), 1.0, "left"),
+            ((x - 3.81 - width, x - 3.81), -1.0, "right"),
+        ]
+        clear = [o for o in options if not hits(*o[0], avoid)]
+        if clear:
+            # both sides clear of symbols: take the one crossing fewer wires
+            (x0, x1), side, justify = min(clear, key=lambda o: hits(*o[0], wires or []))
+        else:
+            (x0, x1), side, justify = options[0]
+        block = (x0, y0, x1, y1)
     shown = 0
     for name, value in part.fields.items():
         if name == "Datasheet":
             continue
         if name in ratings and len(pins) <= 4 and part.unit == 1:
             if upright:
-                row = (round(x + 3.81, 4), round(y - ((len(ratings) - 1) * 1.27) + shown * 2.54, 4))
-                lines.append(_property(name, value, row[0], row[1], False, "left"))
+                row = (
+                    round(x + side * 3.81, 4),
+                    round(y - ((len(ratings) - 1) * 1.27) + shown * 2.54, 4),
+                )
+                lines.append(_property(name, value, row[0], row[1], False, justify, text_angle))
             else:
                 row = (x, round(bottom + 5.08 + shown * 2.54, 4))
-                lines.append(_property(name, value, row[0], row[1], False))
+                lines.append(_property(name, value, row[0], row[1], False, angle=text_angle))
+                width = max(len(v) for n, v in part.fields.items() if n in ratings) * 1.45 + 0.5
+                block = (x - width / 2, bottom + 3.81, x + width / 2, bottom + 5.08 + shown * 2.54)
             shown += 1
         else:
             lines.append(_property(name, value, x, y, True))
+    if block is not None and avoid is not None:
+        # later parts must not print their block over this one
+        avoid.append(block)
     for pin in pins:
         lines.append(f'    (pin "{pin.number}" (uuid "{uid}-p{pin.number}"))')
     lines.append(
@@ -2619,7 +2694,7 @@ def buck_5v() -> Design:
             "Device:R",
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
-            sheet=(RIGHT + 21.59, 71.12),
+            sheet=(RIGHT + 24.13, 71.12),
             board=(100.0, 46.0, 0.0),
             fields={
                 "Tolerance": "1%",
@@ -2634,7 +2709,7 @@ def buck_5v() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(RIGHT + 21.59, 88.9),
+            sheet=(RIGHT + 24.13, 88.9),
             board=(107.0, 46.0, 180.0),
             angle=90.0,
             silk_label="5V OK",
