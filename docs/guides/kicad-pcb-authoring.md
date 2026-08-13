@@ -130,8 +130,9 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
 
 * **Power and interface connectors live on the board edge, facing out** —
   the cable leaves the board, not crosses it, and a screw terminal's wire
-  entry points off the edge, not along it. Debug and GPIO headers go to the
-  edge too: an interior header blocks probing and mating alike.
+  entry points off the edge, not along it. Pull debug and GPIO headers to
+  the edge too when the routing allows; on a board whose edge corridors are
+  the escape fan's, an interior debug header is the honest trade, stated.
 * **A thermal tab gets its via ring beside the pad, not on it.** Vias in a
   hand-soldered tab drink the solder at reflow; a ring just off the pad ties
   the tab into both planes and doubles as the return path. (A QFN's exposed
