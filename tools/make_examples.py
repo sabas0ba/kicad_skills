@@ -4586,7 +4586,7 @@ def fpga_audio() -> Design:
                 ],
             ),
             (
-                (17.78, 87.63),
+                (17.78, 133.35),
                 [
                     "C1 10u + C2 100n: the 3.3 V input, at U3.",
                     "C3/C4: the 1.2 V core rail it makes. C15 sits",
@@ -4612,7 +4612,7 @@ def fpga_audio() -> Design:
                 ],
             ),
             (
-                (256.54, 273.05),
+                (317.5, 215.9),
                 [
                     "U1 boots from U4 over its own SPI port; J3 is that bus",
                     "plus CRESET, so the flash can be written in circuit.",
