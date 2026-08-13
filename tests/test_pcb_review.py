@@ -473,6 +473,17 @@ def test_an_acute_corner_is_reported_and_a_right_angle_is_context():
     ]
 
 
+def test_a_bend_off_the_45_grid_is_context():
+    # a 20-degree-ish bend: neither straight, nor 45, nor 90
+    odd = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 10, 1.8, net="S")])
+    assert [f.rule for f in pcb_review.rule_track_angles(ctx_for(odd))] == [
+        "route.odd_angle"
+    ]
+    # a clean 45 stays silent
+    fine = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 8, 3, net="S")])
+    assert pcb_review.rule_track_angles(ctx_for(fine)) == []
+
+
 def test_a_track_end_that_reaches_nothing_is_a_stub():
     board = board_from(
         footprints=[footprint("R1", 0, 0, [pad("1", 0, 0, "S", size=(1.0, 1.0))])],

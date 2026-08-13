@@ -67,6 +67,20 @@ a stub and a net label — a valid netlist and an unreadable drawing.
 * **Labels are for distance.** A programming header in the far corner, a
   reset line crossing the whole sheet — a human labels those too. Wire what
   is local, name what is remote.
+* **A power rail that is the circuit draws as a wire.** A converter's output
+  rail reads as one horizontal line, source on the left, load on the right,
+  capacitors tapping down in board order — and the feedback wire visibly
+  returns from that line to the pin. Six power symbols on the same net leave
+  the reader to reassemble the loop by name; save the symbols for rails that
+  merely supply things.
+* **The surviving label sits on the generic part.** A net that reaches a
+  connector is named at the connector pin — the header a harness plugs into —
+  not in the middle of the circuit.
+* **Miscellaneous logic may keep names at both ends.** Eight control lines
+  drawn as wires lattice the power section; as a pair of labels per net they
+  read as the pin map they are. A 1:1 breakout board is the extreme case:
+  all names, and better for it. Say so in the gate policy — the
+  `readability.label_only` waiver is where that convention is argued.
 
 ## Junctions and tees
 
@@ -95,6 +109,15 @@ a stub and a net label — a valid netlist and an unreadable drawing.
   the source pin's symbol — the input terminal, the regulator output, the
   diode cathode. A flag parked in a labelled row at the sheet edge answers
   ERC and tells the reader nothing about where the rail is made.
+
+## Notes sit beside their subject
+
+One block of prose in a corner reads as none: nobody carries sentence four
+across the sheet to capacitor three. Split the design notes and anchor each
+block beside the circuit it explains — the input note by the input, the
+filter math by the filter, the indicator note by the LED. On an analog sheet,
+add test points where the simulation is meant to meet the board, and say so
+in a note beside them (`test.no_testpoints` notices when there are none).
 
 ## Parts and their annotations
 

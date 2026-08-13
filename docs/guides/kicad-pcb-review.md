@@ -116,6 +116,7 @@ mismatches).
 | `route.stub` | — | a track end reaching no pad, via or other track |
 | `route.acute_angle` | 90 deg | corners that trap etchant and step the impedance |
 | `route.right_angle` | 90 deg | corners that turn a full 90 deg — two 45s cost nothing |
+| `route.odd_angle` | — | corners off the 45-degree grid: a 20 or 70 degree bend reads as a slip of the mouse |
 | `silk.missing_board_id` | — | no free silkscreen text: the bare board states neither name nor revision |
 | `silk.unlabeled_connector` | — | a connector with no silk text near it saying which pin carries what |
 | `layout.pour_single_sided` | — | a two-layer board pouring ground on only one face |

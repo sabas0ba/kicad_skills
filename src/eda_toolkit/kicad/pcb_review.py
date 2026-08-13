@@ -144,6 +144,13 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "info",
         threshold="min_track_angle_deg",
     ),
+    "route.odd_angle": RuleSpec(
+        "two same-net segments meeting more than 2 degrees off the 45-degree "
+        "grid - a 20 or 70 degree bend reads as a slip of the mouse, and a "
+        "fan that needs one should say so",
+        "info",
+        threshold="min_track_angle_deg",
+    ),
     "route.mixed_track_widths": RuleSpec("a net routed at three or more distinct widths", "info"),
     "route.detour": RuleSpec(
         "a net whose routed copper is longer than detour_ratio times the "
@@ -1085,6 +1092,7 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
     board = ctx.board
     acute = []
     right = []
+    odd = []
     for key, indices in _track_endpoints(board).items():
         if len(indices) != 2:
             continue
@@ -1119,6 +1127,11 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
             right.append(
                 f"{first.net or '(no net)'} at ({round(point[0], 2)}, {round(point[1], 2)})"
             )
+        elif min(angle % 45.0, 45.0 - angle % 45.0) > 2.0 and angle < 178.0:
+            odd.append(
+                f"{first.net or '(no net)'} at "
+                f"({round(point[0], 2)}, {round(point[1], 2)}): {round(angle)} deg"
+            )
     findings = []
     if acute:
         findings.append(
@@ -1137,6 +1150,16 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
                 f"{len(right)} track corner(s) turn a full 90 deg - two 45s cost "
                 "nothing and read as routed rather than drawn",
                 details={"count": len(right), "examples": sorted(right)[:8]},
+            )
+        )
+    if odd:
+        findings.append(
+            Finding(
+                "route.odd_angle",
+                "info",
+                f"{len(odd)} track corner(s) bend off the 45-degree grid - a "
+                "20 or 70 degree turn reads as a slip of the mouse, not a route",
+                details={"count": len(odd), "examples": sorted(odd)[:8]},
             )
         )
     return findings

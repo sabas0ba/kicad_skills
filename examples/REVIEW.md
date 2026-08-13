@@ -234,3 +234,37 @@ check it, into the authoring guides where only judgment can:
 | high-current return left to the pour | fixed on buck-5v — an explicit 1.0 mm ground return along the bottom edge, input terminal to output terminal |
 | feedback path stretched | verified rather than changed: the buck's FB trace is Manhattan-minimal to the output capacitor it senses; the guide records the rule of thumb (short, and never parallel to SW) |
 | clearance crowded without need, connectors not at the board edge | guides — the router's crowding cost and the connector-placement convention are stated there; neither is measurable enough to be a rule yet |
+
+## 8. The reviewer's pass, round three
+
+The owner read the round-two set and held it to a stricter standard: the
+schematic is judged from its plot, as the original an artwork is checked
+against — so structures that only make sense as data (an S-expression's
+label table, a rail assembled from six power symbols) are out wherever the
+drawing can carry the meaning instead. The artwork adds manufacturing and
+performance: no wasted copper, no accidental angles.
+
+| item | disposition |
+| --- | --- |
+| IC surroundings drawn as labels | fixed — the buck's converter loop is all wire now: `wired_power` draws the +12 V and +5 V rails as horizontal lines with taps, and the FB wire visibly returns from the output rail to the pin |
+| capacitors connected by symbol, not wire | fixed — rail caps tap the drawn rail in board order, bulk to bypass |
+| indicator blocks mixed into the power run | fixed — LED blocks sit apart with their own note on every design |
+| notes piled in one corner | fixed — `note_blocks` anchors each note beside the circuit it explains, on all five sheets |
+| labels on the circuit side of a net | fixed — the surviving label prefers the connector pin (`J*`), and label text reads away from its pin so it cannot merge with the pin number |
+| miscellaneous logic latticing the sheet | fixed — `label_nets` keeps the motor's control lines and the Pico's forty-pin map as names at both ends; the `readability.label_only` waiver in each `gate.toml` is where that convention is argued |
+| VM rail wandering | fixed — the motor's VM runs J1 → bulk → bypass on one line, rises once, and crosses to the pin with the charge-pump cap tapping the riser |
+| test points for sim-vs-measurement | fixed on opamp-filter — TP1-TP3 on filter input, output and VREF, wired on sheet and board; `test.no_testpoints` already notices their absence |
+| screw terminals facing along the board | fixed — J1/J2 entries point off the board edge on buck-5v |
+| pour cut out around connectors for no reason | fixed — the buck pours edge to edge; the pico's stripes under the module are forty foreign through-holes at 2.54 mm, and the sheet now says so |
+| TO-263 tab treated as just a pad | fixed — a seven-via ring beside the tab (never on it: via-in-pad drinks solder) ties it into both planes as heatsink and return |
+| board silk missing author | fixed — name, rev and author line on every board |
+| 90-degree corners in tracks | fixed — every square corner chamfers to two 45s unless a via needs the square one (`_chamfer_tracks`) |
+| shallow fan angles (20-30 deg) | fixed — escape fans bend at staggered 45s (`fan`), and the new rule `route.odd_angle` reports corners off the 45 grid |
+| widening a track mid-run | fixed — motor outputs leave the pin field at the row's full width and widen once, at the field's edge; the guide states the principle |
+| J2/J3 colliding when mated | fixed — the opamp's power header moved to the top-left edge, clear of the output header |
+| return path through the front face centre | improved — four mid-board ground vias give the sliced front pour short ways to the plane on opamp-filter |
+| routing under digital ICs | rule of thumb in the guide + `route_keepout` closes the codec's underside on fpga-audio; the flash keeps its own bus underneath, which is the unavoidable case the guide allows |
+| GPIO/programming header interior | fixed — fpga-audio's J3 moved to the bottom edge |
+| capacitors with no visible owner | fixed — fpga bank caps sit beside the bank unit they feed, codec caps beside the codec, each group with its note |
+| I2S weave between FPGA and codec | fixed — the bus is names at both ends now, and the sheet reads as the pin map |
+| feed diode backwards | **found by this pass**: the pico's D1 had cathode on the external 5 V - the supply could never reach VSYS; polarity fixed in the netlist |

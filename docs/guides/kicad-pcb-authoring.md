@@ -95,7 +95,17 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
 
 * **Bend at 45 degrees, not 90** (`route.right_angle`): two 45s cost nothing,
   and the square corner is a small impedance discontinuity and an etch/nick
-  risk. Anything under 90 is worse (`route.acute_angle`).
+  risk. Anything under 90 is worse (`route.acute_angle`) — and anything off
+  the 45 grid entirely (`route.odd_angle`) reads as a slip of the mouse. A
+  fine-pitch fan does not need shallow angles either: stagger the 45 bends
+  so no two neighbours turn abreast and the escape holds the grid.
+* **Branch as a Y, not a T.** Where one track splits, bring the branches in
+  at 45 so the join is a fork, not a crossroads: a square tee is the same
+  etch nick as a square corner, twice.
+* **One width per run.** Widening a track after it has already run narrow
+  for centimetres buys nothing — the narrow length sets the current. Leave
+  a pin field as wide as the row allows and widen at the field's edge, in
+  one place, where the constraint visibly ends.
 * **Do not crowd clearances you do not have to.** Minimum clearance is for
   where the board leaves no choice; open board routed at minimum is asking
   the fab to be perfect for no reason. The router's crowding cost exists for
@@ -107,8 +117,9 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
 
 ## The board explains itself in silk
 
-* **Name and revision on the board** (`silk.missing_board_id`) — ten bare
-  boards on a bench are identical without it.
+* **Name, revision and author on the board** (`silk.missing_board_id`) — ten
+  bare boards on a bench are identical without it, and the author line says
+  whose design the bench is looking at.
 * **Connector pins say what they carry** (`silk.unlabeled_connector`):
   net names beside the pins, outside the footprint's courtyard, on the board
   side. That is the reverse-connection insurance, and it costs silkscreen.
@@ -118,8 +129,17 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
 ## Connectors, pours and returns
 
 * **Power and interface connectors live on the board edge, facing out** —
-  the cable leaves the board, not crosses it. Only debug headers earn an
-  interior spot.
+  the cable leaves the board, not crosses it, and a screw terminal's wire
+  entry points off the edge, not along it. Debug and GPIO headers go to the
+  edge too: an interior header blocks probing and mating alike.
+* **A thermal tab gets its via ring beside the pad, not on it.** Vias in a
+  hand-soldered tab drink the solder at reflow; a ring just off the pad ties
+  the tab into both planes and doubles as the return path. (A QFN's exposed
+  pad is the exception — via-in-pad there is the datasheet's own ask.)
+* **Keep through-routes out from under digital packages.** The strip between
+  a package's pad rows has no plane over it and the die right above it;
+  close it to everything but the package's own pad entries and route around
+  or on the far face.
 * **Pour ground on both faces and stitch them** (`layout.pour_single_sided`):
   the spare face's copper is free ground impedance, but only if a ring of
   stitching vias ties it to the plane — an unstitched island or edge strip
