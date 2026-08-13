@@ -4677,6 +4677,7 @@ def fpga_audio() -> Design:
         pitch=1.0,
         centre=40.0,
         width=SIG,
+        slope=2.2,
     )
     escape(
         "U2",
@@ -4686,11 +4687,32 @@ def fpga_audio() -> Design:
         pitch=1.0,
         centre=40.0,
         width=SIG,
+        slope=2.2,
     )
-    escape("U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=24.0, width=SIG)
-    escape("U3", ["5", "4"], lead=16.6, column=19.0, pitch=2.8, centre=24.0, width=SIG)
-    escape("U4", ["1", "2", "3", "4"], lead=36.1, column=33.5, pitch=2.0, centre=72.0, width=SIG)
-    escape("U4", ["8", "7", "6", "5"], lead=43.9, column=46.5, pitch=2.0, centre=72.0, width=SIG)
+    escape(
+        "U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=24.0, width=SIG, slope=2.2
+    )
+    escape("U3", ["5", "4"], lead=16.6, column=19.0, pitch=2.8, centre=24.0, width=SIG, slope=2.2)
+    escape(
+        "U4",
+        ["1", "2", "3", "4"],
+        lead=36.1,
+        column=33.5,
+        pitch=2.0,
+        centre=72.0,
+        width=SIG,
+        slope=2.2,
+    )
+    escape(
+        "U4",
+        ["8", "7", "6", "5"],
+        lead=43.9,
+        column=46.5,
+        pitch=2.0,
+        centre=72.0,
+        width=SIG,
+        slope=2.2,
+    )
 
     # The exposed pad is the ground, and it is stitched rather than routed.
     vias = [Via("GND", x=cx + dx, y=cy + dy) for dx in (-1.0, 0.0, 1.0) for dy in (-1.0, 0.0, 1.0)]
