@@ -43,3 +43,11 @@ between its silk outline and its pads; not this layout's doing."""
 rule = "track.thin_power"
 reason = """The narrow run is the +3V3 branch feeding the power LED through \
 R1: about a milliamp in a track good for 1 A at a 10 C rise."""
+
+[[waivers]]
+rule = "readability.label_only"
+reason = """A carrier is one job done forty times: module pad to the header pad \
+beside it. Drawn as wires the forty pairs weave across each other; drawn as the \
+pair of labels at each pin they read as the pinout table they are - which is \
+the convention the reviewer set for miscellaneous connections, applied to a \
+board that is nothing else. The power path stays drawn copper."""

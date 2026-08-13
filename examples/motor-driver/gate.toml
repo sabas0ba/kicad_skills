@@ -39,3 +39,11 @@ reason = """The narrow run on VM is the branch feeding the power LED through \
 R2: about 2 mA in a track good for 1 A at a 10 C rise. The rule reads the net \
 class, not the branch current, and on this branch the number is three orders \
 of magnitude inside the limit."""
+
+[[waivers]]
+rule = "readability.label_only"
+reason = """The six logic nets are named at both ends on purpose: drawn as \
+wires they lattice the power section with eight parallel crossings, which is \
+the tangle the reviewer asked to remove. The power path, the charge pump and \
+the motor outputs are all drawn copper; only the miscellaneous logic carries \
+names, which is the convention the reviewer set for it."""

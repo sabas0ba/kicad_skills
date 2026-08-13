@@ -192,6 +192,24 @@ class Design:
     # Where the design notes start on the sheet. Below the circuit, never beside
     # it - and how far below depends on how tall the circuit is.
     notes_at: tuple[float, float] = (25.4, 110.0)
+    # Notes anchored next to the circuit block they explain, as (at, lines).
+    # One block of prose in a corner reads as none: the reader cannot tell
+    # which capacitor a sentence is about unless the sentence sits beside it.
+    note_blocks: list[tuple[tuple[float, float], list[str]]] = field(default_factory=list)
+    # Power nets drawn as wires instead of symbols. A rail that *is* the
+    # circuit - a buck's output, where the feedback comes back from - reads as
+    # a horizontal line with taps, not as six separate symbols that leave the
+    # reader to reassemble the loop by name.
+    wired_power: tuple[str, ...] = ()
+    # Nets kept as labels on purpose: the miscellaneous logic whose drawn
+    # wires would lattice the sheet. A name at both ends reads better than
+    # eight parallel wires crossing the power section.
+    label_nets: tuple[str, ...] = ()
+    # Footprints whose body interior the router must not cross: tracks under
+    # a digital package ride beneath the die with no plane between, so the
+    # space between the pad rows is closed to everything but the pads' own
+    # entries.
+    route_keepout: tuple[str, ...] = ()
     # The grid `snapped` puts footprints on. A board whose placement is set by a
     # module's own 2.54 mm pad pitch cannot also sit on 0.5 mm, and pretending
     # otherwise moves the pads off the pins they have to land on.
@@ -552,6 +570,9 @@ def _sheet_obstacles(
                 design.notes_at[1] + (len(design.notes) + 1) * 5.08,
             )
         )
+    for at, block in design.note_blocks:
+        widest = max(len(line) for line in block)
+        boxes.append((at[0] - 1.27, at[1] - 1.27, at[0] + widest * 1.1, at[1] + len(block) * 4.0))
     # The sheet frame: a wire drawn along the border prints on the border.
     width, height = {"A4": (297.0, 210.0), "A3": (420.0, 297.0)}.get(design.paper, (297.0, 210.0))
     margin = 12.0
@@ -750,7 +771,14 @@ def plan_wires(
     # Local nets first: a decoupling hop is one short wire wherever it goes,
     # but a cross-sheet run drawn early walls off the corridor a whole bus
     # needed. The long hauls route last and keep their labels when boxed out.
-    order = sorted((n for n in design.nets if n not in POWER_SYMBOLS), key=lambda n: (span(n), n))
+    order = sorted(
+        (
+            n
+            for n in design.nets
+            if (n not in POWER_SYMBOLS or n in design.wired_power) and n not in design.label_nets
+        ),
+        key=lambda n: (span(n), n),
+    )
     for net in order:
         owners = [entry for entry in design.nets[net] if entry in stubs]
         if len(owners) < 2:
@@ -811,8 +839,15 @@ def plan_wires(
             for p, q in pairwise(run):
                 accepted.append((net, p, q))
             ra, rb = find(a), find(b)
-            dropped.add(carrier[rb])
+            # The label that survives the merge goes to the connector when the
+            # net reaches one: a name belongs on the generic part - the header
+            # pin a harness plugs into - not in the middle of the circuit.
+            keep, lose = carrier[ra], carrier[rb]
+            if lose.startswith("J") and not keep.startswith("J"):
+                keep, lose = lose, keep
+            dropped.add(lose)
             comp[rb] = ra
+            carrier[ra] = keep
     # Two runs of one net may lawfully share a stretch of line - a second
     # branch leaving the same pin rides the first before it turns. Drawn as
     # two overlapping wires that confuses KiCad 9's connectivity outright, so
@@ -1053,8 +1088,10 @@ def emit_schematic(design: Design) -> str:
                     )
             body.append(_wire(design, part.ref, pin.number, end, out))
             pin_owner = f"{part.ref}.{pin.number}"
-            if net not in POWER_SYMBOLS and pin_owner not in replaced:
-                body.append(_label(design, net, part.ref, pin.number, out))
+            if (
+                net not in POWER_SYMBOLS or net in design.wired_power
+            ) and pin_owner not in replaced:
+                body.append(_label(design, net, part.ref, pin.number, out, end))
         avoid = [box for ref, box in part_box.items() if ref != part.ref] + placed_blocks
         body.append(_symbol_instance(design, part, pins, avoid, wire_boxes))
         if len(avoid) > len(part_box) - 1 + len(placed_blocks):
@@ -1099,6 +1136,17 @@ def emit_schematic(design: Design) -> str:
             f'  (text "{escaped}" (at {design.notes_at[0]} {round(y, 2)} 0) '
             f'{_effects(justify="left top")} (uuid "{stable_uuid(design.name, "note", index)}"))'
         )
+    # Anchored notes: each block sits beside the circuit it explains, so the
+    # reader never has to carry a sentence across the sheet to its subject.
+    for bindex, (at, block) in enumerate(design.note_blocks, start=1):
+        for lindex, line in enumerate(block):
+            y = at[1] + lindex * 4.0
+            escaped = line.replace('"', '\\"')
+            body.append(
+                f'  (text "{escaped}" (at {at[0]} {round(y, 2)} 0) '
+                f"{_effects(justify='left top')} "
+                f'(uuid "{stable_uuid(design.name, "noteblock", bindex, lindex)}"))'
+            )
 
     lines += body
     lines += ["  (sheet_instances", '    (path "/" (page "1"))', "  )", ")"]
@@ -1113,10 +1161,20 @@ def _wire(design: Design, ref: str, number: str, a, b) -> str:
     )
 
 
-def _label(design: Design, net: str, ref: str, number: str, at) -> str:
+def _label(design: Design, net: str, ref: str, number: str, at, end=None) -> str:
+    # The name reads away from the pin, whichever way the pin points: a label
+    # printed back over its own stub merges with the pin number beside it.
+    justify = "left bottom"
+    angle = 0
+    if end is not None:
+        if at[0] < end[0] - GEOM_EPS:
+            justify = "right bottom"
+        elif abs(at[0] - end[0]) < GEOM_EPS:
+            angle = 90
+            justify = "left bottom" if at[1] < end[1] else "right bottom"
     return (
-        f'  (label "{net}" (at {at[0]} {at[1]} 0) '
-        f"{_effects(justify='left bottom')} "
+        f'  (label "{net}" (at {at[0]} {at[1]} {angle}) '
+        f"{_effects(justify=justify)} "
         f'(uuid "{stable_uuid(design.name, "label", ref, number)}"))'
     )
 
@@ -1207,7 +1265,7 @@ def power_fixtures(design: Design):
                 continue
             seen.add(end)
             owner = f"{part.ref}.{pin.number}"
-            if net in POWER_SYMBOLS:
+            if net in POWER_SYMBOLS and net not in design.wired_power:
                 if abs(out[1] - end[1]) > GEOM_EPS:
                     vertical.append((owner, net, end, out))
                 else:
@@ -1347,33 +1405,31 @@ def _symbol_instance(
     root = stable_uuid(design.name, "sheet")
     mirror = f" (mirror {part.mirror})" if part.mirror else ""
     text_angle = part.angle % 180  # 90/270 need the counter-turn, 0/180 do not
-    lines = [
-        f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}){mirror} (unit {part.unit})',
-        "    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)",
-        f'    (uuid "{uid}")',
-        _property("Reference", part.ref, x, round(top - 2.54, 4), False, angle=text_angle),
-        _property("Value", part.value, x, round(bottom + 2.54, 4), False, angle=text_angle),
-        _property("Footprint", part.footprint, x, y, True),
-        _property("Datasheet", part.fields.get("Datasheet", "~"), x, y, True),
-    ]
     # A passive's ratings belong on the page, not only in the machine-checked
     # fields: an engineer reads "100n 50V 10%" at the part, not in a table.
-    # An upright part gets them beside the body (below the value sits the
-    # ground symbol on most capacitors); a lying one gets them under its
-    # value. Small parts only: a 48-pin symbol's block would land on pins.
+    # An upright small part gets value and ratings together beside the body -
+    # under a capacitor sits its ground symbol, and under a labelled resistor
+    # sits its label - a lying one gets the ratings under its value. Small
+    # parts only: a 48-pin symbol's block would land on pins.
     visible = ("Voltage", "Tolerance", "Power", "Current")
     ratings = [n for n in visible if n in part.fields]
     upright = span_y >= span_x
+    small = len(pins) <= 4 and part.unit == 1
+    side_value = upright and small and bool(ratings)
     # The block goes beside the body, on whichever side prints over nothing.
     # The right side is the habit; a neighbour there sends it left.
     side, justify = 1.0, "left"
     block: tuple[float, float, float, float] | None = None
-    if upright and ratings and avoid is not None:
-        rows = len(ratings)
+    rows_n = len(ratings) + 1 if side_value else len(ratings)
+    if upright and rows_n and avoid is not None:
         # 1.45 mm per glyph is the default font's real advance; undersizing it
         # here let two blocks land one millimetre apart and read as one word
-        width = max(len(v) for n, v in part.fields.items() if n in ratings) * 1.45 + 0.5
-        y0, y1 = y - (rows - 1) * 1.27 - 1.27, y - (rows - 1) * 1.27 + (rows - 1) * 2.54 + 1.27
+        texts = [v for n, v in part.fields.items() if n in ratings]
+        if side_value:
+            texts.append(part.value)
+        width = max(len(t) for t in texts) * 1.45 + 0.5
+        y0 = y - (rows_n - 1) * 1.27 - 1.27
+        y1 = y - (rows_n - 1) * 1.27 + (rows_n - 1) * 2.54 + 1.27
 
         def hits(x0, x1, boxes):
             return sum(1 for b in boxes if x0 < b[2] and b[0] < x1 and y0 < b[3] and b[1] < y1)
@@ -1389,17 +1445,32 @@ def _symbol_instance(
         else:
             (x0, x1), side, justify = options[0]
         block = (x0, y0, x1, y1)
-    shown = 0
+
+    def row_at(index: int) -> tuple[float, float]:
+        return (round(x + side * 3.81, 4), round(y - (rows_n - 1) * 1.27 + index * 2.54, 4))
+
+    if side_value:
+        value_prop = _property("Value", part.value, *row_at(0), False, justify, text_angle)
+    else:
+        value_prop = _property(
+            "Value", part.value, x, round(bottom + 2.54, 4), False, angle=text_angle
+        )
+    lines = [
+        f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}){mirror} (unit {part.unit})',
+        "    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)",
+        f'    (uuid "{uid}")',
+        _property("Reference", part.ref, x, round(top - 2.54, 4), False, angle=text_angle),
+        value_prop,
+        _property("Footprint", part.footprint, x, y, True),
+        _property("Datasheet", part.fields.get("Datasheet", "~"), x, y, True),
+    ]
+    shown = 1 if side_value else 0
     for name, value in part.fields.items():
         if name == "Datasheet":
             continue
-        if name in ratings and len(pins) <= 4 and part.unit == 1:
+        if name in ratings and small:
             if upright:
-                row = (
-                    round(x + side * 3.81, 4),
-                    round(y - ((len(ratings) - 1) * 1.27) + shown * 2.54, 4),
-                )
-                lines.append(_property(name, value, row[0], row[1], False, justify, text_angle))
+                lines.append(_property(name, value, *row_at(shown), False, justify, text_angle))
             else:
                 row = (x, round(bottom + 5.08 + shown * 2.54, 4))
                 lines.append(_property(name, value, row[0], row[1], False, angle=text_angle))
@@ -1740,17 +1811,16 @@ def fan(
     At 0.65 mm there is nothing for a search to find: two 0.3 mm tracks and the
     clearance between them already fill the gap, and a grid coarse enough to
     finish in this decade cannot see it. So the escape is stated rather than
-    searched for - every pin leaves straight, then all of them turn together at
-    the same shallow angle, which keeps the perpendicular spacing at
-    ``row pitch * cos(angle)`` instead of letting one track cut the corner into
-    its neighbour. ``slope`` is dx/dy of that turn.
+    searched for - every pin leaves straight and bends at 45 degrees, the
+    bends staggered so no two neighbours turn abreast. Anything shallower or
+    steeper than 45 reads as an accident on the plot, and the stagger is what
+    buys the spacing a shared turn could only get from a shallow angle.
+    ``slope`` is retired and ignored; it named the shallow angle this replaced.
 
-    That is also what sets the width. Two neighbours in the turn are only
-    ``cos(angle)`` of the row pitch apart, so on a 0.65 mm row nothing wider
-    than 0.3 mm fits however gentle the angle is made - a pair of 0.4 mm tracks
-    would need the full 0.65 mm and so could only ever run parallel. Every pin
-    therefore leaves narrow and widens once it is clear, which is what the
-    assertion below is checking rather than trusting.
+    The row pitch still sets the width: two straights in a 0.65 mm row hold
+    nothing wider than 0.3-0.4 mm, so a power pin leaves as wide as the row
+    allows and widens the moment its diagonal clears the field - which is what
+    the assertion below is checking rather than trusting.
 
     ``axis`` is the direction the escape runs in: "x" for a row of pads down the
     side of a package, "y" for one along its top or bottom. ``lead`` and
@@ -1765,30 +1835,57 @@ def fan(
         return (along, offset) if axis == "x" else (offset, along)
 
     direction = -1.0 if column < lead else 1.0
-    row = min(
-        abs(pad_position(design, f"{ref}.{a}")[across] - pad_position(design, f"{ref}.{b}")[across])
-        for a, b in pairwise(pins)
-    )
-    span = row * math.cos(math.atan2(1.0, slope))
-    for a, b in pairwise(pins):
-        need = (widths.get(a, width) + widths.get(b, width)) / 2 + clearance
+    placed: list[tuple[str, float, float]] = []  # (pin, pad offset, lane target)
+    for index, number in enumerate(pins):
+        offset = pad_position(design, f"{ref}.{number}")[across]
+        target = round(centre + (index - (len(pins) - 1) / 2) * pitch, 4)
+        placed.append((number, offset, target))
+
+    # Every bend is 45 degrees, staggered so no two neighbours turn abreast:
+    # within each shift direction the pin farthest along that direction turns
+    # first and clears the row for the one behind it. Two parallel diagonals
+    # one stagger apart keep `(row + stagger) * cos45` of perpendicular space,
+    # which is what lets the escape hold 45s where a shared shallow turn was
+    # the only other way through a 0.65 mm row.
+    plus = sorted((p for p in placed if p[2] - p[1] > GEOM_EPS), key=lambda p: -p[1])
+    minus = sorted((p for p in placed if p[2] - p[1] < -GEOM_EPS), key=lambda p: p[1])
+    rank = {p[0]: r for group in (plus, minus) for r, p in enumerate(group)}
+    biggest = max((abs(p[2] - p[1]) for p in placed), default=0.0)
+    deepest = max(rank.values(), default=0)
+    room = abs(column - lead)
+    stagger = 0.75
+    if stagger * deepest + biggest > room:
+        stagger = (room - biggest) / deepest if deepest else 0.0
+        if stagger < 0.2:
+            raise SystemExit(
+                f"{design.name}: {ref} fan from {lead} to {column} is {room:.2f} mm deep, "
+                f"not enough for a staggered 45-degree escape needing {biggest:.2f} mm of "
+                "diagonal plus the stagger between neighbours"
+            )
+    row = min(abs(a[1] - b[1]) for a, b in pairwise(placed))
+    span = (row + stagger) * math.cos(math.pi / 4)
+    for a, b in pairwise(placed):
+        need = (widths.get(a[0], width) + widths.get(b[0], width)) / 2 + clearance
         if span < need - GEOM_EPS:
             raise SystemExit(
-                f"{design.name}: {ref} pins {a} and {b} are {row:.3f} mm apart, which at "
-                f"slope {slope} leaves {span:.3f} mm across the turn and they need {need:.3f}"
+                f"{design.name}: {ref} pins {a[0]} and {b[0]} are {row:.3f} mm apart, which "
+                f"with a {stagger:.2f} mm stagger leaves {span:.3f} mm across the diagonals "
+                f"and they need {need:.3f}"
             )
 
     tracks: list[Track] = []
     ends: dict[str, tuple[float, float]] = {}
-    for index, number in enumerate(pins):
+    for number, offset, target in placed:
         pad = f"{ref}.{number}"
-        offset = pad_position(design, pad)[across]
-        target = round(centre + (index - (len(pins) - 1) / 2) * pitch, 4)
-        bend = round(lead + direction * abs(target - offset) * slope, 4)
+        delta = target - offset
+        turn = round(lead + direction * stagger * rank.get(number, 0), 4)
+        done = round(turn + direction * abs(delta), 4)
         points: list[tuple[float, float] | str] = [pad, at(lead, offset)]
-        if abs(target - offset) > GEOM_EPS:
-            points.append(at(bend, target))
-        if abs(column - bend) > GEOM_EPS:
+        if abs(delta) > GEOM_EPS:
+            if abs(turn - lead) > GEOM_EPS:
+                points.append(at(turn, offset))
+            points.append(at(done, target))
+        if abs(column - done) > GEOM_EPS or abs(delta) <= GEOM_EPS:
             points.append(at(column, target))
         net = next((name for name, nodes in design.nets.items() if pad in nodes), None)
         if net is None:
@@ -1822,6 +1919,21 @@ def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Trac
             )
             x0, y0, x1, y1 = pad_box(design, part, pad)
             router.add(autoroute.Obstacle(x0, y0, x1, y1, net, pad_layer(pad)))
+    # The interior of a kept-out package: the strip between its pad rows,
+    # closed to every net - a track that must pass goes around or under on
+    # the other face beyond the body, not beneath the die.
+    for ref in design.route_keepout:
+        part = next(p for p in design.footprints() if p.ref == ref)
+        node = footprint_definition(part.footprint)
+        boxes = [pad_box(design, part, pad) for pad in node.children("pad")]
+        cx = part.board[0]
+        left = max((b[2] for b in boxes if (b[0] + b[2]) / 2 < cx), default=None)
+        right = min((b[0] for b in boxes if (b[0] + b[2]) / 2 > cx), default=None)
+        if left is None or right is None or right - left < 1.0:
+            continue
+        y0 = min(b[1] for b in boxes)
+        y1 = max(b[3] for b in boxes)
+        router.add(autoroute.Obstacle(left + 0.4, y0, right - 0.4, y1, "", None))
     for via in design.vias:
         router.add_via(via.net, via_position(design, via), via.size)
     for part in design.footprints():
@@ -1893,7 +2005,8 @@ def resolve_routes(design: Design) -> Design:
     """
     order = [track for track in design.tracks if track.auto]
     if not order:
-        return replace(design, vias=[*design.vias, *_stitch_vias(design)])
+        done = replace(design, vias=[*design.vias, *_stitch_vias(design)])
+        return _chamfer_tracks(done)
     ripped: list[Track] = []
     while True:
         try:
@@ -1917,7 +2030,69 @@ def resolve_routes(design: Design) -> Design:
         done = replace(
             design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
         )
-        return replace(done, vias=[*done.vias, *_stitch_vias(done)])
+        done = replace(done, vias=[*done.vias, *_stitch_vias(done)])
+        return _chamfer_tracks(done)
+
+
+def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
+    """Every square corner cut to two 45s - copper bends, it does not turn.
+
+    A right angle in a track is free to avoid and mildly costly to keep: the
+    outer corner over-etches, the impedance steps, and every reviewer reads it
+    as a router nobody checked. The cut is capped at half of either leg so a
+    short pad entry keeps its shape, and a corner that another track tees
+    into is left alone rather than cut out from under the join.
+    """
+    ends: dict[tuple[float, float], int] = defaultdict(int)
+    resolved: list[list[tuple[float, float]]] = []
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        resolved.append(points)
+        ends[points[0]] += 1
+        ends[points[-1]] += 1
+    # A cut moves copper off the square path, and what it moves toward may be
+    # a via that only cleared the original corner. Foreign vias by net.
+    foreign_vias = [(via.net, via_position(design, via), via.size / 2) for via in design.vias]
+
+    tracks = []
+    for track, points in zip(design.tracks, resolved, strict=True):
+        if len(points) < 3:
+            tracks.append(replace(track, points=list(points)))
+            continue
+        out: list[tuple[float, float]] = [points[0]]
+        for prev, corner, nxt in zip(points, points[1:], points[2:], strict=False):
+            v1 = (corner[0] - prev[0], corner[1] - prev[1])
+            v2 = (nxt[0] - corner[0], nxt[1] - corner[1])
+            l1, l2 = math.hypot(*v1), math.hypot(*v2)
+            if l1 < GEOM_EPS or l2 < GEOM_EPS:
+                continue
+            # a corner already gentle - a 45 bend from the fans - stays as it
+            # is; only turns sharper than ~60 degrees get the cut
+            gentle = (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2) > 0.5
+            if gentle or ends.get(corner, 0):
+                out.append(corner)
+                continue
+            c = min(cut, l1 / 2, l2 / 2)
+            p1 = (round(corner[0] - v1[0] / l1 * c, 3), round(corner[1] - v1[1] / l1 * c, 3))
+            p2 = (round(corner[0] + v2[0] / l2 * c, 3), round(corner[1] + v2[1] / l2 * c, 3))
+            blocked = any(
+                net != track.net and _segment_to_point(p1, p2, at) < track.width / 2 + radius + 0.25
+                for net, at, radius in foreign_vias
+            )
+            if blocked:
+                out.append(corner)  # the square corner was the clear shape here
+                continue
+            out.append(p1)
+            out.append(p2)
+        out.append(points[-1])
+        # two half-leg cuts meeting mid-segment leave a duplicate point, and a
+        # duplicate point emits as a zero-length track DRC calls dangling
+        deduped = [out[0]]
+        for point in out[1:]:
+            if math.dist(point, deduped[-1]) > GEOM_EPS:
+                deduped.append(point)
+        tracks.append(replace(track, points=deduped))
+    return replace(design, tracks=tracks)
 
 
 def _stitch_vias(design: Design) -> list[Via]:
@@ -2026,7 +2201,10 @@ def emit_board(design: Design, path: Path) -> None:
     # plain label on the root sheet becomes "/NAME"; only a power symbol keeps
     # its bare name. Getting this wrong costs one `net_conflict` per pad in the
     # schematic-parity check, and nothing else notices.
-    labels = {name: (name if name in POWER_SYMBOLS else f"/{name}") for name in order}
+    labels = {
+        name: (name if name in POWER_SYMBOLS and name not in design.wired_power else f"/{name}")
+        for name in order
+    }
 
     # Every pin the design does not use gets the name KiCad's own netlister
     # gives it: reference, unit letter when the symbol has more than one, pin
@@ -2200,11 +2378,23 @@ def _board_silk(design: Design) -> list[str]:
             design,
             f"{design.name} rev {design.rev}",
             design.board_size[0] / 2,
-            design.board_size[1] - 2.2,
+            design.board_size[1] - 4.4,
             "boardid",
-            size=1.0,
+            size=1.2,
         )
     )
+    if design.company:
+        # the author line: a bare board also answers "whose design is this"
+        out.append(
+            _silk_text_item(
+                design,
+                design.company,
+                design.board_size[0] / 2,
+                design.board_size[1] - 2.0,
+                "boardauthor",
+                size=1.0,
+            )
+        )
     width, height = design.board_size
     net_of: dict[tuple[str, str], str] = {}
     for name, nodes in design.nets.items():
@@ -2531,6 +2721,7 @@ def degrade(design: Design) -> Design:
         strict=False,
         draw_wires=False,
         notes=[],
+        note_blocks=[],
         parts=parts,
         power_flags=[],
         # One width for everything, which is what a generator that never asked
@@ -2571,15 +2762,15 @@ def buck_5v() -> Design:
     it - which is what lets the filled area be the pour outline itself, with
     nothing to subtract.
     """
-    RIGHT = 168.91  # where the output half of the sheet starts
     parts = [
         Part(
             "J1",
             "Connector:Screw_Terminal_01x02",
             "12V IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            sheet=(38.1, 66.04),
-            board=(10.0, 12.0, 180.0),
+            sheet=(38.1, 63.5),
+            mirror="y",
+            board=(10.0, 12.0, 270.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -2591,7 +2782,7 @@ def buck_5v() -> Design:
             "Device:C_Polarized",
             "220u",
             "Capacitor_SMD:CP_Elec_8x10.5",
-            sheet=(63.5, 71.12),
+            sheet=(63.5, 69.85),
             board=(32.0, 12.0, 0.0),
             fields={
                 "Voltage": "35V",
@@ -2606,7 +2797,7 @@ def buck_5v() -> Design:
             "Device:C",
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
-            sheet=(78.74, 71.12),
+            sheet=(78.74, 69.85),
             # stood on end beside U1's VIN pin: the input loop is the one that
             # has to be short, and this is the only spot the fan-out leaves free
             board=(50.0, 7.0, 90.0),
@@ -2636,7 +2827,8 @@ def buck_5v() -> Design:
             "Diode:SS34",
             "SS34",
             "Diode_SMD:D_SMA",
-            sheet=(140.97, 76.2),
+            sheet=(134.62, 74.93),
+            angle=270.0,
             board=(58.0, 36.0, 0.0),
             fields={
                 "MPN": "SS34",
@@ -2649,7 +2841,8 @@ def buck_5v() -> Design:
             "Device:L",
             "33u",
             "Inductor_SMD:L_12x12mm_H8mm",
-            sheet=(154.94, 66.04),
+            sheet=(153.67, 68.58),
+            angle=90.0,
             board=(76.0, 36.0, 0.0),
             fields={
                 "Current": "3A",
@@ -2664,7 +2857,7 @@ def buck_5v() -> Design:
             "Device:C",
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
-            sheet=(RIGHT + 15.24, 71.12),
+            sheet=(166.37, 74.93),
             board=(90.0, 36.0, 0.0),
             fields={
                 "Voltage": "25V",
@@ -2679,7 +2872,7 @@ def buck_5v() -> Design:
             "Device:C_Polarized",
             "220u",
             "Capacitor_SMD:CP_Elec_8x10.5",
-            sheet=(RIGHT, 71.12),
+            sheet=(179.07, 74.93),
             board=(100.0, 36.0, 0.0),
             fields={
                 "Voltage": "16V",
@@ -2694,7 +2887,7 @@ def buck_5v() -> Design:
             "Device:R",
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
-            sheet=(RIGHT + 24.13, 71.12),
+            sheet=(215.9, 93.98),
             board=(100.0, 46.0, 0.0),
             fields={
                 "Tolerance": "1%",
@@ -2709,7 +2902,7 @@ def buck_5v() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(RIGHT + 24.13, 88.9),
+            sheet=(215.9, 107.95),
             board=(107.0, 46.0, 180.0),
             angle=90.0,
             silk_label="5V OK",
@@ -2726,8 +2919,8 @@ def buck_5v() -> Design:
             "Connector:Screw_Terminal_01x02",
             "5V OUT",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            sheet=(RIGHT + 45.72, 66.04),
-            board=(116.0, 36.0, 0.0),
+            sheet=(200.66, 68.58),
+            board=(116.0, 36.0, 90.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -2762,13 +2955,15 @@ def buck_5v() -> Design:
         # Output rail across the bottom row.
         Track("+5V", "F.Cu", W, ["L1.2", "C4.1"]),
         Track("+5V", "F.Cu", W, ["C4.1", (89.05, 30.0), (96.3, 30.0), "C3.1"]),
-        Track("+5V", "F.Cu", W, [(96.3, 30.0), (116.0, 30.0), "J2.1"]),
+        Track(
+            "+5V", "F.Cu", W, [(96.3, 30.0), (107.0, 30.0), (107.0, 42.0), (114.0, 42.0), "J2.1"]
+        ),
         Track("+5V", "F.Cu", SIG, ["C3.1", (96.3, 42.0), (99.088, 42.0), "R1.1"]),
         Track("LED_A", "F.Cu", SIG, ["R1.2", "D2.2"]),
         # Ground: a stub from each pad to a via of its own, straight into the
         # pour. Only the two through-hole terminals, outside the pour, run far.
-        Track("GND", "F.Cu", W, ["J1.2", (5.0, 50.0), (16.0, 50.0)]),
-        Track("GND", "F.Cu", W, ["J2.2", (121.0, 50.0), (110.0, 50.0)]),
+        Track("GND", "F.Cu", W, ["J1.2", (10.0, 50.0), (16.0, 50.0)]),
+        Track("GND", "F.Cu", W, ["J2.2", (121.0, 36.0), (121.0, 50.0), (110.0, 50.0)]),
         # The explicit return: input ground to output ground at the same width
         # as the forward path, so the 2 A loop does not depend on the pour
         # alone. It rides the bottom edge, under the LED branch, crossing
@@ -2785,6 +2980,16 @@ def buck_5v() -> Design:
         Track("GND", "F.Cu", SIG, ["D2.1", (107.938, 50.0)]),
     ]
     vias = [
+        # The tab is the die's thermal path and the switch loop's return: a
+        # ring of vias just off the pad ties it straight into both pours.
+        # Off the pad, not on it - via-in-pad drinks the solder at reflow.
+        Via("GND", x=69.5, y=7.5),
+        Via("GND", x=69.5, y=12.0),
+        Via("GND", x=69.5, y=16.5),
+        Via("GND", x=60.5, y=5.2),
+        Via("GND", x=65.5, y=5.2),
+        Via("GND", x=60.5, y=18.8),
+        Via("GND", x=65.5, y=18.8),
         Via("GND", x=16.0, y=50.0),
         Via("GND", x=110.0, y=50.0),
         Via("GND", x=51.0, y=12.0),
@@ -2803,17 +3008,38 @@ def buck_5v() -> Design:
         title="12 V to 5 V buck converter, 2 A",
         rev="A",
         company="kicad_skills examples",
-        notes=[
-            "LM2596S-5 is the fixed 5 V part: FB ties straight to the output, no divider.",
-            "C1 35 V on a 12 V rail and C3 16 V on a 5 V rail - both keep more than the",
-            "1.5x headroom the gate asks for over their working voltage.",
-            "L1 33 uH / 3 A saturation: ripple is about 0.6 A pk-pk at 2 A out, so the",
-            "peak stays under the rating.",
-            "D1 catches the inductor current. SS34 is 3 A / 40 V, above both the 2 A load",
-            "and the 12 V input.",
-            "Power copper is 1.0 mm, good for 2.7 A at a 10 C rise (IPC-2221).",
-            "Input row above, output row below: SW and FB then run down the board in",
-            "parallel channels instead of having to cross each other.",
+        notes=[],
+        note_blocks=[
+            (
+                (30.48, 87.63),
+                [
+                    "Input: C1 220u/35V bulk, C2 100n/50V bypass -",
+                    "both above 1.5x the 12 V they sit on.",
+                ],
+            ),
+            (
+                (95.25, 45.72),
+                [
+                    "LM2596S-5 is the fixed 5 V part:",
+                    "FB ties straight to the output, no divider.",
+                ],
+            ),
+            (
+                (127.0, 91.44),
+                [
+                    "D1 SS34 (3 A / 40 V) catches the inductor current.",
+                    "L1 33 uH, 3 A saturation: ripple 0.6 A pk-pk at 2 A out.",
+                    "C3 220u/16V bulk, C4 100n/25V bypass on the 5 V rail.",
+                ],
+            ),
+            (
+                (207.01, 121.92),
+                ["5V OK: 3 mA through R1."],
+            ),
+            (
+                (30.48, 100.33),
+                ["Power copper is 1.0 mm, good for 2.7 A at a 10 C rise (IPC-2221)."],
+            ),
         ],
         parts=parts,
         nets=nets,
@@ -2821,8 +3047,8 @@ def buck_5v() -> Design:
         board_size=(126.0, 56.0),
         tracks=tracks,
         vias=vias,
-        pour=(15.0, 2.0, 112.0, 54.0),
-        # The empty strip above the converter row; the default lands on the notes.
+        pour=(2.0, 2.0, 124.0, 54.0),
+        wired_power=("+12V", "+5V"),
     )
 
 
@@ -2870,7 +3096,7 @@ def motor_driver() -> Design:
             "Device:C_Polarized",
             "100u",
             "Capacitor_SMD:CP_Elec_6.3x7.7",
-            sheet=(55.0, 85.0),
+            sheet=(55.88, 86.36),
             board=(70.0, 17.0, 0.0),
             fields={
                 "Voltage": "25V",
@@ -2885,7 +3111,7 @@ def motor_driver() -> Design:
             "Device:C",
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
-            sheet=(70.0, 85.0),
+            sheet=(68.58, 86.36),
             board=(57.5, 26.5, 90.0),
             fields={
                 "Voltage": "50V",
@@ -2900,7 +3126,8 @@ def motor_driver() -> Design:
             "Device:C",
             "10n",
             "Capacitor_SMD:C_0805_2012Metric",
-            sheet=(85.0, 85.0),
+            sheet=(96.52, 72.39),
+            angle=90.0,
             board=(63.0, 27.0, 270.0),
             fields={
                 "Voltage": "50V",
@@ -2928,7 +3155,7 @@ def motor_driver() -> Design:
             "Device:C",
             "1u",
             "Capacitor_SMD:C_0805_2012Metric",
-            sheet=(175.0, 85.0),
+            sheet=(149.86, 60.96),
             board=(61.0, 24.0, 0.0),
             fields={
                 "Voltage": "16V",
@@ -2943,7 +3170,7 @@ def motor_driver() -> Design:
             "Device:R",
             "10k",
             "Resistor_SMD:R_0805_2012Metric",
-            sheet=(190.0, 85.0),
+            sheet=(160.02, 60.96),
             board=(60.0, 40.0, 0.0),
             fields={
                 "Tolerance": "1%",
@@ -2958,7 +3185,7 @@ def motor_driver() -> Design:
             "Device:R",
             "4k7",
             "Resistor_SMD:R_0805_2012Metric",
-            sheet=(205.0, 85.0),
+            sheet=(81.28, 107.95),
             board=(72.0, 6.0, 0.0),
             fields={
                 "Tolerance": "1%",
@@ -2973,7 +3200,7 @@ def motor_driver() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(205.0, 100.0),
+            sheet=(81.28, 121.92),
             board=(80.0, 6.0, 180.0),
             silk_label="VM OK",
             fields={
@@ -2989,7 +3216,7 @@ def motor_driver() -> Design:
             "Connector:Screw_Terminal_01x02",
             "MOTOR A",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            sheet=(240.0, 70.0),
+            sheet=(172.72, 82.55),
             board=(8.0, 20.0, 90.0),
             fields={
                 "MPN": "1729128",
@@ -3002,7 +3229,7 @@ def motor_driver() -> Design:
             "Connector:Screw_Terminal_01x02",
             "MOTOR B",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            sheet=(240.0, 95.0),
+            sheet=(172.72, 95.25),
             board=(8.0, 38.0, 90.0),
             fields={
                 "MPN": "1729128",
@@ -3064,22 +3291,46 @@ def motor_driver() -> Design:
         title="Dual H-bridge, DRV8833, 2 x 1.5 A",
         rev="A",
         company="kicad_skills examples",
-        notes=[
-            "DRV8833PW: 1.5 A per bridge continuous, 2 A peak, VM 2.7 - 10.8 V.",
-            "AISEN and BISEN are tied to ground - no current sensing, so the",
-            "current limit is the part's own internal one.",
-            "C3 10 nF is the charge pump flying capacitor between VM and VCP;",
-            "the datasheet asks for 10 nF and nothing else will do.",
-            "C4 1 uF bypasses VINT, the internal 3.3 V regulator, which also",
-            "pulls up the open-drain nFAULT through R1.",
-            "C1 100 uF / 25 V on a rail that can reach 10.8 V - more than the",
-            "1.5x headroom, and enough bulk for the motor current steps.",
-            "The motor terminals are unpolarised. The package brings AOUT1/AOUT2",
-            "out in the opposite order to BOUT1/BOUT2, so the fan-out lands A on",
-            "J2 one way round and B on J3 the other; the silk says A and B.",
-            "The ground pour covers the driver and the output tracks. It stops",
-            "short of the connectors so the back of the right hand third is free",
-            "for the two crossings the logic needs.",
+        notes=[],
+        note_blocks=[
+            (
+                (17.78, 102.87),
+                [
+                    "C1 100 uF / 25 V bulk on a rail that can reach 10.8 V -",
+                    "1.5x headroom, and reserve for the motor current steps.",
+                ],
+            ),
+            (
+                (93.98, 115.57),
+                ["VM present: 1.5 mA through R2."],
+            ),
+            (
+                (60.96, 55.88),
+                [
+                    "C3 10 nF: the charge-pump flying capacitor",
+                    "between VM and VCP - the datasheet's value.",
+                ],
+            ),
+            (
+                (147.32, 33.02),
+                [
+                    "C4 1 uF bypasses VINT, the internal 3.3 V",
+                    "regulator; R1 10k pulls up open-drain nFAULT.",
+                ],
+            ),
+            (
+                (162.56, 106.68),
+                [
+                    "AISEN/BISEN grounded: no current sense,",
+                    "the part's internal limit only.",
+                    "A lands on J2 reversed, B on J3 straight -",
+                    "the package brings them out that way.",
+                ],
+            ),
+            (
+                (17.78, 60.96),
+                ["Logic header in track-arrival order:", "grounds at both ends."],
+            ),
         ],
         parts=parts,
         nets=nets,
@@ -3088,7 +3339,7 @@ def motor_driver() -> Design:
         tracks=[],
         vias=[],
         pour=(3.0, 3.0, 97.0, 47.0),
-        # Top right, clear of the logic header; the default lands on the notes.
+        label_nets=("nSLEEP", "AIN1", "AIN2", "BIN1", "BIN2", "nFAULT"),
     )
 
     # Snap before the fan-out is worked out: it measures from where the pads
@@ -3110,6 +3361,7 @@ def motor_driver() -> Design:
         pitch=2.0,
         centre=26.0,
         width=SIG,
+        widths={"2": 0.4, "4": 0.4, "5": 0.4, "7": 0.4},
     )
     right, east = fan(
         design,
@@ -3291,7 +3543,8 @@ def pico_carrier() -> Design:
             "Device:D_Schottky",
             "SS14",
             "Diode_SMD:D_SMA",
-            sheet=(90.0, 40.0),
+            sheet=(90.17, 39.37),
+            mirror="y",
             board=(56.0, 11.0, 180.0),
             fields={
                 "Voltage": "40V",
@@ -3306,7 +3559,7 @@ def pico_carrier() -> Design:
             "Device:C",
             "22u",
             "Capacitor_SMD:C_1210_3225Metric",
-            sheet=(115.0, 45.0),
+            sheet=(127.0, 45.72),
             board=(46.0, 12.54, 90.0),
             fields={
                 "Voltage": "16V",
@@ -3321,7 +3574,7 @@ def pico_carrier() -> Design:
             "Device:C",
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
-            sheet=(200.0, 45.0),
+            sheet=(180.34, 60.96),
             board=(46.0, 20.0, 0.0),
             fields={
                 "Voltage": "25V",
@@ -3336,7 +3589,7 @@ def pico_carrier() -> Design:
             "Device:R",
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
-            sheet=(225.0, 45.0),
+            sheet=(193.04, 60.96),
             board=(56.0, 20.0, 0.0),
             fields={
                 "Tolerance": "1%",
@@ -3351,7 +3604,7 @@ def pico_carrier() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(225.0, 60.0),
+            sheet=(193.04, 76.2),
             board=(64.0, 20.0, 180.0),
             silk_label="3V3 OK",
             fields={
@@ -3373,8 +3626,8 @@ def pico_carrier() -> Design:
     for index, number in enumerate(right, start=1):
         nets.setdefault(pico_net(pins[number]), []).extend([f"U1.{number}", f"J4.{index}"])
 
-    nets["+5V"] = ["J1.1", "D1.1"]
-    nets["VSYS"] += ["D1.2", "C1.1"]
+    nets["+5V"] = ["J1.1", "D1.2"]
+    nets["VSYS"] += ["D1.1", "C1.1"]
     nets["+3V3"] += ["C2.1", "R1.1"]
     nets["GND"] += ["J1.2", "C1.2", "C2.2", "D3.1"]
     nets["LED_P"] = ["R1.2", "D3.2"]
@@ -3384,21 +3637,52 @@ def pico_carrier() -> Design:
         title="Raspberry Pi Pico carrier, 5 V in",
         rev="A",
         company="kicad_skills examples",
-        notes=[
-            "Every module pin is brought out 1:1 to the header beside it. J4 counts",
-            "down against the module: the Pico numbers its right hand side from the",
-            "bottom and a pin header numbers itself from the top.",
-            "5 V reaches VSYS through D1, which is what the Pico datasheet asks for",
-            "- it stops USB and the external supply fighting when both are plugged",
-            "in, at the cost of a diode drop. C1 22 uF / 16 V is the bulk that goes",
-            "with it, small enough to sit against the pin, which an electrolytic is",
-            "not. C2 bypasses the module's own 3.3 V and D3 says that rail is up.",
-            "AGND goes to the header on its own: the module already joins it to GND,",
-            "and doing it again here is two power outputs wired together.",
+        notes=[],
+        note_blocks=[
+            (
+                (71.12, 17.78),
+                [
+                    "5 V in feeds VSYS through D1 - the datasheet's own arrangement:",
+                    "it keeps USB and the external supply from fighting when both are",
+                    "plugged in. C1 22 uF / 16 V is the bulk that goes with it.",
+                ],
+            ),
+            (
+                (198.12, 64.77),
+                [
+                    "C2 bypasses the module's own 3.3 V;",
+                    "D3 says that rail is up.",
+                ],
+            ),
+            (
+                (20.32, 146.05),
+                [
+                    "Every module pin goes 1:1 to the header beside it, as names:",
+                    "the pair of labels at each pin is the mapping. J4 counts down",
+                    "against the module - the Pico numbers its right side from the",
+                    "bottom, a header from the top.",
+                ],
+            ),
+            (
+                (165.1, 146.05),
+                [
+                    "AGND goes to the header on its own: the module",
+                    "already joins it to GND inside, and joining it",
+                    "again here is two power outputs wired together.",
+                ],
+            ),
+            (
+                (165.1, 160.02),
+                [
+                    "The back plane necessarily opens under the module's two",
+                    "pin rows: forty through-holes at 2.54 mm leave no copper",
+                    "between them. It is continuous around and between the rows.",
+                ],
+            ),
         ],
         parts=parts,
         nets=nets,
-        power_flags=[("+5V", "J1.1"), ("VSYS", "D1.2"), ("ADC_VREF", "U1.35")],
+        power_flags=[("+5V", "J1.1"), ("VSYS", "D1.1"), ("ADC_VREF", "U1.35")],
         board_size=(82.0, 68.0),
         tracks=[],
         vias=[],
@@ -3408,6 +3692,14 @@ def pico_carrier() -> Design:
         # The module's 2.54 mm pad pitch decides where everything goes; snapping
         # to 0.5 mm would move the headers off the pins they exist to reach.
         board_grid=None,
+        label_nets=(
+            *(f"GP{n}" for n in range(29)),
+            "RUN",
+            "3V3_EN",
+            "VBUS",
+            "ADC_VREF",
+            "AGND",
+        ),
     ).snapped()
 
     SIG, POWER = 0.3, 0.8
@@ -3421,9 +3713,9 @@ def pico_carrier() -> Design:
 
     # The supply, placed by hand.
     tracks += [
-        Track("+5V", "F.Cu", POWER, ["J1.1", "D1.1"], auto=True),
-        Track("VSYS", "F.Cu", POWER, ["D1.2", "J4.2"], auto=True),
-        Track("VSYS", "F.Cu", POWER, ["C1.1", "D1.2"], auto=True),
+        Track("+5V", "F.Cu", POWER, ["J1.1", "D1.2"], auto=True),
+        Track("VSYS", "F.Cu", POWER, ["D1.1", "J4.2"], auto=True),
+        Track("VSYS", "F.Cu", POWER, ["C1.1", "D1.1"], auto=True),
         Track("+3V3", "F.Cu", POWER, ["C2.1", "J4.5"], auto=True),
         Track("+3V3", "F.Cu", SIG, ["C2.1", "R1.1"], auto=True),
         Track("LED_P", "F.Cu", SIG, ["R1.2", "D3.2"], auto=True),
@@ -3504,7 +3796,10 @@ def opamp_filter() -> Design:
             "Device:R",
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
-            (70.0, 130.0),
+            (
+                70.0,
+                128.27,
+            ),
             (24.0, 26.0, 0.0),
             Tolerance="1%",
             Power="0.125W",
@@ -3587,7 +3882,7 @@ def opamp_filter() -> Design:
             "Device:C",
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
-            (190.0, 65.0),
+            (181.61, 74.93),
             (52.0, 12.0, 0.0),
             Voltage="25V",
             Tolerance="10%",
@@ -3627,7 +3922,7 @@ def opamp_filter() -> Design:
             "5V",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             (205.0, 35.0),
-            (70.0, 8.0, 0.0),
+            (30.0, 8.0, 0.0),
             MPN="1729128",
             Manufacturer="Phoenix Contact",
             Datasheet="https://www.phoenixcontact.com/product/1729128",
@@ -3637,7 +3932,7 @@ def opamp_filter() -> Design:
             "Device:R",
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
-            (75.0, 165.0),
+            (74.93, 152.4),
             (30.0, 34.0, 0.0),
             Tolerance="1%",
             Power="0.125W",
@@ -3650,7 +3945,7 @@ def opamp_filter() -> Design:
             "Device:R",
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
-            (75.0, 190.0),
+            (74.93, 175.26),
             (36.0, 34.0, 0.0),
             Tolerance="1%",
             Power="0.125W",
@@ -3663,7 +3958,7 @@ def opamp_filter() -> Design:
             "Device:C",
             "10u",
             "Capacitor_SMD:C_0805_2012Metric",
-            (105.0, 180.0),
+            (104.14, 163.83),
             (42.0, 34.0, 0.0),
             Voltage="16V",
             Tolerance="20%",
@@ -3676,7 +3971,7 @@ def opamp_filter() -> Design:
             OPAMP,
             "MCP6001R",
             "Package_TO_SOT_SMD:SOT-23-5",
-            sheet=(150.0, 175.0),
+            sheet=(149.86, 160.02),
             board=(52.0, 34.0, 0.0),
             stub=6.35,
             fields={
@@ -3703,7 +3998,7 @@ def opamp_filter() -> Design:
             "Device:R",
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
-            (225.0, 140.0),
+            (224.79, 134.62),
             (70.0, 27.0, 90.0),
             Tolerance="1%",
             Power="0.125W",
@@ -3716,13 +4011,40 @@ def opamp_filter() -> Design:
             "Device:C",
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
-            (190.0, 150.0),
+            (181.61, 152.4),
             (58.0, 30.0, 0.0),
             Voltage="25V",
             Tolerance="10%",
             MPN="CL21B104KBCNNNC",
             Manufacturer="Samsung",
             Datasheet=SAMSUNG.format("CL21B104KBCNNNC"),
+        ),
+        Part(
+            "TP1",
+            "Connector:TestPoint",
+            "TP",
+            "TestPoint:TestPoint_Pad_D1.5mm",
+            sheet=(144.78, 87.63),
+            board=(40.0, 14.0, 0.0),
+            no_connect=False,
+        ),
+        Part(
+            "TP2",
+            "Connector:TestPoint",
+            "TP",
+            "TestPoint:TestPoint_Pad_D1.5mm",
+            sheet=(186.69, 87.63),
+            board=(56.0, 24.0, 0.0),
+            no_connect=False,
+        ),
+        Part(
+            "TP3",
+            "Connector:TestPoint",
+            "TP",
+            "TestPoint:TestPoint_Pad_D1.5mm",
+            sheet=(168.91, 168.91),
+            board=(46.0, 38.0, 0.0),
+            no_connect=False,
         ),
     ]
 
@@ -3744,11 +4066,11 @@ def opamp_filter() -> Design:
         "IN": ["J1.1", "C3.1", "R7.1"],
         "IN_DC": ["C3.2", "R5.1", "R1.1"],
         "X": ["R1.2", "R2.1", "C1.1"],
-        "FILT_IN": ["R2.2", "C2.1", "U1.3"],
-        "OUT": ["U1.1", "U1.4", "C1.2", "C6.1"],
+        "FILT_IN": ["R2.2", "C2.1", "U1.3", "TP1.1"],
+        "OUT": ["U1.1", "U1.4", "C1.2", "C6.1", "TP2.1"],
         "OUT_AC": ["C6.2", "J3.1", "R6.1"],
         "MID": ["R3.2", "R4.1", "C4.1", "U2.3"],
-        "VREF": ["U2.1", "U2.4", "R5.2", "C2.2"],
+        "VREF": ["U2.1", "U2.4", "R5.2", "C2.2", "TP3.1"],
     }
 
     design = Design(
@@ -3756,27 +4078,54 @@ def opamp_filter() -> Design:
         title="1 kHz Sallen-Key low pass, single 5 V",
         rev="A",
         company="kicad_skills examples",
-        notes=[
-            "Second-order Sallen-Key low pass, unity gain, on one 5 V rail.",
-            "R1 = R2 = 10k with C1 = 22n and C2 = 10n gives f = 1073 Hz and",
-            "Q = 0.742. Butterworth wants Q = 0.707, which is 11 nF - a value",
-            "one cannot buy in C0G, and C0G is what keeps the corner where it is.",
-            "An X7R of the same size loses a third of its value over the rail.",
-            "VREF is half the rail: R3/R4 make it and U2 buffers it. The filter's",
-            "return flows into that node through C2, and a bare divider is a",
-            "50k source impedance - the filter would not be this filter.",
-            "C3 and C6 couple in and out, so the header sees no DC. R5 sets the",
-            "input's own operating point at VREF and loads the source with 100k.",
-            "R6 and R7 bleed the far sides of the coupling caps to ground:",
-            "without them those nodes float at whatever they last charged to,",
-            "and plugging anything in pops.",
+        notes=[],
+        note_blocks=[
+            (
+                (78.74, 41.91),
+                [
+                    "R1 = R2 = 10k with C1 22n / C2 10n: f = 1073 Hz, Q = 0.742.",
+                    "Butterworth wants Q = 0.707 = 11 nF - not a C0G value, and",
+                    "C0G is what keeps the corner where it is; an X7R of this",
+                    "size loses a third of its value over the rail.",
+                ],
+            ),
+            (
+                (95.25, 186.69),
+                [
+                    "VREF is half the rail: R3/R4 make it, U2 buffers it. The",
+                    "filter's return flows into that node through C2; a bare",
+                    "divider is a 50k source - the filter would not be this filter.",
+                ],
+            ),
+            (
+                (17.78, 137.16),
+                [
+                    "C3/C6 couple in and out: the header sees no DC.",
+                    "R5 sets the input's operating point at VREF;",
+                    "R7/R6 bleed the coupling caps so nothing pops.",
+                ],
+            ),
+            (
+                (127.0, 60.96),
+                [
+                    "TP1-TP3: filter input, output and VREF -",
+                    "where the simulation meets the board.",
+                ],
+            ),
         ],
         parts=parts,
         nets=nets,
         power_flags=[("+5V", "J2.1"), ("GND", "J2.2")],
         board_size=(80.0, 45.0),
         tracks=[],
-        vias=[],
+        vias=[
+            # mid-board ties between the faces: the signal row slices the
+            # front pour, and these give its pieces a short way to the plane
+            Via("GND", x=21.0, y=22.5),
+            Via("GND", x=33.0, y=22.5),
+            Via("GND", x=45.0, y=25.5),
+            Via("GND", x=66.0, y=22.5),
+        ],
         pour=(3.0, 3.0, 77.0, 42.0),
         notes_at=(18.0, 20.0),
     ).snapped()
@@ -3822,6 +4171,9 @@ def opamp_filter() -> Design:
         Track("X", "F.Cu", SIG, ["R1.2", "R2.1"], auto=True),
         Track("X", "F.Cu", SIG, ["R2.1", "C1.1"], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["R2.2", u1w["3"]], auto=True),
+        Track("FILT_IN", "F.Cu", SIG, ["TP1.1", "R2.2"], auto=True),
+        Track("OUT", "F.Cu", SIG, ["TP2.1", "C6.1"], auto=True),
+        Track("VREF", "F.Cu", SIG, ["TP3.1", "C2.2"], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["C2.1", u1w["3"]], auto=True),
         Track("OUT", "F.Cu", SIG, [u1w["1"], u1e["4"]], auto=True),
         Track("OUT", "F.Cu", SIG, [u1w["1"], "C1.2"], auto=True),
@@ -3998,7 +4350,7 @@ def fpga_audio() -> Design:
             "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
             # Clear of the title block, which owns the bottom right corner.
             sheet=(370.0, 245.0),
-            board=(74.0, 66.0, 0.0),
+            board=(74.0, 76.0, 0.0),
             mirror="y",
             fields={
                 "MPN": "61300611121",
@@ -4053,13 +4405,13 @@ def fpga_audio() -> Design:
         cap("C17", "10u", (165.0, 45.0), (59.0, 43.0, 90.0), "16V", "CL10A106MQ8NNNC"),
         res("R3", "100R", (190.0, 45.0), (63.0, 50.0, 90.0), "RC0603FR-07100RL"),
         res("R4", "10k", (330.0, 240.0), (56.0, 74.0, 0.0), "RC0603FR-0710KL"),
-        cap("C6", "100n", (255.0, 45.0), (57.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C7", "100n", (285.0, 45.0), (61.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C6", "100n", (228.6, 95.25), (57.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C7", "100n", (228.6, 120.65), (61.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C8", "100n", (255.0, 270.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C9", "100n", (95.0, 180.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C10", "100n", (300.0, 70.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C11", "100n", (370.0, 70.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C16", "100n", (395.0, 70.0), (84.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C10", "100n", (228.6, 146.05), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C11", "100n", (312.42, 70.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C16", "100n", (347.98, 70.0), (84.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C12", "2u2", (300.0, 180.0), (60.0, 50.0, 0.0), "16V", "CL10A225KO8NNNC"),
         cap("C13", "2u2", (330.0, 180.0), (84.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
         cap("C14", "2u2", (360.0, 180.0), (84.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
@@ -4179,23 +4531,53 @@ def fpga_audio() -> Design:
         title="iCE40UP5K to PCM5102A, I2S out",
         rev="A",
         company="kicad_skills examples",
-        notes=[
-            "A 0.5 mm pitch QFN with pads on four sides is not a two layer board.",
-            "A real iCE40 design drops each pin into an inner layer; this one has",
-            "no inner layer, so all 48 escape on the top at 0.2 mm track and",
-            "0.2 mm clearance - a fine-line process, and the reason a 7 mm chip",
-            "needs 25 mm of board around it before anything else can be placed.",
-            "Two rails: 3.3 V in for the I/O banks, the codec and the flash, and",
-            "1.2 V from U3 for the core, with C15 on the VCC pins. VCCPLL is",
-            "filtered from the core rail through R3 with C17 and C5 at the pin,",
-            "which is what keeps core switching noise out of the PLL.",
-            "R4 holds the flash chip select up while the FPGA is still",
-            "configuring and its pins are floating.",
-            "U1 boots from U4 over its own SPI port; J3 is that bus plus CRESET,",
-            "so the flash can be written in circuit. R1 and R2 hold CRESET and",
-            "CDONE up, both being open drain.",
-            "U2's mode pins are strapped to a rail rather than driven: 16-bit",
-            "I2S, no de-emphasis, normal filter, un-muted.",
+        notes=[],
+        note_blocks=[
+            (
+                (17.78, 208.28),
+                [
+                    "A 0.5 mm pitch QFN with pads on four sides is not a two layer",
+                    "board. A real iCE40 design drops each pin into an inner layer;",
+                    "this one has no inner layer, so all 48 escape on the top at",
+                    "0.2 mm track and 0.2 mm clearance - a fine-line process, and",
+                    "the reason a 7 mm chip needs 25 mm of board around it.",
+                ],
+            ),
+            (
+                (17.78, 87.63),
+                [
+                    "C1 10u + C2 100n: the 3.3 V input, at U3.",
+                    "C3/C4: the 1.2 V core rail it makes. C15 sits",
+                    "on U1's VCC pins; VCCPLL is filtered from the",
+                    "core rail through R3, C17 and C5 at the pin -",
+                    "core switching noise stays out of the PLL.",
+                ],
+            ),
+            (
+                (215.9, 168.91),
+                [
+                    "C6/C7, C10: one 100n per FPGA I/O-bank",
+                    "supply pin, beside the bank they feed.",
+                ],
+            ),
+            (
+                (302.26, 148.59),
+                [
+                    "U2's mode pins are strapped, not driven: 16-bit I2S,",
+                    "no de-emphasis, normal filter, un-muted. C11/C16",
+                    "bypass its supplies; C12-C14 are the charge pump",
+                    "and LDO reservoirs the datasheet asks for.",
+                ],
+            ),
+            (
+                (256.54, 273.05),
+                [
+                    "U1 boots from U4 over its own SPI port; J3 is that bus",
+                    "plus CRESET, so the flash can be written in circuit.",
+                    "R4 holds the select up while the FPGA configures;",
+                    "R1/R2 hold CRESET and CDONE up, both open drain.",
+                ],
+            ),
         ],
         parts=parts,
         nets=nets,
@@ -4203,14 +4585,13 @@ def fpga_audio() -> Design:
         # power *input*, and without a flag ERC says so.
         power_flags=[("+3V3", "J1.1"), ("GND", "J1.2")],
         board_size=(94.0, 84.0),
+        label_nets=("I2S_SCK", "I2S_BCK", "I2S_DIN", "I2S_LRCK"),
+        route_keepout=("U2", "U4"),
         tracks=[],
         vias=[],
         pour=(3.0, 3.0, 91.0, 81.0),
         # Four units of one symbol and twenty-odd parts do not fit on A4.
         paper="A3",
-        # Bottom left, under the crystal: started at the top of the sheet the
-        # notes printed straight over the 1.2 V regulator and its capacitors.
-        notes_at=(18.0, 195.0),
     ).snapped()
 
     # Everything that lands on the QFN's escape lands at 0.2 mm: the escape
