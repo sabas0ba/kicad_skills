@@ -4412,7 +4412,7 @@ def fpga_audio() -> Design:
             "SPI PROG",
             "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
             # Clear of the title block, which owns the bottom right corner.
-            sheet=(310.0, 254.0),
+            sheet=(268.0, 240.0),
             board=(74.0, 66.0, 0.0),
             mirror="y",
             fields={
@@ -4597,7 +4597,7 @@ def fpga_audio() -> Design:
         notes=[],
         note_blocks=[
             (
-                (17.78, 268.0),
+                (17.78, 232.0),
                 [
                     "A 0.5 mm pitch QFN with pads on four sides is not a two layer",
                     "board. A real iCE40 design drops each pin into an inner layer;",
@@ -4633,7 +4633,7 @@ def fpga_audio() -> Design:
                 ],
             ),
             (
-                (196.0, 282.0),
+                (17.78, 258.0),
                 [
                     "U1 boots from U4 over its own SPI port; J3 is that bus",
                     "plus CRESET, so the flash can be written in circuit.",
