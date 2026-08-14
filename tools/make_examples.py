@@ -4607,7 +4607,7 @@ def fpga_audio() -> Design:
                 ],
             ),
             (
-                (17.78, 82.0),
+                (100.0, 78.0),
                 [
                     "C1 10u + C2 100n: the 3.3 V input, at U3.",
                     "C3/C4: the 1.2 V core rail it makes. C15 sits",
