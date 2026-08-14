@@ -2138,13 +2138,19 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
 
 
 def _stitch_vias(design: Design) -> list[Via]:
-    """Ground vias around the pour's rim, so no face's edge copper floats.
+    """Ground vias over the pour, so no face's copper floats.
 
-    With ground on both faces, the front pour's rim would otherwise hang on
-    whatever pads it happens to touch; a ring of stitching vias ties the two
-    planes together at the boundary, which is also where edge-coupled noise
-    wants a short way home. Candidates every 10 mm along the rim, kept only
-    where they clear every pad, every foreign track and every existing hole.
+    Two jobs, one mechanism. Around the rim, the front pour would otherwise
+    hang on whatever pads it happens to touch, and the boundary is where
+    edge-coupled noise wants a short way home. Across the middle it matters
+    more: the clearance channels shred the front pour into pieces there, and a
+    piece that touches no ground pad of its own is not poured copper at all -
+    the filler drops it as an orphan, which is how a plane becomes the blank
+    a reviewer sees. A via every few millimetres gives each piece something to
+    hold onto, and it is also the return path the plane was poured for.
+
+    Candidates on a grid, kept only where they clear every pad, every foreign
+    track and every existing hole.
     """
     if not design.pour:
         return []
@@ -2161,6 +2167,16 @@ def _stitch_vias(design: Design) -> list[Via]:
     while y < bottom - 0.01:
         rim += [(round(left, 2), round(y, 2)), (round(right, 2), round(y, 2))]
         y += step
+    # the interior mesh, offset half a step off the rim's lines so a rejected
+    # rim candidate and its neighbour inside do not fail for the same reason
+    inner = 6.0
+    y = top + inner
+    while y < bottom - 0.01:
+        x = left + inner / 2
+        while x < right + 0.01:
+            rim.append((round(x, 2), round(y, 2)))
+            x += inner
+        y += inner
 
     pads = []
     for part in design.footprints():
@@ -2175,7 +2191,7 @@ def _stitch_vias(design: Design) -> list[Via]:
     segments = []
     for track in design.tracks:
         points = [resolve(design, point) for point in track.points]
-        segments.extend((track.net, a, b) for a, b in pairwise(points))
+        segments.extend((track.net, track.width, a, b) for a, b in pairwise(points))
     holes = [via_position(design, via) for via in design.vias]
 
     kept: list[Via] = []
@@ -2188,10 +2204,12 @@ def _stitch_vias(design: Design) -> list[Via]:
                 ok = False
                 break
         if ok:
-            for net, a, b in segments:
+            for net, width, a, b in segments:
                 if net == POUR_NET:
                     continue
-                if _segment_to_point(a, b, (vx, vy)) < radius + 0.45:
+                # centreline to centreline: the via's copper, the track's half
+                # width, and a clearance with room for the router's own grid
+                if _segment_to_point(a, b, (vx, vy)) < radius + width / 2 + 0.45:
                     ok = False
                     break
         if ok and all(math.dist((vx, vy), hole) >= 1.2 for hole in holes):
@@ -3125,7 +3143,7 @@ def motor_driver() -> Design:
             "VM 2.7-10.8V",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(30.0, 80.0),
-            board=(92.0, 12.0, 270.0),
+            board=(80.0, 12.0, 270.0),
             mirror="y",
             fields={
                 "MPN": "1729128",
@@ -3139,7 +3157,7 @@ def motor_driver() -> Design:
             "100u",
             "Capacitor_SMD:CP_Elec_6.3x7.7",
             sheet=(55.88, 86.36),
-            board=(70.0, 17.0, 0.0),
+            board=(66.0, 17.0, 0.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "20%",
@@ -3228,7 +3246,7 @@ def motor_driver() -> Design:
             "4k7",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(81.28, 107.95),
-            board=(72.0, 6.0, 0.0),
+            board=(66.0, 6.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -3243,7 +3261,7 @@ def motor_driver() -> Design:
             "green",
             "LED_SMD:LED_0805_2012Metric",
             sheet=(81.28, 121.92),
-            board=(80.0, 6.0, 180.0),
+            board=(74.0, 6.0, 180.0),
             silk_label="VM OK",
             fields={
                 "Voltage": "2.1V",
@@ -3285,7 +3303,7 @@ def motor_driver() -> Design:
             "LOGIC",
             "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical",
             sheet=(40.0, 45.0),
-            board=(92.0, 26.0, 0.0),
+            board=(80.0, 26.0, 0.0),
             fields={
                 "MPN": "61300811121",
                 "Manufacturer": "Wurth Elektronik",
@@ -3377,10 +3395,10 @@ def motor_driver() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("VM", "J1.1"), ("GND", "J1.2"), ("VINT", "C4.1")],
-        board_size=(100.0, 50.0),
+        board_size=(88.0, 50.0),
         tracks=[],
         vias=[],
-        pour=(3.0, 3.0, 97.0, 47.0),
+        pour=(3.0, 3.0, 85.0, 47.0),
         label_nets=("nSLEEP", "AIN1", "AIN2", "BIN1", "BIN2", "nFAULT"),
     )
 
@@ -3398,9 +3416,9 @@ def motor_driver() -> Design:
         design,
         "U1",
         ["1", "2", "3", "4", "5", "6", "7", "8"],
-        lead=39.6,
-        column=29.0,
-        pitch=2.0,
+        lead=37.5,
+        column=32.0,
+        pitch=1.4,
         centre=26.0,
         width=SIG,
         widths={"2": 0.4, "4": 0.4, "5": 0.4, "7": 0.4},
@@ -3409,8 +3427,8 @@ def motor_driver() -> Design:
         design,
         "U1",
         ["16", "15", "14", "13", "12", "11", "10", "9"],
-        lead=48.4,
-        column=53.6,
+        lead=50.5,
+        column=56.0,
         pitch=1.3,
         centre=26.0,
         width=SIG,
@@ -3446,13 +3464,13 @@ def motor_driver() -> Design:
     # back of the board a couple of millimetres away and the router spends the
     # via; the plane is under all of it.
     tracks += [
-        Track("GND", "F.Cu", 0.5, ["C2.2", (57.5, 22.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["C4.2", (61.5, 24.05)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["C1.2", (68.0, 20.5)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["J1.2", (88.0, 18.5)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["J4.1", (88.0, 24.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["J4.8", (88.0, 45.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", SIG, ["D2.1", (83.0, 8.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["C2.2", (60.0, 22.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["C4.2", (63.5, 24.05)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["C1.2", (64.0, 20.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["J1.2", (76.0, 18.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["J4.1", (76.0, 24.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", 0.5, ["J4.8", (76.0, 45.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", SIG, ["D2.1", (77.0, 8.5)], auto=True, goal_layer="B.Cu"),
     ]
 
     # -- everything that simply has to arrive ------------------------------
@@ -3631,7 +3649,7 @@ def pico_carrier() -> Design:
             "Device:R",
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
-            sheet=(193.04, 60.96),
+            sheet=(203.2, 60.96),
             board=(56.0, 20.0, 0.0),
             fields={
                 "Tolerance": "1%",
@@ -3646,7 +3664,8 @@ def pico_carrier() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(193.04, 76.2),
+            sheet=(203.2, 78.74),
+            angle=90.0,
             board=(64.0, 20.0, 180.0),
             silk_label="3V3 OK",
             fields={
@@ -3690,7 +3709,7 @@ def pico_carrier() -> Design:
                 ],
             ),
             (
-                (198.12, 64.77),
+                (172.72, 38.1),
                 [
                     "C2 bypasses the module's own 3.3 V;",
                     "D3 says that rail is up.",

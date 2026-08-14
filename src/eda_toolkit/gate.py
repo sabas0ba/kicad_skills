@@ -140,6 +140,8 @@ _AI_BLOCKING = (
     "layout.decoupling_via",
     "layout.no_ground_plane",
     "layout.unfilled_zone",
+    "layout.pour_fragmented",
+    "layout.pour_coverage",
     "route.unrouted_net",
     "route.no_tracks",
     "route.stub",

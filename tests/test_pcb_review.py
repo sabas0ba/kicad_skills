@@ -595,6 +595,67 @@ def test_a_connector_with_no_nearby_silk_is_reported():
     )
 
 
+def test_a_pour_cut_in_half_is_reported_and_a_whole_one_is_not():
+    cut = board_from(zones=[_plane_zone(cut=True)])
+    findings = pcb_review.rule_pour_fragmented(ctx_for(cut))
+    assert [f.rule for f in findings] == ["layout.pour_fragmented"]
+    assert findings[0].details["islands"] == 2
+    # 800 of 1600 mm2 in the larger half
+    assert findings[0].details["largest_fraction"] == 0.5
+    assert pcb_review.rule_pour_fragmented(ctx_for(board_from(zones=[_plane_zone()]))) == []
+
+
+def test_welded_rectangles_of_one_island_are_not_fragmentation():
+    # what the generator emits: overlapping strips that are electrically one
+    outline = [(0.0, 0.0), (50.0, 0.0), (50.0, 40.0), (0.0, 40.0)]
+    fills = [
+        ("B.Cu", [(0.0, 0.0), (25.1, 0.0), (25.1, 40.0), (0.0, 40.0)]),
+        ("B.Cu", [(24.9, 0.0), (50.0, 0.0), (50.0, 40.0), (24.9, 40.0)]),
+    ]
+    zone = pcb.Zone(net="GND", layers=["B.Cu"], filled=True, outline=outline, fills=fills)
+    assert pcb_review.rule_pour_fragmented(ctx_for(board_from(zones=[zone]))) == []
+
+
+def test_a_nibbled_edge_is_not_fragmentation():
+    outline = [(0.0, 0.0), (50.0, 0.0), (50.0, 40.0), (0.0, 40.0)]
+    fills = [
+        ("B.Cu", [(0.0, 0.0), (50.0, 0.0), (50.0, 38.0), (0.0, 38.0)]),
+        ("B.Cu", [(0.0, 39.0), (5.0, 39.0), (5.0, 40.0), (0.0, 40.0)]),  # a sliver
+    ]
+    zone = pcb.Zone(net="GND", layers=["B.Cu"], filled=True, outline=outline, fills=fills)
+    assert pcb_review.rule_pour_fragmented(ctx_for(board_from(zones=[zone]))) == []
+
+
+def test_a_pour_mostly_eaten_by_clearance_is_reported():
+    outline = [(0.0, 0.0), (50.0, 0.0), (50.0, 40.0), (0.0, 40.0)]
+    # only the left third ever became copper
+    thin = pcb.Zone(
+        net="GND",
+        layers=["B.Cu"],
+        filled=True,
+        outline=outline,
+        fills=[("B.Cu", [(0.0, 0.0), (15.0, 0.0), (15.0, 40.0), (0.0, 40.0)])],
+    )
+    findings = pcb_review.rule_pour_coverage(ctx_for(board_from(zones=[thin])))
+    assert [f.rule for f in findings] == ["layout.pour_coverage"]
+    assert 0.28 < findings[0].details["coverage"] < 0.32
+    # a pour that filled its outline says nothing
+    assert pcb_review.rule_pour_coverage(ctx_for(board_from(zones=[_plane_zone()]))) == []
+
+
+def test_pour_coverage_counts_overlapping_pieces_once():
+    """The generated fill is welded rectangles; their areas cannot be added."""
+    outline = [(0.0, 0.0), (50.0, 0.0), (50.0, 40.0), (0.0, 40.0)]
+    doubled = pcb.Zone(
+        net="GND",
+        layers=["B.Cu"],
+        filled=True,
+        outline=outline,
+        fills=[("B.Cu", outline), ("B.Cu", outline)],
+    )
+    assert pcb_review.rule_pour_coverage(ctx_for(board_from(zones=[doubled]))) == []
+
+
 def test_a_one_sided_pour_is_context():
     one = board_from(zones=[_plane_zone()])
     findings = pcb_review.rule_pour_sides(ctx_for(one))

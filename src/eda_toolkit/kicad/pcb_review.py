@@ -39,6 +39,13 @@ THRESHOLDS = {
     "max_decoupling_via_mm": 1.5,
     # Interior angle below which a corner is an acid trap and an impedance step.
     "min_track_angle_deg": 90.0,
+    # How much of its own outline a ground pour has to actually fill. Below
+    # this it is not a plane, it is infill between the traces that cut it.
+    "min_pour_coverage": 0.8,
+    # How much of a ground pour's copper the largest connected island has to
+    # hold. Below this the plane is not a plane: it is pieces, and a return
+    # current that starts on one of them has to leave the layer to get home.
+    "min_pour_island_fraction": 0.7,
     # A power net may neck down this many millimetres in total (pad entries,
     # fine-pitch escapes); beyond it the neck is the track.
     "power_neck_mm": 10.0,
@@ -231,6 +238,22 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "a connector with no free silkscreen text near it: nothing says which "
         "pin carries what, and reversed hookup is how boards die",
         "info",
+    ),
+    "layout.pour_coverage": RuleSpec(
+        "a ground pour that fills less than `min_pour_coverage` of its own "
+        "outline - the tracks crossing it took the rest as clearance, and what "
+        "is left is infill between traces rather than a plane a return can "
+        "follow",
+        "warning",
+        threshold="min_pour_coverage",
+    ),
+    "layout.pour_fragmented": RuleSpec(
+        "a ground pour whose largest connected island holds less than "
+        "`min_pour_island_fraction` of its filled copper - the tracks crossing "
+        "it have cut the plane into pieces, and a return that starts on one of "
+        "them has to leave the layer to get home",
+        "warning",
+        threshold="min_pour_island_fraction",
     ),
     "layout.pour_single_sided": RuleSpec(
         "a two-layer board whose ground pour covers only one face - the other "
@@ -754,6 +777,258 @@ def rule_pour_sides(ctx: PcbContext) -> list[Finding]:
             details={"layers": sorted(ground_layers)},
         )
     ]
+
+
+@rule
+def rule_pour_fragmented(ctx: PcbContext) -> list[Finding]:
+    """A ground pour cut into pieces by the tracks crossing it.
+
+    The pour is only a return path while it is *one* piece. A track laid
+    across it takes a clearance channel with it, and enough of those turn the
+    plane into islands: a return current that starts on one island has to
+    leave the layer to get home, which is the loop the plane existed to close.
+    Measured as the share of the pour's filled copper in its largest connected
+    island - a nibbled edge is nothing, a bisected plane is the finding.
+
+    A track through the middle bisects the plane; the same track along the
+    edge only trims it. That is the fix, and it is a placement decision.
+    """
+    limit = ctx.thresholds["min_pour_island_fraction"]
+    findings = []
+    for zone in ctx.board.zones:
+        if zone.keepout or not zone.filled or not netlist_helpers_is_ground(zone.net):
+            continue
+        by_layer: dict[str, list[list[tuple[float, float]]]] = {}
+        for layer, points in zone.fills:
+            if len(points) >= 3:
+                by_layer.setdefault(layer, []).append(points)
+        for layer, polygons in sorted(by_layer.items()):
+            areas = [abs(_polygon_area(p)) for p in polygons]
+            total = sum(areas)
+            if total <= 0:
+                continue
+            islands = _merge_touching(polygons, areas)
+            largest = max(islands)
+            share = largest / total
+            if share >= limit - 1e-9 or len(islands) < 2:
+                continue
+            findings.append(
+                Finding(
+                    "layout.pour_fragmented",
+                    "warning",
+                    f"the {zone.net} pour on {layer} is cut into {len(islands)} "
+                    f"island(s); the largest holds {share:.0%} of its copper "
+                    f"(limit {limit:.0%}) - a return starting on another one "
+                    "has to leave the layer to get home",
+                    details={
+                        "layer": layer,
+                        "islands": len(islands),
+                        "largest_fraction": round(share, 3),
+                        "areas_mm2": [round(a, 1) for a in sorted(islands, reverse=True)[:6]],
+                    },
+                )
+            )
+    return findings
+
+
+@rule
+def rule_pour_coverage(ctx: PcbContext) -> list[Finding]:
+    """A ground pour that fills far less of its own outline than it claims.
+
+    Every track crossing a pour takes a clearance channel with it, and enough
+    of them turn the plane into infill between traces. The pour is still one
+    piece and still passes every connectivity check; it is simply no longer a
+    plane, and the return current under a signal has to find its way around
+    the gaps instead of running back underneath it.
+
+    Measured as the share of the pour's own outline that ended up as copper.
+    That is the number the eye reads off the plot, and it is the one the fix
+    moves: shorter runs, bundled together, along the edge rather than through
+    the middle.
+    """
+    limit = ctx.thresholds["min_pour_coverage"]
+    if limit <= 0:
+        return []
+    findings = []
+    for zone in ctx.board.zones:
+        if zone.keepout or not zone.filled or not netlist_helpers_is_ground(zone.net):
+            continue
+        if len(zone.outline) < 3:
+            continue
+        by_layer: dict[str, list[list[tuple[float, float]]]] = {}
+        for layer, points in zone.fills:
+            if len(points) >= 3:
+                by_layer.setdefault(layer, []).append(points)
+        for layer, polygons in sorted(by_layer.items()):
+            share = _fill_coverage(polygons, zone.outline)
+            if share is None or share >= limit - 1e-9:
+                continue
+            findings.append(
+                Finding(
+                    "layout.pour_coverage",
+                    "warning",
+                    f"the {zone.net} pour on {layer} fills {share:.0%} of its own "
+                    f"outline (limit {limit:.0%}) - the rest went to the clearance "
+                    "the tracks crossing it took, and what is left is infill "
+                    "between traces rather than a plane",
+                    details={"layer": layer, "coverage": round(share, 3)},
+                )
+            )
+    return findings
+
+
+def _fill_coverage(
+    polygons: list[list[tuple[float, float]]],
+    outline: list[tuple[float, float]],
+    step: float = 0.5,
+) -> float | None:
+    """The share of a zone's outline that its fill actually covers.
+
+    Rasterised rather than solved: the fill is hundreds of overlapping pieces,
+    so their areas cannot simply be added, and "is there copper here" is a
+    point test a grid answers directly. Half a millimetre is finer than any
+    clearance channel these boards cut and coarse enough to stay instant.
+    """
+    x0 = min(p[0] for p in outline)
+    x1 = max(p[0] for p in outline)
+    y0 = min(p[1] for p in outline)
+    y1 = max(p[1] for p in outline)
+    nx = max(1, int((x1 - x0) / step) + 1)
+    ny = max(1, int((y1 - y0) / step) + 1)
+    if nx * ny > 400_000:  # a board too large to raster at this step
+        return None
+
+    # bucket the fills so each cell only asks the polygons that could cover it
+    buckets: dict[tuple[int, int], list[int]] = {}
+    boxes = []
+    for index, poly in enumerate(polygons):
+        bx0 = min(p[0] for p in poly)
+        by0 = min(p[1] for p in poly)
+        bx1 = max(p[0] for p in poly)
+        by1 = max(p[1] for p in poly)
+        boxes.append((bx0, by0, bx1, by1))
+        for cx in range(int((bx0 - x0) / step), int((bx1 - x0) / step) + 1):
+            for cy in range(int((by0 - y0) / step), int((by1 - y0) / step) + 1):
+                buckets.setdefault((cx, cy), []).append(index)
+
+    inside = covered = 0
+    for iy in range(ny):
+        py = y0 + iy * step
+        for ix in range(nx):
+            px = x0 + ix * step
+            if not _point_in_polygon((px, py), outline):
+                continue
+            inside += 1
+            for index in buckets.get((ix, iy), ()):
+                bx0, by0, bx1, by1 = boxes[index]
+                if (
+                    bx0 <= px <= bx1
+                    and by0 <= py <= by1
+                    and _point_in_polygon((px, py), polygons[index])
+                ):
+                    covered += 1
+                    break
+    return covered / inside if inside else None
+
+
+def _polygon_area(points: list[tuple[float, float]]) -> float:
+    """The shoelace area of a closed polygon."""
+    total = 0.0
+    for (x0, y0), (x1, y1) in zip(points, [*points[1:], points[0]], strict=True):
+        total += x0 * y1 - x1 * y0
+    return total / 2
+
+
+def _polygons_touch(a: list[tuple[float, float]], b: list[tuple[float, float]]) -> bool:
+    """Whether two filled polygons share copper - overlap, or touch on an edge.
+
+    The bounding boxes are the cheap gate; a real board's fill polygons are
+    L- and C-shaped, so an overlapping box on its own proves nothing and the
+    edges have to be asked. Generated fills are rectangles, where the box test
+    is already exact and the edge pass agrees with it.
+    """
+    ax0, ay0 = min(p[0] for p in a), min(p[1] for p in a)
+    ax1, ay1 = max(p[0] for p in a), max(p[1] for p in a)
+    bx0, by0 = min(p[0] for p in b), min(p[1] for p in b)
+    bx1, by1 = max(p[0] for p in b), max(p[1] for p in b)
+    tol = 1e-6
+    if ax1 < bx0 - tol or bx1 < ax0 - tol or ay1 < by0 - tol or by1 < ay0 - tol:
+        return False
+    a_edges = list(zip(a, [*a[1:], a[0]], strict=True))
+    b_edges = list(zip(b, [*b[1:], b[0]], strict=True))
+    for p0, p1 in a_edges:
+        for q0, q1 in b_edges:
+            if _segments_meet(p0, p1, q0, q1):
+                return True
+    # one wholly inside the other still shares copper
+    return _point_in_polygon(a[0], b) or _point_in_polygon(b[0], a)
+
+
+def _segments_meet(p0, p1, q0, q1) -> bool:
+    def side(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    d1, d2 = side(q0, q1, p0), side(q0, q1, p1)
+    d3, d4 = side(p0, p1, q0), side(p0, p1, q1)
+    if ((d1 > 0) != (d2 > 0)) and ((d3 > 0) != (d4 > 0)):
+        return True
+    # collinear touching counts: two rectangles welded along one edge are one
+    for point, (s0, s1) in ((p0, (q0, q1)), (p1, (q0, q1)), (q0, (p0, p1)), (q1, (p0, p1))):
+        if abs(side(s0, s1, point)) < 1e-9 and _between(s0, s1, point):
+            return True
+    return False
+
+
+def _between(a, b, point) -> bool:
+    return (
+        min(a[0], b[0]) - 1e-9 <= point[0] <= max(a[0], b[0]) + 1e-9
+        and min(a[1], b[1]) - 1e-9 <= point[1] <= max(a[1], b[1]) + 1e-9
+    )
+
+
+def _point_in_polygon(point, polygon) -> bool:
+    x, y = point
+    inside = False
+    for (x0, y0), (x1, y1) in zip(polygon, [*polygon[1:], polygon[0]], strict=True):
+        if (y0 > y) != (y1 > y) and x < (x1 - x0) * (y - y0) / (y1 - y0 or 1e-12) + x0:
+            inside = not inside
+    return inside
+
+
+def _merge_touching(polygons: list[list[tuple[float, float]]], areas: list[float]) -> list[float]:
+    """Group polygons that share copper, and return one area per group.
+
+    A generated fill is many welded rectangles that are electrically one
+    island; counting the polygons would call an unbroken plane fragmented.
+    Overlaps are counted once by taking the group's bounding-box area as an
+    upper bound only when it is smaller than the sum - the pieces of a real
+    island tile it, so the sum is what matters and the cap only stops the
+    weld overlap from inflating it.
+    """
+    parent = list(range(len(polygons)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for i, one in enumerate(polygons):
+        for j in range(i + 1, len(polygons)):
+            if find(i) != find(j) and _polygons_touch(one, polygons[j]):
+                parent[find(i)] = find(j)
+
+    groups: dict[int, list[int]] = {}
+    for index in range(len(polygons)):
+        groups.setdefault(find(index), []).append(index)
+    out = []
+    for members in groups.values():
+        total = sum(areas[i] for i in members)
+        xs = [p[0] for i in members for p in polygons[i]]
+        ys = [p[1] for i in members for p in polygons[i]]
+        box = (max(xs) - min(xs)) * (max(ys) - min(ys))
+        out.append(min(total, box) if box > 0 else total)
+    return out
 
 
 def netlist_helpers_is_ground(net: str) -> bool:

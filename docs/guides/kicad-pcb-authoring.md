@@ -141,6 +141,20 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   a package's pad rows has no plane over it and the die right above it;
   close it to everything but the package's own pad entries and route around
   or on the far face.
+* **A pour is only a plane while it is mostly copper** (`layout.pour_coverage`,
+  `layout.pour_fragmented`). Every track crossing it takes a clearance channel
+  with it, and two tracks running a couple of millimetres apart take the strip
+  between them as well — it comes out thinner than the filler's sliver limit
+  and disappears, so a loose bundle costs the plane far more than its own
+  width. Bundle parallel runs tight, keep them short, and send them along the
+  edge: a track through the middle bisects the plane, the same track along the
+  edge only trims it.
+* **Stitch the middle, not just the rim.** In the dense part of a board the
+  channels shred the pour into pieces, and a piece that touches no ground pad
+  of its own is not poured copper at all — the filler drops it as an orphan,
+  which is where the blank areas on a plot come from. A ground via every few
+  millimetres gives each piece something to hold onto, and is the return path
+  the pour was there to provide.
 * **Pour ground on both faces and stitch them** (`layout.pour_single_sided`):
   the spare face's copper is free ground impedance, but only if a ring of
   stitching vias ties it to the plane — an unstitched island or edge strip
