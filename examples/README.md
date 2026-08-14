@@ -326,7 +326,7 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 6 findings waived | 0 / 2 / 0 | 0 / 6 / 8 |
+| `reviewed` | **PASS**, 6 findings waived | 0 / 2 / 0 | 0 / 6 / 9 |
 | `as-generated` | **FAIL**, 26 blocking | — | — |
 
 Under KiCad's own checks `reviewed` has no DRC errors, nothing unconnected and
