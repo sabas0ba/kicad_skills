@@ -243,8 +243,10 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "a ground pour that fills less than `min_pour_coverage` of its own "
         "outline - the tracks crossing it took the rest as clearance, and what "
         "is left is infill between traces rather than a plane a return can "
-        "follow",
-        "warning",
+        "follow. Read alongside how dense the board is: the same copper on a "
+        "smaller board scores lower, and making a board smaller is usually an "
+        "improvement, so this reports rather than faults",
+        "info",
         threshold="min_pour_coverage",
     ),
     "layout.pour_fragmented": RuleSpec(
@@ -842,9 +844,11 @@ def rule_pour_coverage(ctx: PcbContext) -> list[Finding]:
     the gaps instead of running back underneath it.
 
     Measured as the share of the pour's own outline that ended up as copper.
-    That is the number the eye reads off the plot, and it is the one the fix
-    moves: shorter runs, bundled together, along the edge rather than through
-    the middle.
+    That is the number the eye reads off the plot. It is *context*, not a
+    verdict: it is a density, so compacting a board - shortening every run,
+    which is the fix a reviewer asks for - lowers it even as the artwork gets
+    better. Read it next to the board's size and part count, and use
+    `layout.pour_fragmented` for the case that is a defect on its own terms.
     """
     limit = ctx.thresholds["min_pour_coverage"]
     if limit <= 0:
@@ -866,7 +870,7 @@ def rule_pour_coverage(ctx: PcbContext) -> list[Finding]:
             findings.append(
                 Finding(
                     "layout.pour_coverage",
-                    "warning",
+                    "info",
                     f"the {zone.net} pour on {layer} fills {share:.0%} of its own "
                     f"outline (limit {limit:.0%}) - the rest went to the clearance "
                     "the tracks crossing it took, and what is left is infill "

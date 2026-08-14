@@ -120,7 +120,7 @@ mismatches).
 | `silk.missing_board_id` | — | no free silkscreen text: the bare board states neither name nor revision |
 | `silk.unlabeled_connector` | — | a connector with no silk text near it saying which pin carries what |
 | `layout.pour_single_sided` | — | a two-layer board pouring ground on only one face |
-| `layout.pour_coverage` | 80 % | a ground pour that filled far less of its own outline than it claims — infill between traces, not a plane |
+| `layout.pour_coverage` | 80 % | how much of its own outline a ground pour actually filled — context, since it is a density and a smaller board scores lower |
 | `layout.pour_fragmented` | 70 % | a ground pour whose largest island holds less than this share of its copper: the plane is pieces |
 | `route.mixed_track_widths` | 3 widths | a net nobody decided the width of |
 | `route.detour` | 2.5x | routed copper against the minimum spanning tree of the net's pads — the scenic tour an autorouter leaves |

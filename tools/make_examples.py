@@ -3833,7 +3833,7 @@ def opamp_filter() -> Design:
             "IN",
             "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
             (30.0, 100.0),
-            (8.0, 18.0, 0.0),
+            (5.0, 17.0, 0.0),
             MPN="61300211121",
             Manufacturer="Wurth Elektronik",
             Datasheet="https://www.we-online.com/components/products/datasheet/61300211121.pdf",
@@ -3844,7 +3844,7 @@ def opamp_filter() -> Design:
             "1u",
             "Capacitor_SMD:C_0805_2012Metric",
             (55.0, 100.0),
-            (16.0, 18.0, 90.0),
+            (11.0, 17.0, 90.0),
             angle=90.0,
             Voltage="25V",
             Tolerance="10%",
@@ -3874,7 +3874,7 @@ def opamp_filter() -> Design:
             "10k",
             "Resistor_SMD:R_0805_2012Metric",
             (85.0, 100.0),
-            (26.0, 18.0, 0.0),
+            (18.0, 25.0, 0.0),
             angle=90.0,
             Tolerance="1%",
             Power="0.125W",
@@ -3888,7 +3888,7 @@ def opamp_filter() -> Design:
             "10k",
             "Resistor_SMD:R_0805_2012Metric",
             (115.0, 100.0),
-            (36.0, 18.0, 0.0),
+            (25.0, 17.0, 0.0),
             angle=90.0,
             Tolerance="1%",
             Power="0.125W",
@@ -3902,7 +3902,7 @@ def opamp_filter() -> Design:
             "22n",
             "Capacitor_SMD:C_0805_2012Metric",
             (100.0, 70.0),
-            (42.0, 11.0, 0.0),
+            (21.0, 10.0, 0.0),
             Voltage="50V",
             Tolerance="1%",
             Dielectric="C0G",
@@ -3916,7 +3916,7 @@ def opamp_filter() -> Design:
             "10n",
             "Capacitor_SMD:C_0805_2012Metric",
             (130.0, 130.0),
-            (40.0, 24.0, 0.0),
+            (26.0, 24.0, 0.0),
             Voltage="50V",
             Tolerance="1%",
             Dielectric="C0G",
@@ -3930,7 +3930,7 @@ def opamp_filter() -> Design:
             "MCP6001R",
             "Package_TO_SOT_SMD:SOT-23-5",
             sheet=(160.0, 100.0),
-            board=(48.0, 18.0, 0.0),
+            board=(33.0, 17.0, 0.0),
             stub=6.35,
             fields={
                 "MPN": "MCP6001RT-I/OT",
@@ -3944,7 +3944,7 @@ def opamp_filter() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             (181.61, 74.93),
-            (52.0, 12.0, 0.0),
+            (37.0, 10.0, 0.0),
             Voltage="25V",
             Tolerance="10%",
             MPN="CL21B104KBCNNNC",
@@ -3957,7 +3957,7 @@ def opamp_filter() -> Design:
             "1u",
             "Capacitor_SMD:C_0805_2012Metric",
             (195.0, 100.0),
-            (60.0, 18.0, 90.0),
+            (41.0, 17.0, 90.0),
             angle=90.0,
             Voltage="25V",
             Tolerance="10%",
@@ -3971,7 +3971,7 @@ def opamp_filter() -> Design:
             "OUT",
             "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
             (225.0, 100.0),
-            (72.0, 18.0, 0.0),
+            (51.0, 17.0, 0.0),
             angle=180.0,
             MPN="61300211121",
             Manufacturer="Wurth Elektronik",
@@ -3983,7 +3983,7 @@ def opamp_filter() -> Design:
             "5V",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             (205.0, 35.0),
-            (30.0, 8.0, 0.0),
+            (12.0, 8.0, 0.0),
             MPN="1729128",
             Manufacturer="Phoenix Contact",
             Datasheet="https://www.phoenixcontact.com/product/1729128",
@@ -3994,7 +3994,7 @@ def opamp_filter() -> Design:
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
             (74.93, 152.4),
-            (30.0, 34.0, 0.0),
+            (7.0, 30.0, 90.0),
             Tolerance="1%",
             Power="0.125W",
             MPN="RC0805FR-07100KL",
@@ -4007,7 +4007,7 @@ def opamp_filter() -> Design:
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
             (74.93, 175.26),
-            (36.0, 34.0, 0.0),
+            (7.0, 36.0, 90.0),
             Tolerance="1%",
             Power="0.125W",
             MPN="RC0805FR-07100KL",
@@ -4020,7 +4020,7 @@ def opamp_filter() -> Design:
             "10u",
             "Capacitor_SMD:C_0805_2012Metric",
             (104.14, 163.83),
-            (42.0, 34.0, 0.0),
+            (12.0, 34.0, 0.0),
             Voltage="16V",
             Tolerance="20%",
             MPN="CL21A106KOQNNNE",
@@ -4033,7 +4033,7 @@ def opamp_filter() -> Design:
             "MCP6001R",
             "Package_TO_SOT_SMD:SOT-23-5",
             sheet=(149.86, 160.02),
-            board=(52.0, 34.0, 0.0),
+            board=(26.0, 32.0, 0.0),
             stub=6.35,
             fields={
                 "MPN": "MCP6001RT-I/OT",
@@ -4047,7 +4047,7 @@ def opamp_filter() -> Design:
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
             (36.0, 120.0),
-            (12.0, 26.0, 90.0),
+            (7.0, 22.0, 90.0),
             Tolerance="1%",
             Power="0.125W",
             MPN="RC0805FR-07100KL",
@@ -4060,7 +4060,7 @@ def opamp_filter() -> Design:
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
             (224.79, 134.62),
-            (70.0, 27.0, 90.0),
+            (46.0, 24.0, 90.0),
             Tolerance="1%",
             Power="0.125W",
             MPN="RC0805FR-07100KL",
@@ -4073,7 +4073,7 @@ def opamp_filter() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             (181.61, 152.4),
-            (58.0, 30.0, 0.0),
+            (14.0, 29.0, 0.0),
             Voltage="25V",
             Tolerance="10%",
             MPN="CL21B104KBCNNNC",
@@ -4086,7 +4086,7 @@ def opamp_filter() -> Design:
             "TP",
             "TestPoint:TestPoint_Pad_D1.5mm",
             sheet=(144.78, 87.63),
-            board=(40.0, 14.0, 0.0),
+            board=(29.0, 13.0, 0.0),
             no_connect=False,
         ),
         Part(
@@ -4095,7 +4095,7 @@ def opamp_filter() -> Design:
             "TP",
             "TestPoint:TestPoint_Pad_D1.5mm",
             sheet=(186.69, 87.63),
-            board=(56.0, 24.0, 0.0),
+            board=(44.0, 12.0, 0.0),
             no_connect=False,
         ),
         Part(
@@ -4104,7 +4104,7 @@ def opamp_filter() -> Design:
             "TP",
             "TestPoint:TestPoint_Pad_D1.5mm",
             sheet=(168.91, 168.91),
-            board=(46.0, 38.0, 0.0),
+            board=(31.0, 36.0, 0.0),
             no_connect=False,
         ),
     ]
@@ -4177,17 +4177,17 @@ def opamp_filter() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("+5V", "J2.1"), ("GND", "J2.2")],
-        board_size=(80.0, 45.0),
+        board_size=(58.0, 42.0),
         tracks=[],
         vias=[
             # mid-board ties between the faces: the signal row slices the
             # front pour, and these give its pieces a short way to the plane
-            Via("GND", x=21.0, y=22.5),
-            Via("GND", x=33.0, y=22.5),
-            Via("GND", x=45.0, y=25.5),
-            Via("GND", x=66.0, y=22.5),
+            Via("GND", x=13.0, y=21.0),
+            Via("GND", x=22.0, y=21.0),
+            Via("GND", x=33.0, y=24.0),
+            Via("GND", x=44.0, y=20.0),
         ],
-        pour=(3.0, 3.0, 77.0, 42.0),
+        pour=(2.5, 2.5, 55.5, 39.5),
         notes_at=(18.0, 20.0),
     ).snapped()
 
@@ -4199,7 +4199,7 @@ def opamp_filter() -> Design:
     # same reason the motor driver's TSSOP does, two sizes down.
     escapes: list[Track] = []
     ends: dict[str, dict[str, tuple[float, float]]] = {}
-    for ref, (cx, cy, _) in (("U1", (48.0, 18.0, 0)), ("U2", (52.0, 34.0, 0))):
+    for ref, (cx, cy, _) in (("U1", (33.0, 17.0, 0)), ("U2", (26.0, 32.0, 0))):
         west, ends[f"{ref}w"] = fan(
             design,
             ref,
@@ -4253,18 +4253,20 @@ def opamp_filter() -> Design:
         Track("+5V", "F.Cu", POWER, ["C7.1", u2w["2"]], auto=True),
         Track("+5V", "F.Cu", SIG, ["C7.1", "R3.1"], auto=True),
     ]
+    # Each ground pad drops to the plane a couple of millimetres away, on the
+    # side away from the signal it returns: the loop closes at the part.
     for pad, target in (
-        ("J1.2", (12.0, 24.0)),
-        ("J3.2", (68.0, 24.0)),
-        ("R6.2", (70.0, 32.0)),
-        ("R7.2", (12.0, 30.0)),
-        ("J2.2", (66.0, 12.0)),
-        ("C5.2", (53.0, 9.0)),
-        ("C7.2", (61.0, 33.0)),
-        ("C4.2", (44.0, 38.0)),
-        ("R4.2", (37.0, 38.0)),
-        (u1e["5"], (54.0, 13.0)),
-        (u2e["5"], (58.0, 29.0)),
+        ("J1.2", (8.0, 22.0)),
+        ("J3.2", (49.0, 22.0)),
+        ("R6.2", (46.0, 20.0)),
+        ("R7.2", (9.0, 30.0)),
+        ("J2.2", (14.0, 6.0)),
+        ("C5.2", (37.0, 8.0)),
+        ("C7.2", (14.0, 33.0)),
+        ("C4.2", (15.0, 37.0)),
+        ("R4.2", (11.0, 38.0)),
+        (u1e["5"], (39.0, 13.0)),
+        (u2e["5"], (36.0, 34.0)),
     ):
         tracks.append(Track("GND", "F.Cu", 0.5, [pad, target], auto=True, goal_layer="B.Cu"))
     return replace(design, tracks=tracks)
@@ -4319,7 +4321,7 @@ def fpga_audio() -> Design:
             # Bank 0 faces the codec, bank 1 faces the flash, bank 2 is here for
             # its VCCIO pin alone, and the supplies are a box of their own.
             for unit, where in enumerate(
-                [(200.0, 110.0), (200.0, 215.0), (60.0, 110.0), (110.0, 45.0)], start=1
+                [(196.0, 110.0), (196.0, 200.0), (56.0, 110.0), (112.0, 40.0)], start=1
             )
         ),
         Part(
@@ -4341,7 +4343,7 @@ def fpga_audio() -> Design:
             "Regulator_Linear:AP2112K-1.2",
             "AP2112K-1.2",
             "Package_TO_SOT_SMD:SOT-23-5",
-            sheet=(60.0, 45.0),
+            sheet=(56.0, 40.0),
             board=(14.0, 24.0, 0.0),
             fields={
                 "Voltage": "1.2V",
@@ -4356,7 +4358,7 @@ def fpga_audio() -> Design:
             "Memory_Flash:W25Q32JVSS",
             "W25Q32JV",
             "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
-            sheet=(200.0, 270.0),
+            sheet=(196.0, 258.0),
             board=(40.0, 72.0, 0.0),
             fields={
                 "MPN": "W25Q32JVSSIQ",
@@ -4369,7 +4371,7 @@ def fpga_audio() -> Design:
             "Oscillator:ASE-xxxMHz",
             "12MHz",
             "Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm",
-            sheet=(60.0, 180.0),
+            sheet=(56.0, 150.0),
             board=(30.0, 14.0, 0.0),
             fields={
                 "Tolerance": "50ppm",
@@ -4383,7 +4385,7 @@ def fpga_audio() -> Design:
             "Connector:Screw_Terminal_01x02",
             "3V3 IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            sheet=(35.0, 30.0),
+            sheet=(30.0, 40.0),
             board=(8.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
@@ -4410,7 +4412,7 @@ def fpga_audio() -> Design:
             "SPI PROG",
             "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
             # Clear of the title block, which owns the bottom right corner.
-            sheet=(370.0, 245.0),
+            sheet=(310.0, 254.0),
             board=(74.0, 66.0, 0.0),
             mirror="y",
             fields={
@@ -4458,27 +4460,27 @@ def fpga_audio() -> Design:
         )
 
     parts += [
-        cap("C1", "10u", (95.0, 45.0), (18.0, 16.0, 0.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C2", "100n", (140.0, 45.0), (22.0, 20.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C3", "10u", (60.0, 70.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C4", "100n", (85.0, 70.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C5", "100n", (165.0, 70.0), (56.0, 43.0, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C17", "10u", (165.0, 45.0), (59.0, 43.0, 90.0), "16V", "CL10A106MQ8NNNC"),
-        res("R3", "100R", (190.0, 45.0), (63.0, 50.0, 90.0), "RC0603FR-07100RL"),
-        res("R4", "10k", (330.0, 240.0), (56.0, 74.0, 0.0), "RC0603FR-0710KL"),
-        cap("C6", "100n", (228.6, 95.25), (57.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C7", "100n", (228.6, 120.65), (61.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C8", "100n", (255.0, 270.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C9", "100n", (95.0, 180.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C10", "100n", (228.6, 146.05), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C11", "100n", (312.42, 70.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C16", "100n", (347.98, 70.0), (84.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C12", "2u2", (300.0, 180.0), (60.0, 50.0, 0.0), "16V", "CL10A225KO8NNNC"),
-        cap("C13", "2u2", (330.0, 180.0), (84.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
-        cap("C14", "2u2", (360.0, 180.0), (84.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
-        res("R1", "10k", (110.0, 150.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
-        res("R2", "10k", (140.0, 150.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
-        cap("C15", "100n", (140.0, 70.0), (57.0, 50.0, 180.0), "25V", "CL10B104KB8NNNC"),
+        cap("C1", "10u", (84.0, 48.0), (18.0, 16.0, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C2", "100n", (100.0, 48.0), (22.0, 20.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C3", "10u", (56.0, 62.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C4", "100n", (72.0, 62.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C5", "100n", (196.0, 48.0), (56.0, 43.0, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C17", "10u", (180.0, 48.0), (59.0, 43.0, 90.0), "16V", "CL10A106MQ8NNNC"),
+        res("R3", "100R", (164.0, 48.0), (63.0, 50.0, 90.0), "RC0603FR-07100RL"),
+        res("R4", "10k", (276.0, 232.0), (56.0, 74.0, 0.0), "RC0603FR-0710KL"),
+        cap("C6", "100n", (244.0, 84.0), (57.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C7", "100n", (244.0, 108.0), (61.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C8", "100n", (236.0, 258.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C9", "100n", (84.0, 150.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C10", "100n", (244.0, 132.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C11", "100n", (300.0, 62.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C16", "100n", (328.0, 62.0), (84.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C12", "2u2", (296.0, 158.0), (60.0, 50.0, 0.0), "16V", "CL10A225KO8NNNC"),
+        cap("C13", "2u2", (324.0, 158.0), (84.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
+        cap("C14", "2u2", (352.0, 158.0), (84.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
+        res("R1", "10k", (112.0, 232.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
+        res("R2", "10k", (140.0, 232.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
+        cap("C15", "100n", (148.0, 62.0), (57.0, 50.0, 180.0), "25V", "CL10B104KB8NNNC"),
     ]
 
     nets = {
@@ -4595,7 +4597,7 @@ def fpga_audio() -> Design:
         notes=[],
         note_blocks=[
             (
-                (17.78, 208.28),
+                (17.78, 268.0),
                 [
                     "A 0.5 mm pitch QFN with pads on four sides is not a two layer",
                     "board. A real iCE40 design drops each pin into an inner layer;",
@@ -4605,7 +4607,7 @@ def fpga_audio() -> Design:
                 ],
             ),
             (
-                (17.78, 133.35),
+                (17.78, 82.0),
                 [
                     "C1 10u + C2 100n: the 3.3 V input, at U3.",
                     "C3/C4: the 1.2 V core rail it makes. C15 sits",
@@ -4615,14 +4617,14 @@ def fpga_audio() -> Design:
                 ],
             ),
             (
-                (215.9, 168.91),
+                (258.0, 152.0),
                 [
                     "C6/C7, C10: one 100n per FPGA I/O-bank",
                     "supply pin, beside the bank they feed.",
                 ],
             ),
             (
-                (302.26, 148.59),
+                (296.0, 186.0),
                 [
                     "U2's mode pins are strapped, not driven: 16-bit I2S,",
                     "no de-emphasis, normal filter, un-muted. C11/C16",
@@ -4631,7 +4633,7 @@ def fpga_audio() -> Design:
                 ],
             ),
             (
-                (317.5, 215.9),
+                (196.0, 282.0),
                 [
                     "U1 boots from U4 over its own SPI port; J3 is that bus",
                     "plus CRESET, so the flash can be written in circuit.",

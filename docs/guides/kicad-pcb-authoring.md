@@ -141,8 +141,10 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   a package's pad rows has no plane over it and the die right above it;
   close it to everything but the package's own pad entries and route around
   or on the far face.
-* **A pour is only a plane while it is mostly copper** (`layout.pour_coverage`,
-  `layout.pour_fragmented`). Every track crossing it takes a clearance channel
+* **A pour is only a plane while it is mostly copper** (`layout.pour_fragmented`
+  faults it, `layout.pour_coverage` reports it — coverage is a density, so a
+  board made smaller scores lower on it while getting better, which is why it
+  informs rather than blocks). Every track crossing it takes a clearance channel
   with it, and two tracks running a couple of millimetres apart take the strip
   between them as well — it comes out thinner than the filler's sliver limit
   and disappears, so a loose bundle costs the plane far more than its own
