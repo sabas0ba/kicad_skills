@@ -2036,7 +2036,7 @@ def resolve_routes(design: Design) -> Design:
     order = [track for track in design.tracks if track.auto]
     if not order:
         done = replace(design, vias=[*design.vias, *_stitch_vias(design)])
-        return _chamfer_tracks(done)
+        return _chamfer_tracks(_snap_to_45(done))
     ripped: list[Track] = []
     while True:
         try:
@@ -2061,7 +2061,42 @@ def resolve_routes(design: Design) -> Design:
             design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
         )
         done = replace(done, vias=[*done.vias, *_stitch_vias(done)])
-        return _chamfer_tracks(done)
+        return _chamfer_tracks(_snap_to_45(done))
+
+
+def _snap_to_45(design: Design) -> Design:
+    """Rewrite any segment that runs at an angle nobody chose.
+
+    The router works on a grid, so its own moves are axis-aligned or 45s. The
+    pads are not on that grid - a footprint puts them where the package says -
+    so the one segment joining a routed path to a pad lands at whatever angle
+    the arithmetic produced. That is where a board's twenty-degree bends come
+    from, and it is why they cluster at pin entries on the plot rather than
+    anywhere a person would have drawn them.
+
+    Each offending segment becomes two that are on the grid: a straight leg
+    along its dominant axis, then a 45 into the pad. The pair stays inside the
+    original segment's bounding box, so it cannot reach anything the straight
+    line did not already pass.
+    """
+    tracks = []
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        out: list[tuple[float, float]] = [points[0]]
+        for a, b in pairwise(points):
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            adx, ady = abs(dx), abs(dy)
+            straight = adx < GEOM_TOL or ady < GEOM_TOL or abs(adx - ady) < GEOM_TOL
+            if not straight:
+                if adx > ady:
+                    knee = (round(b[0] - math.copysign(ady, dx), 4), a[1])
+                else:
+                    knee = (a[0], round(b[1] - math.copysign(adx, dy), 4))
+                if math.dist(out[-1], knee) > GEOM_TOL and math.dist(knee, b) > GEOM_TOL:
+                    out.append(knee)
+            out.append(b)
+        tracks.append(replace(track, points=out))
+    return replace(design, tracks=tracks)
 
 
 def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
