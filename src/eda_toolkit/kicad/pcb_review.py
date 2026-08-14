@@ -1369,9 +1369,10 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
     if limit <= 0:
         return []
     board = ctx.board
-    acute = []
-    right = []
-    odd = []
+    acute: list[str] = []
+    right: list[str] = []
+    odd: list[str] = []
+    where: dict[str, list[tuple[float, float]]] = {"acute": [], "right": [], "odd": []}
     for key, indices in _track_endpoints(board).items():
         if len(indices) != 2:
             continue
@@ -1402,15 +1403,18 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
                 f"{first.net or '(no net)'} at "
                 f"({round(point[0], 2)}, {round(point[1], 2)}): {round(angle)} deg"
             )
+            where["acute"].append(point)
         elif abs(angle - 90.0) <= 0.5:
             right.append(
                 f"{first.net or '(no net)'} at ({round(point[0], 2)}, {round(point[1], 2)})"
             )
+            where["right"].append(point)
         elif min(angle % 45.0, 45.0 - angle % 45.0) > 2.0 and angle < 178.0:
             odd.append(
                 f"{first.net or '(no net)'} at "
                 f"({round(point[0], 2)}, {round(point[1], 2)}): {round(angle)} deg"
             )
+            where["odd"].append(point)
     findings = []
     if acute:
         findings.append(
@@ -1418,7 +1422,11 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
                 "route.acute_angle",
                 "info",
                 f"{len(acute)} track corner(s) tighter than {limit} deg",
-                details={"count": len(acute), "examples": sorted(acute)[:8]},
+                details={
+                    "count": len(acute),
+                    "examples": sorted(acute)[:8],
+                    "positions": where["acute"],
+                },
             )
         )
     if right:
@@ -1428,7 +1436,11 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
                 "info",
                 f"{len(right)} track corner(s) turn a full 90 deg - two 45s cost "
                 "nothing and read as routed rather than drawn",
-                details={"count": len(right), "examples": sorted(right)[:8]},
+                details={
+                    "count": len(right),
+                    "examples": sorted(right)[:8],
+                    "positions": where["right"],
+                },
             )
         )
     if odd:
@@ -1438,7 +1450,11 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
                 "info",
                 f"{len(odd)} track corner(s) bend off the 45-degree grid - a "
                 "20 or 70 degree turn reads as a slip of the mouse, not a route",
-                details={"count": len(odd), "examples": sorted(odd)[:8]},
+                details={
+                    "count": len(odd),
+                    "examples": sorted(odd)[:8],
+                    "positions": where["odd"],
+                },
             )
         )
     return findings

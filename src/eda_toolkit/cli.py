@@ -374,6 +374,13 @@ def cmd_pcb_review(args: argparse.Namespace) -> int:
         thresholds=_thresholds(args.threshold),
         collapse=args.collapse,
     )
+    if args.map:
+        from .kicad import pcb, review_map
+
+        board = pcb.parse(pcb.find_board(args.target))
+        payload["map"] = review_map.render_review_map(
+            board, payload.get("findings", []), args.map
+        )
     emit(payload, as_json=args.json, text_renderer=_render_findings)
     if args.output:
         write_json(args.output, payload)
@@ -841,6 +848,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="KEY=VALUE",
         help="override a review threshold, e.g. min_track_mm=0.2",
+    )
+    p.add_argument(
+        "--map",
+        metavar="PNG",
+        help="draw the board with every located finding marked on it",
     )
     p.add_argument("-o", "--output")
     p.add_argument("--json", action="store_true", default=True)

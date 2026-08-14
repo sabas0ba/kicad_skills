@@ -17,6 +17,7 @@ looked at. Runs in the container (see the `eda-environment` guide).
 ```bash
 ./bin/eda.sh pcb info   hardware/                      # stackup, footprints, nets, routing stats
 ./bin/eda.sh pcb review hardware/ --text               # DRC + layout heuristics
+./bin/eda.sh pcb review hardware/ --map findings.png   # the same findings, drawn on the board
 ./bin/eda.sh gate       hardware/ --policy ai-generated --text  # one pass/fail verdict
 ./bin/eda.sh pcb render hardware/ -o /tmp/art --dpi 300
 ./bin/eda.sh pcb glb    hardware/ -o /tmp/board.glb    # 3D model for a browser
@@ -71,15 +72,21 @@ a work session so the state of the design is visible rather than described.
    clearance violations, unconnected copper, parity mismatches with the
    schematic. The tool refills zones before checking, so pours are evaluated
    the way the fab will see them.
-2. **`pcb render` then Read the PNGs** — this is the part no rule catches.
+2. **`pcb review --map findings.png` then Read it.** The same findings, drawn
+   where they are: a numbered mark per located finding over the copper, keyed
+   to a legend in the JSON. A count in a list is a statistic and gets waived;
+   the same marks clustered on one fan, or scattered over the whole board, is
+   a cause. This is how you check your own waiver — "those corners are the
+   escape fan" is a claim the picture either supports or refutes.
+3. **`pcb render` then Read the PNGs** — this is the part no rule catches.
    Start with `contact-sheet.png` for the overview, then go into
    `copper-front`/`copper-back` for routing quality, `front`/`back` for the
    assembled picture, `silk-front` for legibility, and the 3D views for
    mechanical sanity. Say what you see: a rendered image the user never sees
    is worth nothing, so describe it and attach it.
-3. **`pcb info`** — cross-check the numbers: board size, layer count, track
+4. **`pcb info`** — cross-check the numbers: board size, layer count, track
    widths in use, drill sizes, net-by-net track length and via count.
-4. Judge against the *purpose* of the board: current paths, return paths,
+5. Judge against the *purpose* of the board: current paths, return paths,
    sensitive analog nets, connector placement, mounting.
 
 ## What `pcb review` checks
