@@ -154,7 +154,7 @@ charge pump, bypass and pull-up the datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 7 findings waived | 0 / 3 / 0 | 0 / 10 / 7 |
+| `reviewed` | **PASS**, 7 findings waived | 0 / 3 / 0 | 0 / 10 / 9 |
 | `as-generated` | **FAIL**, 32 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
@@ -224,8 +224,8 @@ that reaches VSYS the way the Pico datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 10 findings waived | 0 / 2 / 0 | 0 / 13 / 8 |
-| `as-generated` | **FAIL**, 30 blocking | — | — |
+| `reviewed` | **PASS**, 10 findings waived | 0 / 2 / 0 | 0 / 13 / 9 |
+| `as-generated` | **FAIL**, 33 blocking | — | — |
 
 Under KiCad's own checks `reviewed` has no errors and no unconnected items, on
 9.0.9 and 10.0.4 — one `lib_footprint_mismatch` on the module and two silkscreen
@@ -283,8 +283,8 @@ filter is referenced to.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 6 findings waived | 0 / 0 / 0 | 0 / 10 / 7 |
-| `as-generated` | **FAIL**, 34 blocking | — | — |
+| `reviewed` | **PASS**, 7 findings waived | 0 / 0 / 0 | 0 / 14 / 8 |
+| `as-generated` | **FAIL**, 36 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
 errors, no unconnected items, no parity findings.
