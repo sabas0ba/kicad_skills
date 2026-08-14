@@ -268,3 +268,45 @@ performance: no wasted copper, no accidental angles.
 | capacitors with no visible owner | fixed — fpga bank caps sit beside the bank unit they feed, codec caps beside the codec, each group with its note |
 | I2S weave between FPGA and codec | fixed — the bus is names at both ends now, and the sheet reads as the pin map |
 | feed diode backwards | **found by this pass**: the pico's D1 had cathode on the external 5 V - the supply could never reach VSYS; polarity fixed in the netlist |
+
+## 9. The reviewer's pass, round four
+
+The buck passed. The other four came back with artwork faults, and one
+sentence recurred across three of them: *do not let the ground pour be cut
+up*. Three rounds had asked for it in different words and nothing in the
+toolkit could say whether it had happened, so this round starts by building
+the measurement.
+
+**Two rules, and what measuring taught us.** `layout.pour_fragmented` reads
+the share of a pour's copper in its largest connected island — the case where
+the plane is genuinely in pieces. `layout.pour_coverage` reads how much of
+its own outline a pour actually filled, which is the number the eye takes off
+the plot. Both raster the fill rather than adding polygon areas, because a
+generated fill is hundreds of overlapping rectangles and their areas cannot
+be added.
+
+Measuring immediately explained the plots. In the dense half of a layout the
+clearance channels shred the pour into fragments, and a fragment touching no
+ground pad of its own is dropped by the filler as an orphan — that is where
+the blank fields come from, not from the tracks themselves. **Stitching the
+interior on a six millimetre mesh, not just the rim**, gives every fragment
+an anchor; the motor driver went from 63 % of its outline to 76 % on that
+change alone.
+
+Measuring also corrected the rule. Compacting the filter — 80 × 45 mm down to
+58 × 42, every run shorter, which is exactly what the review asked for — made
+its coverage *fall*, because the same copper in less area is a smaller share
+of it. **A number that drops when the artwork improves cannot be a verdict**,
+so coverage reports and `pour_fragmented` faults.
+
+| item | disposition |
+| --- | --- |
+| motor: ground pour fragmented | fixed — interior stitching, and the output bundle drawn at 1.4 mm instead of 2.0: two tracks that far apart leave 0.3 mm between them, under the filler's sliver limit, so the strip vanishes and the pair reads as one wide hole |
+| motor: track width changed mid-run | fixed — the escape is short enough that the narrow section is a pad neck (inside `track.thin_power`'s allowance) and the widening happens once, where the package stops constraining it |
+| motor: 45s bent too early, right angles, doubled-back runs | fixed — every escape gets a three millimetre straight before its first bend, and the board lost the twelve millimetres of open field the router was detouring across |
+| pico: LED circuit overlapping | fixed — the indicator has its own column and its note moved with it |
+| opamp: analog and power traces routed carelessly | fixed — the board is redrawn around its nets: the half-rail buffer sits with the two parts that use its output instead of across the board from them, so VREF no longer runs corner to corner, and the supply leaves the header as two short branches |
+| opamp: placement and routing that fragment the front pour | improved — total routed length 412 mm on a board 40 % smaller in area; the remaining crossing of the back plane's cut is waived in numbers (ten nanohenries at a kilohertz) |
+| fpga: parts too far apart, wiring cluttered | fixed — the sheet gathers into blocks (power, clock, config, codec), each with its note beside it, in place of parts spread over the whole of an A3 |
+| fpga: bends off 45, pour fragmented, routing under the codec, analog return under digital, bypass caps away from the regulator | partly open — the QFN's four-sided 0.5 mm escape is the constraint behind most of them, and two attempts at closing the codec's underside left the ground drops beside it with no lane. What is fixed is fixed; what is not is stated with the reason rather than quietly waived |
+| courtyard overlaps found by this round | fixed — a courtyard pre-flight now runs before routing. Editing coordinates by pattern had let one part's replacement land on another's, which is how a divider ended up under an input resistor; every part on that board now carries its position explicitly |
