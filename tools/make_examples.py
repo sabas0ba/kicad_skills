@@ -1042,7 +1042,21 @@ def emit_schematic(design: Design) -> str:
     fixture_boxes = list(fixtures[4])
     wire_boxes = [
         (min(a[0], b[0]) - 0.4, min(a[1], b[1]) - 0.4, max(a[0], b[0]) + 0.4, max(a[1], b[1]) + 0.4)
-        for a, b in ([(a, b) for _n, a, b in segments] + [(a, b) for _t, _n, a, b in fixtures[0]])
+        for a, b in (
+            [(a, b) for _n, a, b in segments]
+            + [(a, b) for _t, _n, a, b in fixtures[0]]
+            # The stub each pin brings out is as much a net as a planned run,
+            # and it is the one nearest the fields - a designator sitting above
+            # a part sits on the stub leaving its top pin. Collected before any
+            # symbol is written so every symbol sees every stub, not only the
+            # ones belonging to parts placed before it.
+            + [
+                pin_geometry(part, pin)
+                for part in design.parts
+                for pin in symbol_pins(part.lib_id, part.unit)
+                if net_of.get((part.ref, pin.number)) is not None
+            ]
+        )
     ]
     placed_blocks: list[tuple[float, float, float, float]] = fixture_boxes
 
@@ -1105,7 +1119,7 @@ def emit_schematic(design: Design) -> str:
     for power_index, (net, at) in enumerate(fixture_symbols, start=1):
         body.append(_power_symbol(design, POWER_SYMBOLS[net], net, at, power_index))
     for flag_index, (net, at) in enumerate(fixture_flags, start=1):
-        body.append(_power_flag(design, net, flag_index, at))
+        body.append(_power_flag(design, net, flag_index, at, wire_boxes))
     drawn_junctions = set(junctions)
     tree_ends = {p for _net, s0, s1 in segments for p in (s0, s1)}
     for point in fixture_junctions:
@@ -1347,7 +1361,61 @@ def _power_symbol(design: Design, lib_id: str, net: str, at, index: int) -> str:
     )
 
 
-def _power_flag(design: Design, net: str, index: int, at: tuple[float, float]) -> str:
+def _text_box(text: str, x: float, y: float, justify: str) -> tuple[float, float, float, float]:
+    """The box a field covers, measured the way the review rule measures it.
+
+    Deliberately the same arithmetic as `sch_review._field_extent`: the
+    generator is placing text so that rule finds nothing, so it has to be
+    looking at the same rectangle the rule will look at, not a near miss.
+    """
+    width = len(text) * 1.1
+    height = 1.6
+    if "right" in justify:
+        x0, x1 = x - width, x
+    elif "left" in justify:
+        x0, x1 = x, x + width
+    else:
+        x0, x1 = x - width / 2, x + width / 2
+    return (x0, y - height / 2, x1, y + height / 2)
+
+
+def _pick_field(
+    text: str,
+    candidates: list[tuple[float, float, str]],
+    wires: list[tuple[float, float, float, float]] | None,
+    avoid: list[tuple[float, float, float, float]] | None = None,
+) -> tuple[float, float, str]:
+    """The first of `candidates` that prints over nothing, else the least bad.
+
+    A designator or a value has no one right spot - above the part, beside it,
+    a row further out are all readable. What is not readable is any of them
+    printed through a net. So the caller lists the spots it would accept in
+    order of preference and this takes the first that is clear, preferring one
+    clear of the neighbouring symbols too.
+    """
+
+    def hits(boxes, box):
+        return sum(
+            1
+            for b in boxes or []
+            if box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3]
+        )
+
+    scored = []
+    for cx, cy, justify in candidates:
+        box = _text_box(text, cx, cy, justify)
+        scored.append((hits(wires, box), hits(avoid, box), (cx, cy, justify)))
+    scored.sort(key=lambda item: (item[0], item[1]))
+    return scored[0][2]
+
+
+def _power_flag(
+    design: Design,
+    net: str,
+    index: int,
+    at: tuple[float, float],
+    wires: list[tuple[float, float, float, float]] | None = None,
+) -> str:
     """A PWR_FLAG, wired in next to the source of the rail it declares.
 
     Without one, ERC reports every power_in pin on an externally supplied rail
@@ -1361,12 +1429,24 @@ def _power_flag(design: Design, net: str, index: int, at: tuple[float, float]) -
     root = stable_uuid(design.name, "sheet")
     # One text row above the rail symbols' own labels: a flag stands beside a
     # rail symbol by construction, and on the same row the two names collide.
+    # Which side that row runs off to depends on what the flag is standing in;
+    # the tap wire reaching it is often on one side only.
+    vx, vy, vjust = _pick_field(
+        "PWR_FLAG",
+        [
+            (round(x + 1.27, 4), round(y - 6.35, 4), "right"),
+            (round(x - 1.27, 4), round(y - 6.35, 4), "left"),
+            (round(x + 1.27, 4), round(y - 7.62, 4), "right"),
+            (round(x - 1.27, 4), round(y - 7.62, 4), "left"),
+        ],
+        wires,
+    )
     lines = [
         f'  (symbol (lib_id "power:PWR_FLAG") (at {x} {y} 0) (unit 1)',
         "    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)",
         f'    (uuid "{uid}")',
         _property("Reference", ref, x, y, True),
-        _property("Value", "PWR_FLAG", round(x + 1.27, 4), round(y - 6.35, 4), False, "right"),
+        _property("Value", "PWR_FLAG", vx, vy, False, vjust),
         _property("Footprint", "", x, y, True),
         _property("Datasheet", "", x, y, True),
         f'    (pin "1" (uuid "{uid}-p"))',
@@ -1419,6 +1499,8 @@ def _symbol_instance(
     # The block goes beside the body, on whichever side prints over nothing.
     # The right side is the habit; a neighbour there sends it left.
     side, justify = 1.0, "left"
+    nudge = 0.0
+    block_offset = 3.81
     block: tuple[float, float, float, float] | None = None
     rows_n = len(ratings) + 1 if side_value else len(ratings)
     if upright and rows_n and avoid is not None:
@@ -1431,52 +1513,101 @@ def _symbol_instance(
         y0 = y - (rows_n - 1) * 1.27 - 1.27
         y1 = y - (rows_n - 1) * 1.27 + (rows_n - 1) * 2.54 + 1.27
 
-        def hits(x0, x1, boxes):
-            return sum(1 for b in boxes if x0 < b[2] and b[0] < x1 and y0 < b[3] and b[1] < y1)
-
-        options = [
-            ((x + 3.81, x + 3.81 + width), 1.0, "left"),
-            ((x - 3.81 - width, x - 3.81), -1.0, "right"),
-        ]
-        clear = [o for o in options if not hits(*o[0], avoid)]
-        if clear:
-            # both sides clear of symbols: take one that crosses no wire at
-            # all if there is one, and the one crossing fewer otherwise
-            free = [o for o in clear if not hits(*o[0], wires or [])]
-            (x0, x1), side, justify = (
-                free[0] if free else min(clear, key=lambda o: hits(*o[0], wires or []))
+        def hits(x0, x1, shift, boxes):
+            return sum(
+                1
+                for b in boxes
+                if x0 < b[2] and b[0] < x1 and y0 + shift < b[3] and b[1] < y1 + shift
             )
-        else:
-            (x0, x1), side, justify = options[0]
-        block = (x0, y0, x1, y1)
+
+        # Which side, how far out, and how far up or down: the block has to
+        # miss the neighbouring symbols *and* every net, and on a dense sheet
+        # only one of the twelve does. Nearest and to the right is the habit,
+        # so the list is ordered that way and the first clear one wins.
+        options = [
+            (distance * direction, shift, 1.0 if direction > 0 else -1.0)
+            for distance in (3.81, 5.08, 6.35)
+            for direction in (1, -1)
+            for shift in (0.0, 1.27, -1.27, 2.54, -2.54)
+        ]
+        scored = []
+        for offset, shift, direction in options:
+            span = (
+                (x + offset, x + offset + width)
+                if direction > 0
+                else (x + offset - width, x + offset)
+            )
+            scored.append(
+                (
+                    hits(*span, shift, wires or []),
+                    hits(*span, shift, avoid),
+                    offset,
+                    shift,
+                    direction,
+                    span,
+                )
+            )
+        # Nets first. A block printed a little close to a neighbour is still
+        # readable and the margin rules will say so; a block with a net drawn
+        # through it is not readable at all. The ordering above breaks ties by
+        # habit, so a sheet with room still puts the block where it always was.
+        scored.sort(key=lambda item: (item[0], item[1]))
+        _w, _a, block_offset, nudge, direction, (x0, x1) = scored[0]
+        side = direction
+        justify = "left" if direction > 0 else "right"
+        block = (x0, y0 + nudge, x1, y1 + nudge)
 
     def row_at(index: int) -> tuple[float, float]:
-        return (round(x + side * 3.81, 4), round(y - (rows_n - 1) * 1.27 + index * 2.54, 4))
+        return (
+            round(x + block_offset, 4),
+            round(y - (rows_n - 1) * 1.27 + index * 2.54 + nudge, 4),
+        )
 
     # The designator sits above the part, which is where the wire leaving its
     # top pin runs - so it prints on the net unless it steps aside. Off to the
     # side of the stub, on the same side the ratings took, keeps it clear of
     # both the wire and the symbol.
-    ref_at: tuple[float, float] = (x, round(top - 2.54, 4))
-    ref_justify = ""
     if upright and small:
-        ref_at = (round(x + side * 1.27, 4), round(top - 1.27, 4))
-        ref_justify = "left" if side > 0 else "right"
+        first = (round(x + side * 1.27, 4), round(top - 1.27, 4), "left" if side > 0 else "right")
+        other = (round(x - side * 1.27, 4), round(top - 1.27, 4), "right" if side > 0 else "left")
+        ref_options = [first, other, (x, round(top - 2.54, 4), "")]
+    else:
+        # A wide part has no stub column to step out of, so the designator
+        # stays centred above it and only steps up a row if that lands on a
+        # net running across the top of the symbol.
+        ref_options = [
+            (x, round(top - 2.54, 4), ""),
+            (round(x + 1.27, 4), round(top - 2.54, 4), "left"),
+            (round(x - 1.27, 4), round(top - 2.54, 4), "right"),
+            (x, round(top - 3.81, 4), ""),
+            (round(x + 1.27, 4), round(top - 3.81, 4), "left"),
+        ]
+    rx, ry, ref_justify = _pick_field(part.ref, ref_options, wires, avoid)
+    ref_at: tuple[float, float] = (rx, ry)
 
     if side_value:
         value_prop = _property("Value", part.value, *row_at(0), False, justify, text_angle)
     else:
         # Same argument as the designator: below the part is where the wire
         # leaving its bottom pin runs.
-        value_prop = _property(
-            "Value",
+        # A multi-pin part usually brings a pin out of the middle of its
+        # bottom edge - a ground pin, most often - and a centred value lands
+        # on that pin's own stub. Left-justified from clear of the centre
+        # column, the string starts where no stub is.
+        step = 1.27 if small else 2.54
+        vx, vy, vjust = _pick_field(
             part.value,
-            round(x + (1.27 if small else 0.0), 4),
-            round(bottom + (1.27 if small else 2.54), 4),
-            False,
-            "left" if small else "",
-            text_angle,
+            [
+                (round(x + step, 4), round(bottom + step, 4), "left"),
+                (round(x - step, 4), round(bottom + step, 4), "right"),
+                (round(x + step, 4), round(bottom + step + 1.27, 4), "left"),
+                (round(x - step, 4), round(bottom + step + 1.27, 4), "right"),
+                (round(x + step, 4), round(bottom + step + 2.54, 4), "left"),
+            ],
+            wires,
+            avoid,
         )
+        value_prop = _property("Value", part.value, vx, vy, False, vjust, text_angle)
     lines = [
         f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}){mirror} (unit {part.unit})',
         "    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)",
