@@ -72,8 +72,8 @@ Under KiCad's own ERC and DRC, and the `ai-generated` policy:
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 1 finding waived | 0 / 0 / 0 | 0 / 1 / 6 |
-| `as-generated` | **FAIL**, 27 blocking | — | — |
+| `reviewed` | **PASS**, 1 finding waived | 0 / 0 / 0 | 0 / 1 / 5 |
+| `as-generated` | **FAIL**, 28 blocking | — | — |
 
 ### The two, side by side
 
@@ -154,8 +154,8 @@ charge pump, bypass and pull-up the datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 7 findings waived | 0 / 3 / 0 | 0 / 10 / 9 |
-| `as-generated` | **FAIL**, 32 blocking | — | — |
+| `reviewed` | **PASS**, 4 findings waived | 0 / 3 / 0 | 0 / 5 / 7 |
+| `as-generated` | **FAIL**, 35 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
 unconnected items, zero parity findings, on 9.0.9 and 10.0.4. What the gate
@@ -224,8 +224,8 @@ that reaches VSYS the way the Pico datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 10 findings waived | 0 / 2 / 0 | 0 / 13 / 9 |
-| `as-generated` | **FAIL**, 33 blocking | — | — |
+| `reviewed` | **PASS**, 9 findings waived | 0 / 2 / 0 | 0 / 9 / 7 |
+| `as-generated` | **FAIL**, 34 blocking | — | — |
 
 Under KiCad's own checks `reviewed` has no errors and no unconnected items, on
 9.0.9 and 10.0.4 — one `lib_footprint_mismatch` on the module and two silkscreen
@@ -249,10 +249,11 @@ few places where it is not:
   ADC_VREF** — both are rails the *module* drives and this board merely exposes.
   The rules cannot tell a supply this board makes from one it is handed, so they
   ask for a capacitor on a net whose source is somewhere else entirely.
-* **`layout.decoupling_distance` on U1.36 and U1.39** — 9 and 10 mm, and there is
-  nowhere nearer: the header sits between the module pin and any part, by
-  design. The capacitors are placed as close as the geometry allows, immediately
-  outboard of the header pins they bypass.
+* **`layout.decoupling_distance`** — 9 to 17 mm, and there is nowhere nearer:
+  the header sits between the module pin and any part, by design, and the strip
+  immediately outboard of the header carries the net name of every one of its
+  twenty pins. A capacitor in that strip would be printed over, which is a pad
+  that will not wet. The capacitors sit as close as the legend allows.
 * **`layout.off_grid_placement`** — the module's pads are on a 2.54 mm pitch, so
   its origin cannot also sit on 0.5 mm, and the headers have to line up with the
   pads rather than with the grid. Two footprints, both correct.
@@ -283,8 +284,8 @@ filter is referenced to.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 7 findings waived | 0 / 0 / 0 | 0 / 14 / 8 |
-| `as-generated` | **FAIL**, 36 blocking | — | — |
+| `reviewed` | **PASS**, 4 findings waived | 0 / 0 / 0 | 0 / 11 / 6 |
+| `as-generated` | **FAIL**, 38 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
 errors, no unconnected items, no parity findings.
