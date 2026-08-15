@@ -2079,6 +2079,36 @@ def _snap_to_45(design: Design) -> Design:
     original segment's bounding box, so it cannot reach anything the straight
     line did not already pass.
     """
+    # The straight line already cleared everything, so a knee that does not is
+    # simply not taken: an angle nobody chose beats a board that will not build.
+    others: list[tuple[str, str, float, tuple, tuple]] = []
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        others.extend((track.net, track.layer, track.width, a, b) for a, b in pairwise(points))
+    pads: list[tuple[str | None, str | None, tuple]] = []
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            owner = next(
+                (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes), None
+            )
+            pads.append((owner, pad_layer(pad), pad_box(design, part, pad)))
+
+    def clear(track: Track, a, b) -> bool:
+        half = track.width / 2
+        for net, layer, width, s0, s1 in others:
+            if net == track.net or layer != track.layer:
+                continue
+            if _segment_distance(a, b, s0, s1) < half + width / 2 + 0.2:
+                return False
+        for owner, layer, box in pads:
+            if owner == track.net or layer not in (None, track.layer):
+                continue
+            if _segment_to_box(a, b, box) < half + 0.2:
+                return False
+        return True
+
     tracks = []
     for track in design.tracks:
         points = [resolve(design, point) for point in track.points]
@@ -2092,7 +2122,12 @@ def _snap_to_45(design: Design) -> Design:
                     knee = (round(b[0] - math.copysign(ady, dx), 4), a[1])
                 else:
                     knee = (a[0], round(b[1] - math.copysign(adx, dy), 4))
-                if math.dist(out[-1], knee) > GEOM_TOL and math.dist(knee, b) > GEOM_TOL:
+                if (
+                    math.dist(out[-1], knee) > GEOM_TOL
+                    and math.dist(knee, b) > GEOM_TOL
+                    and clear(track, out[-1], knee)
+                    and clear(track, knee, b)
+                ):
                     out.append(knee)
             out.append(b)
         tracks.append(replace(track, points=out))
