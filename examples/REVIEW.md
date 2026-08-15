@@ -372,3 +372,45 @@ a 0.5 mm four-sided QFN escaping on two layers cannot hold the 45 grid, keep
 its plane whole, and stay off its own package's underside at once, and the
 board's own notes have said so since it was written. The fix is an inner
 layer, not an argument, and it is the next thing to build.
+
+## 11. The reviewer's pass, round six: the last of the waivers
+
+Round five stated the policy — nothing the reviewer raised may be waived — and
+built the mechanism that made the policy checkable. This round is the work
+that policy demanded, and it went deeper than the findings it started from:
+three of the five boards were failing for reasons that had nothing to do with
+the rule that reported them.
+
+### What went into the tool
+
+| built in | kind | what it catches |
+| --- | --- | --- |
+| `readability.text_over_wire` | rule | a symbol's designator, value or rating printed across a net — a value with a wire drawn through it is a value nobody can read off the plot |
+| property positions | parser | where a symbol field actually prints. The parser had been dropping the coordinate, so nothing downstream could ask |
+| `hide` as a bare atom | parser fix | KiCad 7 writes `(effects ... hide)`, not `(hide yes)`. Reading only the second form made every hidden field visible, and forty hidden designators drowned the real findings |
+| `Design.keepouts` | mechanism | rectangles of board closed to the router on both faces, so a layout can say which side a connector is approached from |
+| per-net `back_cost` | mechanism | a signal's plane crossing priced against the front-side detour that avoids it, per net, so ground is not charged for its own plane |
+
+### What the tool then made us fix
+
+| fixed | how | measured |
+| --- | --- | --- |
+| fields printed across nets | every field now states the spots it would accept, in order, and takes the first that prints over nothing — measured with the same rectangle the rule measures. The pin stubs and the `PWR_FLAG`'s own value were missing from the picture the placer looked at; they are in it now | `text_over_wire`: buck 11, motor 6, filter 17, carrier 7 — **all to 0** |
+| copper laid down and walked back along | joining two routes at a shared end left the polyline going out past the join and straight back to it. The overshoot carries no current and comes out | zero-degree corners: filter 1, motor 1, both to 0 |
+| corners cut off the pads they were reaching | once two routes meeting at a pad are merged, the pad is an interior corner like any other and the chamfer cut it — moving copper off the pad and leaving the net unconnected, invisibly. Both clean-up passes now hold every pad and every track end still | unconnected nets: buck 2, filter 3, carrier 1 — all to 0 |
+| plane islands that reached ground but not each other | touching *some* ground copper was enough to keep a piece of pour. Two pieces each holding one bypass cap's ground pad are still two pieces. The far side of the board is a node in the graph now, every via and through-hole pad an edge to it, and a piece survives only if it can be walked from there | zone-island DRC pairs to 0 |
+| the motor board's whole right-hand third | four logic signals left the package on the east side, went over the top of the board, round the outside and back into the header from behind — 190 mm of copper for a 40 mm net, and four back-layer runs each cutting the plane under the track that fed it. The header now sits where the fan lands, pin for pin; the small caps sit in the middle band with the supply pins that own them; and **VM crosses the plane on one stated link** so that the signals cross its cut at right angles instead of going round | `return_path` 4→0, `detour` 1→0, `acute_angle` 1→0, `pour_fragmented` 1→0, `thin_power` and `width_step` to 0 |
+| silk printed across pads | the board id was written at the bottom centre whether or not the bottom centre was a module; the pin legend went toward the middle of the board, which on a carrier is the module it is labelling; a designator stayed where its library drew it, which on a part with pads on three sides is the middle of a pad. All three ask first, and the pin legend picks its side by the *area* it would take rather than by whether it collides | `silk.over_pad`: carrier 8→0, motor 5 DRC silk warnings→1 |
+| the carrier's plane in three pieces | its two headers and the module run the length of the board and the pour could not get past their pin rows at either end. Six millimetres of board below the last pin is what a plane needs to be one plane | `pour_fragmented` 2→0 |
+| rails escaping at signal width | a supply pin leaving a fine-pitch row at 0.3 mm and widening two millimetres later is a step nobody chose; widening the far half only moves the complaint to the thin one. The row's pitch sets the width, and the pin leaves at the width it keeps | `width_step` and `thin_power` to 0 on the motor and filter boards |
+
+### A note on which KiCad reads the file
+
+The zone-island errors above are reported by KiCad 9's DRC and not by
+KiCad 10's, on the same file. The fill these examples write is a set of
+overlapping rectangles rather than one traced polygon, and the two releases
+disagree about when overlapping fill polygons are one piece of copper. The
+generator writes KiCad 9 format because that is the oldest release in the CI
+matrix; the verdicts quoted here are KiCad 10's, which is the default the
+toolkit runs. Both are recorded rather than reconciled, because the
+disagreement is real and a reader meeting it deserves to know.
