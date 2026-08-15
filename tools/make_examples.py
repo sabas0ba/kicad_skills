@@ -2363,6 +2363,29 @@ def _join_runs(design: Design) -> Design:
     )
 
 
+def _pinned_points(design: Design) -> set[tuple[float, float]]:
+    """Every point on the copper that no clean-up pass may move.
+
+    Two kinds. The end of a track, because another track is joined to it and
+    moving one leaves the other in mid air - `route.stub`. And a pad, because
+    once `_join_runs` has merged the run arriving at a pad with the one leaving
+    it, the pad is an interior corner of one polyline like any other, and a
+    chamfer will happily cut it off the pad it was there to reach. That is one
+    unconnected net per cut, and it is not visible in the shape.
+    """
+    pinned: set[tuple[float, float]] = set()
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        for point in (points[0], points[-1]):
+            pinned.add((round(point[0], 3), round(point[1], 3)))
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            point = pad_position_of(design, part, pad)
+            pinned.add((round(point[0], 3), round(point[1], 3)))
+    return pinned
+
+
 def _unfold_tracks(design: Design) -> Design:
     """Drop the copper a run lays down and then walks back along.
 
@@ -2381,13 +2404,8 @@ def _unfold_tracks(design: Design) -> Design:
     def key(point: tuple[float, float]) -> tuple[float, float]:
         return (round(point[0], 3), round(point[1], 3))
 
-    ends: dict[tuple[float, float], int] = defaultdict(int)
-    resolved: list[list[tuple[float, float]]] = []
-    for track in design.tracks:
-        points = [resolve(design, point) for point in track.points]
-        resolved.append(points)
-        ends[key(points[0])] += 1
-        ends[key(points[-1])] += 1
+    pinned = _pinned_points(design)
+    resolved = [[resolve(design, point) for point in track.points] for track in design.tracks]
 
     tracks = []
     for track, points in zip(design.tracks, resolved, strict=True):
@@ -2404,7 +2422,7 @@ def _unfold_tracks(design: Design) -> Design:
                     continue
                 if (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2) > -0.999:
                     continue
-                if ends.get(key(b), 0):
+                if key(b) in pinned:
                     continue
                 del out[index]
                 changed = True
@@ -2426,17 +2444,8 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
     def key(point: tuple[float, float]) -> tuple[float, float]:
         return (round(point[0], 3), round(point[1], 3))
 
-    # Every point any track starts or ends at. A corner one of them is joined
-    # to cannot move: chamfering it would leave the other one in mid air, which
-    # is what `route.stub` then reports. Rounded, because two tracks that meet
-    # are equal to the file and merely close in floating point.
-    ends: dict[tuple[float, float], int] = defaultdict(int)
-    resolved: list[list[tuple[float, float]]] = []
-    for track in design.tracks:
-        points = [resolve(design, point) for point in track.points]
-        resolved.append(points)
-        ends[key(points[0])] += 1
-        ends[key(points[-1])] += 1
+    pinned = _pinned_points(design)
+    resolved = [[resolve(design, point) for point in track.points] for track in design.tracks]
     # A cut moves copper off the square path, and what it moves toward may be
     # a via or a pad that only cleared the original corner.
     foreign_vias = [(via.net, via_position(design, via), via.size / 2) for via in design.vias]
@@ -2465,7 +2474,7 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
             # a corner already gentle - a 45 bend from the fans - stays as it
             # is; only turns sharper than ~60 degrees get the cut
             gentle = (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2) > 0.5
-            if gentle or ends.get(key(corner), 0):
+            if gentle or key(corner) in pinned:
                 out.append(corner)
                 continue
             # A big cut reads best; a small one still beats a square corner.
