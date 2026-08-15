@@ -258,8 +258,10 @@ RULE_SPEC: dict[str, RuleSpec] = {
     ),
     "route.width_step": RuleSpec(
         "a track that changes width further than `width_step_free_mm` from any "
-        "pad - the narrow section already set the current the run can carry, "
-        "so the wide section buys nothing",
+        "pad, where the narrow side is not a pad's own neck either - the narrow "
+        "section already set the current the run can carry, so the wide section "
+        "buys nothing. A neck out of a fine-pitch row is allowed the same "
+        "`power_neck_mm` budget `track.thin_power` gives it",
         "warning",
         threshold="width_step_free_mm",
     ),
@@ -866,11 +868,45 @@ def rule_track_width_steps(ctx: PcbContext) -> list[Finding]:
     router's idea of a compromise.
     """
     free = ctx.thresholds["width_step_free_mm"]
+    neck_limit = ctx.thresholds["power_neck_mm"]
     board = ctx.board
     pads = [(pad.x, pad.y) for fp in board.footprints for pad in fp.pads]
+    ends = _track_endpoints(board)
+
+    def neck_length(start_key, index) -> float | None:
+        """How far the narrow side runs back to a pad without changing width.
+
+        A neck is allowed to be a neck: a 0.5 mm pin row holds 0.2 mm and
+        nothing wider, and the escape that walks it out to a routable pitch is
+        millimetres long before there is anywhere to widen. What is not allowed
+        is a run that goes narrow across open board and then widens for no
+        reason. So the question is not "is this step near a pad" but "is the
+        narrow side still the pad's own neck", and the answer is the same
+        budget `track.thin_power` gives it.
+        """
+        total = 0.0
+        key, current = start_key, index
+        seen = {current}
+        while True:
+            track = board.tracks[current]
+            total += track.length
+            if total > neck_limit:
+                return None
+            far = track.end if _key_of(track.start, track.layer) == key else track.start
+            if any(math.dist(far, pad) <= 0.4 for pad in pads):
+                return total
+            nxt = [i for i in ends.get(_key_of(far, track.layer), ()) if i not in seen]
+            if len(nxt) != 1:
+                return None
+            candidate = board.tracks[nxt[0]]
+            if candidate.net != track.net or abs(candidate.width - track.width) >= 0.02:
+                return None
+            key, current = _key_of(far, track.layer), nxt[0]
+            seen.add(current)
+
     steps = []
     positions = []
-    for key, indices in _track_endpoints(board).items():
+    for key, indices in ends.items():
         if len(indices) != 2:
             continue
         first, second = (board.tracks[i] for i in indices)
@@ -881,6 +917,9 @@ def rule_track_width_steps(ctx: PcbContext) -> list[Finding]:
         point = (key[0] / 1000, key[1] / 1000)
         if any(math.dist(point, pad) <= free for pad in pads):
             continue  # at a pad, which is where a neck is allowed to end
+        narrow = indices[0] if first.width < second.width else indices[1]
+        if neck_length(key, narrow) is not None:
+            continue  # the narrow side is the pin field's own escape
         steps.append(
             f"{first.net or '(no net)'} steps {min(first.width, second.width):.2f} -> "
             f"{max(first.width, second.width):.2f} mm at "
@@ -1579,6 +1618,10 @@ def rule_pad_collision(ctx: PcbContext) -> list[Finding]:
             details={"count": len(collisions), "examples": collisions[:8]},
         )
     ]
+
+
+def _key_of(point: tuple[float, float], layer: str) -> tuple[int, int, str]:
+    return (round(point[0] * 1000), round(point[1] * 1000), layer)
 
 
 def _track_endpoints(board: pcb.Board) -> dict[tuple[int, int, str], list[int]]:

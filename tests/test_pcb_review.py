@@ -737,6 +737,16 @@ def test_a_width_step_away_from_a_pad_is_reported():
         ],
     )
     assert pcb_review.rule_track_width_steps(ctx_for(at_pad)) == []
+    # a fine-pitch escape is a neck, and a neck has to end somewhere: eight
+    # millimetres of it walking out of a pin row is still the pad's own neck
+    escaped = board_from(
+        footprints=parts,
+        tracks=[
+            track(5, 5, 13, 5, width=0.3, net="P"),
+            track(13, 5, 30, 5, width=0.8, net="P"),
+        ],
+    )
+    assert pcb_review.rule_track_width_steps(ctx_for(escaped)) == []
 
 
 def test_a_foreign_track_under_a_package_is_reported():

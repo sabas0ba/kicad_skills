@@ -124,7 +124,7 @@ mismatches).
 | `route.acute_angle` | 90 deg | corners that trap etchant and step the impedance |
 | `route.right_angle` | 90 deg | corners that turn a full 90 deg — two 45s cost nothing |
 | `route.odd_angle` | — | corners off the 45-degree grid: a 20 or 70 degree bend reads as a slip of the mouse |
-| `route.width_step` | 3 mm | a track changing width away from any pad — the narrow part already set the current |
+| `route.width_step` | 3 mm | a track changing width away from any pad, where the narrow side is not that pad's own neck either — the narrow part already set the current. A fine-pitch escape gets the same `power_neck_mm` budget `track.thin_power` gives it |
 | `route.under_package` | — | another net's track threaded under a package body, unprobeable and with no plane under it |
 | `layout.connector_not_at_edge` | 6 mm | a connector the cable has to cross the board to reach |
 | `silk.unlabeled_indicator` | — | an LED or switch with no silk saying what it means |
