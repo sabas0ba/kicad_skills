@@ -1364,8 +1364,13 @@ def rule_text_over_wire(ctx: ReviewContext) -> list[Finding]:
 
 
 def _field_extent(text: str, x: float, y: float, justify: str) -> tuple[float, float, float, float]:
-    """The box a symbol field roughly covers, from its anchor and justify."""
-    width = len(text) * 1.1
+    """The box a symbol field roughly covers, from its anchor and justify.
+
+    1.4 mm per character is the stroke font's real advance at KiCad's default
+    1.27 mm text size. Undersizing it reads two strings a third of a millimetre
+    apart as clear of each other, which on the plot is one unreadable word.
+    """
+    width = len(text) * 1.4
     height = 1.6
     if "right" in justify:
         x0, x1 = x - width, x

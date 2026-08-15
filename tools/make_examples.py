@@ -1066,6 +1066,32 @@ def emit_schematic(design: Design) -> str:
         )
     ]
     placed_blocks: list[tuple[float, float, float, float]] = fixture_boxes
+    # Every string already committed to the page: the net names beside the
+    # pins, and the rail and flag names on the power fixtures. A symbol's own
+    # fields are added as it is written, so each one measures against
+    # everything placed before it as well as against these.
+    text_boxes: list[tuple[float, float, float, float]] = []
+    for part in design.parts:
+        for pin in symbol_pins(part.lib_id, part.unit):
+            net = net_of.get((part.ref, pin.number))
+            if net is None or (net in POWER_SYMBOLS and net not in design.wired_power):
+                continue
+            end, out = pin_geometry(part, pin)
+            vertical = abs(out[0] - end[0]) < GEOM_EPS
+            reach = len(net) * 1.1
+            if vertical:
+                grow = (0.9, reach) if out[1] < end[1] else (0.9, -reach)
+            else:
+                grow = (reach if out[0] > end[0] else -reach, 0.9)
+            text_boxes.append(
+                (
+                    min(out[0], out[0] + grow[0]),
+                    min(out[1], out[1] + grow[1]),
+                    max(out[0], out[0] + grow[0]),
+                    max(out[1], out[1] + grow[1]),
+                )
+            )
+    text_boxes += fixture_boxes
 
     for part in design.parts:
         pins = symbol_pins(part.lib_id, part.unit)
@@ -1114,7 +1140,7 @@ def emit_schematic(design: Design) -> str:
             ) and pin_owner not in replaced:
                 body.append(_label(design, net, part.ref, pin.number, out, end))
         avoid = [box for ref, box in part_box.items() if ref != part.ref] + placed_blocks
-        body.append(_symbol_instance(design, part, pins, avoid, wire_boxes))
+        body.append(_symbol_instance(design, part, pins, avoid, wire_boxes, text_boxes))
         if len(avoid) > len(part_box) - 1 + len(placed_blocks):
             placed_blocks.append(avoid[-1])
 
@@ -1375,7 +1401,7 @@ def _text_box(text: str, x: float, y: float, justify: str) -> tuple[float, float
     generator is placing text so that rule finds nothing, so it has to be
     looking at the same rectangle the rule will look at, not a near miss.
     """
-    width = len(text) * 1.1
+    width = len(text) * 1.4
     height = 1.6
     if "right" in justify:
         x0, x1 = x - width, x
@@ -1386,34 +1412,37 @@ def _text_box(text: str, x: float, y: float, justify: str) -> tuple[float, float
     return (x0, y - height / 2, x1, y + height / 2)
 
 
+def _hits(boxes, box) -> int:
+    return sum(
+        1
+        for b in boxes or []
+        if box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3]
+    )
+
+
 def _pick_field(
     text: str,
     candidates: list[tuple[float, float, str]],
     wires: list[tuple[float, float, float, float]] | None,
     avoid: list[tuple[float, float, float, float]] | None = None,
+    texts: list[tuple[float, float, float, float]] | None = None,
 ) -> tuple[float, float, str]:
     """The first of `candidates` that prints over nothing, else the least bad.
 
     A designator or a value has no one right spot - above the part, beside it,
     a row further out are all readable. What is not readable is any of them
-    printed through a net. So the caller lists the spots it would accept in
-    order of preference and this takes the first that is clear, preferring one
-    clear of the neighbouring symbols too.
+    printed through something else, and the somethings rank: text on text is
+    two strings nobody can read, text on a net is one string nobody can read,
+    and text a little close to a symbol body is still text. So the caller
+    lists the spots it would accept in order of preference and this takes the
+    first that is clear, breaking ties in that order.
     """
-
-    def hits(boxes, box):
-        return sum(
-            1
-            for b in boxes or []
-            if box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3]
-        )
-
     scored = []
     for cx, cy, justify in candidates:
         box = _text_box(text, cx, cy, justify)
-        scored.append((hits(wires, box), hits(avoid, box), (cx, cy, justify)))
-    scored.sort(key=lambda item: (item[0], item[1]))
-    return scored[0][2]
+        scored.append((_hits(texts, box), _hits(wires, box), _hits(avoid, box), (cx, cy, justify)))
+    scored.sort(key=lambda item: item[:3])
+    return scored[0][3]
 
 
 def _power_flag(
@@ -1469,6 +1498,7 @@ def _symbol_instance(
     pins: list[PinDef],
     avoid: list[tuple[float, float, float, float]] | None = None,
     wires: list[tuple[float, float, float, float]] | None = None,
+    texts: list[tuple[float, float, float, float]] | None = None,
 ) -> str:
     """The symbol, with its two visible fields clear of everything else.
 
@@ -1510,13 +1540,23 @@ def _symbol_instance(
     block_offset = 3.81
     block: tuple[float, float, float, float] | None = None
     rows_n = len(ratings) + 1 if side_value else len(ratings)
+    # The symbol's own ground. Measured from the pins plus 2 mm, because a
+    # symbol is wider than its pin column - a diode's emission arrows reach out
+    # past its body, and a block that clears the pins can still be drawn on
+    # them.
+    own = (
+        min(p[0] for p in points) - 2.0,
+        top - 1.0,
+        max(p[0] for p in points) + 2.0,
+        bottom + 1.0,
+    )
     if upright and rows_n and avoid is not None:
         # 1.45 mm per glyph is the default font's real advance; undersizing it
         # here let two blocks land one millimetre apart and read as one word
-        texts = [v for n, v in part.fields.items() if n in ratings]
+        strings = [v for n, v in part.fields.items() if n in ratings]
         if side_value:
-            texts.append(part.value)
-        width = max(len(t) for t in texts) * 1.45 + 0.5
+            strings.append(part.value)
+        width = max(len(t) for t in strings) * 1.45 + 0.5
         y0 = y - (rows_n - 1) * 1.27 - 1.27
         y1 = y - (rows_n - 1) * 1.27 + (rows_n - 1) * 2.54 + 1.27
 
@@ -1531,11 +1571,30 @@ def _symbol_instance(
         # miss the neighbouring symbols *and* every net, and on a dense sheet
         # only one of the twelve does. Nearest and to the right is the habit,
         # so the list is ordered that way and the first clear one wins.
+        # The last two are the block clear of the symbol altogether, below and
+        # above it - where a lying part already puts its ratings. A capacitor
+        # boxed in by a wire either side has nowhere beside it to go, and the
+        # answer is not to give up and print on one of them.
+        shifts = (
+            0.0,
+            1.27,
+            -1.27,
+            2.54,
+            -2.54,
+            3.81,
+            -3.81,
+            5.08,
+            -5.08,
+            6.35,
+            -6.35,
+            round(bottom + 3.81 - y0, 4),
+            round(top - 3.81 - y1, 4),
+        )
         options = [
             (distance * direction, shift, 1.0 if direction > 0 else -1.0)
-            for distance in (3.81, 5.08, 6.35)
+            for distance in (3.81, 5.08, 6.35, 7.62, 8.89)
             for direction in (1, -1)
-            for shift in (0.0, 1.27, -1.27, 2.54, -2.54)
+            for shift in shifts
         ]
         scored = []
         for offset, shift, direction in options:
@@ -1546,20 +1605,23 @@ def _symbol_instance(
             )
             scored.append(
                 (
+                    hits(*span, shift, texts or []),
                     hits(*span, shift, wires or []),
-                    hits(*span, shift, avoid),
+                    hits(*span, shift, [*avoid, own]),
                     offset,
                     shift,
                     direction,
                     span,
                 )
             )
-        # Nets first. A block printed a little close to a neighbour is still
-        # readable and the margin rules will say so; a block with a net drawn
-        # through it is not readable at all. The ordering above breaks ties by
-        # habit, so a sheet with room still puts the block where it always was.
-        scored.sort(key=lambda item: (item[0], item[1]))
-        _w, _a, block_offset, nudge, direction, (x0, x1) = scored[0]
+        # Other people's text first, then nets, then symbol bodies. A block
+        # printed a little close to a neighbour is still readable and the
+        # margin rules will say so; a block with a net drawn through it is not
+        # readable at all; and a block on another block is two of them lost.
+        # The ordering above breaks ties by habit, so a sheet with room still
+        # puts the block where it always was.
+        scored.sort(key=lambda item: item[:3])
+        _t, _w, _a, block_offset, nudge, direction, (x0, x1) = scored[0]
         side = direction
         justify = "left" if direction > 0 else "right"
         block = (x0, y0 + nudge, x1, y1 + nudge)
@@ -1575,9 +1637,25 @@ def _symbol_instance(
     # side of the stub, on the same side the ratings took, keeps it clear of
     # both the wire and the symbol.
     if upright and small:
-        first = (round(x + side * 1.27, 4), round(top - 1.27, 4), "left" if side > 0 else "right")
-        other = (round(x - side * 1.27, 4), round(top - 1.27, 4), "right" if side > 0 else "left")
-        ref_options = [first, other, (x, round(top - 2.54, 4), "")]
+        near, far = ("left", "right") if side > 0 else ("right", "left")
+        ref_options = [
+            (round(x + side * 1.27, 4), round(top - 1.27, 4), near),
+            (round(x - side * 1.27, 4), round(top - 1.27, 4), far),
+            (round(x - side * 1.27, 4), round(top - 2.54, 4), far),
+            (x, round(top - 2.54, 4), ""),
+            (round(x + side * 1.27, 4), round(top - 2.54, 4), near),
+            (x, round(top - 3.81, 4), ""),
+        ]
+        if block is not None:
+            # A polarised capacitor's pins sit closer to its body than a plain
+            # one's, so "one row above the top pin" can land inside the ratings
+            # block. Above the block is above the block whatever the symbol is.
+            above = round(block[1] - 1.27, 4)
+            ref_options += [
+                (x, above, ""),
+                (round(x + side * 1.27, 4), above, near),
+                (round(x - side * 1.27, 4), above, far),
+            ]
     else:
         # A wide part has no stub column to step out of, so the designator
         # stays centred above it and only steps up a row if that lands on a
@@ -1589,7 +1667,12 @@ def _symbol_instance(
             (x, round(top - 3.81, 4), ""),
             (round(x + 1.27, 4), round(top - 3.81, 4), "left"),
         ]
-    rx, ry, ref_justify = _pick_field(part.ref, ref_options, wires, avoid)
+    # The block is placed first and the designator gets out of *its* way: a
+    # rating block has three strings that have to stay together and a
+    # designator has one that can go anywhere legible.
+    rx, ry, ref_justify = _pick_field(
+        part.ref, ref_options, wires, avoid, [*(texts or []), *([block] if block else [])]
+    )
     ref_at: tuple[float, float] = (rx, ry)
 
     if side_value:
@@ -1613,6 +1696,7 @@ def _symbol_instance(
             ],
             wires,
             avoid,
+            [*(texts or []), *([block] if block else []), _text_box(part.ref, rx, ry, ref_justify)],
         )
         value_prop = _property("Value", part.value, vx, vy, False, vjust, text_angle)
     lines = [
@@ -1642,6 +1726,15 @@ def _symbol_instance(
     if block is not None and avoid is not None:
         # later parts must not print their block over this one
         avoid.append(block)
+    if texts is not None:
+        # Every string this symbol just put on the page, so the next symbol
+        # measures against them. Two ratings blocks a millimetre apart read as
+        # one word, and "220u" over "100n" reads as neither.
+        if block is not None:
+            texts.append(block)
+        texts.append(_text_box(part.ref, *ref_at, ref_justify))
+        if not side_value:
+            texts.append(_text_box(part.value, vx, vy, vjust))
     for pin in pins:
         lines.append(f'    (pin "{pin.number}" (uuid "{uid}-p{pin.number}"))')
     lines.append(
@@ -4292,7 +4385,7 @@ def pico_carrier() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(203.2, 78.74),
+            sheet=(196.85, 78.74),
             angle=90.0,
             board=(70.0, 17.0, 180.0),
             silk_label="3V3 OK",
@@ -5480,7 +5573,7 @@ def fpga_audio() -> Design:
         ("C5.2", (56.0, 40.8)),
         ("C17.2", (59.0, 40.8)),
         ("C6.2", (59.0, 43.5)),
-        ("C7.2", (64.0, 46.0)),
+        ("C7.2", (60.5, 46.5)),
         ("C8.2", (46.0, 71.0)),
         ("X1.2", (30.0, 10.0)),
         ("U4.4", (37.0, 75.0)),
