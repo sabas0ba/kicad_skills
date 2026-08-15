@@ -705,3 +705,57 @@ def test_a_rotated_power_symbol_is_reported():
         ]
     )
     assert sch_review.rule_power_symbol_orientation(sheet_ctx(upright)) == []
+
+
+def test_a_field_printed_across_a_net_is_reported():
+    # R1's value sits on the wire leaving its own top pin; R2's steps aside.
+    on_the_wire = sheet(
+        symbols=[
+            placed(
+                "R1",
+                50,
+                50,
+                [pin("1", 50.0, 45.0)],
+                properties={"Value": "10k"},
+                property_at={"Value": (50.0, 42.0, "")},
+            )
+        ],
+        wires=[[(50.0, 45.0), (50.0, 38.0)]],
+    )
+    findings = sch_review.rule_text_over_wire(sheet_ctx(on_the_wire))
+    assert [f.rule for f in findings] == ["readability.text_over_wire"]
+    assert findings[0].details["count"] == 1
+    assert "R1 Value" in findings[0].details["examples"][0]
+
+    beside_it = sheet(
+        symbols=[
+            placed(
+                "R2",
+                50,
+                50,
+                [pin("1", 50.0, 45.0)],
+                properties={"Value": "10k"},
+                property_at={"Value": (53.0, 42.0, "left")},
+            )
+        ],
+        wires=[[(50.0, 45.0), (50.0, 38.0)]],
+    )
+    assert sch_review.rule_text_over_wire(sheet_ctx(beside_it)) == []
+
+
+def test_a_hidden_field_is_not_a_field_on_the_plot():
+    # a hidden reference prints nowhere, so it cannot print across a net
+    hidden = sheet(
+        symbols=[
+            placed(
+                "#FLG01",
+                50,
+                50,
+                [pin("1", 50.0, 45.0)],
+                properties={"Value": "PWR_FLAG"},
+                property_at={},
+            )
+        ],
+        wires=[[(50.0, 45.0), (50.0, 38.0)]],
+    )
+    assert sch_review.rule_text_over_wire(sheet_ctx(hidden)) == []

@@ -129,9 +129,22 @@ in a note beside them (`test.no_testpoints` notices when there are none).
   Both should exist (`spec.missing_rating` checks the fields; the page is
   yours). Keep the printed block beside an upright part and under a lying
   one, where the ground symbol is not.
-* **No text on other text.** References, values, ratings and net labels each
-  need their own clear ground; measure the neighbours before placing, the
-  way the reference and value are already measured from the pin extent.
+* **No text on other text, and none on a net.** References, values, ratings
+  and net labels each need their own clear ground; measure the neighbours
+  before placing, the way the reference and value are already measured from
+  the pin extent. A wire counts as a neighbour: the designator above a part
+  sits where the wire leaving its top pin runs, and the value below it sits
+  on the bottom pin's stub, so both step aside — beside the stub for a
+  two-pin part, off the centre column for a wide one. `readability.text_over_wire`
+  measures exactly this, so the rule to place against is the rule that will
+  grade it: the *same* rectangle, not a near miss.
+* **Give each field a list of spots, not one spot.** Where a field goes is a
+  question with several right answers and one wrong one, which is "wherever
+  the geometry put it". State the spots in order of preference and take the
+  first that prints over nothing. When none is clear, prefer the one clear of
+  the nets: a block a little close to its neighbour is still readable and the
+  margin rules will say so; a block with a net drawn through it is not
+  readable at all.
 * **Around an IC, wires beat labels** unless the destination is a separate
   functional block. When the datasheet has a reference schematic or an
   application note, match its layout — readers know it already, and the

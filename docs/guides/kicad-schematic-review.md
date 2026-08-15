@@ -101,6 +101,7 @@ nothing to say about them, and why a generated sheet fails them so reliably:
 | `readability.facing_away` | a single-row symbol whose connected pins point away from their signals — the symbol wants mirroring |
 | `readability.margin_intrusion` | pins or notes on the page frame strip or the title block |
 | `readability.text_over_symbol` | a design note whose estimated extent prints over a symbol |
+| `readability.text_over_wire` | a symbol's own designator, value or rating printed across a net — a value with a wire drawn through it is a value nobody can read off the plot |
 | `readability.overlapping_symbols` | symbols drawn on top of each other |
 | `readability.outside_page` | items past the page border, missing from the plot and the PDF |
 | `readability.diagonal_wire` | wires that do not run orthogonally |

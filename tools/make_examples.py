@@ -5329,7 +5329,6 @@ def fpga_audio() -> Design:
             centre=cy if axis == "x" else cx,
             axis=axis,
             width=FINE,
-            slope=3.0,
             clearance=0.2,
         )
     # The codec, the regulator and the flash each have a supply pin in the
@@ -5344,7 +5343,6 @@ def fpga_audio() -> Design:
         pitch=1.0,
         centre=40.0,
         width=SIG,
-        slope=2.2,
     )
     escape(
         "U2",
@@ -5354,11 +5352,8 @@ def fpga_audio() -> Design:
         pitch=1.0,
         centre=40.0,
         width=SIG,
-        slope=2.2,
     )
-    escape(
-        "U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=24.0, width=SIG, slope=2.2
-    )
+    escape("U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=24.0, width=SIG)
     escape("U3", ["5", "4"], lead=16.6, column=19.0, pitch=2.8, centre=24.0, width=SIG)
     escape(
         "U4",
@@ -5368,7 +5363,6 @@ def fpga_audio() -> Design:
         pitch=2.0,
         centre=72.0,
         width=SIG,
-        slope=2.2,
     )
     escape(
         "U4",
@@ -5378,7 +5372,6 @@ def fpga_audio() -> Design:
         pitch=2.0,
         centre=72.0,
         width=SIG,
-        slope=2.2,
     )
 
     # The exposed pad is the ground, and it is stitched rather than routed.

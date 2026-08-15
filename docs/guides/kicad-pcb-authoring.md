@@ -65,12 +65,23 @@ has its return current detoured around it: the loop grows by the detour
 (`route.return_path`).
 
 * **Prefer the top layer**; drop to the plane layer only to cross, and get
-  back up. The router's `back_cost` prices this.
-* **Do not push the price too high.** Raising it from 0.4 to 0.6 on the
-  densest example jammed every escape corridor onto the top layer until a
-  ground stub two grid cells long became unroutable. The trade is real:
-  return-path hygiene against routability, and on a full board the middle
-  of the range wins.
+  back up. The router's `back_cost` prices this, and the examples price a
+  signal's crossing at roughly forty times the front-side detour that avoids
+  it — a search will then only cross where the board has left it no front
+  side at all. Ground is not charged: its own copper is the plane.
+* **Choose which net crosses, and say so.** When a supply pin sits in the
+  middle of a row the signals leave from either side of, something has to
+  cross, and the choice is between one rail and every signal. Take the rail:
+  it is low impedance, the plane it crosses is its own return, and the
+  signals cross the cut it leaves at right angles — a track width of return
+  path each rather than a detour. Put it in the file as a stated link with
+  its two vias, not as something the search stumbled into. The motor driver
+  example does exactly this, and it is the difference between a clean board
+  and 190 mm of copper for a 40 mm net.
+* **A detour that big is a floorplan problem, not a router problem.** When
+  `route.detour` reports 4x, look at what is walling the corridor off before
+  touching the router: on the motor board it was the bulk-cap-to-charge-pump
+  run standing between the package and the header.
 * **What remains is a costed decision.** I2S and SPI at single-digit
   megahertz over millimetre gaps is acceptable and waivable, with the
   frequency and the gap in the waiver text; the same crossing under a clock
@@ -121,8 +132,22 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   bare boards on a bench are identical without it, and the author line says
   whose design the bench is looking at.
 * **Connector pins say what they carry** (`silk.unlabeled_connector`):
-  net names beside the pins, outside the footprint's courtyard, on the board
-  side. That is the reverse-connection insurance, and it costs silkscreen.
+  net names beside the pins, outside the footprint's courtyard. That is the
+  reverse-connection insurance, and it costs silkscreen — real silkscreen,
+  in the floorplan, before the parts go down. On the Pico carrier the legend
+  for twenty pins is what decides where the decoupling capacitors can sit.
+* **Measure the area a legend takes from its neighbours, not the collisions.**
+  "Half a legend across a module's pads" and "a tenth of a millimetre into a
+  chip capacitor's courtyard" are both one collision; only one is a defect.
+  Pick the side of the pad row with the smaller intrusion and outboard wins
+  on its own wherever there is an edge to face.
+* **Silk over a pad is a pad that will not wet** (`silk.over_pad`): the mask
+  opens there and the ink comes off in fabrication. That applies to the board
+  id, to the pin legend, and to a designator left where the library drew it —
+  on a module with pads down both sides and along the bottom, the library's
+  spot is the middle of a pad. Measure a footprint that draws no courtyard by
+  its pads: treating a missing courtyard as "takes up no board" is how a
+  legend ends up printed across one.
 * **Indicators say what they indicate**: "5V OK" beside the power LED, the
   function beside every switch. A lit LED nobody can interpret is decoration.
 
@@ -172,6 +197,13 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   the longest contiguous narrow run, so pad-entry necks pass. Where a whole
   distribution must stay narrow because nothing wider fits, the waiver
   argues in numbers — current, width, temperature rise — not in adjectives.
+* **A rail leaves its package at the width it keeps.** Escaping at signal
+  width and widening two millimetres later is a step nobody chose
+  (`route.width_step`), and widening the far half instead only moves the
+  complaint to the thin one (`track.thin_power`). Give the supply and ground
+  pins of a fine-pitch escape their own width in the fan: a 0.65 mm row holds
+  0.4 mm, a 0.95 mm row holds 0.5 mm, and the row's pitch — not the run's
+  current — is what sets it.
 * **`route.detour` and `route.acute_angle`** flag machine-looking routing.
   Corners that come from a stated escape fan meeting the 45° grid are the
   fan's geometry and waivable as such; a track three times its spanning-tree
@@ -179,6 +211,11 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
 * **Every waiver names its reason** in the project's `gate.toml`, stated so a
   reviewer can disagree with it. A finding is fixed, checked, or answered —
   never silently absent. That is the shape of the whole mechanism.
+* **A waiver is not a place to put a review comment.** Everything a reviewer
+  raised on the worked examples is fixed in the geometry, not argued away:
+  the four waivers that remain are about what a two-layer board with parts on
+  one side physically cannot do, and each one names the four-layer answer it
+  is standing in for.
 
 ## Where the rules live
 
