@@ -221,6 +221,11 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "info",
         threshold="page_margin_mm",
     ),
+    "readability.text_over_wire": RuleSpec(
+        "a symbol's reference, value or rating printed across a wire - the "
+        "netlist is unaffected and the plot is unreadable",
+        "warning",
+    ),
     "readability.text_over_symbol": RuleSpec(
         "a text note whose estimated extent overlaps a symbol's pin box - "
         "notes belong beside the circuit, not on it (the extent is estimated "
@@ -1313,6 +1318,77 @@ def rule_margin_intrusion(ctx: ReviewContext) -> list[Finding]:
             intrusions,
         )
     ]
+
+
+@rule
+def rule_text_over_wire(ctx: ReviewContext) -> list[Finding]:
+    """A symbol's own field printed across a wire.
+
+    The designator and the value are text on the page like any other, and a
+    reader loses them under a wire exactly as under a symbol - worse, in fact,
+    because a wire crossing a number turns a 4k7 into something nobody will
+    trust. Nothing about it changes the netlist, so only the plot shows it,
+    which is why it survived four rounds of review.
+    """
+    collisions: list[str] = []
+    for doc in ctx.docs:
+        segments = [
+            (a, b) for wire in doc.wires for a, b in zip(wire.points, wire.points[1:], strict=False)
+        ]
+        if not segments:
+            continue
+        for sym in doc.symbols:
+            for name, (px, py, justify) in sym.property_at.items():
+                text = sym.properties.get(name, "")
+                if not text or name in ("Footprint", "Datasheet", "MPN", "Manufacturer"):
+                    continue
+                box = _field_extent(text, px, py, justify)
+                for a, b in segments:
+                    if _segment_hits_rect(a, b, box):
+                        collisions.append(
+                            f"{doc.path.name}:{sym.reference or sym.lib_id} {name} '{text[:16]}'"
+                        )
+                        break
+    collisions = sorted(set(collisions))
+    if not collisions:
+        return []
+    return [
+        Finding(
+            "readability.text_over_wire",
+            "warning",
+            f"{len(collisions)} symbol field(s) print across a wire - a net "
+            "drawn through a value is a value nobody can read off the plot",
+            details={"count": len(collisions), "examples": collisions[:8]},
+        )
+    ]
+
+
+def _field_extent(text: str, x: float, y: float, justify: str) -> tuple[float, float, float, float]:
+    """The box a symbol field roughly covers, from its anchor and justify."""
+    width = len(text) * 1.1
+    height = 1.6
+    if "right" in justify:
+        x0, x1 = x - width, x
+    elif "left" in justify:
+        x0, x1 = x, x + width
+    else:
+        x0, x1 = x - width / 2, x + width / 2
+    return (x0, y - height / 2, x1, y + height / 2)
+
+
+def _segment_hits_rect(a, b, box) -> bool:
+    x0, y0, x1, y1 = box
+    for px, py in (a, b):
+        if x0 <= px <= x1 and y0 <= py <= y1:
+            return True
+    steps = max(2, int(math.dist(a, b) / 0.5))
+    for index in range(steps + 1):
+        t = index / steps
+        px = a[0] + (b[0] - a[0]) * t
+        py = a[1] + (b[1] - a[1]) * t
+        if x0 <= px <= x1 and y0 <= py <= y1:
+            return True
+    return False
 
 
 def _text_extent(item: schematic.Text) -> tuple[float, float, float, float]:

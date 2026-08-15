@@ -1440,8 +1440,12 @@ def _symbol_instance(
         ]
         clear = [o for o in options if not hits(*o[0], avoid)]
         if clear:
-            # both sides clear of symbols: take the one crossing fewer wires
-            (x0, x1), side, justify = min(clear, key=lambda o: hits(*o[0], wires or []))
+            # both sides clear of symbols: take one that crosses no wire at
+            # all if there is one, and the one crossing fewer otherwise
+            free = [o for o in clear if not hits(*o[0], wires or [])]
+            (x0, x1), side, justify = (
+                free[0] if free else min(clear, key=lambda o: hits(*o[0], wires or []))
+            )
         else:
             (x0, x1), side, justify = options[0]
         block = (x0, y0, x1, y1)
@@ -1449,17 +1453,35 @@ def _symbol_instance(
     def row_at(index: int) -> tuple[float, float]:
         return (round(x + side * 3.81, 4), round(y - (rows_n - 1) * 1.27 + index * 2.54, 4))
 
+    # The designator sits above the part, which is where the wire leaving its
+    # top pin runs - so it prints on the net unless it steps aside. Off to the
+    # side of the stub, on the same side the ratings took, keeps it clear of
+    # both the wire and the symbol.
+    ref_at: tuple[float, float] = (x, round(top - 2.54, 4))
+    ref_justify = ""
+    if upright and small:
+        ref_at = (round(x + side * 1.27, 4), round(top - 1.27, 4))
+        ref_justify = "left" if side > 0 else "right"
+
     if side_value:
         value_prop = _property("Value", part.value, *row_at(0), False, justify, text_angle)
     else:
+        # Same argument as the designator: below the part is where the wire
+        # leaving its bottom pin runs.
         value_prop = _property(
-            "Value", part.value, x, round(bottom + 2.54, 4), False, angle=text_angle
+            "Value",
+            part.value,
+            round(x + (1.27 if small else 0.0), 4),
+            round(bottom + (1.27 if small else 2.54), 4),
+            False,
+            "left" if small else "",
+            text_angle,
         )
     lines = [
         f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}){mirror} (unit {part.unit})',
         "    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)",
         f'    (uuid "{uid}")',
-        _property("Reference", part.ref, x, round(top - 2.54, 4), False, angle=text_angle),
+        _property("Reference", part.ref, *ref_at, False, ref_justify, text_angle),
         value_prop,
         _property("Footprint", part.footprint, x, y, True),
         _property("Datasheet", part.fields.get("Datasheet", "~"), x, y, True),
@@ -3636,9 +3658,9 @@ def motor_driver() -> Design:
         Track("VM", "F.Cu", POWER, ["C1.1", "C3.1"], auto=True),
         Track("VM", "F.Cu", POWER, ["C3.1", "C2.1"], auto=True),
         Track("VM", "F.Cu", POWER, ["C1.1", "R2.1"], auto=True),
-        Track("VCP", "F.Cu", SIG, [east["11"], "C3.2"], auto=True),
-        Track("VINT", "F.Cu", SIG, [east["14"], "C4.1"], auto=True),
-        Track("VINT", "F.Cu", SIG, ["C4.1", "R1.1"], auto=True),
+        Track("VCP", "F.Cu", POWER, [east["11"], "C3.2"], auto=True),
+        Track("VINT", "F.Cu", POWER, [east["14"], "C4.1"], auto=True),
+        Track("VINT", "F.Cu", POWER, ["C4.1", "R1.1"], auto=True),
         Track("LED_A", "F.Cu", SIG, ["R2.2", "D2.2"], auto=True),
     ]
 
@@ -4419,16 +4441,16 @@ def opamp_filter() -> Design:
         Track("FILT_IN", "F.Cu", SIG, ["R2.2", u1w["3"]], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["TP1.1", "R2.2"], auto=True),
         Track("OUT", "F.Cu", SIG, ["TP2.1", "C6.1"], auto=True),
-        Track("VREF", "F.Cu", SIG, ["TP3.1", "C2.2"], auto=True),
+        Track("VREF", "F.Cu", POWER, ["TP3.1", "C2.2"], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["C2.1", u1w["3"]], auto=True),
         Track("OUT", "F.Cu", SIG, [u1w["1"], u1e["4"]], auto=True),
         Track("OUT", "F.Cu", SIG, [u1w["1"], "C1.2"], auto=True),
         Track("OUT", "F.Cu", SIG, [u1e["4"], "C6.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["C6.2", "J3.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["J3.1", "R6.1"], auto=True),
-        Track("VREF", "F.Cu", SIG, [u2w["1"], u2e["4"]], auto=True),
-        Track("VREF", "F.Cu", SIG, [u2w["1"], "C2.2"], auto=True),
-        Track("VREF", "F.Cu", SIG, [u2w["1"], "R5.2"], auto=True),
+        Track("VREF", "F.Cu", POWER, [u2w["1"], u2e["4"]], auto=True),
+        Track("VREF", "F.Cu", POWER, [u2w["1"], "C2.2"], auto=True),
+        Track("VREF", "F.Cu", POWER, [u2w["1"], "R5.2"], auto=True),
         Track("MID", "F.Cu", SIG, ["R3.2", "R4.1"], auto=True),
         Track("MID", "F.Cu", SIG, ["R4.1", "C4.1"], auto=True),
         Track("MID", "F.Cu", SIG, ["C4.1", u2w["3"]], auto=True),

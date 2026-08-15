@@ -48,6 +48,11 @@ class Symbol:
     on_board: bool = True
     exclude_from_sim: bool = False
     properties: dict[str, str] = field(default_factory=dict)
+    # Where each visible property prints, as (x, y, justify). A field is text
+    # on the page like any other, and a reader loses it just as surely under a
+    # wire as under a symbol - so the geometry has to be readable, not only the
+    # value.
+    property_at: dict[str, tuple[float, float, str]] = field(default_factory=dict)
     pins: list[Pin] = field(default_factory=list)
     sheet: str = ""
 
@@ -345,6 +350,27 @@ def parse(path: str | Path) -> SchematicDoc:
             properties=props,
             sheet=p.name,
         )
+        for prop in node.children("property"):
+            atoms = prop.atoms()
+            if len(atoms) < 2:
+                continue
+            effects = prop.child("effects")
+            if effects is not None:
+                # KiCad 7 writes a bare `hide` atom, 8 and later `(hide yes)`.
+                # The bare form is an atom of `effects`, not a child of it, so
+                # `flag` alone misses exactly the files this repository writes.
+                hidden = effects.flag("hide") or any(
+                    str(atom) == "hide" for atom in effects.atoms()
+                )
+                if hidden:
+                    continue
+            prop_at = prop.child("at")
+            values = [a for a in (prop_at.atoms() if prop_at else []) if isinstance(a, (int, float))]
+            if len(values) < 2:
+                continue
+            justify_node = effects.child("justify") if effects else None
+            justify = " ".join(str(a) for a in justify_node.atoms()) if justify_node else ""
+            sym.property_at[str(atoms[0])] = (float(values[0]), float(values[1]), justify)
         units = lib_pins.get(lib_id, {})
         for source_unit in (0, unit):
             for pin in units.get(source_unit, []):
