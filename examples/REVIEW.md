@@ -390,6 +390,7 @@ the rule that reported them.
 | `hide` as a bare atom | parser fix | KiCad 7 writes `(effects ... hide)`, not `(hide yes)`. Reading only the second form made every hidden field visible, and forty hidden designators drowned the real findings |
 | `Design.keepouts` | mechanism | rectangles of board closed to the router on both faces, so a layout can say which side a connector is approached from |
 | per-net `back_cost` | mechanism | a signal's plane crossing priced against the front-side detour that avoids it, per net, so ground is not charged for its own plane |
+| `route.width_step`: the neck | rule fix | the rule's own docstring said a width change is honest at a pad *or at the edge of the pin field that forced the neck*, and only the first half was implemented. A 0.5 mm row holds 0.2 mm and nothing wider, so every fine-pitch escape was a finding with no fix but an argument. The narrow side now gets the same `power_neck_mm` budget `track.thin_power` gives it |
 
 ### What the tool then made us fix
 
