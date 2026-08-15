@@ -4687,6 +4687,8 @@ def opamp_filter() -> Design:
             pitch=2.8,
             centre=cy,
             width=SIG,
+            # pin 5 is the ground return, and it leaves at the width it keeps
+            widths={"5": POWER},
         )
         escapes += west + east
     u1w, u1e, u2w, u2e = (ends["U1w"], ends["U1e"], ends["U2w"], ends["U2e"])
@@ -4722,21 +4724,24 @@ def opamp_filter() -> Design:
         Track("+5V", "F.Cu", SIG, ["C7.1", "R3.1"], auto=True),
     ]
     # Each ground pad drops to the plane a couple of millimetres away, on the
-    # side away from the signal it returns: the loop closes at the part.
-    for pad, target in (
-        ("J1.2", (8.0, 22.0)),
-        ("J3.2", (49.0, 22.0)),
-        ("R6.2", (46.0, 20.0)),
-        ("R7.2", (9.0, 30.0)),
-        ("J2.2", (14.0, 6.0)),
-        ("C5.2", (37.0, 8.0)),
-        ("C7.2", (14.0, 33.0)),
-        ("C4.2", (15.0, 37.0)),
-        ("R4.2", (11.0, 38.0)),
-        (u1e["5"], (39.0, 13.0)),
-        (u2e["5"], (36.0, 34.0)),
+    # side away from the signal it returns: the loop closes at the part. The
+    # two that start at the end of an escape keep the escape's width: a run
+    # that steps from 0.3 to 0.5 halfway along is a step nobody chose, and the
+    # 0.65 mm row it left is what set the width in the first place.
+    for pad, target, width in (
+        ("J1.2", (8.0, 22.0), POWER),
+        ("J3.2", (49.0, 22.0), POWER),
+        ("R6.2", (46.0, 20.0), POWER),
+        ("R7.2", (9.0, 30.0), POWER),
+        ("J2.2", (14.0, 6.0), POWER),
+        ("C5.2", (37.0, 8.0), POWER),
+        ("C7.2", (14.0, 33.0), POWER),
+        ("C4.2", (15.0, 37.0), POWER),
+        ("R4.2", (11.0, 38.0), POWER),
+        (u1e["5"], (39.0, 13.0), POWER),
+        (u2e["5"], (36.0, 34.0), POWER),
     ):
-        tracks.append(Track("GND", "F.Cu", 0.5, [pad, target], auto=True, goal_layer="B.Cu"))
+        tracks.append(Track("GND", "F.Cu", width, [pad, target], auto=True, goal_layer="B.Cu"))
     return replace(design, tracks=tracks)
 
 
