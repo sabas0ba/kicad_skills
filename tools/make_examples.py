@@ -210,6 +210,13 @@ class Design:
     # space between the pad rows is closed to everything but the pads' own
     # entries.
     route_keepout: tuple[str, ...] = ()
+    # Rectangles of board, in board coordinates, closed to the router on both
+    # faces. A part at the edge of a board leaves a strip behind it that is
+    # routable and never the right answer: a search that finds it comes at the
+    # part's pads from the side nothing arrives from, and crosses the plane to
+    # do it. Saying the strip is not for routing is how a layout states which
+    # side a connector is approached from.
+    keepouts: tuple[tuple[float, float, float, float], ...] = ()
     # The grid `snapped` puts footprints on. A board whose placement is set by a
     # module's own 2.54 mm pad pitch cannot also sit on 0.5 mm, and pretending
     # otherwise moves the pads off the pins they have to land on.
@@ -2117,6 +2124,8 @@ def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Trac
         y0 = min(b[1] for b in boxes)
         y1 = max(b[3] for b in boxes)
         router.add(autoroute.Obstacle(left + 0.4, y0, right - 0.4, y1, "", None))
+    for x0, y0, x1, y1 in design.keepouts:
+        router.add(autoroute.Obstacle(x0, y0, x1, y1, "", None))
     for via in design.vias:
         router.add_via(via.net, via_position(design, via), via.size)
     for part in design.footprints():
@@ -2157,6 +2166,14 @@ def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Trac
                 if later.net != track.net
                 for point in later.points
             ],
+            # The back layer of these boards is a ground plane, and a signal
+            # laid across it saws the plane in two under its own return
+            # current - which is what `route.return_path` measures. Charged
+            # this heavily, a crossing is worth roughly forty times the front
+            # side detour that avoids it, so the router only crosses where the
+            # board has left it no front side at all. GND is not charged: its
+            # own copper is the plane.
+            back_cost=None if track.net == POUR_NET else 40.0,
         )
         if path is None:
             raise Blocked(track)
@@ -2571,8 +2588,15 @@ def _stitch_vias(design: Design) -> list[Via]:
     for vx, vy in rim:
         radius = 0.4
         ok = True
+        # Clearing the copper is not enough: the fill also has to be *solid*
+        # around the via. Sitting exactly one clearance off a track leaves a
+        # ring of pour thinner than ZONE_SLIVER, the filler drops it, and the
+        # via is then a hole through an island rather than a stitch into the
+        # plane - which is what `unconnected_items` reports. So every distance
+        # here is the clearance plus a sliver's worth of copper to hold on to.
+        solid = ZONE_CLEARANCE + ZONE_WELD + ZONE_SLIVER
         for (bx0, by0, bx1, by1), net in pads:
-            grow = 0.4 if net == POUR_NET else radius + 0.3
+            grow = 0.4 if net == POUR_NET else radius + solid
             if bx0 - grow <= vx <= bx1 + grow and by0 - grow <= vy <= by1 + grow:
                 ok = False
                 break
@@ -2582,7 +2606,7 @@ def _stitch_vias(design: Design) -> list[Via]:
                     continue
                 # centreline to centreline: the via's copper, the track's half
                 # width, and a clearance with room for the router's own grid
-                if _segment_to_point(a, b, (vx, vy)) < radius + width / 2 + 0.45:
+                if _segment_to_point(a, b, (vx, vy)) < radius + width / 2 + solid:
                     ok = False
                     break
         if ok and all(math.dist((vx, vy), hole) >= 1.2 for hole in holes):
@@ -3520,7 +3544,7 @@ def motor_driver() -> Design:
             "VM 2.7-10.8V",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(30.0, 80.0),
-            board=(80.0, 12.0, 270.0),
+            board=(82.0, 8.0, 270.0),
             mirror="y",
             fields={
                 "MPN": "1729128",
@@ -3534,7 +3558,7 @@ def motor_driver() -> Design:
             "100u",
             "Capacitor_SMD:CP_Elec_6.3x7.7",
             sheet=(55.88, 86.36),
-            board=(66.0, 17.0, 0.0),
+            board=(69.0, 8.0, 0.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "20%",
@@ -3549,7 +3573,7 @@ def motor_driver() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(68.58, 86.36),
-            board=(57.5, 26.5, 90.0),
+            board=(61.0, 26.9, 0.0),
             fields={
                 "Voltage": "50V",
                 "Tolerance": "10%",
@@ -3565,7 +3589,7 @@ def motor_driver() -> Design:
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(96.52, 72.39),
             angle=90.0,
-            board=(63.0, 27.0, 270.0),
+            board=(65.0, 28.7, 0.0),
             fields={
                 "Voltage": "50V",
                 "Tolerance": "10%",
@@ -3593,7 +3617,7 @@ def motor_driver() -> Design:
             "1u",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(149.86, 60.96),
-            board=(61.0, 24.0, 0.0),
+            board=(61.0, 23.3, 0.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "10%",
@@ -3608,7 +3632,7 @@ def motor_driver() -> Design:
             "10k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(160.02, 60.96),
-            board=(60.0, 40.0, 0.0),
+            board=(66.0, 40.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -3623,7 +3647,7 @@ def motor_driver() -> Design:
             "4k7",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(81.28, 107.95),
-            board=(66.0, 6.0, 0.0),
+            board=(52.0, 6.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -3638,7 +3662,7 @@ def motor_driver() -> Design:
             "green",
             "LED_SMD:LED_0805_2012Metric",
             sheet=(81.28, 121.92),
-            board=(74.0, 6.0, 180.0),
+            board=(58.0, 6.0, 180.0),
             silk_label="VM OK",
             fields={
                 "Voltage": "2.1V",
@@ -3680,7 +3704,7 @@ def motor_driver() -> Design:
             "LOGIC",
             "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical",
             sheet=(40.0, 45.0),
-            board=(80.0, 26.0, 0.0),
+            board=(82.0, 19.0, 0.0),
             fields={
                 "MPN": "61300811121",
                 "Manufacturer": "Wurth Elektronik",
@@ -3808,36 +3832,62 @@ def motor_driver() -> Design:
         centre=26.0,
         width=SIG,
         # the four bridge outputs leave at the width they keep: no step
-        widths={"2": POWER, "4": POWER, "5": POWER, "7": POWER},
+        widths={"2": POWER, "4": POWER, "5": POWER, "7": POWER, "3": POWER, "6": POWER},
     )
     right, east = fan(
         design,
         "U1",
         ["16", "15", "14", "13", "12", "11", "10", "9"],
         lead=50.5,
-        column=56.0,
-        pitch=1.3,
+        column=58.0,
+        pitch=1.8,
         centre=26.0,
         width=SIG,
+        # VINT, AISEN/GND, VM and VCP leave at the width the row allows;
+        # the logic pins beside them carry nothing and stay at 0.3.
+        widths={"14": POWER, "13": POWER, "12": POWER, "11": POWER},
     )
 
-    tracks = [*left, *right]
-    # AISEN, BISEN and GND stop at the end of the fan, on top of a via into the
-    # plane. Nothing else on this board asks the plane for anything.
-    vias = [
-        Via("GND", x=west["3"][0], y=west["3"][1]),
-        Via("GND", x=west["6"][0], y=west["6"][1]),
-        Via("GND", x=east["13"][0], y=east["13"][1]),
+    # AISEN, BISEN and GND leave the fan and take one more step clear of it
+    # before dropping into the plane. On top of the fan the pour is whatever
+    # fits between two escape lanes and their clearance - a strip too thin to
+    # reach anything, which is a via connected to an island rather than to the
+    # plane. A millimetre and a half further out the pour is solid.
+    stops = {
+        "3": (west["3"][0] - 1.5, west["3"][1]),
+        "6": (west["6"][0] - 1.5, west["6"][1]),
+        "13": (east["13"][0] + 1.5, east["13"][1]),
+    }
+    tracks = [
+        *left,
+        *right,
+        *(
+            Track("GND", "F.Cu", POWER, [end, stops[number]])
+            for number, end in (("3", west["3"]), ("6", west["6"]), ("13", east["13"]))
+        ),
     ]
+    vias = [Via("GND", x=point[0], y=point[1]) for point in stops.values()]
 
     # -- the supply, placed by hand ----------------------------------------
     # Bulk, then bypass, then the pin: the loop closes at the part, so the
     # bypass sits hard against the end of pin 12's escape.
+    # VM has to reach the middle of the east row, and the logic has to leave
+    # from either side of it. On two layers something crosses, and the choice
+    # is which: four signals going round the whole board to keep the front
+    # clear - which is what the router did, 190 mm of copper for a 40 mm net -
+    # or one stated link on the back for the rail. The rail is the right
+    # answer. It is low impedance, its own return is the plane it is crossing,
+    # and the signals cross the cut it leaves at right angles, which costs them
+    # a track width of return path each rather than a detour.
+    LINK = (71.0, 13.0), (71.0, 26.9)
+    vias += [Via("VM", x=LINK[0][0], y=LINK[0][1]), Via("VM", x=LINK[1][0], y=LINK[1][1])]
     tracks += [
         Track("VM", "F.Cu", POWER, [east["12"], "C2.1"]),
         Track("VM", "F.Cu", POWER, ["J1.1", "C1.1"], auto=True),
-        Track("VM", "F.Cu", POWER, ["C1.1", "C3.1"], auto=True),
-        Track("VM", "F.Cu", POWER, ["C3.1", "C2.1"], auto=True),
+        Track("VM", "F.Cu", POWER, ["C1.1", LINK[0]], auto=True),
+        Track("VM", "B.Cu", POWER, [LINK[0], LINK[1]]),
+        Track("VM", "F.Cu", POWER, [LINK[1], "C2.1"], auto=True),
+        Track("VM", "F.Cu", POWER, ["C2.1", "C3.1"], auto=True),
         Track("VM", "F.Cu", POWER, ["C1.1", "R2.1"], auto=True),
         Track("VCP", "F.Cu", POWER, [east["11"], "C3.2"], auto=True),
         Track("VINT", "F.Cu", POWER, [east["14"], "C4.1"], auto=True),
@@ -3851,13 +3901,13 @@ def motor_driver() -> Design:
     # back of the board a couple of millimetres away and the router spends the
     # via; the plane is under all of it.
     tracks += [
-        Track("GND", "F.Cu", 0.5, ["C2.2", (60.0, 22.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["C4.2", (63.5, 24.05)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["C1.2", (64.0, 20.5)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["J1.2", (76.0, 18.5)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["J4.1", (76.0, 24.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", 0.5, ["J4.8", (76.0, 45.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", SIG, ["D2.1", (77.0, 8.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["C2.2", (64.0, 26.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["C4.2", (64.0, 22.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["C1.2", (73.5, 12.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["J1.2", (76.0, 18.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["J4.1", (78.0, 19.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["J4.8", (78.0, 40.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["D2.1", (59.5, 9.5)], auto=True, goal_layer="B.Cu"),
     ]
 
     # -- everything that simply has to arrive ------------------------------

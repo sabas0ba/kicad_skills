@@ -190,6 +190,7 @@ class Router:
         start_layer: str | None = "F.Cu",
         goal_layer: str | None = "F.Cu",
         crowd: list[tuple[float, float]] | None = None,
+        back_cost: float | None = None,
     ) -> Path | None:
         """A path from ``start`` to ``goal``, or None when there is no room.
 
@@ -199,8 +200,16 @@ class Router:
         its track on top of the next net's only exit, and then that net has no
         route at all. Charging for the cell moves the first route aside when
         there is somewhere else to be, and leaves it there when there is not.
+
+        ``back_cost`` overrides the router's own surcharge for this one net.
+        A signal crossing a ground plane cuts the plane, and its own return
+        current then has to go round the cut; a caller that knows the back
+        layer is a plane charges enough for the crossing that the search takes
+        any front-side detour it can find, and only crosses where the board
+        leaves it nothing else.
         """
         blocked = self._blocked(net, width)
+        back_cost = self.back_cost if back_cost is None else back_cost
         crowded: set[tuple[int, int]] = set()
         for point in crowd or ():
             if math.dist(point, start) < self.crowd_radius:
@@ -264,7 +273,7 @@ class Router:
                 total = (
                     cost
                     + step
-                    + (self.back_cost * step if layer else 0.0)
+                    + (back_cost * step if layer else 0.0)
                     + (0.0 if heading in (index, -1) else turn_penalty)
                     + (self.crowd_cost if nxt in crowded else 0.0)
                 )
