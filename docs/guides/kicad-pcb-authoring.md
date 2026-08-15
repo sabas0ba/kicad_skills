@@ -101,6 +101,13 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
 * Escape fans are stated, not searched. The escape's lead length, column and
   pitch decide how much of the decoupling budget survives - budget them
   before placing anything else around a fine-pitch part.
+* **A strip of board that is routable and never right is a keepout.** A
+  connector at an edge leaves a few millimetres behind it; a search that runs
+  out of front-side room will go round the back of the connector and come at
+  its pads from the side nothing arrives from, crossing the plane to do it.
+  Saying the strip is not for routing is how a layout states which side a
+  connector is approached from. It is a floorplan statement, not a fix: if
+  every route needs that strip, the floorplan is what has to change.
 
 ## Corners, clearance, and sensitive paths
 
