@@ -39,6 +39,12 @@ THRESHOLDS = {
     "max_decoupling_via_mm": 1.5,
     # Interior angle below which a corner is an acid trap and an impedance step.
     "min_track_angle_deg": 90.0,
+    # How far in from the board edge a connector may sit before the cable has
+    # to cross the board to reach it.
+    "max_connector_edge_mm": 6.0,
+    # How near a pad a track may change width: a neck is allowed to end where
+    # the thing that forced it does, and nowhere else.
+    "width_step_free_mm": 3.0,
     # How much of its own outline a ground pour has to actually fill. Below
     # this it is not a plane, it is infill between the traces that cut it.
     "min_pour_coverage": 0.8,
@@ -238,6 +244,29 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "a connector with no free silkscreen text near it: nothing says which "
         "pin carries what, and reversed hookup is how boards die",
         "info",
+    ),
+    "silk.unlabeled_indicator": RuleSpec(
+        "an LED or a switch with no silkscreen text within 10 mm saying what "
+        "it means - a designator names the schematic line, not the function",
+        "warning",
+    ),
+    "layout.connector_not_at_edge": RuleSpec(
+        "a connector whose pads sit further than `max_connector_edge_mm` in "
+        "from the nearest board edge, so its cable has to cross the board",
+        "warning",
+        threshold="max_connector_edge_mm",
+    ),
+    "route.width_step": RuleSpec(
+        "a track that changes width further than `width_step_free_mm` from any "
+        "pad - the narrow section already set the current the run can carry, "
+        "so the wide section buys nothing",
+        "warning",
+        threshold="width_step_free_mm",
+    ),
+    "route.under_package": RuleSpec(
+        "a track of another net threaded under a package's body, where there "
+        "is no plane between it and the die and no way to probe or rework it",
+        "warning",
     ),
     "layout.pour_coverage": RuleSpec(
         "a ground pour that fills less than `min_pour_coverage` of its own "
@@ -749,6 +778,206 @@ def rule_board_markings(ctx: PcbContext) -> list[Finding]:
             )
         )
     return findings
+
+
+@rule
+def rule_indicator_markings(ctx: PcbContext) -> list[Finding]:
+    """An indicator or a control with nothing on the silk saying what it means.
+
+    A lit LED and a switch are the board's only interface to somebody holding
+    it. "D3" tells them which schematic line it is, which is not the question
+    being asked; "3V3 OK" is.
+    """
+    free = [t for t in ctx.board.silk_texts if not t["footprint"]]
+    unlabeled = []
+    for fp in ctx.board.footprints:
+        indicator = "LED" in (fp.lib_id or "").upper() or fp.ref.startswith("SW")
+        if not indicator:
+            continue
+        if not any(math.hypot(t["x"] - fp.x, t["y"] - fp.y) < 10.0 for t in free):
+            unlabeled.append(fp.ref)
+    if not unlabeled:
+        return []
+    return [
+        Finding(
+            "silk.unlabeled_indicator",
+            "warning",
+            f"{len(unlabeled)} indicator(s) or control(s) carry no silkscreen "
+            "text saying what they mean - a designator is not a meaning",
+            details={"refs": sorted(unlabeled)},
+        )
+    ]
+
+
+@rule
+def rule_connector_at_edge(ctx: PcbContext) -> list[Finding]:
+    """A connector stranded in the middle of the board.
+
+    A cable leaves the board; it should not have to cross it first. A connector
+    away from the edge blocks the parts around it, fouls its own mating shell,
+    and puts the harness over the artwork. Debug headers are the case that
+    sometimes has to lose this argument - and it is an argument, made per
+    board, not a default.
+    """
+    limit = ctx.thresholds["max_connector_edge_mm"]
+    if limit <= 0 or not ctx.board.edges:
+        return []
+    xs = [p[0] for e in ctx.board.edges for p in e.get("points", ())]
+    ys = [p[1] for e in ctx.board.edges for p in e.get("points", ())]
+    if not xs or not ys:
+        return []
+    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    stranded = []
+    positions = []
+    for fp in ctx.board.footprints:
+        if not fp.ref.startswith("J") or len(fp.pads) < 2:
+            continue
+        box = _footprint_pad_box(fp)
+        if box is None:
+            continue
+        gap = min(box[0] - x0, x1 - box[2], box[1] - y0, y1 - box[3])
+        if gap > limit:
+            stranded.append(f"{fp.ref} is {gap:.1f} mm in from the nearest edge")
+            positions.append((fp.x, fp.y))
+    if not stranded:
+        return []
+    return [
+        Finding(
+            "layout.connector_not_at_edge",
+            "warning",
+            f"{len(stranded)} connector(s) sit more than {limit:.0f} mm in from "
+            "the board edge - the cable has to cross the board to reach them",
+            details={"count": len(stranded), "examples": sorted(stranded), "positions": positions},
+        )
+    ]
+
+
+@rule
+def rule_track_width_steps(ctx: PcbContext) -> list[Finding]:
+    """A track that changes width somewhere that explains nothing.
+
+    Widening a run after it has already gone a distance narrow buys no current:
+    the narrow part sets the limit. The one honest place to change width is
+    where the constraint stops - at a pad, or at the edge of the pin field that
+    forced the neck - so a step out in open copper is either a mistake or a
+    router's idea of a compromise.
+    """
+    free = ctx.thresholds["width_step_free_mm"]
+    board = ctx.board
+    pads = [(pad.x, pad.y) for fp in board.footprints for pad in fp.pads]
+    steps = []
+    positions = []
+    for key, indices in _track_endpoints(board).items():
+        if len(indices) != 2:
+            continue
+        first, second = (board.tracks[i] for i in indices)
+        if first.net != second.net or first.layer != second.layer:
+            continue
+        if abs(first.width - second.width) < 0.02:
+            continue
+        point = (key[0] / 1000, key[1] / 1000)
+        if any(math.dist(point, pad) <= free for pad in pads):
+            continue  # at a pad, which is where a neck is allowed to end
+        steps.append(
+            f"{first.net or '(no net)'} steps {min(first.width, second.width):.2f} -> "
+            f"{max(first.width, second.width):.2f} mm at "
+            f"({round(point[0], 2)}, {round(point[1], 2)})"
+        )
+        positions.append(point)
+    if not steps:
+        return []
+    return [
+        Finding(
+            "route.width_step",
+            "warning",
+            f"{len(steps)} place(s) where a track changes width more than "
+            f"{free:.0f} mm from any pad - the narrow part already set the "
+            "current, so the wide part buys nothing",
+            details={"count": len(steps), "examples": sorted(steps)[:8], "positions": positions},
+        )
+    ]
+
+
+@rule
+def rule_route_under_package(ctx: PcbContext) -> list[Finding]:
+    """Foreign copper threaded under a package's body.
+
+    Under an integrated circuit there is no plane between the track and the
+    die, the track cannot be probed or reworked, and on anything with an
+    exposed pad it is running under grounded metal. Its own escapes belong
+    there; nobody else's does.
+    """
+    board = ctx.board
+    findings_by_fp: dict[str, list[str]] = {}
+    positions: list[tuple[float, float]] = []
+    for fp in board.footprints:
+        if len(fp.pads) < 8:
+            continue  # a package, not a passive
+        box = _footprint_pad_box(fp)
+        if box is None:
+            continue
+        # the body between the pad rows, not the pads themselves
+        inset = 0.6
+        body = (box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset)
+        if body[2] - body[0] < 1.0 or body[3] - body[1] < 1.0:
+            continue
+        own = {pad.net for pad in fp.pads if pad.net}
+        for track in board.tracks:
+            if track.net in own or not track.net:
+                continue
+            if not _segment_hits_box(track.start, track.end, body):
+                continue
+            findings_by_fp.setdefault(fp.ref, []).append(track.net)
+            positions.append(
+                ((track.start[0] + track.end[0]) / 2, (track.start[1] + track.end[1]) / 2)
+            )
+    if not findings_by_fp:
+        return []
+    examples = [
+        f"{ref}: {', '.join(sorted(set(nets))[:4])}" for ref, nets in sorted(findings_by_fp.items())
+    ]
+    total = sum(len(v) for v in findings_by_fp.values())
+    return [
+        Finding(
+            "route.under_package",
+            "warning",
+            f"{total} track segment(s) of another net pass under "
+            f"{len(findings_by_fp)} package(s) - no plane between the track and "
+            "the die, and no way to probe or rework it",
+            details={"count": total, "examples": examples, "positions": positions},
+        )
+    ]
+
+
+def _segment_hits_box(a, b, box) -> bool:
+    """Whether a segment has any part inside an axis-aligned box."""
+    x0, y0, x1, y1 = box
+    # cheap accept: either end inside
+    for px, py in (a, b):
+        if x0 <= px <= x1 and y0 <= py <= y1:
+            return True
+    # otherwise walk it; the boxes here are millimetres across, so a coarse
+    # walk cannot miss one and costs nothing
+    steps = max(2, int(math.dist(a, b) / 0.25))
+    for index in range(steps + 1):
+        t = index / steps
+        px = a[0] + (b[0] - a[0]) * t
+        py = a[1] + (b[1] - a[1]) * t
+        if x0 <= px <= x1 and y0 <= py <= y1:
+            return True
+    return False
+
+
+def _footprint_pad_box(fp) -> tuple[float, float, float, float] | None:
+    boxes = [pad.bbox(angle_offset=fp.angle) for pad in fp.pads]
+    if not boxes:
+        return None
+    return (
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    )
 
 
 @rule

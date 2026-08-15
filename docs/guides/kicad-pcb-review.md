@@ -124,6 +124,10 @@ mismatches).
 | `route.acute_angle` | 90 deg | corners that trap etchant and step the impedance |
 | `route.right_angle` | 90 deg | corners that turn a full 90 deg — two 45s cost nothing |
 | `route.odd_angle` | — | corners off the 45-degree grid: a 20 or 70 degree bend reads as a slip of the mouse |
+| `route.width_step` | 3 mm | a track changing width away from any pad — the narrow part already set the current |
+| `route.under_package` | — | another net's track threaded under a package body, unprobeable and with no plane under it |
+| `layout.connector_not_at_edge` | 6 mm | a connector the cable has to cross the board to reach |
+| `silk.unlabeled_indicator` | — | an LED or switch with no silk saying what it means |
 | `silk.missing_board_id` | — | no free silkscreen text: the bare board states neither name nor revision |
 | `silk.unlabeled_connector` | — | a connector with no silk text near it saying which pin carries what |
 | `layout.pour_single_sided` | — | a two-layer board pouring ground on only one face |
@@ -138,7 +142,7 @@ The full set: `min_track_mm`, `min_via_drill_mm`, `min_annular_ring_mm`,
 `min_edge_clearance_mm`, `max_decoupling_distance_mm`, `max_drill_sizes`,
 `min_silk_text_height_mm`, `placement_grid_mm`, `rotation_step_deg`,
 `max_decoupling_via_mm`, `min_track_angle_deg`, `min_pour_coverage`,
-`min_pour_island_fraction`.
+`min_pour_island_fraction`, `max_connector_edge_mm`, `width_step_free_mm`.
 Use the fab's real capability, not the defaults, when the fab is known.
 
 Exit code is `2` when there is at least one error.

@@ -145,6 +145,13 @@ _AI_BLOCKING = (
     "route.unrouted_net",
     "route.no_tracks",
     "route.stub",
+    # the artwork faults a plot shows and a list hides
+    "route.acute_angle",
+    "route.odd_angle",
+    "route.width_step",
+    "route.under_package",
+    "layout.connector_not_at_edge",
+    "silk.unlabeled_indicator",
     "route.acute_angle",
     "route.mixed_track_widths",
     "route.detour",

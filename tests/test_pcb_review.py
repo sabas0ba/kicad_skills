@@ -692,3 +692,59 @@ def test_a_right_angle_corner_is_context():
     assert "route.right_angle" not in {
         f.rule for f in pcb_review.rule_track_angles(ctx_for(board_from(tracks=mitred)))
     }
+
+
+def test_an_indicator_without_silk_is_reported():
+    led = footprint("D1", 10, 10, [pad("1", 10, 10, "GND")], layer="F.Cu")
+    led.lib_id = "LED_SMD:LED_0805_2012Metric"
+    bare = board_from(footprints=[led])
+    assert [f.rule for f in pcb_review.rule_indicator_markings(ctx_for(bare))] == [
+        "silk.unlabeled_indicator"
+    ]
+    told = board_from(
+        footprints=[led],
+        silk=[{"text": "5V OK", "x": 12.0, "y": 10.0, "size": 1.0, "footprint": "", "layer": "F.SilkS"}],
+    )
+    assert pcb_review.rule_indicator_markings(ctx_for(told)) == []
+
+
+def test_a_connector_marooned_in_the_middle_is_reported():
+    middle = footprint("J1", 25, 20, [pad("1", 25, 20, "A"), pad("2", 26, 20, "B")])
+    assert [f.rule for f in pcb_review.rule_connector_at_edge(ctx_for(board_from([middle])))] == [
+        "layout.connector_not_at_edge"
+    ]
+    edge = footprint("J1", 2, 20, [pad("1", 2, 20, "A"), pad("2", 3, 20, "B")])
+    assert pcb_review.rule_connector_at_edge(ctx_for(board_from([edge]))) == []
+
+
+def test_a_width_step_away_from_a_pad_is_reported():
+    parts = [footprint("R1", 5, 5, [pad("1", 5, 5, "P")])]
+    stepped = board_from(
+        footprints=parts,
+        tracks=[
+            track(5, 5, 20, 5, width=0.3, net="P"),
+            track(20, 5, 35, 5, width=0.8, net="P"),
+        ],
+    )
+    findings = pcb_review.rule_track_width_steps(ctx_for(stepped))
+    assert [f.rule for f in findings] == ["route.width_step"]
+    # the same step, but at the pad the neck was there for
+    at_pad = board_from(
+        footprints=parts,
+        tracks=[
+            track(5, 5, 6, 5, width=0.3, net="P"),
+            track(6, 5, 30, 5, width=0.8, net="P"),
+        ],
+    )
+    assert pcb_review.rule_track_width_steps(ctx_for(at_pad)) == []
+
+
+def test_a_foreign_track_under_a_package_is_reported():
+    ic = footprint("U1", 20, 20, [pad(str(i), 16 + i, 16, "OWN") for i in range(1, 9)])
+    ic.pads += [pad(str(i + 8), 16 + i, 24, "OWN") for i in range(1, 9)]
+    crossing = board_from(footprints=[ic], tracks=[track(10, 20, 30, 20, net="OTHER")])
+    assert [f.rule for f in pcb_review.rule_route_under_package(ctx_for(crossing))] == [
+        "route.under_package"
+    ]
+    around = board_from(footprints=[ic], tracks=[track(10, 32, 30, 32, net="OTHER")])
+    assert pcb_review.rule_route_under_package(ctx_for(around)) == []
