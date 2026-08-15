@@ -5126,7 +5126,7 @@ def fpga_audio() -> Design:
             "AUDIO OUT",
             "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
             sheet=(395.0, 110.0),
-            board=(89.0, 38.0, 0.0),
+            board=(95.0, 38.0, 0.0),
             fields={
                 "MPN": "61300311121",
                 "Manufacturer": "Wurth Elektronik",
@@ -5201,10 +5201,10 @@ def fpga_audio() -> Design:
         cap("C9", "100n", (84.0, 150.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C10", "100n", (244.0, 132.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C11", "100n", (300.0, 62.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C16", "100n", (328.0, 62.0), (84.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C16", "100n", (328.0, 62.0), (89.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C12", "2u2", (296.0, 158.0), (60.0, 50.0, 0.0), "16V", "CL10A225KO8NNNC"),
-        cap("C13", "2u2", (324.0, 158.0), (84.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
-        cap("C14", "2u2", (352.0, 158.0), (84.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
+        cap("C13", "2u2", (324.0, 158.0), (89.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
+        cap("C14", "2u2", (352.0, 158.0), (89.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
         res("R1", "10k", (112.0, 232.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
         res("R2", "10k", (140.0, 232.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
         cap("C15", "100n", (148.0, 62.0), (57.0, 50.0, 180.0), "25V", "CL10B104KB8NNNC"),
@@ -5374,12 +5374,12 @@ def fpga_audio() -> Design:
         # GND has no power-output pin on it either: every ground here is a
         # power *input*, and without a flag ERC says so.
         power_flags=[("+3V3", "J1.1"), ("GND", "J1.2")],
-        board_size=(94.0, 84.0),
+        board_size=(100.0, 84.0),
         label_nets=("I2S_SCK", "I2S_BCK", "I2S_DIN", "I2S_LRCK"),
         route_keepout=(),
         tracks=[],
         vias=[],
-        pour=(3.0, 3.0, 91.0, 81.0),
+        pour=(3.0, 3.0, 97.0, 81.0),
         # Four units of one symbol and twenty-odd parts do not fit on A4.
         paper="A3",
     ).snapped()
@@ -5586,10 +5586,10 @@ def fpga_audio() -> Design:
         ("U2.10", (86.0, 33.5)),
         ("U2.9", (86.0, 37.5)),
         ("U2.3", (86.0, 42.5)),
-        ("C16.2", (84.0, 52.0)),
+        ("C16.2", (89.0, 52.0)),
         ("C12.2", (60.0, 53.0)),
-        ("C14.2", (87.0, 47.0)),
-        ("J2.2", (89.5, 45.5)),
+        ("C14.2", (91.5, 47.0)),
+        ("J2.2", (95.5, 45.5)),
         ("J3.6", (78.0, 70.0)),
     ):
         tracks.append(Track("GND", "F.Cu", 0.4, [end(pad), target], auto=True, goal_layer="B.Cu"))
