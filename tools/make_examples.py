@@ -1723,6 +1723,52 @@ def footprint_definition(spec: str) -> SNode:
     return copy.deepcopy(_footprint_cache[spec])
 
 
+def _move_reference_off_pads(node: SNode, ref: str) -> None:
+    """Put the designator somewhere it can still be read after assembly.
+
+    A library footprint puts its reference where that part's own outline
+    leaves room, which for a module with pads down both sides and along the
+    bottom is the middle of a pad. Silk over a pad is not a designator: the
+    mask opens there, the ink is scraped off in fabrication, and what is left
+    is a pad that will not wet. So the reference steps to the first spot in
+    the part's own frame that no pad occupies.
+    """
+    prop = next((p for p in node.children("property") if str(p.atom(0, "")) == "Reference"), None)
+    at = prop.child("at") if prop else None
+    if at is None:
+        return
+    atoms = [a for a in at.atoms() if isinstance(a, (int, float))]
+    if len(atoms) < 2:
+        return
+    boxes = []
+    for pad in node.children("pad"):
+        pad_at = pad.child("at")
+        size = pad.child("size")
+        pa = [a for a in (pad_at.atoms() if pad_at else []) if isinstance(a, (int, float))]
+        ps = [a for a in (size.atoms() if size else []) if isinstance(a, (int, float))]
+        if len(pa) >= 2 and len(ps) >= 2:
+            boxes.append(
+                (pa[0] - ps[0] / 2, pa[1] - ps[1] / 2, pa[0] + ps[0] / 2, pa[1] + ps[1] / 2)
+            )
+    if not boxes:
+        return
+    half = len(ref) * 0.4 + 0.2
+    top = min(b[1] for b in boxes)
+    bottom = max(b[3] for b in boxes)
+    for cx, cy in (
+        (float(atoms[0]), float(atoms[1])),
+        (0.0, 0.0),
+        (0.0, round(top - 1.4, 3)),
+        (0.0, round(bottom + 1.4, 3)),
+    ):
+        box = (cx - half, cy - 0.8, cx + half, cy + 0.8)
+        if not any(
+            box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in boxes
+        ):
+            at.args = [cx, cy, *atoms[2:]]
+            return
+
+
 def _set_property(node: SNode, name: str, value: str, *, add: bool = False) -> None:
     for prop in node.children("property"):
         if str(prop.atom(0, "")) == name:
@@ -2715,6 +2761,7 @@ def emit_board(design: Design, path: Path) -> None:
         _reuuid(node, design.name, "fp", part.ref)
         node.args.insert(2, _uuid_node(stable_uuid(design.name, "fp", part.ref)))
         _set_property(node, "Reference", part.ref)
+        _move_reference_off_pads(node, part.ref)
         _set_property(node, "Value", part.value)
         for key, value in part.fields.items():
             _set_property(node, key, value, add=True)
@@ -2786,14 +2833,21 @@ def emit_board(design: Design, path: Path) -> None:
 
 
 def _silk_text_item(
-    design: Design, text: str, x: float, y: float, key: object, size: float = 0.8
+    design: Design,
+    text: str,
+    x: float,
+    y: float,
+    key: object,
+    size: float = 0.8,
+    justify: str = "",
 ) -> str:
     ox, oy = design.origin
     thickness = round(size * 0.15, 3)
+    where = f" (justify {justify})" if justify else ""
     return (
         f'\t(gr_text "{text}" (at {round(ox + x, 4)} {round(oy + y, 4)} 0) '
         f'(layer "F.SilkS") (uuid "{stable_uuid(design.name, "silk", key)}") '
-        f"(effects (font (size {size} {size}) (thickness {thickness}))))"
+        f"(effects (font (size {size} {size}) (thickness {thickness})){where}))"
     )
 
 
@@ -2820,6 +2874,75 @@ def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, flo
     return (min(xs), min(ys), max(xs), max(ys))
 
 
+def _silk_box(
+    text: str, x: float, y: float, size: float, justify: str = ""
+) -> tuple[float, float, float, float]:
+    """Roughly what a centred silk string covers, for keeping it off things."""
+    width = len(text) * size * 0.78
+    if justify == "left":
+        x0, x1 = x, x + width
+    elif justify == "right":
+        x0, x1 = x - width, x
+    else:
+        x0, x1 = x - width / 2, x + width / 2
+    return (x0, y - size * 0.8, x1, y + size * 0.8)
+
+
+def _part_extent(design: Design, part: Part) -> tuple[float, float, float, float]:
+    """How much board a part takes up: its courtyard, or its pads if it has
+    none. Some module footprints draw no courtyard at all, and taking that to
+    mean "takes up no room" is how a legend gets printed across its pads."""
+    box = _courtyard_box(design, part)
+    if box:
+        return box
+    node = footprint_definition(part.footprint)
+    boxes = [pad_box(design, part, pad) for pad in node.children("pad")]
+    if not boxes:
+        return (0.0, 0.0, 0.0, 0.0)
+    return (
+        min(b[0] for b in boxes),
+        min(b[1] for b in boxes),
+        max(b[2] for b in boxes),
+        max(b[3] for b in boxes),
+    )
+
+
+def _silk_intrusion(
+    design: Design,
+    box: tuple[float, float, float, float],
+    taken: list[tuple[float, float, float, float]],
+) -> float:
+    """How much of other people's board a silk box takes, in mm^2.
+
+    Zero means it is clear. Counting the area rather than the collisions is
+    what separates "half a legend across a module's pads" from "a tenth of a
+    millimetre into a chip capacitor's courtyard": both are one collision, and
+    only one of them matters.
+    """
+    width, height = design.board_size
+    outside = (
+        max(0.0, 1.0 - box[0])
+        + max(0.0, 1.0 - box[1])
+        + max(0.0, box[2] - (width - 1.0))
+        + max(0.0, box[3] - (height - 1.0))
+    )
+    over = sum(
+        max(0.0, min(box[2], c[2]) - max(box[0], c[0]))
+        * max(0.0, min(box[3], c[3]) - max(box[1], c[1]))
+        for c in taken
+    )
+    return over + outside * 100.0  # off the board is never the better option
+
+
+def _silk_clear(
+    design: Design,
+    box: tuple[float, float, float, float],
+    taken: list[tuple[float, float, float, float]],
+) -> bool:
+    """Whether a silk box is inside the board and off every footprint."""
+    return _silk_intrusion(design, box, taken) <= 0.0
+
+
 def _board_silk(design: Design) -> list[str]:
     """What the silkscreen says beyond the references.
 
@@ -2832,29 +2955,49 @@ def _board_silk(design: Design) -> list[str]:
         # The degraded variant documents nothing about itself - that is one of
         # its findings - so the whole self-description package rides on rev.
         return out
-    out.append(
-        _silk_text_item(
-            design,
-            f"{design.name} rev {design.rev}",
-            design.board_size[0] / 2,
-            design.board_size[1] - 4.4,
-            "boardid",
-            size=1.2,
-        )
-    )
+    width, height = design.board_size
+    courtyards = {part.ref: _part_extent(design, part) for part in design.footprints()}
+    taken = list(courtyards.values())
+    # Bottom centre is where a board says its own name, and on a board with
+    # room that is where it stays. A carrier whose module runs the length of
+    # it has no bottom centre to write in, so the next-best strips are offered
+    # in turn and the first clear one wins - silk over a pad is not a legend,
+    # it is a pad you cannot solder.
+    board_id = f"{design.name} rev {design.rev}"
+    spots = [
+        (width / 2, height - 4.4),
+        (width / 4, height - 4.4),
+        (3 * width / 4, height - 4.4),
+        (width / 2, 4.4),
+        (width / 4, 4.4),
+        (3 * width / 4, 4.4),
+        (3 * width / 4, height / 2),
+        (width / 4, height / 2),
+    ]
+    lines = [(board_id, 1.2, "boardid")]
     if design.company:
         # the author line: a bare board also answers "whose design is this"
-        out.append(
-            _silk_text_item(
+        lines.append((design.company, 1.0, "boardauthor"))
+    stack = max(len(text) * size * 0.78 for text, size, _key in lines), 2.4 * len(lines)
+    at = next(
+        (
+            spot
+            for spot in spots
+            if _silk_clear(
                 design,
-                design.company,
-                design.board_size[0] / 2,
-                design.board_size[1] - 2.0,
-                "boardauthor",
-                size=1.0,
+                (
+                    spot[0] - stack[0] / 2,
+                    spot[1] - 1.0,
+                    spot[0] + stack[0] / 2,
+                    spot[1] - 1.0 + stack[1],
+                ),
+                taken,
             )
-        )
-    width, height = design.board_size
+        ),
+        spots[0],
+    )
+    for index, (text, size, key) in enumerate(lines):
+        out.append(_silk_text_item(design, text, at[0], at[1] + index * 2.4, key, size=size))
     net_of: dict[tuple[str, str], str] = {}
     for name, nodes in design.nets.items():
         for entry in nodes:
@@ -2873,21 +3016,39 @@ def _board_silk(design: Design) -> list[str]:
             # clear the whole footprint - a screw terminal's body silk would
             # swallow a pad-edge offset
             row_along_x = (max(xs) - min(xs)) >= (max(ys) - min(ys))
-            clear = _courtyard_box(design, part)
+            clear = courtyards[part.ref]
             seen: set[str] = set()
-            for number, pad, (px, py) in pads:
+            for number, _pad, (px, py) in pads:
                 net = net_of.get((part.ref, number))
                 if not net or number in seen:
                     continue
                 seen.add(number)
-                bx0, by0, bx1, by1 = clear or pad_box(design, part, pad)
+                bx0, by0, bx1, by1 = clear
+                # Either side of the pad row will do; which one is a question
+                # of what is already there. A connector at an edge has an
+                # empty strip on the outboard side and the rest of the board
+                # on the other, so the measurement picks outboard on its own -
+                # and on a carrier, where the module is inboard, it has to,
+                # because inboard is a pad and silk over a pad is a pad that
+                # will not wet.
                 if row_along_x:
-                    tx = px
-                    ty = (by1 + 1.2) if height / 2 - py > 0 else (by0 - 1.2)
+                    sides = [(px, by0 - 1.2, ""), (px, by1 + 1.2, "")]
+                    if height / 2 - py > 0:
+                        sides.reverse()
                 else:
-                    tx = (bx1 + 1.6) if width / 2 - px > 0 else (bx0 - 1.6)
-                    ty = py
-                out.append(_silk_text_item(design, net, tx, ty, (part.ref, number)))
+                    sides = [(bx0 - 1.6, py, "right"), (bx1 + 1.6, py, "left")]
+                    if width / 2 - px < 0:
+                        sides.reverse()
+                others = [box for ref, box in courtyards.items() if ref != part.ref]
+                tx, ty, justify = min(
+                    sides,
+                    key=lambda side: _silk_intrusion(
+                        design, _silk_box(net, side[0], side[1], 0.8, side[2]), others
+                    ),
+                )
+                out.append(
+                    _silk_text_item(design, net, tx, ty, (part.ref, number), justify=justify)
+                )
         if part.silk_label:
             bx, by, _angle = part.board
             dy = height / 2 - by
@@ -4058,7 +4219,7 @@ def pico_carrier() -> Design:
             "5V IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(60.0, 40.0),
-            board=(72.0, 8.0, 270.0),
+            board=(78.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -4072,7 +4233,7 @@ def pico_carrier() -> Design:
             "Diode_SMD:D_SMA",
             sheet=(90.17, 39.37),
             mirror="y",
-            board=(56.0, 8.0, 180.0),
+            board=(62.0, 8.0, 180.0),
             fields={
                 "Voltage": "40V",
                 "Current": "1A",
@@ -4087,7 +4248,7 @@ def pico_carrier() -> Design:
             "22u",
             "Capacitor_SMD:C_1210_3225Metric",
             sheet=(127.0, 45.72),
-            board=(46.0, 9.54, 90.0),
+            board=(52.0, 9.54, 90.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
@@ -4102,7 +4263,7 @@ def pico_carrier() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(180.34, 60.96),
-            board=(46.0, 17.0, 0.0),
+            board=(52.0, 17.0, 0.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "10%",
@@ -4117,7 +4278,7 @@ def pico_carrier() -> Design:
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(203.2, 60.96),
-            board=(56.0, 17.0, 0.0),
+            board=(62.0, 17.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -4133,7 +4294,7 @@ def pico_carrier() -> Design:
             "LED_SMD:LED_0805_2012Metric",
             sheet=(203.2, 78.74),
             angle=90.0,
-            board=(64.0, 17.0, 180.0),
+            board=(70.0, 17.0, 180.0),
             silk_label="3V3 OK",
             fields={
                 "Voltage": "2.1V",
@@ -4211,10 +4372,10 @@ def pico_carrier() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("+5V", "J1.1"), ("VSYS", "D1.1"), ("ADC_VREF", "U1.35")],
-        board_size=(80.0, 56.0),
+        board_size=(88.0, 62.0),
         tracks=[],
         vias=[],
-        pour=(2.5, 2.5, 77.5, 53.5),
+        pour=(2.5, 2.5, 85.5, 59.5),
         # High enough that the last line stays inside the sheet frame.
         notes_at=(20.0, 146.0),
         # The module's 2.54 mm pad pitch decides where everything goes; snapping
@@ -4245,15 +4406,15 @@ def pico_carrier() -> Design:
         Track("VSYS", "F.Cu", POWER, ["D1.1", "J4.2"], auto=True),
         Track("VSYS", "F.Cu", POWER, ["C1.1", "D1.1"], auto=True),
         Track("+3V3", "F.Cu", POWER, ["C2.1", "J4.5"], auto=True),
-        Track("+3V3", "F.Cu", SIG, ["C2.1", "R1.1"], auto=True),
+        Track("+3V3", "F.Cu", 0.4, ["C2.1", "R1.1"], auto=True),
         Track("LED_P", "F.Cu", SIG, ["R1.2", "D3.2"], auto=True),
     ]
     # Ground: every pad drops straight through to the plane under it.
     for pad, target in (
-        ("C1.2", (49.0, 14.0)),
-        ("C2.2", (48.5, 17.0)),
-        ("D3.1", (68.0, 21.0)),
-        ("J1.2", (66.0, 14.0)),
+        ("C1.2", (55.0, 14.0)),
+        ("C2.2", (54.5, 17.0)),
+        ("D3.1", (74.0, 21.0)),
+        ("J1.2", (72.0, 14.0)),
     ):
         tracks.append(Track("GND", "F.Cu", 0.5, [pad, target], auto=True, goal_layer="B.Cu"))
     # The module's own ground pads are surface mount and reach the plane through

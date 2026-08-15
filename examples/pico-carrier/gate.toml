@@ -20,8 +20,12 @@ longer asks."""
 [[waivers]]
 rule = "layout.decoupling_distance"
 reason = """The header sits between the module pin and any possible capacitor \
-- that is what a breakout is. C1 and C2 sit immediately outboard of the pins \
-they serve; the 9-10 mm the rule measures is the header's own width."""
+- that is what a breakout is. C1 and C2 sit as close outboard of the pins they \
+serve as the pin legend allows: the strip beside the header carries the net \
+name of every one of its twenty pins, and a capacitor in it would be printed \
+over. So the 9-17 mm the rule measures is the header's own width plus that \
+legend, and the alternatives are a board that cannot be wired up by eye or a \
+capacitor with silk across its pads."""
 
 [[waivers]]
 rule = "layout.off_grid_placement"

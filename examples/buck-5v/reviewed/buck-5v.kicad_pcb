@@ -379,7 +379,7 @@
     (descr "SMD capacitor, aluminum electrolytic, Vishay 0810, 8.0x10.5mm, http://www.vishay.com/docs/28395/150crz.pdf")
     (tags "capacitor electrolytic")
     (property "Reference" "C1"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -736,7 +736,7 @@
       )
     )
     (property "Voltage" "35V"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.Fab")
       (uuid "fb0996fe-141a-5ba2-a285-c0e19a2e93ef")
       (hide yes)
@@ -747,7 +747,7 @@
       )
     )
     (property "Tolerance" "20%"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.Fab")
       (uuid "366f87cf-686d-5da1-8558-f3e6b0b24b0e")
       (hide yes)
@@ -758,7 +758,7 @@
       )
     )
     (property "MPN" "EEE-FK1V221AP"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.Fab")
       (uuid "42a2606d-b624-5f73-a49b-52af47f7cfaf")
       (hide yes)
@@ -769,7 +769,7 @@
       )
     )
     (property "Manufacturer" "Panasonic"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.Fab")
       (uuid "46d0ac0d-0d3c-5de6-93ef-f27e62c9ca1c")
       (hide yes)
@@ -780,7 +780,7 @@
       )
     )
     (property "Datasheet" "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.Fab")
       (uuid "d56e272d-d85e-5e9b-8549-94f749779b95")
       (hide yes)
@@ -798,7 +798,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C2"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -895,7 +895,7 @@
       )
     )
     (property "Voltage" "50V"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
       (hide yes)
@@ -906,7 +906,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
       (hide yes)
@@ -917,7 +917,7 @@
       )
     )
     (property "MPN" "CL21B104KBCNNNC"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
       (hide yes)
@@ -928,7 +928,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "443233cc-433b-55c0-9207-0c13c34de959")
       (hide yes)
@@ -939,7 +939,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -957,7 +957,7 @@
     (descr "TO-263/D2PAK/DDPAK SMD package, http://www.infineon.com/cms/en/product/packages/PG-TO263/PG-TO263-5-1/")
     (tags "D2PAK DDPAK TO-263 D2PAK-5 TO-263-5 SOT-426")
     (property "Reference" "U1"
-      (at 0 -6.65 0)
+      (at 0.0 -6.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1312,7 +1312,7 @@
       )
     )
     (property "MPN" "LM2596SX-5.0/NOPB"
-      (at 0 -6.65 0)
+      (at 0.0 -6.65 0)
       (layer "F.Fab")
       (uuid "e39022a4-97a1-556f-857a-016b90132ebf")
       (hide yes)
@@ -1323,7 +1323,7 @@
       )
     )
     (property "Manufacturer" "Texas Instruments"
-      (at 0 -6.65 0)
+      (at 0.0 -6.65 0)
       (layer "F.Fab")
       (uuid "c959a679-7d39-5cca-9de5-bae8d0993d9c")
       (hide yes)
@@ -1334,7 +1334,7 @@
       )
     )
     (property "Datasheet" "https://www.ti.com/lit/ds/symlink/lm2596.pdf"
-      (at 0 -6.65 0)
+      (at 0.0 -6.65 0)
       (layer "F.Fab")
       (uuid "97319bff-00d8-5e40-a46b-35fcb2c53498")
       (hide yes)
@@ -1352,7 +1352,7 @@
     (descr "Diode SMA (DO-214AC)")
     (tags "Diode SMA (DO-214AC)")
     (property "Reference" "D1"
-      (at 0 -2.5 0)
+      (at 0.0 -2.5 0)
       (layer "F.SilkS")
       (uuid "ca6eebb8-28a7-59b5-97af-c2d0e9eae466")
       (effects
@@ -1610,7 +1610,7 @@
       )
     )
     (property "MPN" "SS34"
-      (at 0 -2.5 0)
+      (at 0.0 -2.5 0)
       (layer "F.Fab")
       (uuid "cb2935f6-b35c-5a58-ad1a-0299fc76bcf5")
       (hide yes)
@@ -1621,7 +1621,7 @@
       )
     )
     (property "Manufacturer" "Vishay"
-      (at 0 -2.5 0)
+      (at 0.0 -2.5 0)
       (layer "F.Fab")
       (uuid "e17a20f7-eb30-5693-9a0e-dbe8c349d406")
       (hide yes)
@@ -1639,7 +1639,7 @@
     (descr "Choke, SMD, 12x12mm 8mm height")
     (tags "Choke SMD")
     (property "Reference" "L1"
-      (at 0 -7.4 0)
+      (at 0.0 -7.4 0)
       (layer "F.SilkS")
       (uuid "df0e25cb-02a1-563f-8948-48371799c6f0")
       (effects
@@ -2449,7 +2449,7 @@
       )
     )
     (property "Current" "3A"
-      (at 0 -7.4 0)
+      (at 0.0 -7.4 0)
       (layer "F.Fab")
       (uuid "1d11cc56-6259-50a0-bbf7-ee9c9eea396e")
       (hide yes)
@@ -2460,7 +2460,7 @@
       )
     )
     (property "Tolerance" "20%"
-      (at 0 -7.4 0)
+      (at 0.0 -7.4 0)
       (layer "F.Fab")
       (uuid "f41408e5-8318-5252-82b8-e120c608a843")
       (hide yes)
@@ -2471,7 +2471,7 @@
       )
     )
     (property "MPN" "SRR1260-330M"
-      (at 0 -7.4 0)
+      (at 0.0 -7.4 0)
       (layer "F.Fab")
       (uuid "e5b6bf00-3488-5286-ada9-35ce0a25f3b3")
       (hide yes)
@@ -2482,7 +2482,7 @@
       )
     )
     (property "Manufacturer" "Bourns"
-      (at 0 -7.4 0)
+      (at 0.0 -7.4 0)
       (layer "F.Fab")
       (uuid "f2047ca1-fbdd-5c25-998b-52f5cded3360")
       (hide yes)
@@ -2500,7 +2500,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C4"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -2597,7 +2597,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
       (hide yes)
@@ -2608,7 +2608,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
       (hide yes)
@@ -2619,7 +2619,7 @@
       )
     )
     (property "MPN" "CL21B104KBCNNNC"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
       (hide yes)
@@ -2630,7 +2630,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "443233cc-433b-55c0-9207-0c13c34de959")
       (hide yes)
@@ -2641,7 +2641,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -2659,7 +2659,7 @@
     (descr "SMD capacitor, aluminum electrolytic, Vishay 0810, 8.0x10.5mm, http://www.vishay.com/docs/28395/150crz.pdf")
     (tags "capacitor electrolytic")
     (property "Reference" "C3"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3016,7 +3016,7 @@
       )
     )
     (property "Voltage" "16V"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.Fab")
       (uuid "fb0996fe-141a-5ba2-a285-c0e19a2e93ef")
       (hide yes)
@@ -3027,7 +3027,7 @@
       )
     )
     (property "Tolerance" "20%"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.Fab")
       (uuid "366f87cf-686d-5da1-8558-f3e6b0b24b0e")
       (hide yes)
@@ -3038,7 +3038,7 @@
       )
     )
     (property "MPN" "EEE-FK1C221P"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.Fab")
       (uuid "42a2606d-b624-5f73-a49b-52af47f7cfaf")
       (hide yes)
@@ -3049,7 +3049,7 @@
       )
     )
     (property "Manufacturer" "Panasonic"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.Fab")
       (uuid "46d0ac0d-0d3c-5de6-93ef-f27e62c9ca1c")
       (hide yes)
@@ -3060,7 +3060,7 @@
       )
     )
     (property "Datasheet" "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf"
-      (at 0 -5.3 0)
+      (at 0.0 -5.3 0)
       (layer "F.Fab")
       (uuid "d56e272d-d85e-5e9b-8549-94f749779b95")
       (hide yes)
@@ -3078,7 +3078,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R1"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3175,7 +3175,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "acac4148-fb6c-5cf9-95f2-5eb1655a471f")
       (hide yes)
@@ -3186,7 +3186,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "a2ade429-6025-54bd-be09-ef34ba95283f")
       (hide yes)
@@ -3197,7 +3197,7 @@
       )
     )
     (property "MPN" "RC0805FR-071KL"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "ab968259-814b-5f85-ac3b-603954413f23")
       (hide yes)
@@ -3208,7 +3208,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "dad74daf-5221-5080-bb66-0eba4400f5c6")
       (hide yes)
@@ -3219,7 +3219,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -3237,7 +3237,7 @@
     (descr "LED SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "LED")
     (property "Reference" "D2"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3378,7 +3378,7 @@
       )
     )
     (property "Voltage" "2.1V"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "b7ffe6df-6b1f-51c6-b29b-5d2926928b8b")
       (hide yes)
@@ -3389,7 +3389,7 @@
       )
     )
     (property "Current" "3mA"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "3a7b21c0-65ff-5bc4-85c9-97cb94d1cd76")
       (hide yes)
@@ -3400,7 +3400,7 @@
       )
     )
     (property "MPN" "LTST-C170KGKT"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "d0ec8fa9-da1a-5379-b5aa-d23282efd574")
       (hide yes)
@@ -3411,7 +3411,7 @@
       )
     )
     (property "Manufacturer" "Lite-On"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "488805ff-11e0-59e9-b676-ef65f15c6f74")
       (hide yes)
@@ -3422,7 +3422,7 @@
       )
     )
     (property "Datasheet" "https://optoelectronics.liteon.com/upload/download/DS-22-98-0002/LTST-C170KGKT.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "bf56ffe1-b723-5d93-8a68-e1a507244257")
       (hide yes)
@@ -4647,11 +4647,11 @@
 		(filled_polygon (layer "F.Cu") (pts (xy 216.25 97.75) (xy 217.85 97.75) (xy 217.85 114.0) (xy 216.25 114.0)))
 		(filled_polygon (layer "F.Cu") (pts (xy 217.75 62.0) (xy 224.0 62.0) (xy 224.0 114.0) (xy 217.75 114.0)))
 	)
-	(gr_text "buck-5v rev A" (at 163.0 111.6 0) (layer "F.SilkS") (uuid "4d333700-8c1f-5c21-981b-cddc5b8cad26") (effects (font (size 1.2 1.2) (thickness 0.18))))
-	(gr_text "kicad_skills examples" (at 163.0 114.0 0) (layer "F.SilkS") (uuid "d1011a01-bb17-561b-b9f1-0a3d3bae3339") (effects (font (size 1.0 1.0) (thickness 0.15))))
-	(gr_text "+12V" (at 117.31 72.0 0) (layer "F.SilkS") (uuid "f14a21d9-dd99-53ec-ae49-88999967b54b") (effects (font (size 0.8 0.8) (thickness 0.12))))
-	(gr_text "GND" (at 117.31 77.0 0) (layer "F.SilkS") (uuid "39033553-2b5a-5f47-84d8-8f673cb36020") (effects (font (size 0.8 0.8) (thickness 0.12))))
+	(gr_text "buck-5v rev A" (at 194.5 64.4 0) (layer "F.SilkS") (uuid "4d333700-8c1f-5c21-981b-cddc5b8cad26") (effects (font (size 1.2 1.2) (thickness 0.18))))
+	(gr_text "kicad_skills examples" (at 194.5 66.8 0) (layer "F.SilkS") (uuid "d1011a01-bb17-561b-b9f1-0a3d3bae3339") (effects (font (size 1.0 1.0) (thickness 0.15))))
+	(gr_text "+12V" (at 117.31 72.0 0) (layer "F.SilkS") (uuid "f14a21d9-dd99-53ec-ae49-88999967b54b") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify left)))
+	(gr_text "GND" (at 103.3 77.0 0) (layer "F.SilkS") (uuid "39033553-2b5a-5f47-84d8-8f673cb36020") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify right)))
 	(gr_text "5V OK" (at 207.0 103.4 0) (layer "F.SilkS") (uuid "7ad20c84-9414-50b4-8519-dcd3d9c2ba92") (effects (font (size 0.8 0.8) (thickness 0.12))))
-	(gr_text "+5V" (at 208.69 96.0 0) (layer "F.SilkS") (uuid "c971495d-7315-5e70-b7b8-8ff4c5b72f9a") (effects (font (size 0.8 0.8) (thickness 0.12))))
-	(gr_text "GND" (at 208.69 91.0 0) (layer "F.SilkS") (uuid "fadd161b-b862-5a91-8345-6d95979fb205") (effects (font (size 0.8 0.8) (thickness 0.12))))
+	(gr_text "+5V" (at 222.7 96.0 0) (layer "F.SilkS") (uuid "c971495d-7315-5e70-b7b8-8ff4c5b72f9a") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify left)))
+	(gr_text "GND" (at 222.7 91.0 0) (layer "F.SilkS") (uuid "fadd161b-b862-5a91-8345-6d95979fb205") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify left)))
 )

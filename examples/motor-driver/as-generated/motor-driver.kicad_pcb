@@ -363,7 +363,7 @@
     (descr "SMD capacitor, aluminum electrolytic, Nichicon, 6.3x7.7mm")
     (tags "capacitor electrolytic")
     (property "Reference" "C1"
-      (at 0 -4.35 0)
+      (at 0.0 -4.35 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -720,7 +720,7 @@
       )
     )
     (property "Datasheet" "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf"
-      (at 0 -4.35 0)
+      (at 0.0 -4.35 0)
       (layer "F.Fab")
       (uuid "9e50e748-4dae-5f66-86c0-5d52efa3a139")
       (hide yes)
@@ -738,7 +738,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C2"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -835,7 +835,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -853,7 +853,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C3"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -950,7 +950,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B103KBANNNC.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -968,7 +968,7 @@
     (descr "TSSOP, 16 Pin (https://www.jedec.org/document_search?search_api_views_fulltext=MO-153), generated with kicad-footprint-generator ipc_gullwing_generator.py")
     (tags "TSSOP SO JEDEC-MO-153-AB Texas_PW0016A Microchip-ST Toshiba-TSSOP16-P-0044-0.65A NXP-SOT403-1 Infineon-P-TSSOP-16-800")
     (property "Reference" "U1"
-      (at 0 -3.45 0)
+      (at 0.0 -3.45 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1293,7 +1293,7 @@
       )
     )
     (property "Datasheet" "https://www.ti.com/lit/ds/symlink/drv8833.pdf"
-      (at 0 -3.45 0)
+      (at 0.0 -3.45 0)
       (layer "F.Fab")
       (uuid "1353123d-7844-544a-8878-f79e8f4684f1")
       (hide yes)
@@ -1311,7 +1311,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C4"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1408,7 +1408,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21A105KBFNNNE.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -1426,7 +1426,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R1"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1523,7 +1523,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -1541,7 +1541,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R2"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1638,7 +1638,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -1656,7 +1656,7 @@
     (descr "LED SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "LED")
     (property "Reference" "D2"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1797,7 +1797,7 @@
       )
     )
     (property "Datasheet" "https://optoelectronics.liteon.com/upload/download/DS-22-98-0002/LTST-C170KGKT.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "bf56ffe1-b723-5d93-8a68-e1a507244257")
       (hide yes)
@@ -2421,7 +2421,7 @@
     (descr "Through hole straight pin header, 1x08, 2.54mm pitch, single row")
     (tags "Through hole pin header THT 1x08 2.54mm single row")
     (property "Reference" "J4"
-      (at 0 -2.38 0)
+      (at 0.0 -2.38 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -2645,7 +2645,7 @@
       )
     )
     (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61300811121.pdf"
-      (at 0 -2.38 0)
+      (at 0.0 -2.38 0)
       (layer "F.Fab")
       (uuid "aed9df8f-de7d-56a0-b0f5-a150a2a29b34")
       (hide yes)

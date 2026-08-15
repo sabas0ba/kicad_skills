@@ -59,7 +59,7 @@
     (descr "Through hole straight pin header, 1x02, 2.54mm pitch, single row")
     (tags "Through hole pin header THT 1x02 2.54mm single row")
     (property "Reference" "J1"
-      (at 0 -2.38 0)
+      (at 0.0 -2.38 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -229,7 +229,7 @@
       )
     )
     (property "MPN" "61300211121"
-      (at 0 -2.38 0)
+      (at 0.0 -2.38 0)
       (layer "F.Fab")
       (uuid "b72d2036-e61c-5245-bf71-f4ef1818eedf")
       (hide yes)
@@ -240,7 +240,7 @@
       )
     )
     (property "Manufacturer" "Wurth Elektronik"
-      (at 0 -2.38 0)
+      (at 0.0 -2.38 0)
       (layer "F.Fab")
       (uuid "3113178c-698e-559a-92df-65400087f246")
       (hide yes)
@@ -251,7 +251,7 @@
       )
     )
     (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61300211121.pdf"
-      (at 0 -2.38 0)
+      (at 0.0 -2.38 0)
       (layer "F.Fab")
       (uuid "bfbb5d46-dacd-5cfb-bc1c-d3de2240cf91")
       (hide yes)
@@ -269,7 +269,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C3"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -366,7 +366,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
       (hide yes)
@@ -377,7 +377,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
       (hide yes)
@@ -388,7 +388,7 @@
       )
     )
     (property "MPN" "CL21B105KBFNNNE"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
       (hide yes)
@@ -399,7 +399,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "443233cc-433b-55c0-9207-0c13c34de959")
       (hide yes)
@@ -410,7 +410,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B105KBFNNNE.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -428,7 +428,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R5"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -525,7 +525,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "acac4148-fb6c-5cf9-95f2-5eb1655a471f")
       (hide yes)
@@ -536,7 +536,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "a2ade429-6025-54bd-be09-ef34ba95283f")
       (hide yes)
@@ -547,7 +547,7 @@
       )
     )
     (property "MPN" "RC0805FR-07100KL"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "ab968259-814b-5f85-ac3b-603954413f23")
       (hide yes)
@@ -558,7 +558,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "dad74daf-5221-5080-bb66-0eba4400f5c6")
       (hide yes)
@@ -569,7 +569,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -587,7 +587,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R1"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -684,7 +684,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "acac4148-fb6c-5cf9-95f2-5eb1655a471f")
       (hide yes)
@@ -695,7 +695,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "a2ade429-6025-54bd-be09-ef34ba95283f")
       (hide yes)
@@ -706,7 +706,7 @@
       )
     )
     (property "MPN" "RC0805FR-0710KL"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "ab968259-814b-5f85-ac3b-603954413f23")
       (hide yes)
@@ -717,7 +717,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "dad74daf-5221-5080-bb66-0eba4400f5c6")
       (hide yes)
@@ -728,7 +728,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -746,7 +746,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R2"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -843,7 +843,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "acac4148-fb6c-5cf9-95f2-5eb1655a471f")
       (hide yes)
@@ -854,7 +854,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "a2ade429-6025-54bd-be09-ef34ba95283f")
       (hide yes)
@@ -865,7 +865,7 @@
       )
     )
     (property "MPN" "RC0805FR-0710KL"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "ab968259-814b-5f85-ac3b-603954413f23")
       (hide yes)
@@ -876,7 +876,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "dad74daf-5221-5080-bb66-0eba4400f5c6")
       (hide yes)
@@ -887,7 +887,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -905,7 +905,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C1"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1002,7 +1002,7 @@
       )
     )
     (property "Voltage" "50V"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
       (hide yes)
@@ -1013,7 +1013,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
       (hide yes)
@@ -1024,7 +1024,7 @@
       )
     )
     (property "Dielectric" "C0G"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "d1b119e4-ed27-5fab-bf76-6486f4123e26")
       (hide yes)
@@ -1035,7 +1035,7 @@
       )
     )
     (property "MPN" "CL21C223JBFNNNE"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
       (hide yes)
@@ -1046,7 +1046,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "443233cc-433b-55c0-9207-0c13c34de959")
       (hide yes)
@@ -1057,7 +1057,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21C223JBFNNNE.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -1075,7 +1075,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C2"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1172,7 +1172,7 @@
       )
     )
     (property "Voltage" "50V"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
       (hide yes)
@@ -1183,7 +1183,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
       (hide yes)
@@ -1194,7 +1194,7 @@
       )
     )
     (property "Dielectric" "C0G"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "d1b119e4-ed27-5fab-bf76-6486f4123e26")
       (hide yes)
@@ -1205,7 +1205,7 @@
       )
     )
     (property "MPN" "CL21C103JBFNNNE"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
       (hide yes)
@@ -1216,7 +1216,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "443233cc-433b-55c0-9207-0c13c34de959")
       (hide yes)
@@ -1227,7 +1227,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21C103JBFNNNE.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -1245,7 +1245,7 @@
     (descr "SOT, 5 Pin (JEDEC MO-178 Var AA https://www.jedec.org/document_search?search_api_views_fulltext=MO-178), generated with kicad-footprint-generator ipc_gullwing_generator.py")
     (tags "SOT TO_SOT_SMD")
     (property "Reference" "U1"
-      (at 0 -2.4 0)
+      (at 0.0 -2.4 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1563,7 +1563,7 @@
       )
     )
     (property "MPN" "MCP6001RT-I/OT"
-      (at 0 -2.4 0)
+      (at 0.0 -2.4 0)
       (layer "F.Fab")
       (uuid "0ccb60ee-bd17-5418-a501-ae84d138ecf0")
       (hide yes)
@@ -1574,7 +1574,7 @@
       )
     )
     (property "Manufacturer" "Microchip"
-      (at 0 -2.4 0)
+      (at 0.0 -2.4 0)
       (layer "F.Fab")
       (uuid "e0652a11-6ce6-5763-8923-f546d14c81a5")
       (hide yes)
@@ -1585,7 +1585,7 @@
       )
     )
     (property "Datasheet" "https://ww1.microchip.com/downloads/en/DeviceDoc/21733j.pdf"
-      (at 0 -2.4 0)
+      (at 0.0 -2.4 0)
       (layer "F.Fab")
       (uuid "85531579-5e98-5162-b5c2-939ac3c2c075")
       (hide yes)
@@ -1603,7 +1603,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C5"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1700,7 +1700,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
       (hide yes)
@@ -1711,7 +1711,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
       (hide yes)
@@ -1722,7 +1722,7 @@
       )
     )
     (property "MPN" "CL21B104KBCNNNC"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
       (hide yes)
@@ -1733,7 +1733,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "443233cc-433b-55c0-9207-0c13c34de959")
       (hide yes)
@@ -1744,7 +1744,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -1762,7 +1762,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C6"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -1859,7 +1859,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
       (hide yes)
@@ -1870,7 +1870,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
       (hide yes)
@@ -1881,7 +1881,7 @@
       )
     )
     (property "MPN" "CL21B105KBFNNNE"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
       (hide yes)
@@ -1892,7 +1892,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "443233cc-433b-55c0-9207-0c13c34de959")
       (hide yes)
@@ -1903,7 +1903,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B105KBFNNNE.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -1921,7 +1921,7 @@
     (descr "Through hole straight pin header, 1x02, 2.54mm pitch, single row")
     (tags "Through hole pin header THT 1x02 2.54mm single row")
     (property "Reference" "J3"
-      (at 0 -2.38 0)
+      (at 0.0 -2.38 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -2091,7 +2091,7 @@
       )
     )
     (property "MPN" "61300211121"
-      (at 0 -2.38 0)
+      (at 0.0 -2.38 0)
       (layer "F.Fab")
       (uuid "b72d2036-e61c-5245-bf71-f4ef1818eedf")
       (hide yes)
@@ -2102,7 +2102,7 @@
       )
     )
     (property "Manufacturer" "Wurth Elektronik"
-      (at 0 -2.38 0)
+      (at 0.0 -2.38 0)
       (layer "F.Fab")
       (uuid "3113178c-698e-559a-92df-65400087f246")
       (hide yes)
@@ -2113,7 +2113,7 @@
       )
     )
     (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61300211121.pdf"
-      (at 0 -2.38 0)
+      (at 0.0 -2.38 0)
       (layer "F.Fab")
       (uuid "bfbb5d46-dacd-5cfb-bc1c-d3de2240cf91")
       (hide yes)
@@ -2456,7 +2456,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R3"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -2553,7 +2553,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "acac4148-fb6c-5cf9-95f2-5eb1655a471f")
       (hide yes)
@@ -2564,7 +2564,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "a2ade429-6025-54bd-be09-ef34ba95283f")
       (hide yes)
@@ -2575,7 +2575,7 @@
       )
     )
     (property "MPN" "RC0805FR-07100KL"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "ab968259-814b-5f85-ac3b-603954413f23")
       (hide yes)
@@ -2586,7 +2586,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "dad74daf-5221-5080-bb66-0eba4400f5c6")
       (hide yes)
@@ -2597,7 +2597,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -2615,7 +2615,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R4"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -2712,7 +2712,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "acac4148-fb6c-5cf9-95f2-5eb1655a471f")
       (hide yes)
@@ -2723,7 +2723,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "a2ade429-6025-54bd-be09-ef34ba95283f")
       (hide yes)
@@ -2734,7 +2734,7 @@
       )
     )
     (property "MPN" "RC0805FR-07100KL"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "ab968259-814b-5f85-ac3b-603954413f23")
       (hide yes)
@@ -2745,7 +2745,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "dad74daf-5221-5080-bb66-0eba4400f5c6")
       (hide yes)
@@ -2756,7 +2756,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -2774,7 +2774,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C4"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -2871,7 +2871,7 @@
       )
     )
     (property "Voltage" "16V"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
       (hide yes)
@@ -2882,7 +2882,7 @@
       )
     )
     (property "Tolerance" "20%"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
       (hide yes)
@@ -2893,7 +2893,7 @@
       )
     )
     (property "MPN" "CL21A106KOQNNNE"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
       (hide yes)
@@ -2904,7 +2904,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "443233cc-433b-55c0-9207-0c13c34de959")
       (hide yes)
@@ -2915,7 +2915,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21A106KOQNNNE.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -2933,7 +2933,7 @@
     (descr "SOT, 5 Pin (JEDEC MO-178 Var AA https://www.jedec.org/document_search?search_api_views_fulltext=MO-178), generated with kicad-footprint-generator ipc_gullwing_generator.py")
     (tags "SOT TO_SOT_SMD")
     (property "Reference" "U2"
-      (at 0 -2.4 0)
+      (at 0.0 -2.4 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3251,7 +3251,7 @@
       )
     )
     (property "MPN" "MCP6001RT-I/OT"
-      (at 0 -2.4 0)
+      (at 0.0 -2.4 0)
       (layer "F.Fab")
       (uuid "0ccb60ee-bd17-5418-a501-ae84d138ecf0")
       (hide yes)
@@ -3262,7 +3262,7 @@
       )
     )
     (property "Manufacturer" "Microchip"
-      (at 0 -2.4 0)
+      (at 0.0 -2.4 0)
       (layer "F.Fab")
       (uuid "e0652a11-6ce6-5763-8923-f546d14c81a5")
       (hide yes)
@@ -3273,7 +3273,7 @@
       )
     )
     (property "Datasheet" "https://ww1.microchip.com/downloads/en/DeviceDoc/21733j.pdf"
-      (at 0 -2.4 0)
+      (at 0.0 -2.4 0)
       (layer "F.Fab")
       (uuid "85531579-5e98-5162-b5c2-939ac3c2c075")
       (hide yes)
@@ -3291,7 +3291,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R7"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3388,7 +3388,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "acac4148-fb6c-5cf9-95f2-5eb1655a471f")
       (hide yes)
@@ -3399,7 +3399,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "a2ade429-6025-54bd-be09-ef34ba95283f")
       (hide yes)
@@ -3410,7 +3410,7 @@
       )
     )
     (property "MPN" "RC0805FR-07100KL"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "ab968259-814b-5f85-ac3b-603954413f23")
       (hide yes)
@@ -3421,7 +3421,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "dad74daf-5221-5080-bb66-0eba4400f5c6")
       (hide yes)
@@ -3432,7 +3432,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -3450,7 +3450,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R6"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3547,7 +3547,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "acac4148-fb6c-5cf9-95f2-5eb1655a471f")
       (hide yes)
@@ -3558,7 +3558,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "a2ade429-6025-54bd-be09-ef34ba95283f")
       (hide yes)
@@ -3569,7 +3569,7 @@
       )
     )
     (property "MPN" "RC0805FR-07100KL"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "ab968259-814b-5f85-ac3b-603954413f23")
       (hide yes)
@@ -3580,7 +3580,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "dad74daf-5221-5080-bb66-0eba4400f5c6")
       (hide yes)
@@ -3591,7 +3591,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.65 0)
+      (at 0.0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -3609,7 +3609,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C7"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3706,7 +3706,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "1b80ceb2-6d33-5538-b195-9cda82a4b652")
       (hide yes)
@@ -3717,7 +3717,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea3daaf3-bbb2-5c57-a613-7b69ca428fca")
       (hide yes)
@@ -3728,7 +3728,7 @@
       )
     )
     (property "MPN" "CL21B104KBCNNNC"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "ea378d99-a5a9-5bd9-9a00-fbb3437a5e2c")
       (hide yes)
@@ -3739,7 +3739,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "443233cc-433b-55c0-9207-0c13c34de959")
       (hide yes)
@@ -3750,7 +3750,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
-      (at 0 -1.68 0)
+      (at 0.0 -1.68 0)
       (layer "F.Fab")
       (uuid "a9621e87-a62a-5ec0-ba71-843bba592f33")
       (hide yes)
@@ -3768,7 +3768,7 @@
     (descr "SMD pad as test Point, diameter 1.5mm")
     (tags "test point SMD pad")
     (property "Reference" "TP1"
-      (at 0 -1.648 0)
+      (at 0.0 -1.648 0)
       (layer "F.SilkS")
       (uuid "b3803468-e34b-55ce-b3b6-956e863806df")
       (effects
@@ -3865,7 +3865,7 @@
     (descr "SMD pad as test Point, diameter 1.5mm")
     (tags "test point SMD pad")
     (property "Reference" "TP2"
-      (at 0 -1.648 0)
+      (at 0.0 -1.648 0)
       (layer "F.SilkS")
       (uuid "fb438753-f5e2-589a-946e-209f19cf37e6")
       (effects
@@ -3962,7 +3962,7 @@
     (descr "SMD pad as test Point, diameter 1.5mm")
     (tags "test point SMD pad")
     (property "Reference" "TP3"
-      (at 0 -1.648 0)
+      (at 0.0 -1.648 0)
       (layer "F.SilkS")
       (uuid "1f6b454b-6e18-5091-9c59-ffe48eeae0e0")
       (effects
@@ -5906,12 +5906,12 @@
 		(filled_polygon (layer "F.Cu") (pts (xy 153.15 82.55) (xy 153.55 82.55) (xy 153.55 99.5) (xy 153.15 99.5)))
 		(filled_polygon (layer "F.Cu") (pts (xy 153.45 62.5) (xy 155.5 62.5) (xy 155.5 99.5) (xy 153.45 99.5)))
 	)
-	(gr_text "opamp-filter rev A" (at 129.0 97.6 0) (layer "F.SilkS") (uuid "928fa79e-e16c-5e92-b779-41419e7d81b5") (effects (font (size 1.2 1.2) (thickness 0.18))))
-	(gr_text "kicad_skills examples" (at 129.0 100.0 0) (layer "F.SilkS") (uuid "10026d37-ec29-57c2-b10a-de0951bbc292") (effects (font (size 1.0 1.0) (thickness 0.15))))
-	(gr_text "IN" (at 108.37 77.0 0) (layer "F.SilkS") (uuid "561cea96-f83a-5411-9d0f-abcb78c2d3d5") (effects (font (size 0.8 0.8) (thickness 0.12))))
-	(gr_text "GND" (at 108.37 79.54 0) (layer "F.SilkS") (uuid "b385b514-57b7-557f-baec-e5f2084e9544") (effects (font (size 0.8 0.8) (thickness 0.12))))
-	(gr_text "OUT_AC" (at 147.63 77.0 0) (layer "F.SilkS") (uuid "ad6f0c04-0ab3-50e7-b38f-24d07dd0940b") (effects (font (size 0.8 0.8) (thickness 0.12))))
-	(gr_text "GND" (at 147.63 79.54 0) (layer "F.SilkS") (uuid "4ba33fbb-3b71-5b8d-90b4-f56c122adb70") (effects (font (size 0.8 0.8) (thickness 0.12))))
+	(gr_text "opamp-filter rev A" (at 129.0 64.4 0) (layer "F.SilkS") (uuid "928fa79e-e16c-5e92-b779-41419e7d81b5") (effects (font (size 1.2 1.2) (thickness 0.18))))
+	(gr_text "kicad_skills examples" (at 129.0 66.8 0) (layer "F.SilkS") (uuid "10026d37-ec29-57c2-b10a-de0951bbc292") (effects (font (size 1.0 1.0) (thickness 0.15))))
+	(gr_text "IN" (at 108.37 77.0 0) (layer "F.SilkS") (uuid "561cea96-f83a-5411-9d0f-abcb78c2d3d5") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify left)))
+	(gr_text "GND" (at 108.37 79.54 0) (layer "F.SilkS") (uuid "b385b514-57b7-557f-baec-e5f2084e9544") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify left)))
+	(gr_text "OUT_AC" (at 147.63 77.0 0) (layer "F.SilkS") (uuid "ad6f0c04-0ab3-50e7-b38f-24d07dd0940b") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify right)))
+	(gr_text "GND" (at 154.37 79.54 0) (layer "F.SilkS") (uuid "4ba33fbb-3b71-5b8d-90b4-f56c122adb70") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify left)))
 	(gr_text "+5V" (at 109.0 73.3 0) (layer "F.SilkS") (uuid "1d5a1057-c414-5610-988e-fe094ff0e4e0") (effects (font (size 0.8 0.8) (thickness 0.12))))
 	(gr_text "GND" (at 114.0 73.3 0) (layer "F.SilkS") (uuid "9d259001-bf48-566e-88f4-a6a000d82285") (effects (font (size 0.8 0.8) (thickness 0.12))))
 )
