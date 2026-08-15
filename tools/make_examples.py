@@ -2189,7 +2189,7 @@ def resolve_routes(design: Design) -> Design:
     order = [track for track in design.tracks if track.auto]
     if not order:
         done = replace(design, vias=[*design.vias, *_stitch_vias(design)])
-        return _chamfer_tracks(_join_runs(_snap_to_45(done)))
+        return _chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(done))))
     ripped: list[Track] = []
     while True:
         try:
@@ -2214,7 +2214,7 @@ def resolve_routes(design: Design) -> Design:
             design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
         )
         done = replace(done, vias=[*done.vias, *_stitch_vias(done)])
-        return _chamfer_tracks(_join_runs(_snap_to_45(done)))
+        return _chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(done))))
 
 
 def _snap_to_45(design: Design) -> Design:
@@ -2344,6 +2344,56 @@ def _join_runs(design: Design) -> Design:
         design,
         tracks=[replace(t, points=p) for t, p in runs if t is not None],
     )
+
+
+def _unfold_tracks(design: Design) -> Design:
+    """Drop the copper a run lays down and then walks back along.
+
+    Joining two routes at a shared end can leave the polyline going out past
+    the join and straight back to it - a 0 degree corner, which is what
+    ``route.acute_angle`` reports and what reads on the plot as a spur nobody
+    can explain. The overshoot carries no current, so it comes out.
+
+    Only an exact reversal, and only where the walk back stops short of where
+    it set out from: a run that retraces *past* its own start is a routing
+    mistake, not a stray point, and deleting a point would move copper the
+    board still needs. A corner another track ends on stays too - it is a
+    join, however it looks.
+    """
+
+    def key(point: tuple[float, float]) -> tuple[float, float]:
+        return (round(point[0], 3), round(point[1], 3))
+
+    ends: dict[tuple[float, float], int] = defaultdict(int)
+    resolved: list[list[tuple[float, float]]] = []
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        resolved.append(points)
+        ends[key(points[0])] += 1
+        ends[key(points[-1])] += 1
+
+    tracks = []
+    for track, points in zip(design.tracks, resolved, strict=True):
+        out = list(points)
+        changed = True
+        while changed and len(out) >= 3:
+            changed = False
+            for index in range(1, len(out) - 1):
+                a, b, c = out[index - 1], out[index], out[index + 1]
+                v1 = (b[0] - a[0], b[1] - a[1])
+                v2 = (c[0] - b[0], c[1] - b[1])
+                l1, l2 = math.hypot(*v1), math.hypot(*v2)
+                if l1 < GEOM_EPS or l2 < GEOM_EPS or l2 >= l1:
+                    continue
+                if (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2) > -0.999:
+                    continue
+                if ends.get(key(b), 0):
+                    continue
+                del out[index]
+                changed = True
+                break
+        tracks.append(replace(track, points=out))
+    return replace(design, tracks=tracks)
 
 
 def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
