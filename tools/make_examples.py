@@ -2588,15 +2588,8 @@ def _stitch_vias(design: Design) -> list[Via]:
     for vx, vy in rim:
         radius = 0.4
         ok = True
-        # Clearing the copper is not enough: the fill also has to be *solid*
-        # around the via. Sitting exactly one clearance off a track leaves a
-        # ring of pour thinner than ZONE_SLIVER, the filler drops it, and the
-        # via is then a hole through an island rather than a stitch into the
-        # plane - which is what `unconnected_items` reports. So every distance
-        # here is the clearance plus a sliver's worth of copper to hold on to.
-        solid = ZONE_CLEARANCE + ZONE_WELD + ZONE_SLIVER
         for (bx0, by0, bx1, by1), net in pads:
-            grow = 0.4 if net == POUR_NET else radius + solid
+            grow = 0.4 if net == POUR_NET else radius + 0.3
             if bx0 - grow <= vx <= bx1 + grow and by0 - grow <= vy <= by1 + grow:
                 ok = False
                 break
@@ -2606,7 +2599,7 @@ def _stitch_vias(design: Design) -> list[Via]:
                     continue
                 # centreline to centreline: the via's copper, the track's half
                 # width, and a clearance with room for the router's own grid
-                if _segment_to_point(a, b, (vx, vy)) < radius + width / 2 + solid:
+                if _segment_to_point(a, b, (vx, vy)) < radius + width / 2 + 0.45:
                     ok = False
                     break
         if ok and all(math.dist((vx, vy), hole) >= 1.2 for hole in holes):
@@ -3019,14 +3012,23 @@ def _fill_rectangles(
 
 
 def _connected_islands(design, islands, layer: str, net: str):
-    """Drop the pieces of plane that no longer reach the net.
+    """Drop the pieces of plane that do not reach the rest of the plane.
 
     A track laid across the pour can fence a corner of it off. KiCad's own
     filler calls that an island and removes it; leaving it in the file instead
     is one `unconnected_items` error per orphan, because a zone that is two
     separate shapes is two separate pieces of copper.
+
+    Touching *some* ground copper is not enough to keep a piece. Two pieces
+    that each hold a bypass cap's ground pad and nothing else are still two
+    pieces, and KiCad reports the pair. What joins pieces on a two layer board
+    is the other face: anything with a via, or a through-hole pad, is on the
+    same copper as everything else with one. So the plane on the far side is a
+    node in this graph, every via and through-hole pad is an edge to it, and a
+    piece survives only if it can be walked from there.
     """
-    parent = list(range(len(islands)))
+    plane = len(islands)  # the other face, which every via reaches
+    parent = list(range(len(islands) + 1))
 
     def find(i):
         while parent[i] != i:
@@ -3043,35 +3045,54 @@ def _connected_islands(design, islands, layer: str, net: str):
             if one[0] < other[2] and other[0] < one[2] and one[1] < other[3] and other[1] < one[3]:
                 union(i, j)
 
-    anchors: list[tuple[float, float, float, float]] = []
+    def touching(anchor: tuple[float, float, float, float]) -> list[int]:
+        return [
+            i
+            for i, box in enumerate(islands)
+            if box[0] <= anchor[2]
+            and anchor[0] <= box[2]
+            and box[1] <= anchor[3]
+            and anchor[1] <= box[3]
+        ]
+
+    # Each of these is a piece of this net's copper. Whatever it touches, it
+    # joins: two islands under one pad are one island as far as current is
+    # concerned. `crosses` says whether it also reaches the other face.
+    links: list[tuple[tuple[float, float, float, float], bool]] = []
     for via in design.vias:
         if via.net == net:
             vx, vy = via_position(design, via)
-            anchors.append((vx, vy, vx, vy))
+            links.append(((vx, vy, vx, vy), True))
     for part in design.footprints():
         node = footprint_definition(part.footprint)
         for pad in node.children("pad"):
             number = str(pad.atom(0, ""))
             if f"{part.ref}.{number}" not in design.nets.get(net, ()):
                 continue
-            if pad_layer(pad) in (None, layer):
-                anchors.append(pad_box(design, part, pad))
+            on = pad_layer(pad)
+            if on in (None, layer):
+                links.append((pad_box(design, part, pad), on is None))
     for track in design.tracks:
         if track.net != net or track.layer != layer:
             continue
-        for point in (resolve(design, p) for p in track.points):
-            anchors.append((*point, *point))
+        points = [resolve(design, p) for p in track.points]
+        # the whole run is one piece of copper, so every island any of its
+        # corners lands on is joined to every other
+        first: int | None = None
+        for point in points:
+            for index in touching((*point, *point)):
+                if first is None:
+                    first = index
+                union(index, first)
 
-    live = {
-        find(i)
-        for i, box in enumerate(islands)
-        for anchor in anchors
-        if box[0] <= anchor[2]
-        and anchor[0] <= box[2]
-        and box[1] <= anchor[3]
-        and anchor[1] <= box[3]
-    }
-    return [box for i, box in enumerate(islands) if find(i) in live]
+    for anchor, crosses in links:
+        found = touching(anchor)
+        if crosses:
+            found.append(plane)
+        for index in found[1:]:
+            union(index, found[0])
+
+    return [box for i, box in enumerate(islands) if find(i) == find(plane)]
 
 
 def _zone(design: Design, code: int, layer: str = "B.Cu", smd_isolated: bool = False) -> str:
