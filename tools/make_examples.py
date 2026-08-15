@@ -2147,13 +2147,17 @@ def _join_runs(design: Design) -> Design:
     Only a point where exactly two ends meet is a join: three is a tee, and a
     tee is a connection somebody meant.
     """
+
+    def key(point: tuple[float, float]) -> tuple[float, float]:
+        return (round(point[0], 3), round(point[1], 3))
+
     ends: dict[tuple[float, float], int] = defaultdict(int)
     resolved = []
     for track in design.tracks:
         points = [resolve(design, point) for point in track.points]
         resolved.append(points)
-        ends[points[0]] += 1
-        ends[points[-1]] += 1
+        ends[key(points[0])] += 1
+        ends[key(points[-1])] += 1
 
     runs = [[track, list(points)] for track, points in zip(design.tracks, resolved, strict=True)]
     merged = True
@@ -2171,7 +2175,7 @@ def _join_runs(design: Design) -> Design:
                 for a_end, b_end in ((-1, 0), (-1, -1), (0, 0), (0, -1)):
                     if math.dist(pa[a_end], pb[b_end]) > GEOM_TOL:
                         continue
-                    if ends[pa[a_end]] != 2:
+                    if ends[key(pa[a_end])] != 2:
                         continue
                     left = pa if a_end == -1 else pa[::-1]
                     right = pb if b_end == 0 else pb[::-1]
@@ -2198,13 +2202,21 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
     short pad entry keeps its shape, and a corner that another track tees
     into is left alone rather than cut out from under the join.
     """
+
+    def key(point: tuple[float, float]) -> tuple[float, float]:
+        return (round(point[0], 3), round(point[1], 3))
+
+    # Every point any track starts or ends at. A corner one of them is joined
+    # to cannot move: chamfering it would leave the other one in mid air, which
+    # is what `route.stub` then reports. Rounded, because two tracks that meet
+    # are equal to the file and merely close in floating point.
     ends: dict[tuple[float, float], int] = defaultdict(int)
     resolved: list[list[tuple[float, float]]] = []
     for track in design.tracks:
         points = [resolve(design, point) for point in track.points]
         resolved.append(points)
-        ends[points[0]] += 1
-        ends[points[-1]] += 1
+        ends[key(points[0])] += 1
+        ends[key(points[-1])] += 1
     # A cut moves copper off the square path, and what it moves toward may be
     # a via or a pad that only cleared the original corner.
     foreign_vias = [(via.net, via_position(design, via), via.size / 2) for via in design.vias]
@@ -2233,7 +2245,7 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
             # a corner already gentle - a 45 bend from the fans - stays as it
             # is; only turns sharper than ~60 degrees get the cut
             gentle = (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2) > 0.5
-            if gentle or ends.get(corner, 0):
+            if gentle or ends.get(key(corner), 0):
                 out.append(corner)
                 continue
             # A big cut reads best; a small one still beats a square corner.
@@ -3169,7 +3181,11 @@ def buck_5v() -> Design:
         # board together - never across each other.
         Track("SW", "F.Cu", W, ["U1.2", (44.0, 10.3), (44.0, 36.0), "D1.1"]),
         Track("SW", "F.Cu", W, ["D1.1", (56.0, 44.0), (71.05, 44.0), "L1.1"]),
-        Track("+5V", "F.Cu", SIG, ["U1.4", (47.0, 13.7), (47.0, 26.0), (88.0, 26.0), (88.0, 36.0)]),
+        # FB senses at the output capacitor, so it ends *on* that pad rather
+        # than at a coordinate the output rail happens to pass through: a
+        # junction that exists only because two numbers agree is one corner
+        # away from being a dangling end.
+        Track("+5V", "F.Cu", SIG, ["U1.4", (47.0, 13.7), (47.0, 26.0), (88.0, 26.0), "C3.1"]),
         # Output rail across the bottom row.
         Track("+5V", "F.Cu", W, ["L1.2", "C4.1"]),
         Track("+5V", "F.Cu", W, ["C4.1", (89.05, 30.0), (96.3, 30.0), "C3.1"]),
@@ -3619,7 +3635,7 @@ def motor_driver() -> Design:
         Track("VM", "F.Cu", POWER, ["J1.1", "C1.1"], auto=True),
         Track("VM", "F.Cu", POWER, ["C1.1", "C3.1"], auto=True),
         Track("VM", "F.Cu", POWER, ["C3.1", "C2.1"], auto=True),
-        Track("VM", "F.Cu", SIG, ["C1.1", "R2.1"], auto=True),
+        Track("VM", "F.Cu", POWER, ["C1.1", "R2.1"], auto=True),
         Track("VCP", "F.Cu", SIG, [east["11"], "C3.2"], auto=True),
         Track("VINT", "F.Cu", SIG, [east["14"], "C4.1"], auto=True),
         Track("VINT", "F.Cu", SIG, ["C4.1", "R1.1"], auto=True),
@@ -4360,7 +4376,7 @@ def opamp_filter() -> Design:
     ).snapped()
 
     SIG = 0.3
-    POWER = 0.3
+    POWER = 0.5
     # A SOT-23-5 puts three pads on one side at 0.95 mm, and the middle one is
     # the supply. Nothing can reach it except straight out, so the row leaves as
     # a stated fan and the router picks the nets up clear of the package - the
@@ -4377,6 +4393,7 @@ def opamp_filter() -> Design:
             pitch=1.9,
             centre=cy,
             width=SIG,
+            widths={"2": POWER},
         )
         east, ends[f"{ref}e"] = fan(
             design,

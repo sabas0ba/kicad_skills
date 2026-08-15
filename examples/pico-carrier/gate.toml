@@ -30,21 +30,6 @@ also sit on the 0.5 mm placement grid, and the headers have to line up with \
 the module's pads rather than with the grid. Two footprints, both correct."""
 
 [[waivers]]
-rule = "route.acute_angle"
-reason = """One corner where a supply track leaves the diode pad diagonally; \
-judged on the plot, not an etch risk at this geometry."""
-
-[[waivers]]
-rule = "silk.over_pad"
-reason = """The overlap is inside the Pico module's own library footprint, \
-between its silk outline and its pads; not this layout's doing."""
-
-[[waivers]]
-rule = "track.thin_power"
-reason = """The narrow run is the +3V3 branch feeding the power LED through \
-R1: about a milliamp in a track good for 1 A at a 10 C rise."""
-
-[[waivers]]
 rule = "readability.label_only"
 reason = """A carrier is one job done forty times: module pad to the header pad \
 beside it. Drawn as wires the forty pairs weave across each other; drawn as the \

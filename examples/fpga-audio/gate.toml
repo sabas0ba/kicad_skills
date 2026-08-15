@@ -10,38 +10,3 @@ budget escaping the package: every capacitor sits at the first place copper \
 can reach, and the rule measures the fan it took to get there. The 5 mm \
 answer is capacitors on the back under the pins, which needs the four-layer \
 board this example deliberately is not."""
-
-[[waivers]]
-rule = "route.acute_angle"
-reason = """Corners where the four stated escape fans meet the 45-degree \
-routing grid; the fan geometry, judged on the plot, not an etch risk at this \
-board's process."""
-
-[[waivers]]
-rule = "route.return_path"
-reason = """Four signals cross the channels that back-layer crossings cut in \
-the plane. On two layers with forty-eight escapes there is no route that \
-does not; the signals are I2S and SPI at single-digit megahertz over \
-millimetre gaps. Accepted for the demonstration, re-layered for a product - \
-this board exists to show exactly this cost."""
-
-[[waivers]]
-rule = "silk.over_pad"
-reason = """Reference text crowded onto pads between the fans; the board is \
-dense enough that KiCad's own silk checks flag the same spots. Cosmetic at \
-this density, and the fab strips silk over pads anyway."""
-
-[[waivers]]
-rule = "track.thin_power"
-reason = """The whole distribution runs at 0.2 mm because nothing wider fits \
-between the escape fans. The iCE40 and the codec together draw tens of \
-milliamps; 0.2 mm carries 0.74 A at a 10 C rise, three orders above the \
-load. The width is set by the package, and the numbers say it is enough."""
-
-[[waivers]]
-rule = "route.odd_angle"
-reason = """The corners off the 45 grid are the QFN escape fans' single shared \
-shallow turn: four sides of 0.5 mm pitch each spend their whole corridor \
-escaping, so there is no along-axis room to stagger 45s and the shallow angle \
-is the only shape that fits all twelve tracks a side. The same argument the \
-acute-angle waiver makes, one rule over."""

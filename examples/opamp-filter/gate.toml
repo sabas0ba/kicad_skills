@@ -29,23 +29,3 @@ rule = "layout.decoupling_distance"
 location = "U2.4"
 reason = """U2.4 is the inverting input tied back to the output - the same \
 VREF node, judged above."""
-
-[[waivers]]
-rule = "route.acute_angle"
-reason = """Corners where the SOT-23 escape fans meet the 45-degree routing \
-grid; the fan geometry, not an etch problem."""
-
-[[waivers]]
-rule = "track.thin_power"
-reason = """The narrow +5V run feeds the 100k/100k reference divider: 25 \
-microamps in a track good for 1 A at a 10 C rise. The width was chosen by \
-the escape, and the current is four orders inside the limit."""
-
-[[waivers]]
-rule = "route.return_path"
-reason = """The one crossing is OUT, 12.3 mm over a cut in the back plane. This \
-is a 1 kHz filter: the detour adds on the order of ten nanohenries of loop \
-inductance, which is sixty microhms of reactance at the corner frequency and \
-four orders below the 10 kohm the stage works into. The rule counts \
-millimetres because it cannot know the frequency; here the frequency is the \
-whole point of the board."""

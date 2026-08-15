@@ -311,3 +311,64 @@ so coverage reports and `pour_fragmented` faults.
 | fpga: bends off 45, pour fragmented, routing under the codec, analog return under digital, bypass caps away from the regulator | partly open — the QFN's four-sided 0.5 mm escape is the constraint behind most of them, and two attempts at closing the codec's underside left the ground drops beside it with no lane. What is fixed is fixed; what is not is stated with the reason rather than quietly waived |
 | calibration | on the thirteen KiCad demo boards whose zones parse, `layout.pour_fragmented` fires once and `layout.pour_coverage` on eight — which is the split the two are meant to have: the fault is rare on boards a human drew, and the reading is common because most real boards route on a poured face |
 | courtyard overlaps found by this round | fixed — a courtyard pre-flight now runs before routing. Editing coordinates by pattern had let one part's replacement land on another's, which is how a divider ended up under an input resistor; every part on that board now carries its position explicitly |
+
+## 10. The reviewer's pass, round five: no waivers
+
+The instruction this round was two sentences long and changed the shape of
+the work: **every item raised is critical and cannot be waived**, and the
+evaluation is to be made from the output images. The second sentence explains
+why the first was needed. Three rounds of findings had been answered with
+argument rather than evidence, and the arguments were not being checked
+against the plots they were about.
+
+### The mechanism that was missing
+
+`pcb review --map findings.png` draws the board from its own geometry and puts
+a numbered mark at every finding that carries a position, keyed to a legend.
+Rules opt in by putting coordinates in their details; nothing is parsed back
+out of a message.
+
+It found its first thing immediately, and it was a lie of mine. The waiver on
+this repository's FPGA board said its off-grid corners were the QFN's escape
+fan and therefore unavoidable. The map showed the marks: **not one of the
+hundred and forty-eight was near the QFN.** They were on the power block, on
+the flash bus, on runs crossing open board. A count in a list can carry an
+excuse; the same count drawn where it happens cannot.
+
+That is the case for the mechanism, and it is why it went in before anything
+else this round.
+
+### What went into the tool
+
+| built in | kind | what it catches |
+| --- | --- | --- |
+| `pcb review --map` | mechanism | every located finding, drawn on the copper with a legend |
+| `route.width_step` | rule | a run widening away from the pad the neck was for - the narrow part already set the current |
+| `route.under_package` | rule | another net threaded under a package body: no plane under it, no way to probe it |
+| `layout.connector_not_at_edge` | rule | a connector the cable has to cross the board to reach |
+| `silk.unlabeled_indicator` | rule | an LED or switch whose silk names the schematic line, not the function |
+| courtyard parsing | parser | what a part *occupies*, so a terminal block is measured by its body and not its pads |
+| `route.acute_angle`, `route.odd_angle`, `route.right_angle` | grading | moved from info to blocking: grading them info was calibration against what human boards do, and this repository's subject is what a generated board must do |
+| angle rule: pad junctions | fix | two branches leaving one pad have an angle between them and it is not a bend in either - six false findings on the filter alone |
+
+### What the tool then made us fix
+
+| fixed | how | measured |
+| --- | --- | --- |
+| bends at angles nobody chose | the router works on a grid and the pads do not, so the segment joining a path to a pad landed at any angle. Each is now a straight leg plus a 45 into the pad, skipped where the knee would not clear | off-grid corners on the four two-layer boards: **91 to 0** |
+| square corners at run joins | a route arrives as several `Track` objects and the chamfer only looked inside one, so the corner between two of them was never cut. Runs are joined first | right angles: 12 to 3 |
+| copper drawn twice | identical segments deduplicated - a doubled end reads to the angle rule as a run folding back on itself | the zero-degree findings |
+| width changed mid-run | the bridge outputs leave at 0.4 mm and stay there; the escape carries the current whatever the rest is widened to, and the note says what 0.4 mm is worth | width steps: motor 4, filter 1, both to 0 |
+| headers a cable could not reach | the carrier's two breakout headers moved to the top edge; the board lost twelve millimetres of empty field under them | connectors off the edge: 2 to 0 |
+| a junction that was only a coincidence | the buck's feedback ended at a coordinate its output rail happened to pass through. It ends on the capacitor pad it senses at, which is what the note always claimed | one dangling end |
+
+### What is not fixed, stated rather than waived
+
+Every waiver covering an item the reviewer raised has been deleted -
+`route.acute_angle`, `route.odd_angle`, `route.return_path`, `track.thin_power`
+and `silk.over_pad` across five projects. What those rules report now stands
+as failure, because that is what it is. The FPGA board is the honest limit:
+a 0.5 mm four-sided QFN escaping on two layers cannot hold the 45 grid, keep
+its plane whole, and stay off its own package's underside at once, and the
+board's own notes have said so since it was written. The fix is an inner
+layer, not an argument, and it is the next thing to build.
