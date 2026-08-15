@@ -2036,7 +2036,7 @@ def resolve_routes(design: Design) -> Design:
     order = [track for track in design.tracks if track.auto]
     if not order:
         done = replace(design, vias=[*design.vias, *_stitch_vias(design)])
-        return _chamfer_tracks(_snap_to_45(done))
+        return _chamfer_tracks(_join_runs(_snap_to_45(done)))
     ripped: list[Track] = []
     while True:
         try:
@@ -2061,7 +2061,7 @@ def resolve_routes(design: Design) -> Design:
             design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
         )
         done = replace(done, vias=[*done.vias, *_stitch_vias(done)])
-        return _chamfer_tracks(_snap_to_45(done))
+        return _chamfer_tracks(_join_runs(_snap_to_45(done)))
 
 
 def _snap_to_45(design: Design) -> Design:
@@ -2134,6 +2134,61 @@ def _snap_to_45(design: Design) -> Design:
     return replace(design, tracks=tracks)
 
 
+def _join_runs(design: Design) -> Design:
+    """Join tracks that are one run written as two.
+
+    A route arrives as several ``Track`` objects - an escape, then what the
+    router found, then a hand-placed leg - and where two of them meet nothing
+    marks the join as a join. The corner there is a corner like any other, but
+    the chamfer only sees inside a single polyline, so those were the square
+    corners left on the plots. Merging first makes them interior, and the
+    chamfer does the rest.
+
+    Only a point where exactly two ends meet is a join: three is a tee, and a
+    tee is a connection somebody meant.
+    """
+    ends: dict[tuple[float, float], int] = defaultdict(int)
+    resolved = []
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        resolved.append(points)
+        ends[points[0]] += 1
+        ends[points[-1]] += 1
+
+    runs = [[track, list(points)] for track, points in zip(design.tracks, resolved, strict=True)]
+    merged = True
+    while merged:
+        merged = False
+        for i, (ta, pa) in enumerate(runs):
+            if ta is None:
+                continue
+            for j in range(i + 1, len(runs)):
+                tb, pb = runs[j]
+                if tb is None:
+                    continue
+                if (ta.net, ta.layer, ta.width) != (tb.net, tb.layer, tb.width):
+                    continue
+                for a_end, b_end in ((-1, 0), (-1, -1), (0, 0), (0, -1)):
+                    if math.dist(pa[a_end], pb[b_end]) > GEOM_TOL:
+                        continue
+                    if ends[pa[a_end]] != 2:
+                        continue
+                    left = pa if a_end == -1 else pa[::-1]
+                    right = pb if b_end == 0 else pb[::-1]
+                    runs[i][1] = left + right[1:]
+                    runs[j][0] = None
+                    merged = True
+                    break
+                if merged:
+                    break
+            if merged:
+                break
+    return replace(
+        design,
+        tracks=[replace(t, points=p) for t, p in runs if t is not None],
+    )
+
+
 def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
     """Every square corner cut to two 45s - copper bends, it does not turn.
 
@@ -2181,21 +2236,37 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
             if gentle or ends.get(corner, 0):
                 out.append(corner)
                 continue
-            c = min(cut, l1 / 2, l2 / 2)
-            p1 = (round(corner[0] - v1[0] / l1 * c, 3), round(corner[1] - v1[1] / l1 * c, 3))
-            p2 = (round(corner[0] + v2[0] / l2 * c, 3), round(corner[1] + v2[1] / l2 * c, 3))
-            blocked = any(
-                net != track.net and _segment_to_point(p1, p2, at) < track.width / 2 + radius + 0.25
-                for net, at, radius in foreign_vias
-            ) or any(
-                owner != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
-                for owner, box in foreign_pads
-            )
-            if blocked:
-                out.append(corner)  # the square corner was the clear shape here
+            # A big cut reads best; a small one still beats a square corner.
+            # Try the full one, then halves of it, before giving the corner up.
+            taken = None
+            for factor in (1.0, 0.5, 0.25, 0.12):
+                c = min(cut * factor, l1 / 2, l2 / 2)
+                if c < 0.15:
+                    break
+                p1 = (
+                    round(corner[0] - v1[0] / l1 * c, 3),
+                    round(corner[1] - v1[1] / l1 * c, 3),
+                )
+                p2 = (
+                    round(corner[0] + v2[0] / l2 * c, 3),
+                    round(corner[1] + v2[1] / l2 * c, 3),
+                )
+                blocked = any(
+                    net != track.net
+                    and _segment_to_point(p1, p2, at) < track.width / 2 + radius + 0.25
+                    for net, at, radius in foreign_vias
+                ) or any(
+                    owner != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
+                    for owner, box in foreign_pads
+                )
+                if not blocked:
+                    taken = (p1, p2)
+                    break
+            if taken is None:
+                out.append(corner)  # nothing fitted; a square corner it stays
                 continue
-            out.append(p1)
-            out.append(p2)
+            out.append(taken[0])
+            out.append(taken[1])
         out.append(points[-1])
         # two half-leg cuts meeting mid-segment leave a duplicate point, and a
         # duplicate point emits as a zero-length track DRC calls dangling
@@ -2204,7 +2275,24 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
             if math.dist(point, deduped[-1]) > GEOM_EPS:
                 deduped.append(point)
         tracks.append(replace(track, points=deduped))
-    return replace(design, tracks=tracks)
+    # Two tracks that draw the same copper are one track drawn twice: the plot
+    # cannot tell, but every endpoint count can, and a doubled end reads to the
+    # angle rule as a run folding back on itself.
+    seen: set[tuple] = set()
+    unique = []
+    for track in tracks:
+        key = (
+            track.net,
+            track.layer,
+            round(track.width, 4),
+            tuple((round(x, 3), round(y, 3)) for x, y in track.points),
+        )
+        reverse = (key[0], key[1], key[2], tuple(reversed(key[3])))
+        if key in seen or reverse in seen:
+            continue
+        seen.add(key)
+        unique.append(track)
+    return replace(design, tracks=unique)
 
 
 def _stitch_vias(design: Design) -> list[Via]:
@@ -3424,6 +3512,15 @@ def motor_driver() -> Design:
         notes=[],
         note_blocks=[
             (
+                (17.78, 115.57),
+                [
+                    "The bridge outputs run 0.4 mm end to end: that is all a",
+                    "0.65 mm pin row will take, and the escape sets the current",
+                    "whatever the rest of the run is widened to. 0.4 mm carries",
+                    "1.4 A at a 10 C rise, 1.9 A at 20 - the part's 1.5 A.",
+                ],
+            ),
+            (
                 (17.78, 102.87),
                 [
                     "C1 100 uF / 25 V bulk on a rail that can reach 10.8 V -",
@@ -3479,7 +3576,7 @@ def motor_driver() -> Design:
     # -- the escape from the package ---------------------------------------
     # 1.5 A a bridge, so an output leaves at the width of its own pad and is
     # widened by the router once it is clear; logic carries nothing.
-    SIG, POWER = 0.3, 0.8
+    SIG, POWER = 0.3, 0.4
     # The output side spreads to 2.0 mm because four 0.8 mm tracks start there
     # and two of them are 0.8 mm apart from a ground via.
     left, west = fan(
@@ -3491,7 +3588,8 @@ def motor_driver() -> Design:
         pitch=1.4,
         centre=26.0,
         width=SIG,
-        widths={"2": 0.4, "4": 0.4, "5": 0.4, "7": 0.4},
+        # the four bridge outputs leave at the width they keep: no step
+        widths={"2": POWER, "4": POWER, "5": POWER, "7": POWER},
     )
     right, east = fan(
         design,
@@ -3618,7 +3716,7 @@ def pico_carrier() -> Design:
             "Pico",
             "Module:RaspberryPi_Pico_SMD",
             sheet=(150.0, 100.0),
-            board=(26.0, 34.13, 0.0),
+            board=(26.0, 28.13, 0.0),
             stub=7.62,
             fields={
                 "MPN": "SC0915",
@@ -3632,7 +3730,7 @@ def pico_carrier() -> Design:
             "GP0-GP15",
             "Connector_PinHeader_2.54mm:PinHeader_1x20_P2.54mm_Vertical",
             sheet=(60.0, 100.0),
-            board=(10.0, 10.0, 0.0),
+            board=(10.0, 4.0, 0.0),
             stub=7.62,
             fields={
                 "MPN": "61302011121",
@@ -3646,7 +3744,7 @@ def pico_carrier() -> Design:
             "GP16-GP28, PWR",
             "Connector_PinHeader_2.54mm:PinHeader_1x20_P2.54mm_Vertical",
             sheet=(240.0, 100.0),
-            board=(42.0, 10.0, 0.0),
+            board=(42.0, 4.0, 0.0),
             stub=7.62,
             mirror="y",
             fields={
@@ -3661,7 +3759,7 @@ def pico_carrier() -> Design:
             "5V IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(60.0, 40.0),
-            board=(72.0, 11.0, 270.0),
+            board=(72.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -3675,7 +3773,7 @@ def pico_carrier() -> Design:
             "Diode_SMD:D_SMA",
             sheet=(90.17, 39.37),
             mirror="y",
-            board=(56.0, 11.0, 180.0),
+            board=(56.0, 8.0, 180.0),
             fields={
                 "Voltage": "40V",
                 "Current": "1A",
@@ -3690,7 +3788,7 @@ def pico_carrier() -> Design:
             "22u",
             "Capacitor_SMD:C_1210_3225Metric",
             sheet=(127.0, 45.72),
-            board=(46.0, 12.54, 90.0),
+            board=(46.0, 9.54, 90.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
@@ -3705,7 +3803,7 @@ def pico_carrier() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(180.34, 60.96),
-            board=(46.0, 20.0, 0.0),
+            board=(46.0, 17.0, 0.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "10%",
@@ -3720,7 +3818,7 @@ def pico_carrier() -> Design:
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(203.2, 60.96),
-            board=(56.0, 20.0, 0.0),
+            board=(56.0, 17.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -3736,7 +3834,7 @@ def pico_carrier() -> Design:
             "LED_SMD:LED_0805_2012Metric",
             sheet=(203.2, 78.74),
             angle=90.0,
-            board=(64.0, 20.0, 180.0),
+            board=(64.0, 17.0, 180.0),
             silk_label="3V3 OK",
             fields={
                 "Voltage": "2.1V",
@@ -3814,10 +3912,10 @@ def pico_carrier() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("+5V", "J1.1"), ("VSYS", "D1.1"), ("ADC_VREF", "U1.35")],
-        board_size=(82.0, 68.0),
+        board_size=(80.0, 56.0),
         tracks=[],
         vias=[],
-        pour=(3.0, 3.0, 79.0, 65.0),
+        pour=(2.5, 2.5, 77.5, 53.5),
         # High enough that the last line stays inside the sheet frame.
         notes_at=(20.0, 146.0),
         # The module's 2.54 mm pad pitch decides where everything goes; snapping
@@ -3853,10 +3951,10 @@ def pico_carrier() -> Design:
     ]
     # Ground: every pad drops straight through to the plane under it.
     for pad, target in (
-        ("C1.2", (49.0, 17.0)),
-        ("C2.2", (48.5, 20.0)),
-        ("D3.1", (68.0, 24.0)),
-        ("J1.2", (66.0, 17.0)),
+        ("C1.2", (49.0, 14.0)),
+        ("C2.2", (48.5, 17.0)),
+        ("D3.1", (68.0, 21.0)),
+        ("J1.2", (66.0, 14.0)),
     ):
         tracks.append(Track("GND", "F.Cu", 0.5, [pad, target], auto=True, goal_layer="B.Cu"))
     # The module's own ground pads are surface mount and reach the plane through
@@ -4262,7 +4360,7 @@ def opamp_filter() -> Design:
     ).snapped()
 
     SIG = 0.3
-    POWER = 0.6
+    POWER = 0.3
     # A SOT-23-5 puts three pads on one side at 0.95 mm, and the middle one is
     # the supply. Nothing can reach it except straight out, so the row leaves as
     # a stated fan and the router picks the nets up clear of the package - the

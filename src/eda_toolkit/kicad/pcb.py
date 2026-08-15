@@ -60,10 +60,35 @@ class Footprint:
     pads: list[Pad] = field(default_factory=list)
     attributes: list[str] = field(default_factory=list)
     uuid: str = ""
+    # The courtyard outline in board coordinates, as points. It is what the
+    # part actually occupies - a screw terminal's body reaches well past its
+    # pads - so anything asking "how much room does this take" wants this and
+    # not the pad extent.
+    courtyard: list[tuple[float, float]] = field(default_factory=list)
 
     @property
     def side(self) -> str:
         return "bottom" if self.layer.startswith("B.") else "top"
+
+    def courtyard_box(self) -> tuple[float, float, float, float] | None:
+        """The courtyard's bounding box, or the pads' when it has none."""
+        points = self.courtyard
+        if not points:
+            boxes = [pad.bbox(angle_offset=self.angle) for pad in self.pads]
+            if not boxes:
+                return None
+            return (
+                min(b[0] for b in boxes),
+                min(b[1] for b in boxes),
+                max(b[2] for b in boxes),
+                max(b[3] for b in boxes),
+            )
+        return (
+            min(p[0] for p in points),
+            min(p[1] for p in points),
+            max(p[0] for p in points),
+            max(p[1] for p in points),
+        )
 
     @property
     def is_smd(self) -> bool:
@@ -352,6 +377,26 @@ def parse(path: str | os.PathLike[str]) -> Board:
             attributes=[str(a) for a in attrs_node.atoms()] if attrs_node else [],
             uuid=str(fp_node.value("uuid", default="")),
         )
+        for shape in ("fp_line", "fp_rect", "fp_poly"):
+            for node in fp_node.children(shape):
+                if not str(node.value("layer", default="")).endswith(".CrtYd"):
+                    continue
+                raw: list[tuple[float, float]] = []
+                for key in ("start", "end", "center"):
+                    child = node.child(key)
+                    if child:
+                        cx, cy, _ = _xy(child)
+                        raw.append((cx, cy))
+                pts_node = node.child("pts")
+                if pts_node:
+                    for xy in pts_node.children("xy"):
+                        atoms = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                        if len(atoms) >= 2:
+                            raw.append((float(atoms[0]), float(atoms[1])))
+                for cx, cy in raw:
+                    gx, gy = _rotate(cx, cy, angle)
+                    fp.courtyard.append((gx + fp.x, gy + fp.y))
+
         for pad_node in fp_node.children("pad"):
             atoms = pad_node.atoms()
             px, py, pangle = _xy(pad_node.child("at"))

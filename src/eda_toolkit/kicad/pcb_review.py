@@ -832,9 +832,12 @@ def rule_connector_at_edge(ctx: PcbContext) -> list[Finding]:
     for fp in ctx.board.footprints:
         if not fp.ref.startswith("J") or len(fp.pads) < 2:
             continue
-        box = _footprint_pad_box(fp)
+        box = fp.courtyard_box()
         if box is None:
             continue
+        # The courtyard, not the pads: a screw terminal's body reaches past its
+        # pads, and it is the body that has to be at the edge for the wire to
+        # arrive from outside the board.
         gap = min(box[0] - x0, x1 - box[2], box[1] - y0, y1 - box[3])
         if gap > limit:
             stranded.append(f"{fp.ref} is {gap:.1f} mm in from the nearest edge")
@@ -1602,6 +1605,13 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
     right: list[str] = []
     odd: list[str] = []
     where: dict[str, list[tuple[float, float]]] = {"acute": [], "right": [], "odd": []}
+    # Copper meeting on a pad is a junction, not a corner: two branches leaving
+    # the same pad have an angle between them, and it is not a bend in either.
+    pad_points = [
+        (pad.x, pad.y, max(pad.size) / 2 if pad.size else 0.5)
+        for fp in board.footprints
+        for pad in fp.pads
+    ]
     for key, indices in _track_endpoints(board).items():
         if len(indices) != 2:
             continue
@@ -1609,6 +1619,8 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
         if first.net != second.net or "arc" in (first.kind, second.kind):
             continue
         point = (key[0] / 1000, key[1] / 1000)
+        if any(math.dist(point, (px, py)) <= radius for px, py, radius in pad_points):
+            continue
         vectors = []
         for track in (first, second):
             far = (
