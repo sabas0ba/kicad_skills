@@ -468,17 +468,13 @@ def test_an_acute_corner_is_reported_and_a_right_angle_is_context():
     acute = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 1, 1, net="S")])
     assert pcb_review.rule_track_angles(ctx_for(acute))[0].details["count"] == 1
     right = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 5, 5, net="S")])
-    assert [f.rule for f in pcb_review.rule_track_angles(ctx_for(right))] == [
-        "route.right_angle"
-    ]
+    assert [f.rule for f in pcb_review.rule_track_angles(ctx_for(right))] == ["route.right_angle"]
 
 
 def test_a_bend_off_the_45_grid_is_context():
     # a 20-degree-ish bend: neither straight, nor 45, nor 90
     odd = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 10, 1.8, net="S")])
-    assert [f.rule for f in pcb_review.rule_track_angles(ctx_for(odd))] == [
-        "route.odd_angle"
-    ]
+    assert [f.rule for f in pcb_review.rule_track_angles(ctx_for(odd))] == ["route.odd_angle"]
     # a clean 45 stays silent
     fine = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 8, 3, net="S")])
     assert pcb_review.rule_track_angles(ctx_for(fine)) == []
@@ -562,7 +558,9 @@ def test_a_board_with_no_free_silk_has_no_name():
     named = board_from(
         silk=[{"text": "demo rev A", "layer": "F.SilkS", "x": 25.0, "y": 38.0, "footprint": None}]
     )
-    assert "silk.missing_board_id" not in {f.rule for f in pcb_review.rule_board_markings(ctx_for(named))}
+    assert "silk.missing_board_id" not in {
+        f.rule for f in pcb_review.rule_board_markings(ctx_for(named))
+    }
 
 
 def test_a_connector_with_no_nearby_silk_is_reported():
@@ -591,7 +589,8 @@ def test_a_connector_with_no_nearby_silk_is_reported():
         ],
     )
     assert not any(
-        f.rule == "silk.unlabeled_connector" for f in pcb_review.rule_board_markings(ctx_for(labelled))
+        f.rule == "silk.unlabeled_connector"
+        for f in pcb_review.rule_board_markings(ctx_for(labelled))
     )
 
 
@@ -603,6 +602,30 @@ def test_a_pour_cut_in_half_is_reported_and_a_whole_one_is_not():
     # 800 of 1600 mm2 in the larger half
     assert findings[0].details["largest_fraction"] == 0.5
     assert pcb_review.rule_pour_fragmented(ctx_for(board_from(zones=[_plane_zone()]))) == []
+
+
+def test_two_halves_stitched_to_the_far_side_are_one_piece():
+    # The same cut plane, with a via in each half. They are the same copper
+    # through the other layer, which is what a stitched front pour is, and it
+    # is not the defect this rule names.
+    stitched = board_from(
+        zones=[_plane_zone(cut=True)],
+        vias=[
+            pcb.Via(x=10, y=20, size=0.8, drill=0.4, layers=["F.Cu", "B.Cu"], net_code=1, net="GND")
+        ],
+    )
+    # one via alone still leaves the other half on its own
+    assert [f.rule for f in pcb_review.rule_pour_fragmented(ctx_for(stitched))] == [
+        "layout.pour_fragmented"
+    ]
+    both = board_from(
+        zones=[_plane_zone(cut=True)],
+        vias=[
+            pcb.Via(x=x, y=20, size=0.8, drill=0.4, layers=["F.Cu", "B.Cu"], net_code=1, net="GND")
+            for x in (10, 40)
+        ],
+    )
+    assert pcb_review.rule_pour_fragmented(ctx_for(both)) == []
 
 
 def test_welded_rectangles_of_one_island_are_not_fragmentation():
@@ -703,7 +726,16 @@ def test_an_indicator_without_silk_is_reported():
     ]
     told = board_from(
         footprints=[led],
-        silk=[{"text": "5V OK", "x": 12.0, "y": 10.0, "size": 1.0, "footprint": "", "layer": "F.SilkS"}],
+        silk=[
+            {
+                "text": "5V OK",
+                "x": 12.0,
+                "y": 10.0,
+                "size": 1.0,
+                "footprint": "",
+                "layer": "F.SilkS",
+            }
+        ],
     )
     assert pcb_review.rule_indicator_markings(ctx_for(told)) == []
 

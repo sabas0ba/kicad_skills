@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import os
 from collections import Counter, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from ..util import (
@@ -1063,6 +1063,13 @@ def rule_pour_fragmented(ctx: PcbContext) -> list[Finding]:
     Measured as the share of the pour's filled copper in its largest connected
     island - a nibbled edge is nothing, a bisected plane is the finding.
 
+    An island with a via of the pour's own net in it is not on its own: it is
+    the same copper as every other island with one, through the plane on the
+    far side. So those count as one piece, and what is left to report is the
+    piece that has no way home at all - which is the defect the message names.
+    Stitching is the fix for a shredded front pour; placement is the fix for a
+    bisected plane, and this rule is now only about the second.
+
     A track through the middle bisects the plane; the same track along the
     edge only trims it. That is the fix, and it is a placement decision.
     """
@@ -1071,6 +1078,9 @@ def rule_pour_fragmented(ctx: PcbContext) -> list[Finding]:
     for zone in ctx.board.zones:
         if zone.keepout or not zone.filled or not netlist_helpers_is_ground(zone.net):
             continue
+        # a via of the pour's own net reaches the other side of the board,
+        # which is where two pieces of this pour meet each other
+        stitches = [(via.x, via.y) for via in ctx.board.vias if via.net == zone.net]
         by_layer: dict[str, list[list[tuple[float, float]]]] = {}
         for layer, points in zone.fills:
             if len(points) >= 3:
@@ -1080,7 +1090,7 @@ def rule_pour_fragmented(ctx: PcbContext) -> list[Finding]:
             total = sum(areas)
             if total <= 0:
                 continue
-            islands = _merge_touching(polygons, areas)
+            islands = _merge_touching(polygons, areas, stitches)
             largest = max(islands)
             share = largest / total
             if share >= limit - 1e-9 or len(islands) < 2:
@@ -1270,7 +1280,11 @@ def _point_in_polygon(point, polygon) -> bool:
     return inside
 
 
-def _merge_touching(polygons: list[list[tuple[float, float]]], areas: list[float]) -> list[float]:
+def _merge_touching(
+    polygons: list[list[tuple[float, float]]],
+    areas: list[float],
+    stitches: Sequence[tuple[float, float]] = (),
+) -> list[float]:
     """Group polygons that share copper, and return one area per group.
 
     A generated fill is many welded rectangles that are electrically one
@@ -1279,6 +1293,10 @@ def _merge_touching(polygons: list[list[tuple[float, float]]], areas: list[float
     upper bound only when it is smaller than the sum - the pieces of a real
     island tile it, so the sum is what matters and the cap only stops the
     weld overlap from inflating it.
+
+    ``stitches`` are points where the pour reaches the other side of the board.
+    Two pieces that both hold one are the same copper, through that side, so
+    they are grouped as one.
     """
     parent = list(range(len(polygons)))
 
@@ -1292,6 +1310,17 @@ def _merge_touching(polygons: list[list[tuple[float, float]]], areas: list[float
         for j in range(i + 1, len(polygons)):
             if find(i) != find(j) and _polygons_touch(one, polygons[j]):
                 parent[find(i)] = find(j)
+
+    stitched: int | None = None
+    for point in stitches:
+        for index, polygon in enumerate(polygons):
+            if not _point_in_polygon(point, polygon):
+                continue
+            if stitched is None:
+                stitched = index
+            elif find(index) != find(stitched):
+                parent[find(index)] = find(stitched)
+            break
 
     groups: dict[int, list[int]] = {}
     for index in range(len(polygons)):

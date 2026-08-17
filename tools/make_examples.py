@@ -1816,15 +1816,19 @@ def footprint_definition(spec: str) -> SNode:
     return copy.deepcopy(_footprint_cache[spec])
 
 
-def _move_reference_off_pads(node: SNode, ref: str) -> None:
+def _move_reference_off_pads(design: Design, part: Part, node: SNode) -> None:
     """Put the designator somewhere it can still be read after assembly.
 
     A library footprint puts its reference where that part's own outline
     leaves room, which for a module with pads down both sides and along the
     bottom is the middle of a pad. Silk over a pad is not a designator: the
     mask opens there, the ink is scraped off in fabrication, and what is left
-    is a pad that will not wet. So the reference steps to the first spot in
-    the part's own frame that no pad occupies.
+    is a pad that will not wet.
+
+    Measured on the board rather than in the footprint's own frame, because
+    the two disagree the moment the part is turned: the anchor rotates with
+    the footprint and the string does not, so a label that sat clear above an
+    upright part reaches sideways into the pads of a lying one.
     """
     prop = next((p for p in node.children("property") if str(p.atom(0, "")) == "Reference"), None)
     at = prop.child("at") if prop else None
@@ -1833,30 +1837,26 @@ def _move_reference_off_pads(node: SNode, ref: str) -> None:
     atoms = [a for a in at.atoms() if isinstance(a, (int, float))]
     if len(atoms) < 2:
         return
-    boxes = []
-    for pad in node.children("pad"):
-        pad_at = pad.child("at")
-        size = pad.child("size")
-        pa = [a for a in (pad_at.atoms() if pad_at else []) if isinstance(a, (int, float))]
-        ps = [a for a in (size.atoms() if size else []) if isinstance(a, (int, float))]
-        if len(pa) >= 2 and len(ps) >= 2:
-            boxes.append(
-                (pa[0] - ps[0] / 2, pa[1] - ps[1] / 2, pa[0] + ps[0] / 2, pa[1] + ps[1] / 2)
-            )
-    if not boxes:
+    pads = [pad_box(design, part, pad) for pad in node.children("pad")]
+    if not pads:
         return
-    half = len(ref) * 0.4 + 0.2
-    top = min(b[1] for b in boxes)
-    bottom = max(b[3] for b in boxes)
+    bx, by, angle = part.board
+    # the same arithmetic `_silk_bbox` uses, rounded up rather than down
+    half_x = len(part.ref) * 0.75 / 2 + 0.2
+    half_y = 1.15 / 2 + 0.1
+    local = min(pad.child("at").atom(1, 0.0) for pad in node.children("pad") if pad.child("at"))
+    span = max(pad.child("at").atom(1, 0.0) for pad in node.children("pad") if pad.child("at"))
+    reach = max(1.4, (span - local) / 2 + 1.4)
     for cx, cy in (
         (float(atoms[0]), float(atoms[1])),
         (0.0, 0.0),
-        (0.0, round(top - 1.4, 3)),
-        (0.0, round(bottom + 1.4, 3)),
+        (0.0, round(-reach, 3)),
+        (0.0, round(reach, 3)),
     ):
-        box = (cx - half, cy - 0.8, cx + half, cy + 0.8)
+        rx, ry = _rotate(cx, cy, angle)
+        box = (bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y)
         if not any(
-            box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in boxes
+            box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in pads
         ):
             at.args = [cx, cy, *atoms[2:]]
             return
@@ -2881,7 +2881,7 @@ def emit_board(design: Design, path: Path) -> None:
         _reuuid(node, design.name, "fp", part.ref)
         node.args.insert(2, _uuid_node(stable_uuid(design.name, "fp", part.ref)))
         _set_property(node, "Reference", part.ref)
-        _move_reference_off_pads(node, part.ref)
+        _move_reference_off_pads(design, part, node)
         _set_property(node, "Value", part.value)
         for key, value in part.fields.items():
             _set_property(node, key, value, add=True)

@@ -2786,7 +2786,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R6"
-      (at 0.0 -1.65 0)
+      (at 0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -2883,7 +2883,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0.0 -1.65 0)
+      (at 0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
@@ -3113,7 +3113,7 @@
     (descr "SMD pad as test Point, diameter 1.5mm")
     (tags "test point SMD pad")
     (property "Reference" "TP2"
-      (at 0.0 -1.648 0)
+      (at 0 -1.648 0)
       (layer "F.SilkS")
       (uuid "fb438753-f5e2-589a-946e-209f19cf37e6")
       (effects

@@ -3450,7 +3450,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R6"
-      (at 0.0 -1.65 0)
+      (at 0 -1.65 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3547,7 +3547,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0.0 -1.65 0)
+      (at 0 -1.65 0)
       (layer "F.Fab")
       (uuid "acac4148-fb6c-5cf9-95f2-5eb1655a471f")
       (hide yes)
@@ -3558,7 +3558,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0.0 -1.65 0)
+      (at 0 -1.65 0)
       (layer "F.Fab")
       (uuid "a2ade429-6025-54bd-be09-ef34ba95283f")
       (hide yes)
@@ -3569,7 +3569,7 @@
       )
     )
     (property "MPN" "RC0805FR-07100KL"
-      (at 0.0 -1.65 0)
+      (at 0 -1.65 0)
       (layer "F.Fab")
       (uuid "ab968259-814b-5f85-ac3b-603954413f23")
       (hide yes)
@@ -3580,7 +3580,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0.0 -1.65 0)
+      (at 0 -1.65 0)
       (layer "F.Fab")
       (uuid "dad74daf-5221-5080-bb66-0eba4400f5c6")
       (hide yes)
@@ -3591,7 +3591,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0.0 -1.65 0)
+      (at 0 -1.65 0)
       (layer "F.Fab")
       (uuid "856ccdb2-2a5e-58c4-a1e0-7faba3854584")
       (hide yes)
