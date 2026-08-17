@@ -1853,14 +1853,18 @@ def _move_reference_off_pads(design: Design, part: Part, node: SNode) -> None:
     # the same arithmetic `_silk_bbox` uses, rounded up rather than down
     half_x = len(part.ref) * 0.75 / 2 + 0.2
     half_y = 1.15 / 2 + 0.1
-    local = min(pad.child("at").atom(1, 0.0) for pad in node.children("pad") if pad.child("at"))
-    span = max(pad.child("at").atom(1, 0.0) for pad in node.children("pad") if pad.child("at"))
-    reach = max(1.4, (span - local) / 2 + 1.4)
+    # How far out to look. A designator prints horizontally whatever the
+    # footprint's rotation, so on a turned part the string reaches along an
+    # axis the footprint's own frame calls the other one - and a two-terminal
+    # chip part is narrower than its own three-character name. Both local axes
+    # are tried, at increasing distance, and near beats far.
+    spread = max(box[2] - box[0] for box in pads) / 2
+    steps = [round(half_x + spread + gap, 3) for gap in (0.4, 1.0, 1.8, 2.8)]
     for cx, cy in (
         (float(atoms[0]), float(atoms[1])),
         (0.0, 0.0),
-        (0.0, round(-reach, 3)),
-        (0.0, round(reach, 3)),
+        *((0.0, sign * step) for step in steps for sign in (-1, 1)),
+        *((sign * step, 0.0) for step in steps for sign in (-1, 1)),
     ):
         rx, ry = _rotate(cx, cy, angle)
         box = (bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y)
@@ -2539,6 +2543,16 @@ def _join_runs(design: Design) -> Design:
     )
 
 
+def _corner_ok(p: tuple[float, float], a: tuple[float, float], c: tuple[float, float]) -> bool:
+    """Whether p-a-c is a bend a board is allowed to have: 90 degrees or wider."""
+    v1 = (a[0] - p[0], a[1] - p[1])
+    v2 = (c[0] - a[0], c[1] - a[1])
+    l1, l2 = math.hypot(*v1), math.hypot(*v2)
+    if l1 < GEOM_EPS or l2 < GEOM_EPS:
+        return True
+    return (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2) >= -GEOM_EPS
+
+
 def _pinned_points(design: Design) -> set[tuple[float, float]]:
     """Every point on the copper that no clean-up pass may move.
 
@@ -2596,13 +2610,15 @@ def _unfold_tracks(design: Design) -> Design:
                 l1, l2 = math.hypot(*v1), math.hypot(*v2)
                 if l1 < GEOM_EPS or l2 < GEOM_EPS:
                     continue
-                if l2 >= l1 and index != 1:
-                    # walking back past where it set out from moves the corner
-                    # before this one, unless there is no corner before it
-                    continue
                 if (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2) > -0.999:
                     continue
                 if key(b) in pinned:
+                    continue
+                if l2 >= l1 and index > 1 and not _corner_ok(out[index - 2], a, c):
+                    # Walking back past where it set out from moves the corner
+                    # before this one. Usually that corner is the other half of
+                    # the same fold and both go; where it is not, the run keeps
+                    # its ugly spur rather than trade it for a worse bend.
                     continue
                 del out[index]
                 changed = True
