@@ -2412,6 +2412,10 @@ def _snap_to_45(design: Design) -> Design:
                 (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes), None
             )
             pads.append((owner, pad_layer(pad), pad_box(design, part, pad)))
+    # A via is on every layer, so a knee taken on either face has to clear it.
+    # The straight segment this replaces did clear it - that is exactly why it
+    # was routed there - and the knee moves copper, so it has to ask again.
+    vias = [(via.net, via_position(design, via), via.size / 2) for via in design.vias]
 
     def clear(track: Track, a, b) -> bool:
         half = track.width / 2
@@ -2424,6 +2428,11 @@ def _snap_to_45(design: Design) -> Design:
             if owner == track.net or layer not in (None, track.layer):
                 continue
             if _segment_to_box(a, b, box) < half + 0.2:
+                return False
+        for net, at, radius in vias:
+            if net == track.net:
+                continue
+            if _segment_to_point(a, b, at) < half + radius + 0.2:
                 return False
         return True
 
