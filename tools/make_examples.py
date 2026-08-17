@@ -1660,12 +1660,18 @@ def _symbol_instance(
         # A wide part has no stub column to step out of, so the designator
         # stays centred above it and only steps up a row if that lands on a
         # net running across the top of the symbol.
+        # A wide part's own pin stubs run up its centre column and out to
+        # either side of it, so a designator that only steps 1.27 mm aside
+        # steps onto the next stub. The list reaches out past the pin field.
         ref_options = [
             (x, round(top - 2.54, 4), ""),
-            (round(x + 1.27, 4), round(top - 2.54, 4), "left"),
-            (round(x - 1.27, 4), round(top - 2.54, 4), "right"),
+            *(
+                (round(x + sign * reach, 4), round(top - row, 4), "left" if sign > 0 else "right")
+                for row in (2.54, 3.81)
+                for reach in (1.27, 3.81, 6.35, 8.89)
+                for sign in (1, -1)
+            ),
             (x, round(top - 3.81, 4), ""),
-            (round(x + 1.27, 4), round(top - 3.81, 4), "left"),
         ]
     # The block is placed first and the designator gets out of *its* way: a
     # rating block has three strings that have to stay together and a
@@ -1688,11 +1694,14 @@ def _symbol_instance(
         vx, vy, vjust = _pick_field(
             part.value,
             [
-                (round(x + step, 4), round(bottom + step, 4), "left"),
-                (round(x - step, 4), round(bottom + step, 4), "right"),
-                (round(x + step, 4), round(bottom + step + 1.27, 4), "left"),
-                (round(x - step, 4), round(bottom + step + 1.27, 4), "right"),
-                (round(x + step, 4), round(bottom + step + 2.54, 4), "left"),
+                (
+                    round(x + sign * reach, 4),
+                    round(bottom + step + row, 4),
+                    "left" if sign > 0 else "right",
+                )
+                for row in (0.0, 1.27, 2.54)
+                for reach in (step, step + 2.54, step + 5.08, step + 7.62)
+                for sign in (1, -1)
             ],
             wires,
             avoid,
@@ -2585,7 +2594,11 @@ def _unfold_tracks(design: Design) -> Design:
                 v1 = (b[0] - a[0], b[1] - a[1])
                 v2 = (c[0] - b[0], c[1] - b[1])
                 l1, l2 = math.hypot(*v1), math.hypot(*v2)
-                if l1 < GEOM_EPS or l2 < GEOM_EPS or l2 >= l1:
+                if l1 < GEOM_EPS or l2 < GEOM_EPS:
+                    continue
+                if l2 >= l1 and index != 1:
+                    # walking back past where it set out from moves the corner
+                    # before this one, unless there is no corner before it
                     continue
                 if (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2) > -0.999:
                     continue
@@ -5529,7 +5542,7 @@ def fpga_audio() -> Design:
         ("+3V3", POWER, [("J1.1", "C1.1"), ("C1.1", "U3.1"), ("C1.1", "C2.1"), ("C2.1", "U3.3")]),
         (
             "+3V3",
-            SIG,
+            POWER,
             [
                 ("C2.1", "R1.1"),
                 ("R1.1", "R2.1"),
@@ -5559,7 +5572,7 @@ def fpga_audio() -> Design:
         ),
         (
             "+1V2",
-            SIG,
+            POWER,
             [
                 ("U3.5", "C3.1"),
                 ("C3.1", "C4.1"),
@@ -5569,7 +5582,7 @@ def fpga_audio() -> Design:
                 ("C15.1", "R3.1"),
             ],
         ),
-        ("VCCPLL", SIG, [("R3.2", "C17.1"), ("C17.1", "C5.1"), ("C5.1", "U1.29")]),
+        ("VCCPLL", POWER, [("R3.2", "C17.1"), ("C17.1", "C5.1"), ("C5.1", "U1.29")]),
         ("SPI_SS", SIG, [("U1.16", "U4.1"), ("U4.1", "J3.1"), ("J3.1", "R4.2")]),
         ("+3V3", SIG, [("C8.1", "R4.1")]),
         ("SPI_SCK", SIG, [("U1.15", "U4.6"), ("U4.6", "J3.2")]),

@@ -1958,7 +1958,7 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "ce5b37f1-4147-59d5-948b-a37e94e98f38")
     (property "Reference" "U1" (at 129.54 62.23 0) (effects (font (size 1.27 1.27))))
-    (property "Value" "DRV8833PW" (at 132.08 99.06 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "DRV8833PW" (at 124.46 97.79 0) (effects (font (size 1.27 1.27)) (justify right)))
     (property "Footprint" "Package_SO:TSSOP-16_4.4x5mm_P0.65mm" (at 129.54 80.01 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "https://www.ti.com/lit/ds/symlink/drv8833.pdf" (at 129.54 80.01 0) (effects (font (size 1.27 1.27)) hide))
     (property "MPN" "DRV8833PWR" (at 129.54 80.01 0) (effects (font (size 1.27 1.27)) hide))

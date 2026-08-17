@@ -3460,7 +3460,7 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "634a87af-8e5f-58bb-80cb-050cf18f78ba")
     (property "Reference" "D3" (at 202.24 55.69 90) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "green" (at 202.24 65.85 90) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "green" (at 199.7 65.85 90) (effects (font (size 1.27 1.27)) (justify right)))
     (property "Footprint" "LED_SMD:LED_0805_2012Metric" (at 203.51 60.77 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "https://optoelectronics.liteon.com/upload/download/DS-22-98-0002/LTST-C170KGKT.pdf" (at 203.51 60.77 0) (effects (font (size 1.27 1.27)) hide))
     (pin "1" (uuid "634a87af-8e5f-58bb-80cb-050cf18f78ba-p1"))
