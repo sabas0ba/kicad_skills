@@ -2344,8 +2344,7 @@ def resolve_routes(design: Design) -> Design:
     """
     order = [track for track in design.tracks if track.auto]
     if not order:
-        done = replace(design, vias=[*design.vias, *_stitch_vias(design)])
-        return _chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(done))))
+        return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(design)))))
     ripped: list[Track] = []
     while True:
         try:
@@ -2369,8 +2368,18 @@ def resolve_routes(design: Design) -> Design:
         done = replace(
             design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
         )
-        done = replace(done, vias=[*done.vias, *_stitch_vias(done)])
-        return _chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(done))))
+        return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(done)))))
+
+
+def _stitched(design: Design) -> Design:
+    """Add the stitching vias, once the copper has stopped moving.
+
+    Stitching used to happen before the clean-up passes, and the clean-up
+    passes move copper: a snapped segment or a chamfered corner would slide
+    into a via that had cleared the square path it replaced. A via has to be
+    placed against the geometry that will actually be written, so it goes last.
+    """
+    return replace(design, vias=[*design.vias, *_stitch_vias(design)])
 
 
 def _snap_to_45(design: Design) -> Design:
