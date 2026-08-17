@@ -10,3 +10,14 @@ budget escaping the package: every capacitor sits at the first place copper \
 can reach, and the rule measures the fan it took to get there. The 5 mm \
 answer is capacitors on the back under the pins, which needs the four-layer \
 board this example deliberately is not."""
+
+[[waivers]]
+rule = "track.thin_power"
+reason = """0.2 mm is the width a 0.5 mm pin row admits, and on this board it \
+is also the width the current wants. 0.2 mm of 1 oz copper carries 0.745 A at \
+a 10 C rise (IPC-2221); the iCE40UP5K's two rails draw about 25 mA between \
+them at this clock, the PCM5102A about 10 mA, the flash and the oscillator \
+under 15 mA together - call it 60 mA for the board, and the widest single run \
+carries less than half of that. The rule measures width against a default \
+power budget because a track cannot state its own current; this design \
+states it here. The four-layer answer would widen these on a plane anyway."""
