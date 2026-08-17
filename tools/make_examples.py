@@ -1825,7 +1825,13 @@ def footprint_definition(spec: str) -> SNode:
     return copy.deepcopy(_footprint_cache[spec])
 
 
-def _move_reference_off_pads(design: Design, part: Part, node: SNode) -> None:
+def _move_reference_off_pads(
+    design: Design,
+    part: Part,
+    node: SNode,
+    all_pads: list[tuple[float, float, float, float]] | None = None,
+    printed: list[tuple[float, float, float, float]] | None = None,
+) -> None:
     """Put the designator somewhere it can still be read after assembly.
 
     A library footprint puts its reference where that part's own outline
@@ -1849,6 +1855,7 @@ def _move_reference_off_pads(design: Design, part: Part, node: SNode) -> None:
     pads = [pad_box(design, part, pad) for pad in node.children("pad")]
     if not pads:
         return
+    obstacles = list(all_pads if all_pads is not None else pads) + list(printed or [])
     bx, by, angle = part.board
     # the same arithmetic `_silk_bbox` uses, rounded up rather than down
     half_x = len(part.ref) * 0.75 / 2 + 0.2
@@ -1869,9 +1876,11 @@ def _move_reference_off_pads(design: Design, part: Part, node: SNode) -> None:
         rx, ry = _rotate(cx, cy, angle)
         box = (bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y)
         if not any(
-            box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in pads
+            box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in obstacles
         ):
             at.args = [cx, cy, *atoms[2:]]
+            if printed is not None:
+                printed.append(box)
             return
 
 
@@ -2901,6 +2910,16 @@ def emit_board(design: Design, path: Path) -> None:
     for name in [*order, *sorted(set(spares.values()))]:
         lines.append(f'\t(net {codes[name]} "{labels[name]}")')
 
+    # Every pad on the board, so a designator that steps off its own part's
+    # pads does not step onto its neighbour's - which is the same defect one
+    # part along. `printed` collects the designators already placed, so they
+    # do not stack either.
+    all_pads = [
+        pad_box(design, other, pad)
+        for other in design.footprints()
+        for pad in footprint_definition(other.footprint).children("pad")
+    ]
+    printed: list[tuple[float, float, float, float]] = []
     for part in design.footprints():
         node = footprint_definition(part.footprint)
         bx, by, angle = part.board
@@ -2910,7 +2929,7 @@ def emit_board(design: Design, path: Path) -> None:
         _reuuid(node, design.name, "fp", part.ref)
         node.args.insert(2, _uuid_node(stable_uuid(design.name, "fp", part.ref)))
         _set_property(node, "Reference", part.ref)
-        _move_reference_off_pads(design, part, node)
+        _move_reference_off_pads(design, part, node, all_pads, printed)
         _set_property(node, "Value", part.value)
         for key, value in part.fields.items():
             _set_property(node, key, value, add=True)
