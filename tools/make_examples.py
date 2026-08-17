@@ -2382,6 +2382,13 @@ def _stitched(design: Design) -> Design:
     return replace(design, vias=[*design.vias, *_stitch_vias(design)])
 
 
+def _via_box(design: Design, via: Via) -> tuple[float, float, float, float]:
+    """A via as the square `check_board` measures it, not as a circle."""
+    vx, vy = via_position(design, via)
+    half = via.size / 2
+    return (vx - half, vy - half, vx + half, vy + half)
+
+
 def _snap_to_45(design: Design) -> Design:
     """Rewrite any segment that runs at an angle nobody chose.
 
@@ -2415,7 +2422,10 @@ def _snap_to_45(design: Design) -> Design:
     # A via is on every layer, so a knee taken on either face has to clear it.
     # The straight segment this replaces did clear it - that is exactly why it
     # was routed there - and the knee moves copper, so it has to ask again.
-    vias = [(via.net, via_position(design, via), via.size / 2) for via in design.vias]
+    # Squared off, the way `check_board` measures a via: a round via inscribed
+    # in the box clears where the box does not, and the check that decides
+    # whether the board builds is the one to agree with.
+    vias = [(via.net, _via_box(design, via)) for via in design.vias]
 
     def clear(track: Track, a, b) -> bool:
         half = track.width / 2
@@ -2429,10 +2439,10 @@ def _snap_to_45(design: Design) -> Design:
                 continue
             if _segment_to_box(a, b, box) < half + 0.2:
                 return False
-        for net, at, radius in vias:
+        for net, box in vias:
             if net == track.net:
                 continue
-            if _segment_to_point(a, b, at) < half + radius + 0.2:
+            if _segment_to_box(a, b, box) < half + 0.2:
                 return False
         return True
 
@@ -2605,7 +2615,7 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
     resolved = [[resolve(design, point) for point in track.points] for track in design.tracks]
     # A cut moves copper off the square path, and what it moves toward may be
     # a via or a pad that only cleared the original corner.
-    foreign_vias = [(via.net, via_position(design, via), via.size / 2) for via in design.vias]
+    foreign_vias = [(via.net, _via_box(design, via)) for via in design.vias]
     foreign_pads: list[tuple[str | None, tuple[float, float, float, float]]] = []
     for part in design.footprints():
         node = footprint_definition(part.footprint)
@@ -2650,9 +2660,8 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
                     round(corner[1] + v2[1] / l2 * c, 3),
                 )
                 blocked = any(
-                    net != track.net
-                    and _segment_to_point(p1, p2, at) < track.width / 2 + radius + 0.25
-                    for net, at, radius in foreign_vias
+                    net != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
+                    for net, box in foreign_vias
                 ) or any(
                     owner != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
                     for owner, box in foreign_pads
