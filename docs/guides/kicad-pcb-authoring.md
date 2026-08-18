@@ -225,6 +225,13 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   router takes instead cut the plane under the same net's own front copper,
   and `route.return_path` picks that up. Thirty is where neither fires, and
   finding it took a sweep, not an argument.
+* **Never draw one run on top of another.** Two runs of a net that meet at a
+  point and leave it along the same line are one run drawn twice: the shorter
+  carries nothing the longer does not, and on the plot it reads as a track
+  that stops in mid air. `route.acute_angle` calls it a corner of nought
+  degrees, which is what it is — on the FPGA board one was nine millimetres of
+  track laid back along itself. Trim the duplicate *and* pull the other run
+  back to where it ended, or the second one is left hanging over the gap.
 * **Route a feedback wrap pad to pad, not column to column.** An opamp's
   output and inverting pins sit on opposite sides of the package; asked for
   between the two escape columns, the wrap leaves the output heading away

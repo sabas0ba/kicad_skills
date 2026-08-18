@@ -2761,14 +2761,18 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
     design = _straighten(design)
     order = [track for track in design.tracks if track.auto]
     if not order:
-        return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(design)))))
+        return _stitched(
+            _chamfer_tracks(_unfold_tracks(_join_runs(_untraced(_snap_to_45(design)))))
+        )
     digest = _routing_digest(design) if use_cache else ""
     if use_cache:
         cached = _cache_read(design.name, digest)
         if cached:
             print(f"{design.name}: routing unchanged, reusing {digest[:8]}", file=sys.stderr)
             done = replace(design, tracks=cached[0], vias=cached[1])
-            return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(done)))))
+            return _stitched(
+                _chamfer_tracks(_unfold_tracks(_join_runs(_untraced(_snap_to_45(done)))))
+            )
         order = _learned_order(design, order)
     ripped: list[Track] = []
     while True:
@@ -2795,7 +2799,21 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         )
         if use_cache:
             _cache_write(design, digest, done, order)
-        return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(done)))))
+        return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_untraced(_snap_to_45(done))))))
+
+
+def _on_45_grid(a, b) -> bool:
+    """Whether the line from a to b runs along an axis or a 45.
+
+    A straightened route is only an improvement if it lands on the grid the
+    rest of the board is drawn on. Between two pads at whatever coordinates
+    their packages put them, the direct line usually does not: on the FPGA
+    board it produced a nine millimetre run at 169.7 degrees, which is the
+    "slip of the mouse" angle `route.odd_angle` exists to report. A crooked
+    route that is on the grid beats a straight one that is not.
+    """
+    dx, dy = abs(b[0] - a[0]), abs(b[1] - a[1])
+    return dx < GEOM_EPS or dy < GEOM_EPS or abs(dx - dy) < GEOM_EPS
 
 
 def _straighten(design: Design) -> Design:
@@ -2891,6 +2909,7 @@ def _straighten(design: Design) -> Design:
             if (
                 direct > GEOM_EPS
                 and length > direct * 1.2
+                and _on_45_grid(stretch[0], stretch[-1])
                 and clear(track, points, stretch[0], stretch[-1])
             ):
                 kept.append(track.points[last])
@@ -2988,6 +3007,13 @@ def _snap_to_45(design: Design) -> Design:
                     knee = (round(b[0] - math.copysign(ady, dx), 4), a[1])
                 else:
                     knee = (a[0], round(b[1] - math.copysign(adx, dy), 4))
+                # The knee is taken even when a leg comes out shorter than the
+                # track is wide, which leaves a nub `route.acute_angle` reports.
+                # Refusing it is worse: the segment then keeps the angle it had,
+                # and a twentieth of a millimetre of nub beats a nine
+                # millimetre run at 169 degrees. Measured both ways - declining
+                # short knees put 157 off-grid segments back across the five
+                # boards.
                 if (
                     math.dist(out[-1], knee) > GEOM_TOL
                     and math.dist(knee, b) > GEOM_TOL
@@ -3140,6 +3166,138 @@ def _unfold_tracks(design: Design) -> Design:
                 changed = True
                 break
         tracks.append(replace(track, points=out))
+    return replace(design, tracks=tracks)
+
+
+def _untraced(design: Design) -> Design:
+    """Drop the copper a second run lays down on top of the first.
+
+    Two runs of one net that meet at a point and leave it along the *same*
+    line are one run drawn twice. The shorter is inside the longer, carries
+    no current the longer is not already carrying, and on the plot reads as a
+    track that stops in mid air. `route.acute_angle` reports it as a corner of
+    nought degrees, which is exactly what it is: on the FPGA board one of them
+    was nine millimetres of track laid back along itself.
+
+    `_unfold_tracks` catches this inside a single polyline. It cannot catch it
+    between two, because there is no corner in either one to remove - the fold
+    is in the pair. So this runs *before* `_join_runs`, while each routed run
+    is still its own track and the duplicate is still two tracks sharing an
+    end. Afterwards the pair has become one polyline with the shared point in
+    its middle, and that point is usually a pad - which the clean-up passes
+    pin, precisely so they cannot take copper off it.
+    """
+    points = [[resolve(design, point) for point in track.points] for track in design.tracks]
+
+    def key(point):
+        return (round(point[0], 3), round(point[1], 3))
+
+    # A shared point that is a pad has to stay reached: the copper may double
+    # back over itself there, but something must still touch the pad.
+    pad_points = set()
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            pad_points.add(key(pad_position_of(design, part, pad)))
+
+    ends: dict[tuple, list[tuple[int, int]]] = defaultdict(list)
+    for index, chain in enumerate(points):
+        if len(chain) < 2:
+            continue
+        ends[(key(chain[0]), design.tracks[index].layer, design.tracks[index].net)].append(
+            (index, 0)
+        )
+        ends[(key(chain[-1]), design.tracks[index].layer, design.tracks[index].net)].append(
+            (index, -1)
+        )
+
+    drop: dict[int, set[int]] = defaultdict(set)
+    move: dict[tuple[int, int], tuple[float, float]] = {}
+    for (at, _layer, _net), owners in ends.items():
+        if len(owners) != 2:
+            continue
+        (one, one_end), (two, two_end) = owners
+        if one == two:
+            continue
+        here = (at[0], at[1])
+        legs = []
+        for index, end in ((one, one_end), (two, two_end)):
+            chain = points[index]
+            far = chain[1] if end == 0 else chain[-2]
+            legs.append((math.dist(here, far), index, end, far))
+        (len_a, _ia, _ea, far_a), (len_b, _ib, _eb, far_b) = legs
+        if len_a < GEOM_EPS or len_b < GEOM_EPS:
+            continue
+        v1 = ((far_a[0] - here[0]) / len_a, (far_a[1] - here[1]) / len_a)
+        v2 = ((far_b[0] - here[0]) / len_b, (far_b[1] - here[1]) / len_b)
+        dot = v1[0] * v2[0] + v1[1] * v2[1]
+        if dot >= 0.999:
+            # Both leave along the same ray, so the shorter is inside the
+            # longer: it carries nothing the longer does not, and its far end
+            # still sits on copper once it is gone. The longer one comes back
+            # to that far end too - past it the pair was only travelling out
+            # and straight back. Dropping the short leg alone leaves the long
+            # one hanging over the gap, which is `route.stub`.
+            (_short, short_i, short_e, short_far), (_long, long_i, long_e, _far) = sorted(legs)
+            drop[short_i].add(0 if short_e == 0 else len(points[short_i]) - 1)
+            if (round(here[0], 3), round(here[1], 3)) not in pad_points:
+                move[(long_i, 0 if long_e == 0 else len(points[long_i]) - 1)] = short_far
+            continue
+        if dot <= 0.0:
+            continue
+        # An acute meeting whose short leg is thinner than the track is wide:
+        # the run overshot the point where the two legs actually cross and
+        # came back. The overshoot is inside the other leg's own copper, so
+        # pulling the meeting point back to the crossing costs nothing and
+        # turns a nought-point-one millimetre spur into a corner.
+        (short_len, short_i, short_e, behind), (_long_len, long_i, long_e, long_far) = sorted(legs)
+        width = max(design.tracks[short_i].width, design.tracks[long_i].width)
+        if short_len >= width:
+            continue
+        chain = points[short_i]
+        if any(
+            math.dist(other, here) < width + 0.2
+            for at_index, other_chain in enumerate(points)
+            if at_index not in (short_i, long_i)
+            for other in (other_chain[0], other_chain[-1])
+            if other_chain
+        ):
+            continue
+        along = (long_far[0] - here[0], long_far[1] - here[1])
+        span = math.hypot(*along)
+        if span < GEOM_EPS:
+            continue
+        unit = (along[0] / span, along[1] / span)
+        offset = (behind[0] - here[0]) * unit[0] + (behind[1] - here[1]) * unit[1]
+        if not 0.0 < offset < span:
+            continue
+        crossing = (
+            round(here[0] + unit[0] * offset, 4),
+            round(here[1] + unit[1] * offset, 4),
+        )
+        move[(short_i, 0 if short_e == 0 else len(chain) - 1)] = crossing
+        move[(long_i, 0 if long_e == 0 else len(points[long_i]) - 1)] = crossing
+
+    if not drop and not move:
+        return design
+    tracks = []
+    for index, track in enumerate(design.tracks):
+        if index not in drop and not any(key[0] == index for key in move):
+            tracks.append(track)
+            continue
+        kept = [
+            move.get((index, at), point)
+            for at, point in enumerate(track.points)
+            if at not in drop[index]
+        ]
+        trimmed = [
+            point
+            for at, point in enumerate(kept)
+            if at == 0
+            or math.dist(resolve(design, point), resolve(design, kept[at - 1])) > GEOM_EPS
+        ]
+        if len(trimmed) >= 2:
+            tracks.append(replace(track, points=trimmed))
     return replace(design, tracks=tracks)
 
 

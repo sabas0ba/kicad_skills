@@ -452,6 +452,29 @@ any ratio worth setting. So both got one.
 | copper straightened off its own pads | `write_variant` resolves the routes a second time, so the straightening pass ran again on the *routed* design - where the run into a pad and the run out of it have been merged into one polyline with the pad as an interior corner. Straightening through it took the copper off the pad. Pads are pinned now, as track ends already were | opamp: 2 unconnected nets, to 0 |
 | stitching vias measured as circles | the stitcher kept a via clear of a track by its radius; `check_board` measures the same via as a square, and the corner is 0.17 mm nearer. One board would not build | opamp: 1 short, to 0 |
 
+### The corners the exemption was hiding
+
+The reviewer then said the 135 degree bends and the odd-angle runs were still
+there. They were, and the rule could not see them: `route.acute_angle` skipped
+any corner **within a pad's radius**, and a 0805's radius is 0.47 mm, which
+covers the five or six ordinary corners a chamfered pad entry leaves inside
+it. Eleven of the thirteen hairpins on these five boards landed in that
+shadow, because a pad is exactly where a route that has to double back does
+it.
+
+| fixed | how | measured |
+| --- | --- | --- |
+| the exemption itself | it is the pad's *connection point* now, not a disc around it. Two branches leaving one pad are still exempt - the pad's own copper fills the wedge between them, so it is not an acid trap - but nought degrees never is: that is one run drawn twice and no pad excuses it | 13 hairpins, of which the rule had been reporting 2 |
+| one run drawn on top of another | the shorter is inside the longer and carries nothing it does not. Both get trimmed: dropping only the duplicate leaves the other hanging over the gap, which is `route.stub`. It runs before the runs are joined, while the pair is still two tracks sharing an end | 180 degree reversals: fpga 2, filter 3, carrier 1 - **all to 0**, and the motor board's `return_path` finding went with the 11 mm of copper it was measuring |
+| straightening onto no grid at all | the round-trip remover from the last round would replace a stated route with its direct line whenever that was clear - and between two pads at whatever coordinates their packages give them, the direct line is usually at no angle anyone drew. It made a nine millimetre run at 169.7 degrees on the FPGA board | off-grid segments: 1 → **0**, and 0 on all five |
+
+Three corners survive, all on the FPGA board, all where a knee lands a
+fraction past the point its own two legs cross: legs of 0.07 and 0.25 mm on
+two of them, 0.15 and 0.5 mm on the third. Declining to take a knee that short
+is worse - the segment then keeps the angle it had, and measuring that put 157
+off-grid segments back across the five boards - so the nub stays and the rule
+reports it.
+
 ### What is still there
 
 The FPGA board is not fixed. It carries `route.detour` (VCCPLL at 5x),

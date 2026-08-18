@@ -1692,22 +1692,42 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
     right: list[str] = []
     odd: list[str] = []
     where: dict[str, list[tuple[float, float]]] = {"acute": [], "right": [], "odd": []}
-    # Copper meeting on a pad is a junction, not a corner: two branches leaving
-    # the same pad have an angle between them, and it is not a bend in either.
-    pad_points = [
-        (pad.x, pad.y, max(pad.size) / 2 if pad.size else 0.5)
+    # Copper meeting on a pad is a junction, not a corner: three or more
+    # branches leaving the same pad have angles between them, and none of them
+    # is a bend in anything. Exactly two ends is different - the copper passes
+    # *through* the pad, the two are one run, and the angle between them is as
+    # much a bend as any other. A pad is also exactly where a route that has to
+    # double back does it, so skipping those was skipping most of them.
+    #
+    # The exemption is the pad's own connection point, not a disc around it.
+    # Measured by radius it covered a 0805's whole 0.47 mm and swallowed the
+    # five or six ordinary corners that a chamfered pad entry leaves inside it,
+    # which is how eleven of the thirteen hairpins on these boards went unseen.
+    endpoints = _track_endpoints(board)
+    ends_at: dict[tuple[int, int], int] = defaultdict(int)
+    for key, indices in endpoints.items():
+        ends_at[(key[0], key[1])] += len(indices)
+    junctions = {
+        (round(pad.x * 1000), round(pad.y * 1000))
         for fp in board.footprints
         for pad in fp.pads
-    ]
-    for key, indices in _track_endpoints(board).items():
-        if len(indices) != 2:
+        if ends_at[(round(pad.x * 1000), round(pad.y * 1000))] > 2
+    }
+    # Two branches leaving one pad at an angle is not an acid trap either: the
+    # wedge between them is filled by the pad's own copper. Two branches
+    # leaving it along the *same* line is a different thing - that is one run
+    # drawn twice, and the pad does not excuse it - so the pad points are held
+    # aside and judged on that alone, below.
+    on_pad = {
+        (round(pad.x * 1000), round(pad.y * 1000)) for fp in board.footprints for pad in fp.pads
+    }
+    for key, indices in endpoints.items():
+        if len(indices) != 2 or (key[0], key[1]) in junctions:
             continue
         first, second = (board.tracks[i] for i in indices)
         if first.net != second.net or "arc" in (first.kind, second.kind):
             continue
         point = (key[0] / 1000, key[1] / 1000)
-        if any(math.dist(point, (px, py)) <= radius for px, py, radius in pad_points):
-            continue
         vectors = []
         for track in (first, second):
             far = (
@@ -1726,6 +1746,8 @@ def rule_track_angles(ctx: PcbContext) -> list[Finding]:
         # normalised vectors and an arc cosine, so a corner drawn at exactly 90
         # degrees lands a ten-thousandth under it - and a right angle reported as
         # tighter than a right angle is a finding nobody can act on.
+        if (key[0], key[1]) in on_pad and angle > 5.0:
+            continue
         if angle < limit - 0.5:
             acute.append(
                 f"{first.net or '(no net)'} at "

@@ -556,6 +556,39 @@ def test_an_acute_corner_is_reported_and_a_right_angle_is_context():
     assert [f.rule for f in pcb_review.rule_track_angles(ctx_for(right))] == ["route.right_angle"]
 
 
+def test_a_corner_beside_a_pad_is_still_a_corner():
+    """The exemption is the pad's connection point, not a disc around it.
+
+    Measured by radius it covered a 0805's whole 0.47 mm, and every chamfered
+    pad entry leaves an ordinary corner inside that.
+    """
+    board = board_from(
+        footprints=[footprint("R1", 0, 0, [pad("1", 0, 0, "S", size=(1.0, 1.0))])],
+        tracks=[track(0.3, 0.3, 5, 0.3, net="S"), track(0.3, 0.3, 1, 1.3, net="S")],
+    )
+    assert "route.acute_angle" in rules_of(pcb_review.rule_track_angles(ctx_for(board)))
+
+
+def test_two_branches_leaving_one_pad_are_not_an_acid_trap():
+    """The pad's own copper fills the wedge between them."""
+    board = board_from(
+        footprints=[footprint("R1", 0, 0, [pad("1", 0, 0, "S", size=(1.0, 1.0))])],
+        tracks=[track(0, 0, 5, 0, net="S"), track(0, 0, 4, 4, net="S")],
+    )
+    assert pcb_review.rule_track_angles(ctx_for(board)) == []
+
+
+def test_copper_laid_back_along_itself_is_reported_even_on_a_pad():
+    """Nought degrees is one run drawn twice, and no pad excuses that."""
+    board = board_from(
+        footprints=[footprint("R1", 0, 0, [pad("1", 0, 0, "S", size=(1.0, 1.0))])],
+        tracks=[track(0, 0, 5, 0, net="S"), track(0, 0, 3, 0, net="S")],
+    )
+    findings = pcb_review.rule_track_angles(ctx_for(board))
+    assert [f.rule for f in findings] == ["route.acute_angle"]
+    assert "0 deg" in findings[0].details["examples"][0]
+
+
 def test_a_bend_off_the_45_grid_is_context():
     # a 20-degree-ish bend: neither straight, nor 45, nor 90
     odd = board_from(tracks=[track(0, 0, 5, 0, net="S"), track(5, 0, 10, 1.8, net="S")])
