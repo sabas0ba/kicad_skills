@@ -121,7 +121,7 @@ mismatches).
 | `layout.odd_rotation` | 90 deg | parts turned to something other than a multiple of it |
 | `layout.decoupling_via` | 1.5 mm | decoupling ground pad to the nearest via: the return loop runs through whatever separates them |
 | `route.stub` | — | a track end reaching no pad, via or other track |
-| `route.acute_angle` | 90 deg | corners that trap etchant and step the impedance. Two branches leaving one *pad* are exempt — the pad's own copper fills the wedge — except at nought degrees, which is one run drawn twice and no pad excuses. The exemption is the pad's connection point, not a disc around it: measured by radius it covered a 0805's whole 0.47 mm and hid every ordinary corner a chamfered pad entry leaves inside that |
+| `route.acute_angle` | 90 deg | corners that trap etchant and step the impedance. Two branches leaving one *pad* are exempt — the pad's own copper fills the wedge — except at nought degrees, which is one run drawn twice and no pad excuses. The exemption is the pad's connection point, not a disc around it: measured by radius it covered a 0805's whole 0.47 mm and hid every ordinary corner a chamfered pad entry leaves inside that. Re-cutting it took the demo corpus from 8 boards / 127 corners to 9 / 205 |
 | `route.right_angle` | 90 deg | corners that turn a full 90 deg — two 45s cost nothing |
 | `route.odd_angle` | — | corners off the 45-degree grid: a 20 or 70 degree bend reads as a slip of the mouse |
 | `route.width_step` | 3 mm | a track changing width away from any pad, where the narrow side is not that pad's own neck either — the narrow part already set the current. A fine-pitch escape gets the same `power_neck_mm` budget `track.thin_power` gives it |

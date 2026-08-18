@@ -208,6 +208,7 @@ measuring something other than machine work:
 | `readability.text_over_symbol` | 2 boards — info from the start: the text extent is estimated, not measured |
 | `readability.text_over_wire` | 10 boards, 942 findings — **graded info** for the same reason. A generated design still has to have none: the `ai-generated` policy promotes it to an error |
 | `readability.text_over_text` | **14 of the 18 boards, 4531 findings** — also info. Human sheets are full of text a character-count estimate reads as touching, and a rule that fires that often on human work is measuring the estimate rather than the drawing. Under `ai-generated` it is still an error, and every `reviewed/` sheet has zero |
+| `route.acute_angle` (pad exemption re-cut) | **8 boards / 127 corners → 9 boards / 205** on the same demo boards. A 61 % rise on a rule already graded info, in exchange for seeing 11 of the 13 real hairpins on our own five boards that the old disc hid. It was never quiet on human work, which is why it is info and only the `ai-generated` policy promotes it |
 | `route.wander` | **1 board of the 18** at the shipped 2.0x — the same order as `route.detour` at 4x, and the one it finds is a real out-and-back. Measured against a baseline that walks round whatever package the straight line crosses, so a feedback wrap is not counted as a tour |
 
 Every `reviewed/` project now carries a `gate.toml` and passes
