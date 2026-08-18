@@ -2786,8 +2786,30 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
     pinned = _pinned_points(design)
     resolved = [[resolve(design, point) for point in track.points] for track in design.tracks]
     # A cut moves copper off the square path, and what it moves toward may be
-    # a via or a pad that only cleared the original corner.
+    # a via, a pad, or another net's track that only cleared the original
+    # corner. All three have to be asked, and the answer for all three is the
+    # same: leave the corner square rather than build a short.
     foreign_vias = [(via.net, _via_box(design, via)) for via in design.vias]
+    # Bucketed by a coarse grid: a board this size carries thousands of
+    # segments and a corner only cares about the ones beside it, so asking all
+    # of them turns a minute into an hour.
+    CELL = 4.0
+    near_tracks: dict[tuple[int, int], list[tuple]] = defaultdict(list)
+    for other, points in zip(design.tracks, resolved, strict=True):
+        for a, b in pairwise(points):
+            entry = (other.net, other.layer, other.width, a, b)
+            for cx in range(int(min(a[0], b[0]) // CELL), int(max(a[0], b[0]) // CELL) + 1):
+                for cy in range(int(min(a[1], b[1]) // CELL), int(max(a[1], b[1]) // CELL) + 1):
+                    near_tracks[(cx, cy)].append(entry)
+
+    def around(point: tuple[float, float]) -> list[tuple]:
+        cx, cy = int(point[0] // CELL), int(point[1] // CELL)
+        found: list[tuple] = []
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                found += near_tracks.get((cx + dx, cy + dy), ())
+        return found
+
     foreign_pads: list[tuple[str | None, tuple[float, float, float, float]]] = []
     for part in design.footprints():
         node = footprint_definition(part.footprint)
@@ -2831,12 +2853,21 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
                     round(corner[0] + v2[0] / l2 * c, 3),
                     round(corner[1] + v2[1] / l2 * c, 3),
                 )
-                blocked = any(
-                    net != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
-                    for net, box in foreign_vias
-                ) or any(
-                    owner != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
-                    for owner, box in foreign_pads
+                blocked = (
+                    any(
+                        net != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
+                        for net, box in foreign_vias
+                    )
+                    or any(
+                        net != track.net
+                        and layer == track.layer
+                        and _segment_distance(p1, p2, s0, s1) < track.width / 2 + width / 2 + 0.25
+                        for net, layer, width, s0, s1 in around(corner)
+                    )
+                    or any(
+                        owner != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
+                        for owner, box in foreign_pads
+                    )
                 )
                 if not blocked:
                     taken = (p1, p2)
