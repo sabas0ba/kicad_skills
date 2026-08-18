@@ -3365,7 +3365,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C17"
-      (at 0.0 -2.175 0)
+      (at 0.0 -2.775 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3462,7 +3462,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A106MQ8NNNC.do"
-      (at 0.0 -2.175 0)
+      (at 0.0 -2.775 0)
       (layer "F.Fab")
       (uuid "16747f11-9bae-5dab-84f8-aa8054ed4cde")
       (hide yes)
@@ -3480,7 +3480,7 @@
     (descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R3"
-      (at 0.0 -1.43 0)
+      (at 0.0 1.825 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3577,7 +3577,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0.0 -1.43 0)
+      (at 0.0 1.825 0)
       (layer "F.Fab")
       (uuid "14824b3e-549c-53ba-b4e0-18de03ad5a98")
       (hide yes)
@@ -3710,7 +3710,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C6"
-      (at 0.0 -1.43 0)
+      (at 0.0 1.8 0)
       (layer "F.SilkS")
       (effects
         (font
@@ -3807,7 +3807,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0.0 -1.43 0)
+      (at 0.0 1.8 0)
       (layer "F.Fab")
       (uuid "16747f11-9bae-5dab-84f8-aa8054ed4cde")
       (hide yes)

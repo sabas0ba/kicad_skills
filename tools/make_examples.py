@@ -5396,8 +5396,8 @@ def fpga_audio() -> Design:
         )
 
     parts += [
-        cap("C1", "10u", (84.0, 48.0), (18.0, 16.0, 0.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C2", "100n", (100.0, 48.0), (22.0, 20.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C1", "10u", (84.0, 48.0), (7.5, 17.5, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C2", "100n", (100.0, 48.0), (7.5, 21.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C3", "10u", (56.0, 62.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
         cap("C4", "100n", (72.0, 62.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
         cap("C5", "100n", (196.0, 48.0), (56.0, 43.0, 90.0), "25V", "CL10B104KB8NNNC"),
@@ -5777,7 +5777,7 @@ def fpga_audio() -> Design:
 
     for pad, target in (
         ("J1.2", (12.0, 12.0)),
-        ("U3.2", (16.0, 27.0)),
+        ("U3.2", (6.0, 24.0)),
         ("C4.2", (22.5, 36.0)),
         ("C5.2", (56.0, 40.8)),
         ("C17.2", (59.0, 40.8)),
@@ -5785,7 +5785,7 @@ def fpga_audio() -> Design:
         ("C7.2", (60.5, 46.5)),
         ("C8.2", (46.0, 71.0)),
         ("X1.2", (30.0, 10.0)),
-        ("U4.4", (37.0, 75.0)),
+        ("U4.4", (30.0, 76.0)),
         # The codec's grounds - two real ones and three mode pins strapped low -
         # drop through beside their own escapes rather than walking west into a
         # corridor that four other nets are already using.
