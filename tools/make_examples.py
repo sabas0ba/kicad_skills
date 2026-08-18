@@ -597,7 +597,7 @@ def _sheet_obstacles(
     return stubs, boxes
 
 
-def plan_wires(
+def _plan_wires(
     design: Design,
 ) -> tuple[
     list[tuple[str, tuple[float, float], tuple[float, float]]], set[str], list[tuple[float, float]]
@@ -927,6 +927,78 @@ def plan_wires(
     return accepted, dropped, junctions
 
 
+WIRE_CACHE = Path(__file__).resolve().parent.parent / ".cache" / "wires"
+_wire_memo: dict[str, tuple] = {}
+
+
+def _wire_digest(design: Design) -> str:
+    """A key over everything the wire planner reads.
+
+    Same argument as `_routing_digest`, and the same shape: on the FPGA sheet
+    the planner spends six minutes, it is asked twice per variant, and most of
+    what gets edited here does not move a pin.
+    """
+    lines = [
+        design.name,
+        repr((design.paper, design.draw_wires, GRID, WIRE_CLEAR)),
+        repr(design.label_nets),
+        repr(design.wired_power),
+        repr(design.power_flags),
+        repr([block[0] for block in design.note_blocks]),
+        repr(design.notes),
+    ]
+    for part in design.parts:
+        lines.append(
+            f"P {part.ref}|{part.lib_id}|{part.unit}|{part.sheet}|{part.angle}|{part.mirror}"
+        )
+    for net, nodes in sorted(design.nets.items()):
+        lines.append(f"N {net}={','.join(sorted(nodes))}")
+    lines.append(inspect.getsource(_plan_wires))
+    lines.append(inspect.getsource(power_fixtures))
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:32]
+
+
+def plan_wires(design: Design):
+    """The wire tree for this sheet, computed once and kept.
+
+    The planner is the most expensive thing in this generator after the
+    router, it is asked for the same answer by the shorts check and by the
+    emitter, and the answer only changes when a pin moves. So it is memoised
+    in the process and cached on disk, keyed by everything it reads - see
+    `_wire_digest`.
+    """
+    if not design.draw_wires:
+        return [], set(), []
+    digest = _wire_digest(design)
+    if digest in _wire_memo:
+        return _wire_memo[digest]
+    path = WIRE_CACHE / f"{design.name}.{digest}.json"
+    try:
+        blob = json.loads(path.read_text())
+        found = (
+            [(net, tuple(a), tuple(b)) for net, a, b in blob["segments"]],
+            set(blob["dropped"]),
+            [tuple(point) for point in blob["junctions"]],
+        )
+    except (OSError, ValueError, KeyError):
+        found = _plan_wires(design)
+        try:
+            WIRE_CACHE.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                json.dumps(
+                    {
+                        "segments": [[net, list(a), list(b)] for net, a, b in found[0]],
+                        "dropped": sorted(found[1]),
+                        "junctions": [list(point) for point in found[2]],
+                    }
+                )
+            )
+        except OSError:
+            pass
+    _wire_memo[digest] = found
+    return found
+
+
 def schematic_shorts(design: Design) -> list[str]:
     """Every place two nets touch on the sheet.
 
@@ -967,9 +1039,25 @@ def schematic_shorts(design: Design) -> list[str]:
             _segment_to_point(a0, a1, point) < GEOM_TOL for point in (b0, b1)
         )
 
+    # Bucketed on a coarse grid: only wires that share a cell can touch, and
+    # asking every pair on a sheet with a thousand of them costs minutes.
+    CELL = 12.7
+    cells: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for index, (_net, _owner, a0, a1) in enumerate(wires):
+        for cx in range(int(min(a0[0], a1[0]) // CELL), int(max(a0[0], a1[0]) // CELL) + 1):
+            for cy in range(int(min(a0[1], a1[1]) // CELL), int(max(a0[1], a1[1]) // CELL) + 1):
+                cells[(cx, cy)].append(index)
+
     problems = []
     for index, (net, owner, a0, a1) in enumerate(wires):
-        for other, other_owner, b0, b1 in wires[index + 1 :]:
+        nearby: set[int] = set()
+        for cx in range(int(min(a0[0], a1[0]) // CELL) - 1, int(max(a0[0], a1[0]) // CELL) + 2):
+            for cy in range(int(min(a0[1], a1[1]) // CELL) - 1, int(max(a0[1], a1[1]) // CELL) + 2):
+                nearby.update(cells.get((cx, cy), ()))
+        for other_index in sorted(nearby):
+            if other_index <= index:
+                continue
+            other, other_owner, b0, b1 = wires[other_index]
             if net == other or not touches(a0, a1, b0, b1):
                 continue
             problems.append(f"{owner} ({net}) touches {other_owner} ({other})")
@@ -1095,6 +1183,7 @@ def emit_schematic(design: Design) -> str:
                 )
             )
     text_boxes += fixture_boxes
+    wire_index, text_index = _BoxIndex(wire_boxes), _BoxIndex(text_boxes)
 
     for part in design.parts:
         pins = symbol_pins(part.lib_id, part.unit)
@@ -1143,7 +1232,7 @@ def emit_schematic(design: Design) -> str:
             ) and pin_owner not in replaced:
                 body.append(_label(design, net, part.ref, pin.number, out, end))
         avoid = [box for ref, box in part_box.items() if ref != part.ref] + placed_blocks
-        body.append(_symbol_instance(design, part, pins, avoid, wire_boxes, text_boxes))
+        body.append(_symbol_instance(design, part, pins, avoid, wire_index, text_index))
         if len(avoid) > len(part_box) - 1 + len(placed_blocks):
             placed_blocks.append(avoid[-1])
 
@@ -1415,7 +1504,50 @@ def _text_box(text: str, x: float, y: float, justify: str) -> tuple[float, float
     return (x0, y - height / 2, x1, y + height / 2)
 
 
+class _BoxIndex:
+    """Boxes on a coarse grid, so "how many of these does this one touch" is a
+    question about the neighbourhood rather than about the whole sheet.
+
+    Placing one field asks it a hundred times, a sheet holds two hundred
+    fields, and a dense one holds a thousand wires to miss. Done the obvious
+    way that is six minutes of arithmetic per sheet, which was most of what
+    regenerating the FPGA example cost.
+    """
+
+    CELL = 12.7
+
+    def __init__(self, boxes=()) -> None:
+        self.boxes: list[tuple[float, float, float, float]] = []
+        self.cells: dict[tuple[int, int], list[int]] = defaultdict(list)
+        for box in boxes:
+            self.add(box)
+
+    def add(self, box: tuple[float, float, float, float]) -> None:
+        index = len(self.boxes)
+        self.boxes.append(box)
+        for cell in self._cells(box):
+            self.cells[cell].append(index)
+
+    def _cells(self, box):
+        for cx in range(int(box[0] // self.CELL), int(box[2] // self.CELL) + 1):
+            for cy in range(int(box[1] // self.CELL), int(box[3] // self.CELL) + 1):
+                yield (cx, cy)
+
+    def hits(self, box) -> int:
+        seen: set[int] = set()
+        for cell in self._cells(box):
+            seen.update(self.cells.get(cell, ()))
+        found = 0
+        for index in seen:
+            b = self.boxes[index]
+            if box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3]:
+                found += 1
+        return found
+
+
 def _hits(boxes, box) -> int:
+    if isinstance(boxes, _BoxIndex):
+        return boxes.hits(box)
     return sum(
         1
         for b in boxes or []
@@ -1428,7 +1560,8 @@ def _pick_field(
     candidates: list[tuple[float, float, str]],
     wires: list[tuple[float, float, float, float]] | None,
     avoid: list[tuple[float, float, float, float]] | None = None,
-    texts: list[tuple[float, float, float, float]] | None = None,
+    texts: list[tuple[float, float, float, float]] | _BoxIndex | None = None,
+    extra: list[tuple[float, float, float, float] | None] | None = None,
 ) -> tuple[float, float, str]:
     """The first of `candidates` that prints over nothing, else the least bad.
 
@@ -1440,10 +1573,21 @@ def _pick_field(
     lists the spots it would accept in order of preference and this takes the
     first that is clear, breaking ties in that order.
     """
+    # `extra` is text this symbol has already committed to but not yet handed
+    # back - its own block, its own designator - which is not in the sheet's
+    # index yet and still has to be missed.
+    also = [box for box in (extra or []) if box]
     scored = []
     for cx, cy, justify in candidates:
         box = _text_box(text, cx, cy, justify)
-        scored.append((_hits(texts, box), _hits(wires, box), _hits(avoid, box), (cx, cy, justify)))
+        scored.append(
+            (
+                _hits(texts, box) + _hits(also, box),
+                _hits(wires, box),
+                _hits(avoid, box),
+                (cx, cy, justify),
+            )
+        )
     scored.sort(key=lambda item: item[:3])
     return scored[0][3]
 
@@ -1564,11 +1708,7 @@ def _symbol_instance(
         y1 = y - (rows_n - 1) * 1.27 + (rows_n - 1) * 2.54 + 1.27
 
         def hits(x0, x1, shift, boxes):
-            return sum(
-                1
-                for b in boxes
-                if x0 < b[2] and b[0] < x1 and y0 + shift < b[3] and b[1] < y1 + shift
-            )
+            return _hits(boxes, (x0, y0 + shift, x1, y1 + shift))
 
         # Which side, how far out, and how far up or down: the block has to
         # miss the neighbouring symbols *and* every net, and on a dense sheet
@@ -1679,9 +1819,7 @@ def _symbol_instance(
     # The block is placed first and the designator gets out of *its* way: a
     # rating block has three strings that have to stay together and a
     # designator has one that can go anywhere legible.
-    rx, ry, ref_justify = _pick_field(
-        part.ref, ref_options, wires, avoid, [*(texts or []), *([block] if block else [])]
-    )
+    rx, ry, ref_justify = _pick_field(part.ref, ref_options, wires, avoid, texts, [block])
     ref_at: tuple[float, float] = (rx, ry)
 
     if side_value:
@@ -1708,7 +1846,8 @@ def _symbol_instance(
             ],
             wires,
             avoid,
-            [*(texts or []), *([block] if block else []), _text_box(part.ref, rx, ry, ref_justify)],
+            texts,
+            [block, _text_box(part.ref, rx, ry, ref_justify)],
         )
         value_prop = _property("Value", part.value, vx, vy, False, vjust, text_angle)
     lines = [
@@ -1739,14 +1878,15 @@ def _symbol_instance(
         # later parts must not print their block over this one
         avoid.append(block)
     if texts is not None:
+        record = texts.add if isinstance(texts, _BoxIndex) else texts.append
         # Every string this symbol just put on the page, so the next symbol
         # measures against them. Two ratings blocks a millimetre apart read as
         # one word, and "220u" over "100n" reads as neither.
         if block is not None:
-            texts.append(block)
-        texts.append(_text_box(part.ref, *ref_at, ref_justify))
+            record(block)
+        record(_text_box(part.ref, *ref_at, ref_justify))
         if not side_value:
-            texts.append(_text_box(part.value, vx, vy, vjust))
+            record(_text_box(part.value, vx, vy, vjust))
     for pin in pins:
         lines.append(f'    (pin "{pin.number}" (uuid "{uid}-p{pin.number}"))')
     lines.append(
