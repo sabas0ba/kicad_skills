@@ -28,6 +28,9 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
+import inspect
+import json
 import math
 import re
 import sys
@@ -2350,7 +2353,124 @@ def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Trac
     return routed, vias
 
 
-def resolve_routes(design: Design) -> Design:
+ROUTE_CACHE = Path(__file__).resolve().parent.parent / ".cache" / "routes"
+
+
+def _track_signature(design: Design, track: Track) -> str:
+    """What a track asks the router for, as text.
+
+    Written from the *unresolved* points, so a track keeps its identity when
+    the part it lands on moves - which is what makes the rip-up order worth
+    carrying from one run to the next.
+    """
+    return f"{track.net}|{track.layer}|{track.width}|{track.goal_layer}|{track.points}"
+
+
+def _routing_digest(design: Design) -> str:
+    """A key over everything the router reads, and nothing else.
+
+    Most edits to this generator - where a designator prints, how a legend
+    picks its side, what the fill counts as one island - do not move a single
+    track, and re-routing an 84 mm board with a 48-pin QFN on it takes the
+    better part of an hour. So the answer is kept, keyed by the question: the
+    board outline, the parts and their pads, every track and via the design
+    states, and the source of the router itself, so that changing how it
+    routes invalidates every answer it gave.
+    """
+    lines = [
+        design.name,
+        repr(design.board_size),
+        repr(design.keepouts),
+        repr(design.route_keepout),
+        repr((VIA_SIZE, POUR_NET)),
+    ]
+    for part in sorted(design.footprints(), key=lambda p: p.ref):
+        lines.append(f"P {part.ref}|{part.footprint}|{part.board}")
+    for name, nodes in sorted(design.nets.items()):
+        lines.append(f"N {name}={','.join(sorted(nodes))}")
+    for track in design.tracks:
+        points = [tuple(round(v, 4) for v in resolve(design, point)) for point in track.points]
+        lines.append(f"T {_track_signature(design, track)}|{track.auto}|{points}")
+    for via in design.vias:
+        lines.append(f"V {via.net}|{via_position(design, via)}|{via.size}|{via.drill}")
+    lines.append(Path(autoroute.__file__).read_text())
+    lines.append(inspect.getsource(_route_all))
+    return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:32]
+
+
+def _cache_read(name: str, digest: str) -> tuple[list[Track], list[Via]] | None:
+    path = ROUTE_CACHE / f"{name}.{digest}.json"
+    try:
+        blob = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+    tracks = [
+        Track(
+            net=t["net"],
+            layer=t["layer"],
+            width=t["width"],
+            points=[tuple(point) for point in t["points"]],
+            goal_layer=t.get("goal_layer"),
+        )
+        for t in blob["tracks"]
+    ]
+    vias = [
+        Via(net=v["net"], x=v["x"], y=v["y"], drill=v["drill"], size=v["size"])
+        for v in blob["vias"]
+    ]
+    return tracks, vias
+
+
+def _cache_write(design: Design, digest: str, done: Design, order: list[Track]) -> None:
+    try:
+        ROUTE_CACHE.mkdir(parents=True, exist_ok=True)
+        (ROUTE_CACHE / f"{design.name}.{digest}.json").write_text(
+            json.dumps(
+                {
+                    "tracks": [
+                        {
+                            "net": t.net,
+                            "layer": t.layer,
+                            "width": t.width,
+                            "points": [list(resolve(done, p)) for p in t.points],
+                            "goal_layer": t.goal_layer,
+                        }
+                        for t in done.tracks
+                    ],
+                    "vias": [
+                        {
+                            "net": v.net,
+                            "x": via_position(done, v)[0],
+                            "y": via_position(done, v)[1],
+                            "drill": v.drill,
+                            "size": v.size,
+                        }
+                        for v in done.vias
+                    ],
+                }
+            )
+        )
+        # The order is worth keeping on its own: it is what the rip-up loop
+        # spent its afternoon learning, and it stays useful after an edit that
+        # changes the digest.
+        (ROUTE_CACHE / f"{design.name}.order.json").write_text(
+            json.dumps([_track_signature(design, t) for t in order])
+        )
+    except OSError:
+        pass
+
+
+def _learned_order(design: Design, order: list[Track]) -> list[Track]:
+    """Start from the order that worked last time, where it still applies."""
+    try:
+        known = json.loads((ROUTE_CACHE / f"{design.name}.order.json").read_text())
+    except (OSError, ValueError):
+        return order
+    rank = {signature: index for index, signature in enumerate(known)}
+    return sorted(order, key=lambda t: rank.get(_track_signature(design, t), len(rank)))
+
+
+def resolve_routes(design: Design, use_cache: bool = True) -> Design:
     """Replace every ``auto`` track with the path a router found for it.
 
     Done once, before anything looks at the geometry, so the clearance check and
@@ -2363,10 +2483,22 @@ def resolve_routes(design: Design) -> Design:
     net that finds no room is moved to the front and the whole set is routed
     again - the cheapest form of rip-up there is, and enough for boards this
     size. A net that fails twice is a floorplan that does not work, and says so.
+
+    The result is cached against everything the router read (see
+    `_routing_digest`), because most of what gets edited around here does not
+    move copper and the FPGA board takes the better part of an hour to route.
     """
     order = [track for track in design.tracks if track.auto]
     if not order:
         return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(design)))))
+    digest = _routing_digest(design) if use_cache else ""
+    if use_cache:
+        cached = _cache_read(design.name, digest)
+        if cached:
+            print(f"{design.name}: routing unchanged, reusing {digest[:8]}", file=sys.stderr)
+            done = replace(design, tracks=cached[0], vias=cached[1])
+            return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(done)))))
+        order = _learned_order(design, order)
     ripped: list[Track] = []
     while True:
         try:
@@ -2390,6 +2522,8 @@ def resolve_routes(design: Design) -> Design:
         done = replace(
             design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
         )
+        if use_cache:
+            _cache_write(design, digest, done, order)
         return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(done)))))
 
 
@@ -5717,6 +5851,11 @@ def main(argv: list[str] | None = None) -> int:
         default=GENERATED_BY,
         help="what to credit the output to (default: %(default)s)",
     )
+    parser.add_argument(
+        "--no-route-cache",
+        action="store_true",
+        help="route from scratch, ignoring what an earlier run found",
+    )
     args = parser.parse_args(argv)
 
     stamp = (
@@ -5732,7 +5871,8 @@ def main(argv: list[str] | None = None) -> int:
         # never looked at its own output leaves behind - and is also the
         # difference between a minute and half an hour on the fine-pitch board.
         design = resolve_routes(
-            replace(builder().snapped(), provenance=stamp, date=args.generated_on)
+            replace(builder().snapped(), provenance=stamp, date=args.generated_on),
+            use_cache=not args.no_route_cache,
         )
         write_variant(design, out / name / "reviewed")
         # the degraded variant is *meant* to be wrong, so it is not checked

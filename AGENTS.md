@@ -66,6 +66,26 @@ rather than faulting it (`board.size`, `layout.ground_plane`) must be added to
 an error no correct design can clear. A rule a generated design has to get right
 belongs in `_AI_BLOCKING` in the same file. `tests/test_gate.py` covers both.
 
+## Regenerating the worked examples
+
+`tools/make_examples.py` builds both variants of every design in `examples/`.
+Routing is what it spends its time on: the FPGA board is a 48-pin QFN on two
+layers and takes the better part of an hour, and a net that finds no room sends
+the whole set round again.
+
+So the routed copper is cached under `.cache/routes/` (git-ignored), keyed by
+everything the router reads — the outline, the parts and their pads, every
+stated track and via, and the source of `tools/autoroute.py` and `_route_all`
+themselves. Editing where a designator prints or how a legend picks its side
+does not move copper, so those runs reuse the answer and finish in seconds;
+editing the router invalidates every answer it ever gave. `--no-route-cache`
+routes from scratch.
+
+The rip-up order is kept separately, in `<design>.order.json`, and survives a
+change that does invalidate the cache: it is what an afternoon of rip-up
+attempts learned, and starting from it is usually the difference between
+seventeen attempts and none.
+
 ## Tuning a rule
 
 `tools/review_demos.py` runs both reviews over the 18 KiCad demo projects in the

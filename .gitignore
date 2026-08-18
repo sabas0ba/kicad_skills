@@ -22,3 +22,6 @@ _site/
 .jekyll-cache/
 .jekyll-metadata
 *.lck
+
+# routed copper kept between runs; see tools/make_examples.py
+.cache/
