@@ -1161,28 +1161,9 @@ def emit_schematic(design: Design) -> str:
     # pins, and the rail and flag names on the power fixtures. A symbol's own
     # fields are added as it is written, so each one measures against
     # everything placed before it as well as against these.
-    text_boxes: list[tuple[float, float, float, float]] = []
-    for part in design.parts:
-        for pin in symbol_pins(part.lib_id, part.unit):
-            net = net_of.get((part.ref, pin.number))
-            if net is None or (net in POWER_SYMBOLS and net not in design.wired_power):
-                continue
-            end, out = pin_geometry(part, pin)
-            vertical = abs(out[0] - end[0]) < GEOM_EPS
-            reach = len(net) * 1.1
-            if vertical:
-                grow = (0.9, reach) if out[1] < end[1] else (0.9, -reach)
-            else:
-                grow = (reach if out[0] > end[0] else -reach, 0.9)
-            text_boxes.append(
-                (
-                    min(out[0], out[0] + grow[0]),
-                    min(out[1], out[1] + grow[1]),
-                    max(out[0], out[0] + grow[0]),
-                    max(out[1], out[1] + grow[1]),
-                )
-            )
-    text_boxes += fixture_boxes
+    body_boxes = _body_boxes(design)
+    label_at, label_boxes = _plan_labels(design, net_of, replaced)
+    text_boxes: list[tuple[float, float, float, float]] = list(label_boxes)
     wire_index, text_index = _BoxIndex(wire_boxes), _BoxIndex(text_boxes)
 
     for part in design.parts:
@@ -1230,7 +1211,8 @@ def emit_schematic(design: Design) -> str:
             if (
                 net not in POWER_SYMBOLS or net in design.wired_power
             ) and pin_owner not in replaced:
-                body.append(_label(design, net, part.ref, pin.number, out, end))
+                placement = label_at.get(out) or _label_options(out, end)[0]
+                body.append(_label(design, net, part.ref, pin.number, out, placement))
         avoid = [box for ref, box in part_box.items() if ref != part.ref] + placed_blocks
         body.append(_symbol_instance(design, part, pins, avoid, wire_index, text_index))
         if len(avoid) > len(part_box) - 1 + len(placed_blocks):
@@ -1242,9 +1224,20 @@ def emit_schematic(design: Design) -> str:
     for tag, _fnet, a, b in fixture_wires:
         body.append(_wire(design, "pwr", tag, a, b))
     for power_index, (net, at) in enumerate(fixture_symbols, start=1):
-        body.append(_power_symbol(design, POWER_SYMBOLS[net], net, at, power_index))
+        body.append(
+            _power_symbol(
+                design,
+                POWER_SYMBOLS[net],
+                net,
+                at,
+                power_index,
+                wire_boxes,
+                body_boxes,
+                text_index,
+            )
+        )
     for flag_index, (net, at) in enumerate(fixture_flags, start=1):
-        body.append(_power_flag(design, net, flag_index, at, wire_boxes))
+        body.append(_power_flag(design, net, flag_index, at, wire_boxes, body_boxes, text_index))
     drawn_junctions = set(junctions)
     tree_ends = {p for _net, s0, s1 in segments for p in (s0, s1)}
     for point in fixture_junctions:
@@ -1300,17 +1293,104 @@ def _wire(design: Design, ref: str, number: str, a, b) -> str:
     )
 
 
-def _label(design: Design, net: str, ref: str, number: str, at, end=None) -> str:
-    # The name reads away from the pin, whichever way the pin points: a label
-    # printed back over its own stub merges with the pin number beside it.
-    justify = "left bottom"
-    angle = 0
-    if end is not None:
-        if at[0] < end[0] - GEOM_EPS:
-            justify = "right bottom"
-        elif abs(at[0] - end[0]) < GEOM_EPS:
-            angle = 90
-            justify = "left bottom" if at[1] < end[1] else "right bottom"
+def _turned_box(box, x: float, y: float, angle: float):
+    """The box a string covers once the sheet has turned it 90 degrees.
+
+    The same arithmetic as `sch_review._turned`, for the same reason as
+    `_text_box`: text is being placed so that rule finds nothing, so both
+    sides have to be looking at the same rectangle.
+    """
+    if round(abs(angle) % 180) != 90:
+        return box
+    dx0, dy0, dx1, dy1 = box[0] - x, box[1] - y, box[2] - x, box[3] - y
+    return (x + dy0, y - dx1, x + dy1, y - dx0)
+
+
+def _label_box(text: str, at, angle: float, justify: str):
+    return _turned_box(_text_box(text, at[0], at[1], justify), at[0], at[1], angle)
+
+
+def _label_options(at, end) -> list[tuple[float, str]]:
+    """Where a net name at a stub tip may read, best first.
+
+    Away from the pin is the first choice: a name printed back over its own
+    stub runs into the pin number beside it. But away is only a preference.
+    A five-character name on a 2.54 mm stub is twice as long as the stub, so
+    "away" regularly means straight into whatever part is next along the row,
+    and a name drawn through a diode costs more than a name drawn beside its
+    own pin. The other three quarters are listed so the picker can take one.
+    """
+    if abs(at[0] - end[0]) < GEOM_EPS:
+        away = "left bottom" if at[1] < end[1] else "right bottom"
+        back = "right bottom" if away == "left bottom" else "left bottom"
+        return [(90, away), (0, "left bottom"), (0, "right bottom"), (90, back)]
+    away = "left bottom" if at[0] > end[0] else "right bottom"
+    back = "right bottom" if away == "left bottom" else "left bottom"
+    return [(0, away), (90, "left bottom"), (90, "right bottom"), (0, back)]
+
+
+def _body_boxes(design: Design) -> list[tuple[float, float, float, float]]:
+    """Every symbol as `rule_text_over_text` sees it: pins, then a pin pitch.
+
+    A two-pin part standing upright measures zero wide from its pins alone,
+    and a name printed down its middle would read as clear of it.
+    """
+    boxes = []
+    for part in design.parts:
+        pts = [pin_geometry(part, pin)[0] for pin in symbol_pins(part.lib_id, part.unit)]
+        if len(pts) < 2:
+            continue
+        x0, y0 = min(p[0] for p in pts), min(p[1] for p in pts)
+        x1, y1 = max(p[0] for p in pts), max(p[1] for p in pts)
+        pad_x = max(0.0, 1.27 - (x1 - x0) / 2)
+        pad_y = max(0.0, 1.27 - (y1 - y0) / 2)
+        boxes.append((x0 - pad_x, y0 - pad_y, x1 + pad_x, y1 + pad_y))
+    return boxes
+
+
+def _plan_labels(design: Design, net_of, replaced):
+    """Pick a reading direction for every net name before any of them is drawn.
+
+    The anchor is not negotiable - a label joins the net by sitting on the
+    wire, so moving it moves the connection - but the direction it reads in
+    is. So each name is offered the four quarters of its anchor and takes the
+    first that prints over nothing, measured against the symbol bodies the
+    review rule measures and against the names already placed.
+
+    Returns the placement per stub tip and the boxes they ended up covering,
+    so the symbol fields placed afterwards can miss them too.
+    """
+    bodies = _body_boxes(design)
+
+    placement: dict[tuple[float, float], tuple[float, str]] = {}
+    boxes: list[tuple[float, float, float, float]] = []
+    placed = _BoxIndex()
+    for part in design.parts:
+        drawn: set[tuple[float, float]] = set()
+        for pin in symbol_pins(part.lib_id, part.unit):
+            net = net_of.get((part.ref, pin.number))
+            if net is None or (net in POWER_SYMBOLS and net not in design.wired_power):
+                continue
+            if f"{part.ref}.{pin.number}" in replaced:
+                continue
+            end, out = pin_geometry(part, pin)
+            if out in placement or end in drawn:
+                continue
+            drawn.add(end)
+            scored = []
+            for rank, (angle, justify) in enumerate(_label_options(out, end)):
+                box = _label_box(net, out, angle, justify)
+                scored.append((placed.hits(box) + _hits(bodies, box), rank, angle, justify, box))
+            scored.sort(key=lambda item: item[:2])
+            _cost, _rank, angle, justify, box = scored[0]
+            placement[out] = (angle, justify)
+            boxes.append(box)
+            placed.add(box)
+    return placement, boxes
+
+
+def _label(design: Design, net: str, ref: str, number: str, at, placement) -> str:
+    angle, justify = placement
     return (
         f'  (label "{net}" (at {at[0]} {at[1]} {angle}) '
         f"{_effects(justify=justify)} "
@@ -1458,24 +1538,54 @@ def power_fixtures(design: Design):
     return wires, symbols, flags, junctions, boxes
 
 
-def _power_symbol(design: Design, lib_id: str, net: str, at, index: int) -> str:
+def _power_symbol(
+    design: Design,
+    lib_id: str,
+    net: str,
+    at,
+    index: int,
+    wires: list[tuple[float, float, float, float]] | None = None,
+    avoid: list[tuple[float, float, float, float]] | None = None,
+    texts: _BoxIndex | None = None,
+) -> str:
     """A ground or rail symbol, upright.
 
     Rails point up, grounds hang down - the one orientation every reader
     assumes. The wires bend to make that true (see `_power_geometry`); the
     symbol itself never turns.
+
+    Its name does move. Four grounds hanging off one row of pins put four
+    "GND"s on one line a pin pitch apart, which prints as GNGNGNGND; the name
+    is offered the row below and either side of the stem before it settles.
     """
     ref = f"#PWR{index:02d}"
     uid = stable_uuid(design.name, "power", index)
     root = stable_uuid(design.name, "sheet")
-    label_y = round(at[1] + (3.81 if net == "GND" else -3.81), 4)
+    down = 1.0 if net == "GND" else -1.0
+    label_x, label_y, label_just = _pick_field(
+        net,
+        [
+            (at[0], round(at[1] + down * 3.81, 4), ""),
+            (round(at[0] + 2.54, 4), round(at[1] + down * 3.81, 4), "left"),
+            (round(at[0] - 2.54, 4), round(at[1] + down * 3.81, 4), "right"),
+            (at[0], round(at[1] + down * 5.72, 4), ""),
+            (round(at[0] + 2.54, 4), round(at[1] + down * 5.72, 4), "left"),
+            (round(at[0] - 2.54, 4), round(at[1] + down * 5.72, 4), "right"),
+            (at[0], round(at[1] + down * 7.62, 4), ""),
+        ],
+        wires,
+        avoid,
+        texts,
+    )
+    if texts is not None:
+        texts.add(_text_box(net, label_x, label_y, label_just))
     return "\n".join(
         [
             f'  (symbol (lib_id "{lib_id}") (at {at[0]} {at[1]} 0) (unit 1)',
             "    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)",
             f'    (uuid "{uid}")',
             _property("Reference", ref, at[0], at[1], True),
-            _property("Value", net, at[0], label_y, False),
+            _property("Value", net, label_x, label_y, False, label_just),
             _property("Footprint", "", at[0], at[1], True),
             _property("Datasheet", "", at[0], at[1], True),
             f'    (pin "1" (uuid "{uid}-p"))',
@@ -1598,6 +1708,8 @@ def _power_flag(
     index: int,
     at: tuple[float, float],
     wires: list[tuple[float, float, float, float]] | None = None,
+    avoid: list[tuple[float, float, float, float]] | None = None,
+    texts: _BoxIndex | None = None,
 ) -> str:
     """A PWR_FLAG, wired in next to the source of the rail it declares.
 
@@ -1614,16 +1726,23 @@ def _power_flag(
     # rail symbol by construction, and on the same row the two names collide.
     # Which side that row runs off to depends on what the flag is standing in;
     # the tap wire reaching it is often on one side only.
-    vx, vy, vjust = _pick_field(
-        "PWR_FLAG",
-        [
-            (round(x + 1.27, 4), round(y - 6.35, 4), "right"),
-            (round(x - 1.27, 4), round(y - 6.35, 4), "left"),
-            (round(x + 1.27, 4), round(y - 7.62, 4), "right"),
-            (round(x - 1.27, 4), round(y - 7.62, 4), "left"),
-        ],
-        wires,
-    )
+    # A ladder outwards rather than a short list: on the carrier the flag
+    # stands beside a forty-pin module whose own pin legend fills the strip
+    # next to it, and the nearest clear air is three text rows away. Ordered
+    # by how far it strays from the graphic, so a flag with room beside it
+    # still gets the row it always had.
+    candidates = [
+        (
+            round(x + dx, 4),
+            round(y - dy, 4),
+            "left" if dx < 0 else "right",
+        )
+        for dy in (6.35, 7.62, 10.16, 12.7, 15.24)
+        for dx in (1.27, -1.27, 3.81, -3.81, 7.62, -7.62)
+    ]
+    vx, vy, vjust = _pick_field("PWR_FLAG", candidates, wires, avoid, texts)
+    if texts is not None:
+        texts.add(_text_box("PWR_FLAG", vx, vy, vjust))
     lines = [
         f'  (symbol (lib_id "power:PWR_FLAG") (at {x} {y} 0) (unit 1)',
         "    (exclude_from_sim no) (in_bom no) (on_board yes) (dnp no)",
@@ -2356,7 +2475,9 @@ def fan(
                 f"not enough for a staggered 45-degree escape needing {biggest:.2f} mm of "
                 "diagonal plus the stagger between neighbours"
             )
-    row = min(abs(a[1] - b[1]) for a, b in pairwise(placed))
+    # A fan of one has no neighbour to crowd: the spacing check below has
+    # nothing to compare and the loop it guards does not run.
+    row = min((abs(a[1] - b[1]) for a, b in pairwise(placed)), default=0.0)
     span = (row + stagger) * math.cos(math.pi / 4)
     for a, b in pairwise(placed):
         need = (widths.get(a[0], width) + widths.get(b[0], width)) / 2 + clearance
@@ -2472,12 +2593,21 @@ def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Trac
             ],
             # The back layer of these boards is a ground plane, and a signal
             # laid across it saws the plane in two under its own return
-            # current - which is what `route.return_path` measures. Charged
-            # this heavily, a crossing is worth roughly forty times the front
-            # side detour that avoids it, so the router only crosses where the
-            # board has left it no front side at all. GND is not charged: its
-            # own copper is the plane.
-            back_cost=None if track.net == POUR_NET else 40.0,
+            # current - which is what `route.return_path` measures. So a
+            # millimetre spent on the plane side is priced at thirty on the
+            # front, and the router crosses only where the front side would
+            # cost it more than that.
+            #
+            # It was forty for a while, which is not a preference but a
+            # prohibition: at forty, one millimetre of crossing buys a forty
+            # millimetre tour, and the boards grew them - a supply run at 4.4x
+            # the straight line, all of it on the front, which is what
+            # `route.wander` was written to catch. Below thirty the trade
+            # reverses: the short back-layer hops the router then takes cut the
+            # plane under the same net's own front copper, and
+            # `route.return_path` picks that up instead. Thirty is where
+            # neither fires. GND is not charged: its own copper is the plane.
+            back_cost=None if track.net == POUR_NET else 30.0,
         )
         if path is None:
             raise Blocked(track)
@@ -2628,6 +2758,7 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
     `_routing_digest`), because most of what gets edited around here does not
     move copper and the FPGA board takes the better part of an hour to route.
     """
+    design = _straighten(design)
     order = [track for track in design.tracks if track.auto]
     if not order:
         return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(design)))))
@@ -2665,6 +2796,108 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         if use_cache:
             _cache_write(design, digest, done, order)
         return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_snap_to_45(done)))))
+
+
+def _straighten(design: Design) -> Design:
+    """Take the corners out of a stated route that no longer needs them.
+
+    A hand-placed track's waypoints are written when the parts are somewhere,
+    and the parts move. What is left is copper going up, along and back down
+    to join two pads that ended up in a straight line with nothing between
+    them - which is what a reviewer sees first and has no explanation for.
+
+    Only where the straight line is genuinely clear, and only where the stated
+    route is a fifth longer than it: a route shaped on purpose - a feedback
+    tap kept away from a switch node, a loop closed deliberately - is shaped
+    because something is in the way, and stays.
+    """
+    others = [
+        (track.net, track.layer, track.width, [resolve(design, p) for p in track.points])
+        for track in design.tracks
+    ]
+    pads: list[tuple[str | None, tuple[float, float, float, float]]] = []
+    pad_points: set[tuple[float, float]] = set()
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            owner = next(
+                (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes), None
+            )
+            pads.append((owner, pad_box(design, part, pad)))
+            centre = pad_position_of(design, part, pad)
+            pad_points.add((round(centre[0], 3), round(centre[1], 3)))
+
+    def clear(track: Track, own, a, b) -> bool:
+        half = track.width / 2
+        for net, layer, width, points in others:
+            if net == track.net or layer != track.layer or points is own:
+                continue
+            for s0, s1 in pairwise(points):
+                if _segment_distance(a, b, s0, s1) < half + width / 2 + 0.2:
+                    return False
+        for owner, box in pads:
+            if owner == track.net:
+                continue
+            if _segment_to_box(a, b, box) < half + 0.2:
+                return False
+        for via in design.vias:
+            if via.net == track.net:
+                continue
+            if _segment_to_box(a, b, _via_box(design, via)) < half + 0.2:
+                return False
+        return True
+
+    # A waypoint another track ends on is a join, not a corner: straightening
+    # through it leaves the other one in mid air, which is `route.stub` and a
+    # net that is no longer connected. So the polyline is cut at its joins and
+    # each free stretch between two of them is straightened on its own - a
+    # tee in the middle of a run no longer holds the whole run crooked.
+    #
+    # A pad is a join too, and the reason is worth stating: `write_variant`
+    # resolves the routes a second time, so this sees the *routed* design as
+    # well as the stated one, and by then the run arriving at a pad and the
+    # one leaving it have been merged into a single polyline with the pad as
+    # an interior corner. Straightening through that corner takes the copper
+    # off the pad and the net is quietly no longer connected - which is not
+    # visible in the shape, only in DRC.
+    joins = {
+        (round(point[0], 3), round(point[1], 3))
+        for _net, _layer, _width, points in others
+        for point in (points[0], points[-1])
+    }
+    joins |= pad_points
+
+    tracks = []
+    for track, (_net, _layer, _width, points) in zip(design.tracks, others, strict=True):
+        if track.auto or len(track.points) < 3:
+            tracks.append(track)
+            continue
+        cuts = [0]
+        cuts += [
+            index
+            for index in range(1, len(points) - 1)
+            if (round(points[index][0], 3), round(points[index][1], 3)) in joins
+        ]
+        cuts.append(len(points) - 1)
+        kept = [track.points[0]]
+        for first, last in pairwise(cuts):
+            if last - first < 2:
+                kept.extend(track.points[first + 1 : last + 1])
+                continue
+            stretch = points[first : last + 1]
+            length = sum(math.dist(a, b) for a, b in pairwise(stretch))
+            direct = math.dist(stretch[0], stretch[-1])
+            if (
+                direct > GEOM_EPS
+                and length > direct * 1.2
+                and clear(track, points, stretch[0], stretch[-1])
+            ):
+                kept.append(track.points[last])
+            else:
+                kept.extend(track.points[first + 1 : last + 1])
+        tracks.append(replace(track, points=kept) if len(kept) < len(track.points) else track)
+    return replace(design, tracks=tracks)
 
 
 def _stitched(design: Design) -> Design:
@@ -3115,9 +3348,11 @@ def _stitch_vias(design: Design) -> list[Via]:
             for net, width, a, b in segments:
                 if net == POUR_NET:
                     continue
-                # centreline to centreline: the via's copper, the track's half
-                # width, and a clearance with room for the router's own grid
-                if _segment_to_point(a, b, (vx, vy)) < radius + width / 2 + 0.45:
+                # The via is square to `check_board`, so it is square here
+                # too: measured as a circle it clears by its radius and the
+                # corner is 0.17 mm nearer, which is a short nobody drew.
+                pad = (vx - radius, vy - radius, vx + radius, vy + radius)
+                if _segment_to_box(a, b, pad) < width / 2 + 0.45:
                     ok = False
                     break
         if ok and all(math.dist((vx, vy), hole) >= 1.2 for hole in holes):
@@ -5045,7 +5280,13 @@ def opamp_filter() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             (181.61, 74.93),
-            (37.0, 10.0, 0.0),
+            # Beside the escape column it feeds, not across the board from it.
+            # U1's supply pin is the middle of its west row and the row is
+            # walled in by the signal chain U1 sits in: from the north-east
+            # the only way to the column was round the east edge of the board
+            # and back, 56 mm of copper for an 8 mm pin pair, which is what
+            # `route.wander` reported. TP1 gave up the corner for it.
+            (29.0, 12.5, 0.0),
             Voltage="25V",
             Tolerance="10%",
             MPN="CL21B104KBCNNNC",
@@ -5187,7 +5428,10 @@ def opamp_filter() -> Design:
             "TP",
             "TestPoint:TestPoint_Pad_D1.5mm",
             sheet=(144.78, 87.63),
-            board=(29.0, 13.0, 0.0),
+            # Moved out of the corner beside U1's west escape column so C5 can
+            # have it: the supply pin needs a cap it can reach, the test point
+            # only needs a probe.
+            board=(24.0, 12.0, 0.0),
             no_connect=False,
         ),
         Part(
@@ -5300,7 +5544,15 @@ def opamp_filter() -> Design:
     # same reason the motor driver's TSSOP does, two sizes down.
     escapes: list[Track] = []
     ends: dict[str, dict[str, tuple[float, float]]] = {}
-    for ref, (cx, cy, _) in (("U1", (33.0, 17.0, 0)), ("U2", (26.0, 32.0, 0))):
+    # U1's inverting pin keeps its place in the east column: it carries the
+    # output on to C6 as well, so the escape is copper the board needs. U2's
+    # does not - its only connection is the feedback wrap round the package,
+    # and an escape drawn out to the column for it is copper going nowhere
+    # with the wrap crossing it to get back.
+    for ref, (cx, cy, _), east_pins in (
+        ("U1", (33.0, 17.0, 0), ["5", "4"]),
+        ("U2", (26.0, 32.0, 0), ["5"]),
+    ):
         west, ends[f"{ref}w"] = fan(
             design,
             ref,
@@ -5315,7 +5567,7 @@ def opamp_filter() -> Design:
         east, ends[f"{ref}e"] = fan(
             design,
             ref,
-            ["5", "4"],
+            east_pins,
             lead=cx + 3.4,
             column=cx + 6.0,
             pitch=2.8,
@@ -5340,12 +5592,17 @@ def opamp_filter() -> Design:
         Track("OUT", "F.Cu", SIG, ["TP2.1", "C6.1"], auto=True),
         Track("VREF", "F.Cu", POWER, ["TP3.1", "C2.2"], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["C2.1", u1w["3"]], auto=True),
+        # U1's wrap runs escape to escape: its inverting pin has an escape
+        # anyway, because it carries the output on to C6. U2's runs pad to
+        # pad, because U2's inverting pin has nothing but the wrap and its
+        # escape would be copper the wrap then has to cross to get back -
+        # asked for between the columns there, the wrap went round the board.
         Track("OUT", "F.Cu", SIG, [u1w["1"], u1e["4"]], auto=True),
         Track("OUT", "F.Cu", SIG, [u1w["1"], "C1.2"], auto=True),
         Track("OUT", "F.Cu", SIG, [u1e["4"], "C6.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["C6.2", "J3.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["J3.1", "R6.1"], auto=True),
-        Track("VREF", "F.Cu", POWER, [u2w["1"], u2e["4"]], auto=True),
+        Track("VREF", "F.Cu", POWER, ["U2.1", "U2.4"], auto=True),
         Track("VREF", "F.Cu", POWER, [u2w["1"], "C2.2"], auto=True),
         Track("VREF", "F.Cu", POWER, [u2w["1"], "R5.2"], auto=True),
         Track("MID", "F.Cu", SIG, ["R3.2", "R4.1"], auto=True),
@@ -5368,7 +5625,7 @@ def opamp_filter() -> Design:
         ("R6.2", (46.0, 20.0), POWER),
         ("R7.2", (9.0, 30.0), POWER),
         ("J2.2", (14.0, 6.0), POWER),
-        ("C5.2", (37.0, 8.0), POWER),
+        ("C5.2", (31.0, 11.0), POWER),
         ("C7.2", (14.0, 33.0), POWER),
         ("C4.2", (15.0, 37.0), POWER),
         ("R4.2", (11.0, 38.0), POWER),

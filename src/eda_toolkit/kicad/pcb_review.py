@@ -63,6 +63,12 @@ THRESHOLDS = {
     # How far a signal may run over gaps in the other layer's ground fill
     # before the return current's detour is worth a finding.
     "return_path_mm": 10.0,
+    # One run of copper, from the pad or junction at one end to the pad or
+    # junction at the other, over the straight line between those two ends.
+    # `detour_ratio` asks the same question of a whole net and a net can hide
+    # one bad connection inside a lot of good ones; this asks it of each run,
+    # which is the shape a reader actually sees on the plot.
+    "wander_ratio": 2.0,
 }
 
 # Copper geometry is stored in nm; anything below this is file noise.
@@ -172,6 +178,15 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "Nets with a pour and ground nets are not judged",
         "warning",
         threshold="detour_ratio",
+    ),
+    "route.wander": RuleSpec(
+        "one continuous run of copper - pad or junction at each end, nothing "
+        "branching in between - longer than wander_ratio times the straight "
+        "line between its own two ends, by more than 5 mm. Where `route.detour` "
+        "asks whether a net is long, this asks whether a track goes out and "
+        "comes back, which is what the eye catches first",
+        "warning",
+        threshold="wander_ratio",
     ),
     "route.return_path": RuleSpec(
         "on a two-layer board with a filled ground pour, a signal track that "
@@ -2068,6 +2083,190 @@ def rule_detour(ctx: PcbContext) -> list[Finding]:
             offenders,
         )
     ]
+
+
+# Below this much excess copper a wandering run is not worth talking about:
+# the knee that takes a track round a pad is a detour and is also correct.
+_WANDER_FLOOR_MM = 5.0
+
+
+@rule
+def rule_wander(ctx: PcbContext) -> list[Finding]:
+    """A single run of copper that goes out and comes back.
+
+    `route.detour` weighs a whole net, and a net hides things: six good
+    connections and one that loops round the board average out under any
+    ratio worth setting. What the eye catches on the plot is not the net, it
+    is the one track that leaves its pad, travels three sides of a rectangle
+    and arrives 4 mm away. So this walks each net's copper as a graph, cuts it
+    at every pad and every junction, and measures each run that is left
+    against the straight line between its own two ends.
+
+    Ground is skipped for the same reason `route.detour` skips it: a net with
+    a pour is not routed, it is filled, and the stitching that holds the fill
+    together is not a tour.
+    """
+    limit = ctx.thresholds["wander_ratio"]
+    zoned = {z.net for z in ctx.board.zones if not z.keepout}
+    # A run from one end of a package to the other cannot take the straight
+    # line: the straight line is through the package. Measured against it
+    # every feedback wrap on a SOT-23 reads as a tour, so the baseline goes
+    # round what the copper had to go round.
+    courtyards = [box for fp in ctx.board.footprints if (box := fp.courtyard_box())]
+    by_net: dict[str, list[pcb.Track]] = defaultdict(list)
+    for track in ctx.board.tracks:
+        if track.net and track.length > GEOM_TOL:
+            by_net[track.net].append(track)
+
+    offenders = []
+    for net, tracks in sorted(by_net.items()):
+        if net in zoned or ctx.net_class_of(net) == "ground":
+            continue
+        # A pad or a via is a place the run is allowed to end: copper that
+        # stops there has arrived, not wandered. Vias also stitch the two
+        # layers into one graph, which is why the node key drops the layer.
+        anchors = {_node(p.x, p.y) for _fp, p in ctx.pads_by_net.get(net, [])} | {
+            _node(v.x, v.y) for v in ctx.board.vias if v.net == net
+        }
+        graph: dict[tuple[int, int], list[tuple[tuple[int, int], float]]] = defaultdict(list)
+        for track in tracks:
+            a, b = _node(*track.start), _node(*track.end)
+            if a == b:
+                continue
+            graph[a].append((b, track.length))
+            graph[b].append((a, track.length))
+        # Anything that is not a pad, not a via and not a corner is a branch:
+        # the run ends there too, because past it the copper is someone else's.
+        stops = {node for node in graph if node in anchors or len(graph[node]) != 2}
+        seen: set[tuple[tuple[int, int], tuple[int, int]]] = set()
+        for start in stops:
+            for first, first_len in graph[start]:
+                if (start, first) in seen:
+                    continue
+                seen.add((start, first))
+                previous, current, length = start, first, first_len
+                # Bounded by the number of segments: a net whose copper closes
+                # a ring of plain corners has no stop to arrive at, and the
+                # walk would go round it for ever.
+                for _ in range(len(tracks)):
+                    if current in stops:
+                        break
+                    step = next(
+                        ((n, d) for n, d in graph[current] if n != previous),
+                        None,
+                    )
+                    if step is None:
+                        break
+                    previous, current = current, step[0]
+                    length += step[1]
+                seen.add((current, previous))
+                direct = _shortest_clear(_point(start), _point(current), courtyards)
+                if direct < GEOM_TOL:
+                    continue
+                if length > direct * limit and length - direct > _WANDER_FLOOR_MM:
+                    offenders.append(
+                        f"{net}: {length:.1f} mm of copper between "
+                        f"({_point(start)[0]:.1f}, {_point(start)[1]:.1f}) and "
+                        f"({_point(current)[0]:.1f}, {_point(current)[1]:.1f}), "
+                        f"{direct:.1f} mm apart ({length / direct:.1f}x)"
+                    )
+    if not offenders:
+        return []
+    return [
+        _group_finding(
+            "route.wander",
+            "warning",
+            f"{len(offenders)} run(s) of copper more than {limit}x the straight "
+            "line between their own ends - a track that goes out and comes back",
+            sorted(offenders),
+        )
+    ]
+
+
+def _shortest_clear(a, b, boxes) -> float:
+    """The straight line, or a lower bound on the way round what it crosses.
+
+    Not a real path search: the boxes the line crosses are taken as one
+    rectangle and the shortest way round *that* is measured, over its four
+    corners. Any real route round the obstacle is at least this long, so the
+    ratio built on it stays a lower bound on how far the copper strayed.
+
+    An end inside the rectangle - which every pad is, of its own package -
+    reaches the nearest edge for nothing. That makes the baseline for a
+    feedback wrap what it should be: half way round the package, not the
+    diagonal across it.
+    """
+    blocking = [box for box in boxes if _segment_crosses_box(a, b, box)]
+    if not blocking:
+        return math.dist(a, b)
+    box = (
+        min(one[0] for one in blocking),
+        min(one[1] for one in blocking),
+        max(one[2] for one in blocking),
+        max(one[3] for one in blocking),
+    )
+    x0, y0, x1, y1 = box
+    start, goal = _onto(a, box), _onto(b, box)
+    nodes = [start, goal, (x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    best = [math.inf] * len(nodes)
+    best[0] = 0.0
+    done = [False] * len(nodes)
+    for _ in nodes:
+        current = min(
+            (index for index in range(len(nodes)) if not done[index]),
+            key=lambda index: best[index],
+            default=None,
+        )
+        if current is None or best[current] == math.inf:
+            break
+        done[current] = True
+        for other in range(len(nodes)):
+            if done[other] or _segment_crosses_box(nodes[current], nodes[other], box):
+                continue
+            step = best[current] + math.dist(nodes[current], nodes[other])
+            best[other] = min(best[other], step)
+    if best[1] == math.inf:
+        return math.dist(a, b)
+    return math.dist(a, start) + best[1] + math.dist(goal, b)
+
+
+def _onto(point, box):
+    """The point itself, or the nearest point on the box's edge when inside."""
+    x, y = point
+    x0, y0, x1, y1 = box
+    if not (x0 < x < x1 and y0 < y < y1):
+        return point
+    return min(
+        ((x0, y), (x1, y), (x, y0), (x, y1)),
+        key=lambda candidate: math.dist(point, candidate),
+    )
+
+
+def _segment_crosses_box(a, b, box) -> bool:
+    """Whether the open segment passes through the box's interior.
+
+    An endpoint sitting on the box is not a crossing - every pad of a part is
+    inside that part's own courtyard, and a run that starts there has not
+    crossed anything yet.
+    """
+    x0, y0, x1, y1 = box
+    steps = max(2, int(math.dist(a, b) / 0.2))
+    for index in range(1, steps):
+        t = index / steps
+        px = a[0] + (b[0] - a[0]) * t
+        py = a[1] + (b[1] - a[1]) * t
+        if x0 < px < x1 and y0 < py < y1:
+            return True
+    return False
+
+
+def _node(x: float, y: float) -> tuple[int, int]:
+    """A copper endpoint as an integer key, so two segments that meet, meet."""
+    return (round(x * 1000), round(y * 1000))
+
+
+def _point(node: tuple[int, int]) -> tuple[float, float]:
+    return (node[0] / 1000, node[1] / 1000)
 
 
 def _inside(point: tuple[float, float], polygon: list[tuple[float, float]]) -> bool:

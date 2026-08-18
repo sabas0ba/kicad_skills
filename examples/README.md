@@ -430,8 +430,14 @@ And the two things no rule caught at all became rules in the review round:
   cross-sheet hauls a human would label too).
 * **Autorouted-looking routing** → `route.detour` (routed length against the
   minimum spanning tree of the net's pads; 0 findings on the demo corpus at
-  the shipped 4x) and `route.return_path` (signal over cuts in the other
-  layer's ground fill — the electromagnetic cost of the two-layer choice).
+  the shipped 4x), `route.wander` (one run of copper against the shortest way
+  round the packages between its own two ends — the net can be the right
+  length and still hold one track that goes out and comes back) and
+  `route.return_path` (signal over cuts in the other layer's ground fill —
+  the electromagnetic cost of the two-layer choice).
+* **Strings printed through each other** → `readability.text_over_text` (any
+  two printed strings whose extents overlap, or a string across a symbol
+  body). Nothing about it changes the netlist, so only the plot shows it.
 
 [REVIEW.md](REVIEW.md) is the full pass: what was found, what each finding
 became, and the calibration of every new rule against KiCad's demo corpus.

@@ -135,6 +135,7 @@ mismatches).
 | `layout.pour_fragmented` | 70 % | a ground pour whose largest island holds less than this share of its copper: the plane is pieces |
 | `route.mixed_track_widths` | 3 widths | a net nobody decided the width of |
 | `route.detour` | 2.5x | routed copper against the minimum spanning tree of the net's pads — the scenic tour an autorouter leaves |
+| `route.wander` | 2.0x | one run of copper — pad or junction at each end — against the shortest way between those two ends that clears the packages in between. `route.detour` weighs a whole net and a net hides things; this is the track that leaves its pad, goes three sides of a rectangle and arrives 4 mm away |
 | `route.return_path` | 10 mm | on a two-layer board, signal track running over cuts in the other layer's ground fill: the return current detours and the loop grows |
 
 Override any threshold: `--threshold min_track_mm=0.2 --threshold max_decoupling_distance_mm=3`.
@@ -142,7 +143,8 @@ The full set: `min_track_mm`, `min_via_drill_mm`, `min_annular_ring_mm`,
 `min_edge_clearance_mm`, `max_decoupling_distance_mm`, `max_drill_sizes`,
 `min_silk_text_height_mm`, `placement_grid_mm`, `rotation_step_deg`,
 `max_decoupling_via_mm`, `min_track_angle_deg`, `min_pour_coverage`,
-`min_pour_island_fraction`, `max_connector_edge_mm`, `width_step_free_mm`.
+`min_pour_island_fraction`, `max_connector_edge_mm`, `width_step_free_mm`,
+`wander_ratio`.
 Use the fab's real capability, not the defaults, when the fab is known.
 
 Exit code is `2` when there is at least one error.

@@ -138,6 +138,18 @@ in a note beside them (`test.no_testpoints` notices when there are none).
   two-pin part, off the centre column for a wide one. `readability.text_over_wire`
   measures exactly this, so the rule to place against is the rule that will
   grade it: the *same* rectangle, not a near miss.
+* **A net label may not move, but it may turn.** The label joins the net by
+  sitting on the wire, so its anchor is fixed — and the direction it reads in
+  is not. Reading away from the pin is the right first choice, because a name
+  printed back over its own stub merges with the pin number beside it; it is
+  only a first choice. A five-character name on a 2.54 mm stub is twice as
+  long as the stub, so "away" regularly means straight into the next part
+  along the row, and a name drawn through a diode costs more than a name
+  drawn beside its own pin. Offer the four quarters of the anchor and take
+  the first that prints over nothing.
+* **A power symbol's name moves too.** Four grounds hanging off one row of
+  pins put four "GND"s on one line a pin pitch apart, which prints as
+  GNGNGNGND. Offer the row below and either side of the stem.
 * **Give each field a list of spots, not one spot.** Where a field goes is a
   question with several right answers and one wrong one, which is "wherever
   the geometry put it". State the spots in order of preference and take the

@@ -206,6 +206,9 @@ measuring something other than machine work:
 | `readability.facing_away` | 6 boards — humans park edge connectors facing outward on purpose, so it is graded info; the ai-generated policy still blocks on it |
 | `readability.margin_intrusion` | 6 boards — mounting holes and logos live in the margins of human sheets, so info, same reasoning |
 | `readability.text_over_symbol` | 2 boards — info from the start: the text extent is estimated, not measured |
+| `readability.text_over_wire` | 10 boards, 942 findings — **graded info** for the same reason. A generated design still has to have none: the `ai-generated` policy promotes it to an error |
+| `readability.text_over_text` | **14 of the 18 boards, 4531 findings** — also info. Human sheets are full of text a character-count estimate reads as touching, and a rule that fires that often on human work is measuring the estimate rather than the drawing. Under `ai-generated` it is still an error, and every `reviewed/` sheet has zero |
+| `route.wander` | **1 board of the 18** at the shipped 2.0x — the same order as `route.detour` at 4x, and the one it finds is a real out-and-back. Measured against a baseline that walks round whatever package the straight line crosses, so a feedback wrap is not counted as a tour |
 
 Every `reviewed/` project now carries a `gate.toml` and passes
 `eda gate --policy examples/<name>/gate.toml`; every waiver in those files is
@@ -415,3 +418,47 @@ generator writes KiCad 9 format because that is the oldest release in the CI
 matrix; the verdicts quoted here are KiCad 10's, which is the default the
 toolkit runs. Both are recorded rather than reconciled, because the
 disagreement is real and a reader meeting it deserves to know.
+
+## 12. The reviewer's pass, round seven: what the plot showed
+
+Round six closed the findings the tools could see. The reviewer then sent
+thirteen screenshots with circles drawn on them, and the circles fell into two
+groups: **red**, strings printed through each other on the schematics, and
+**blue**, copper that leaves a pad, travels three sides of a rectangle and
+arrives a few millimetres away.
+
+Neither group had a rule. `readability.text_over_wire` measured text against
+*nets*, and nothing measured text against text; `route.detour` weighed a whole
+net, and a net with six good connections and one bad one averages out under
+any ratio worth setting. So both got one.
+
+### What went into the tool
+
+| built in | kind | what it catches |
+| --- | --- | --- |
+| `readability.text_over_text` | rule | two printed strings whose extents overlap, or a string printed across a symbol body. The netlist does not change, KiCad does not complain, and the only way to see it is to look at the plot - which is what this does arithmetically |
+| `route.wander` | rule | one continuous run of copper - pad or junction at each end - longer than `wander_ratio` times the shortest way between those two ends that clears the packages in between. Where `route.detour` asks whether a *net* is long, this asks whether a *track* goes out and comes back |
+| the wander baseline | mechanism | a run from one end of a package to the other cannot take the straight line, because the straight line is through the package. The baseline walks the perimeter of whatever the line crosses, so a feedback wrap is measured against going round rather than against going through |
+| `Label.angle` / `Label.justify` | parser | which way a net label reads. Without them a label's extent was a guess, and half of them were guessed backwards |
+
+### What the tool then made us fix
+
+| fixed | how | measured |
+| --- | --- | --- |
+| net labels printed through the part next door | a label's anchor cannot move - it joins the net by sitting on the wire - but the direction it reads in can. Each name is now offered the four quarters of its anchor and takes the first that prints over nothing. "Away from the pin" is still the first choice, but a five-character name on a 2.54 mm stub is twice as long as the stub, and away regularly meant straight into a diode | `text_over_text`: buck 1, motor 2, carrier 1, fpga 7 - **all to 0** |
+| four grounds printing GNGNGNGND | a power symbol's name had a fixed offset and no collision check at all. Four grounds hanging off one row of pins put four "GND"s on one line a pin pitch apart. The name is now offered the row below and either side of the stem | the seven overlapping pairs on the FPGA sheet, to 0 |
+| `PWR_FLAG` printed across the module it declares | the flag's own name checked wires and nothing else, so on the carrier it landed on the forty-pin module. It now checks symbol bodies and the names already placed, and climbs a ladder outwards - on that sheet the nearest clear air is three text rows away, because the strip beside the module is its pin legend | carrier 1 → 0 |
+| a plane crossing priced as a prohibition | at forty times the front-side cost per millimetre, one millimetre of crossing buys a forty millimetre tour, and the boards had grown them. Thirty is where neither `route.wander` nor `route.return_path` fires: below it the router takes short back-layer hops that cut the plane under the same net's own front copper | opamp `+5V` 4.4x → gone; buck, motor and carrier to **0 wander findings** |
+| copper straightened off its own pads | `write_variant` resolves the routes a second time, so the straightening pass ran again on the *routed* design - where the run into a pad and the run out of it have been merged into one polyline with the pad as an interior corner. Straightening through it took the copper off the pad. Pads are pinned now, as track ends already were | opamp: 2 unconnected nets, to 0 |
+| stitching vias measured as circles | the stitcher kept a via clear of a track by its radius; `check_board` measures the same via as a square, and the corner is 0.17 mm nearer. One board would not build | opamp: 1 short, to 0 |
+
+### What is still there
+
+The FPGA board is not fixed. It carries `route.detour` (VCCPLL at 5x),
+`route.return_path` on seven signals and `route.wander` on four runs, and one
+DRC unconnected item. Every one of them is a floorplan question on a 48-pin
+QFN with two layers, and each attempt at it costs the better part of an hour
+of routing; they are recorded here rather than waived. The opamp board keeps
+one wander finding: every placement tried moves it between `+5V` and `OUT`
+without removing it, which is what a congested two-layer board looks like when
+the measurement is honest.

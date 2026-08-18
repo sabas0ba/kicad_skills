@@ -146,6 +146,91 @@ def test_detour_leaves_poured_nets_alone():
     assert pcb_review.rule_detour(ctx) == []
 
 
+def test_wander_flags_one_run_that_goes_out_and_comes_back():
+    """The net is short, the run between its two pads is not."""
+    parts = [
+        footprint("R1", 5, 5, [pad("1", 5, 5, "SIG")]),
+        footprint("R2", 15, 5, [pad("1", 15, 5, "SIG")]),
+    ]
+    scenic = ctx_for(
+        board_from(
+            footprints=parts,
+            tracks=[
+                track(5, 5, 5, 25, net="SIG"),
+                track(5, 25, 15, 25, net="SIG"),
+                track(15, 25, 15, 5, net="SIG"),
+            ],
+        )
+    )
+    findings = pcb_review.rule_wander(scenic)
+    assert [f.rule for f in findings] == ["route.wander"]
+    assert "SIG" in findings[0].details["examples"][0]
+
+    direct = ctx_for(board_from(footprints=parts, tracks=[track(5, 5, 15, 5, net="SIG")]))
+    assert pcb_review.rule_wander(direct) == []
+
+
+def test_wander_measures_runs_not_whole_nets():
+    """A net long enough to pass `route.detour` can still hold one bad run."""
+    parts = [
+        footprint("J1", 5, 5, [pad("1", 5, 5, "SIG")]),
+        footprint("J2", 15, 5, [pad("1", 15, 5, "SIG")]),
+        footprint("J3", 90, 5, [pad("1", 90, 5, "SIG")]),
+    ]
+    board = board_from(
+        footprints=parts,
+        tracks=[
+            # J1 to J2 the long way round
+            track(5, 5, 5, 25, net="SIG"),
+            track(5, 25, 15, 25, net="SIG"),
+            track(15, 25, 15, 5, net="SIG"),
+            # J2 to J3 straight, and long enough to dilute the ratio
+            track(15, 5, 90, 5, net="SIG"),
+        ],
+    )
+    ctx = ctx_for(board)
+    assert pcb_review.rule_detour(ctx) == []
+    assert "route.wander" in rules_of(pcb_review.rule_wander(ctx))
+
+
+def test_wander_leaves_a_knee_alone():
+    """Going round something costs a few millimetres, and that is not a tour."""
+    parts = [
+        footprint("R1", 5, 5, [pad("1", 5, 5, "SIG")]),
+        footprint("R2", 15, 5, [pad("1", 15, 5, "SIG")]),
+    ]
+    ctx = ctx_for(
+        board_from(
+            footprints=parts,
+            tracks=[
+                track(5, 5, 5, 7, net="SIG"),
+                track(5, 7, 15, 7, net="SIG"),
+                track(15, 7, 15, 5, net="SIG"),
+            ],
+        )
+    )
+    assert pcb_review.rule_wander(ctx) == []
+
+
+def test_wander_leaves_poured_nets_alone():
+    parts = [
+        footprint("R1", 5, 5, [pad("1", 5, 5, "GND")]),
+        footprint("R2", 15, 5, [pad("1", 15, 5, "GND")]),
+    ]
+    ctx = ctx_for(
+        board_from(
+            footprints=parts,
+            tracks=[
+                track(5, 5, 5, 25, net="GND"),
+                track(5, 25, 15, 25, net="GND"),
+                track(15, 25, 15, 5, net="GND"),
+            ],
+            zones=[pcb.Zone(net="GND", layers=["B.Cu"], filled=True)],
+        )
+    )
+    assert pcb_review.rule_wander(ctx) == []
+
+
 def _plane_zone(cut=False):
     """A B.Cu ground pour over (0,0)-(50,40); optionally with a slot cut out."""
     outline = [(0.0, 0.0), (50.0, 0.0), (50.0, 40.0), (0.0, 40.0)]

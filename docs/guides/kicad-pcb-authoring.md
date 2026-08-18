@@ -215,6 +215,23 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   Corners that come from a stated escape fan meeting the 45° grid are the
   fan's geometry and waivable as such; a track three times its spanning-tree
   length across open board is a routing failure, not a style choice.
+* **Price the plane side, do not forbid it.** A signal on the ground layer
+  cuts the plane under its own return current, so it costs more than front
+  copper — but if it costs *forty times* more per millimetre, one millimetre
+  of crossing buys a forty millimetre tour, and the router will take it every
+  time. The boards grew supply runs at four times the straight line, all of
+  them on the front, all of them legal — `route.wander` is the rule that
+  caught it. Below thirty the trade reverses: the short back-layer hops the
+  router takes instead cut the plane under the same net's own front copper,
+  and `route.return_path` picks that up. Thirty is where neither fires, and
+  finding it took a sweep, not an argument.
+* **Route a feedback wrap pad to pad, not column to column.** An opamp's
+  output and inverting pins sit on opposite sides of the package; asked for
+  between the two escape columns, the wrap leaves the output heading away
+  from its partner, reaches the column, and comes back past its own package —
+  twenty-three millimetres for a pin pair three millimetres apart. Asked for
+  between the pads, it goes round the package, which is what a person draws.
+  A pin whose only connection is that wrap does not belong in the fan at all.
 * **Every waiver names its reason** in the project's `gate.toml`, stated so a
   reviewer can disagree with it. A finding is fixed, checked, or answered —
   never silently absent. That is the shape of the whole mechanism.
@@ -228,7 +245,7 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
 
 `eda gate --list-rules` prints all of them. The ones this guide exists to
 satisfy: `layout.decoupling_distance`, `layout.decoupling_via`,
-`route.return_path`, `route.detour`, `route.acute_angle`,
+`route.return_path`, `route.detour`, `route.wander`, `route.acute_angle`,
 `track.thin_power`, plus KiCad's own DRC. What cannot be a rule — where to
 spend the escape budget, how hard to price the plane layer, when a crossing
 is cheap enough to keep — is this guide, and the rendered board.

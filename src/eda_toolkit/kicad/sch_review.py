@@ -1358,10 +1358,12 @@ def rule_text_over_wire(ctx: ReviewContext) -> list[Finding]:
     collisions = sorted(set(collisions))
     if not collisions:
         return []
+    # Info for the same reason as `readability.text_over_text` below: 10 of
+    # the 18 demo sheets, 942 findings. Still an error under `ai-generated`.
     return [
         Finding(
             "readability.text_over_wire",
-            "warning",
+            "info",
             f"{len(collisions)} symbol field(s) print across a wire - a net "
             "drawn through a value is a value nobody can read off the plot",
             details={"count": len(collisions), "examples": collisions[:8]},
@@ -1428,10 +1430,16 @@ def rule_text_over_text(ctx: ReviewContext) -> list[Finding]:
     collisions = sorted(set(collisions))
     if not collisions:
         return []
+    # Graded info, not warning: on KiCad's own 18 demo sheets this fires on 14
+    # of them, four and a half thousand times. Human sheets are full of text a
+    # character-count estimate reads as touching, and a rule that fires that
+    # often on human work is measuring the estimate rather than the drawing.
+    # The `ai-generated` policy still promotes it to an error, because a
+    # generator has no eye to catch it later - which is the whole point.
     return [
         Finding(
             "readability.text_over_text",
-            "warning",
+            "info",
             f"{len(collisions)} pair(s) of printed text overlap - two strings "
             "drawn through each other are two strings nobody can read",
             details={"count": len(collisions), "examples": collisions[:8]},
