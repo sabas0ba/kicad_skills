@@ -759,3 +759,44 @@ def test_a_hidden_field_is_not_a_field_on_the_plot():
         wires=[[(50.0, 45.0), (50.0, 38.0)]],
     )
     assert sch_review.rule_text_over_wire(sheet_ctx(hidden)) == []
+
+
+def test_two_strings_drawn_through_each_other_are_reported():
+    from eda_toolkit.kicad.schematic import Label
+
+    doc = sheet(
+        symbols=[
+            placed(
+                "R1",
+                50,
+                50,
+                [pin("1", 50.0, 45.0)],
+                properties={"Value": "10k"},
+                property_at={"Value": (52.0, 40.0, "left")},
+            )
+        ]
+    )
+    doc.labels = [Label(text="LED_A", kind="local", x=53.0, y=40.0, justify="left")]
+    findings = sch_review.rule_text_over_text(sheet_ctx(doc))
+    assert [f.rule for f in findings] == ["readability.text_over_text"]
+    assert "R1 Value over label LED_A" in findings[0].details["examples"][0]
+
+    # the same label a row down clears it
+    doc.labels = [Label(text="LED_A", kind="local", x=53.0, y=46.0, justify="left")]
+    assert sch_review.rule_text_over_text(sheet_ctx(doc)) == []
+
+
+def test_a_name_printed_down_a_two_pin_part_is_reported():
+    from eda_toolkit.kicad.schematic import Label
+
+    # a symbol's extent comes from its pins, so an upright two-pin part is
+    # zero wide - and a label down its middle would read as clear
+    doc = sheet(symbols=[placed("D1", 50, 50, [pin("1", 50.0, 46.0), pin("2", 50.0, 54.0)])])
+    doc.labels = [Label(text="LED_A", kind="local", x=50.0, y=47.0, angle=90.0, justify="right")]
+    findings = sch_review.rule_text_over_text(sheet_ctx(doc))
+    assert [f.rule for f in findings] == ["readability.text_over_text"]
+    assert findings[0].details["examples"] == ["sheet.kicad_sch:label LED_A over D1"]
+
+    # reading the other way, off the part, is clear
+    doc.labels = [Label(text="LED_A", kind="local", x=50.0, y=45.0, angle=90.0, justify="left")]
+    assert sch_review.rule_text_over_text(sheet_ctx(doc)) == []

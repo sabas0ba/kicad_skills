@@ -134,6 +134,12 @@ class Label:
     kind: str  # local | global | hierarchical | netclass
     x: float
     y: float
+    # A label reads away from the pin it names, which means its box hangs off
+    # the anchor in a direction only these two say. Without them a rule can
+    # only guess, and guessing about text placement is how a label printed
+    # across a symbol reads as clean.
+    angle: float = 0.0
+    justify: str = ""
     sheet: str = ""
 
 
@@ -365,7 +371,9 @@ def parse(path: str | Path) -> SchematicDoc:
                 if hidden:
                     continue
             prop_at = prop.child("at")
-            values = [a for a in (prop_at.atoms() if prop_at else []) if isinstance(a, (int, float))]
+            values = [
+                a for a in (prop_at.atoms() if prop_at else []) if isinstance(a, (int, float))
+            ]
             if len(values) < 2:
                 continue
             justify_node = effects.child("justify") if effects else None
@@ -377,6 +385,11 @@ def parse(path: str | Path) -> SchematicDoc:
                 ax, ay = transform_pin(pin.x, pin.y, sym.x, sym.y, sym.angle, sym.mirror)
                 sym.pins.append(Pin(pin.number, pin.name, pin.electrical_type, ax, ay, unit))
         doc.symbols.append(sym)
+
+    def _justify_of(node) -> str:
+        effects = node.child("effects")
+        found = effects.child("justify") if effects else None
+        return " ".join(str(a) for a in found.atoms()) if found else ""
 
     kinds = {
         "label": "local",
@@ -394,6 +407,8 @@ def parse(path: str | Path) -> SchematicDoc:
                     kind=kind,
                     x=float(coords[0]),
                     y=float(coords[1]),
+                    angle=float(coords[2]) if len(coords) > 2 else 0.0,
+                    justify=_justify_of(node),
                     sheet=p.name,
                 )
             )

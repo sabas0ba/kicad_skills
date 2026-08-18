@@ -221,6 +221,12 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "info",
         threshold="page_margin_mm",
     ),
+    "readability.text_over_text": RuleSpec(
+        "two printed strings whose estimated extents overlap - a designator, "
+        "a value, a rating or a net label drawn through another one, or "
+        "through a symbol body. Neither is readable on the plot",
+        "warning",
+    ),
     "readability.text_over_wire": RuleSpec(
         "a symbol's reference, value or rating printed across a wire - the "
         "netlist is unaffected and the plot is unreadable",
@@ -1361,6 +1367,101 @@ def rule_text_over_wire(ctx: ReviewContext) -> list[Finding]:
             details={"count": len(collisions), "examples": collisions[:8]},
         )
     ]
+
+
+@rule
+def rule_text_over_text(ctx: ReviewContext) -> list[Finding]:
+    """Two pieces of printed text on the same piece of paper.
+
+    A net label, a designator, a value, a rating: each is right, and each
+    stops being readable the moment another one is drawn through it. The
+    netlist does not change, KiCad does not complain, and the only way to see
+    it is to look at the plot - which is what this does arithmetically.
+
+    A label printed across a *symbol* counts too. The symbol is text as far as
+    the reader is concerned: the LED whose name runs down through its own
+    body is a part nobody can identify.
+    """
+    collisions = []
+    for doc in ctx.docs:
+        items: list[tuple[tuple[float, float, float, float], str]] = []
+        for sym in doc.symbols:
+            for name, (px, py, justify) in (sym.property_at or {}).items():
+                if name in ("Footprint", "Datasheet", "MPN", "Manufacturer"):
+                    continue
+                text = sym.properties.get(name, "")
+                if text:
+                    items.append(
+                        (
+                            _turned(_field_extent(text, px, py, justify), px, py, 0.0),
+                            f"{sym.reference or sym.lib_id} {name}",
+                        )
+                    )
+        for label in doc.labels:
+            box = _field_extent(label.text, label.x, label.y, label.justify)
+            items.append((_turned(box, label.x, label.y, label.angle), f"label {label.text}"))
+        # A symbol's extent comes from its pins, so a two-pin part standing
+        # upright measures zero wide - and a name printed down its middle
+        # would read as clear. Nothing is narrower than about a pin pitch.
+        bodies = []
+        for sym in doc.symbols:
+            box = sym.bbox() if not sym.is_power else None
+            if not box:
+                continue
+            pad_x = max(0.0, 1.27 - (box[2] - box[0]) / 2)
+            pad_y = max(0.0, 1.27 - (box[3] - box[1]) / 2)
+            bodies.append(
+                (
+                    (box[0] - pad_x, box[1] - pad_y, box[2] + pad_x, box[3] + pad_y),
+                    sym.reference or sym.lib_id,
+                )
+            )
+        for index, (box, what) in enumerate(items):
+            for other, other_what in items[index + 1 :]:
+                if _boxes_meet(box, other):
+                    collisions.append(f"{doc.path.name}:{what} over {other_what}")
+            for body, ref in bodies:
+                if what.startswith(f"{ref} "):
+                    continue  # a part's own fields sit against its own body
+                if _boxes_meet(box, body):
+                    collisions.append(f"{doc.path.name}:{what} over {ref}")
+    collisions = sorted(set(collisions))
+    if not collisions:
+        return []
+    return [
+        Finding(
+            "readability.text_over_text",
+            "warning",
+            f"{len(collisions)} pair(s) of printed text overlap - two strings "
+            "drawn through each other are two strings nobody can read",
+            details={"count": len(collisions), "examples": collisions[:8]},
+        )
+    ]
+
+
+# Text extents are estimated from a character count, so the estimate carries
+# about a glyph of error. An overlap smaller than that is the error bar, not a
+# collision; anything wider is ink on ink.
+TEXT_OVERLAP_MM = 0.5
+
+
+def _boxes_meet(one, other) -> bool:
+    return (
+        min(one[2], other[2]) - max(one[0], other[0]) > TEXT_OVERLAP_MM
+        and min(one[3], other[3]) - max(one[1], other[1]) > TEXT_OVERLAP_MM
+    )
+
+
+def _turned(box, x: float, y: float, angle: float):
+    """The box a string covers once the sheet has turned it 90 degrees.
+
+    Sheet coordinates grow downward and KiCad turns text anticlockwise on
+    screen, so a point (dx, dy) off the anchor lands at (dy, -dx).
+    """
+    if round(abs(angle) % 180) != 90:
+        return box
+    dx0, dy0, dx1, dy1 = box[0] - x, box[1] - y, box[2] - x, box[3] - y
+    return (x + dy0, y - dx1, x + dy1, y - dx0)
 
 
 def _field_extent(text: str, x: float, y: float, justify: str) -> tuple[float, float, float, float]:
