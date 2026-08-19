@@ -43,11 +43,11 @@ waiver in the project's `gate.toml`. That pass, with what each finding became,
 is [REVIEW.md](REVIEW.md).
 
 Four of the five `reviewed/` projects **pass** their own gate. The FPGA board
-does not: it carries a `route.detour`, seven `route.return_path`, four
-`route.wander`, three acute corners and one unconnected item. Those are
-floorplan questions on a 48-pin QFN with two layers, and they are
-[recorded in REVIEW.md](REVIEW.md) rather than waived, because a waiver would
-say the measurement was wrong and it is not. Every `as-generated/` fails.
+does not: it carries `route.return_path` on six signals, two `route.wander`
+runs and two acute corners. Those are floorplan questions on a 48-pin QFN
+with two layers, and they are [recorded in REVIEW.md](REVIEW.md) rather than
+waived, because a waiver would say the measurement was wrong and it is not.
+Every `as-generated/` fails.
 
 ## When these were made, and by what
 
@@ -337,16 +337,18 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **FAIL**, 5 blocking, 2 waived | 0 / 2 / 0 | 1 / 10 / 8 |
+| `reviewed` | **FAIL**, 3 blocking, 2 waived | 0 / 2 / 0 | 0 / 9 / 8 |
 | `as-generated` | **FAIL**, 31 blocking | — | — |
 
-Under KiCad's own checks `reviewed` has one unconnected item left and no
-other DRC error; the schematic has no parity findings and silkscreen warnings
-between the fans are the rest. It is the one board in the set whose *routing*
-is still wrong rather than merely tight — `route.detour` on VCCPLL at 5x,
-`route.return_path` on seven signals, `route.wander` on four runs and three
-acute corners — and [REVIEW.md](REVIEW.md) says why each one is a floorplan
-question rather than a waiver. The engineering pass there found and fixed
+Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
+unconnected, no schematic-parity findings. What it still fails on is the
+toolkit's own measurement of the routing, and rip-up-and-reroute took most of
+that away too — `route.detour` on VCCPLL at 5x is gone, `route.wander` is
+down from four runs to two and the acute corners from three to two. Six nets
+still run over cuts in the back-side plane (`route.return_path`), which is
+the two-layer choice itself and not something re-ordering can fix.
+[REVIEW.md](REVIEW.md) says why each is a floorplan question rather than a
+waiver. The engineering pass there found and fixed
 four real electrical faults here: the PCM5102A's charge pump was miswired
 (flying cap to ground instead of CAPP-CAPM — the DAC had no negative rail),
 VCCPLL was tied straight to the core rail instead of RC-filtered from it, the

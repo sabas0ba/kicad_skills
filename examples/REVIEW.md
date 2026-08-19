@@ -537,3 +537,52 @@ report **0 on every `reviewed/` sheet**, measured against the drawn outlines
 rather than the pin boxes. The one collision left anywhere in the set is on
 `opamp-filter/as-generated`, where two net labels print through each other -
 which is the variant whose job is to be wrong.
+
+## 14. The reviewer's pass, round nine: the copper the plot showed
+
+Round eight closed the schematic side. The reviewer then said the artwork was
+not fixed either, and re-rendering the boards agreed: three defects were
+plainly visible and no rule reported any of them.
+
+### What went into the tool
+
+| built in | kind | what it catches |
+| --- | --- | --- |
+| rip-up and reroute for tidiness | mechanism | `_route_all` now reports what each track cost against `route.wander`'s own baseline - imported rather than copied, because two implementations of one measurement drift - and the worst tour goes to the front of the order and the set is routed again. A track that still tours from first pick has nowhere better to be and is left alone |
+| shortest first | mechanism | the default routing order. A thirteen millimetre connection has few ways to be made and a forty millimetre one has many, so the short ones should choose while there is still room. It is also what a fresh clone starts from, having no learned order |
+| `layout.zone_outside_outline` | rule | a zone drawn wholly off the board. KiCad stores a *footprint's* zones in board coordinates while everything else in a footprint is relative to it, so a placer that moves the pads and forgets the zone leaves the keep-out where the library drew it |
+| `silk.text_over_text` | rule | two silkscreen strings on the same side printed through each other. The schematic has had `readability.text_over_text` for two rounds and the board had nothing, though the board is the harder case: a sheet can be zoomed and a bare board cannot |
+
+### What the tool then made us fix
+
+| fixed | how | measured |
+| --- | --- | --- |
+| a track that tours the board to cover thirteen millimetres | the op-amp's feedback wrap goes from one side of a SOT-23-5 to the other. Routed last it took fifty-six millimetres, because everything nearer was already spoken for. Routed first it costs nothing | opamp `/OUT` 56.5 mm at 4.3x → **gone**; the board goes from FAIL to **PASS** |
+| a keep-out at the origin | the Pico module's two pad keep-outs had been at (0, -6) for four rounds - off the board, keeping nothing out. DRC is silent because an empty region violates no rule, and the only visible sign was the plot: "fit to page" fits the bounding *box*, so every view of that board came out at half scale in one corner with the rest blank | carrier: 2 → **0**, and the board is legible in the documentation for the first time |
+| silkscreen printed through silkscreen | the connector legends are placed before any designator and the designators get out of *their* way - a legend names one pin of one connector and has to sit against it, while a designator can go anywhere legible. Same order the schematic side uses for a label and a field. A pad is weighed fifty times a courtyard, so reaching further out along a row never buys ink on copper | `silk.text_over_text` 3 → **0** and `silk.over_pad` 0 across the five; the fixture had "IN GND OUT" printed through "J1" |
+| the FPGA board | eleven rip-ups and three re-orderings later: `route.detour` on VCCPLL at 5x **gone**, `route.wander` 4 → **2**, acute corners 3 → **2**, `route.return_path` 7 → **6**, and the last DRC error - one unconnected item - **gone**. Board findings 1/10/8 → **0/9/8** | 5 blocking → **3** |
+
+### What re-ordering cannot do, and what happens when it tries
+
+Promoting a wandering net to the front takes a lane some other net had. On the
+FPGA board the sixth promotion left `I2S_SCK` with nowhere to go, and the
+first version of the loop called that an impossible floorplan and refused to
+write the design at all - a generator that had worked now exited with an
+error.
+
+Feasibility is the hard constraint and tidiness is not. The loop keeps the
+last order that routed everything; when a promotion makes a net unroutable it
+goes back to that order, stops chasing tours, and writes the board with the
+tours still in it. Routing is deterministic in the order, so the restored pass
+is the one that already succeeded and the loop terminates. The learned order
+file records rip-ups only: a rip-up is knowledge - that net has to go early or
+it has no room - while a promotion for tidiness is a guess, and writing those
+down poisoned the file for the next run.
+
+### What is still there
+
+Six nets on the FPGA board run over cuts in the back-side plane, two runs
+still wander and two corners are still acute. The `return_path` six are the
+two-layer choice itself: a 48-pin QFN with no inner layer has to bring the SPI
+bus out somewhere, and re-ordering cannot make a plane that is not there.
+They are recorded here rather than waived.
