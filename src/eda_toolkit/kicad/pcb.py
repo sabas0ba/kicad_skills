@@ -294,6 +294,24 @@ def _silk_text(node: SNode, text: str, fp: Footprint | None) -> dict[str, Any]:
     }
 
 
+def _net_of(node: SNode, nets: dict[int, str]) -> tuple[int, str]:
+    """The ``(net ...)`` of a board item, in either of KiCad's two spellings.
+
+    Usually ``(net <code>)`` with the name looked up in the table, but the
+    name-only form ``(net "VCC")`` also exists in the wild - the
+    pic_programmer demo is written that way - and reading the name as a code
+    used to crash the parse of the whole board.
+    """
+    atoms = node.child("net").atoms() if node.child("net") else []
+    if atoms and isinstance(atoms[0], (int, float)):
+        code = int(atoms[0])
+        return code, str(atoms[1]) if len(atoms) > 1 else nets.get(code, "")
+    if atoms:
+        name = str(atoms[0])
+        return next((c for c, n in nets.items() if n == name), 0), name
+    return 0, ""
+
+
 def parse(path: str | os.PathLike[str]) -> Board:
     p = Path(path)
     if not p.exists():
@@ -408,8 +426,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
                 drill_atoms = [a for a in drill_node.atoms() if isinstance(a, (int, float))]
                 if drill_atoms:
                     drill = float(drill_atoms[0])
-            net_node = pad_node.child("net")
-            net_code = int(net_node.atom(0, 0)) if net_node else 0
+            net_code, net_name = _net_of(pad_node, board.nets)
             # Pad coordinates are relative to the footprint origin and rotated by
             # the footprint orientation. KiCad's RotatePoint works on a Y-down
             # canvas, hence the sign pattern below.
@@ -430,7 +447,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     ),
                     drill=drill,
                     layers=_layer_list(pad_node.child("layers")),
-                    net=str(net_node.atom(1, "")) if net_node else "",
+                    net=net_name,
                     net_code=net_code,
                 )
             )
@@ -447,7 +464,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
     for seg in root.children("segment"):
         sx, sy, _ = _xy(seg.child("start"))
         ex, ey, _ = _xy(seg.child("end"))
-        code = int(seg.value("net", default=0) or 0)
+        code, _ = _net_of(seg, board.nets)
         board.tracks.append(
             Track(
                 (sx, sy),
@@ -461,7 +478,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
     for arc in root.children("arc"):
         sx, sy, _ = _xy(arc.child("start"))
         ex, ey, _ = _xy(arc.child("end"))
-        code = int(arc.value("net", default=0) or 0)
+        code, _ = _net_of(arc, board.nets)
         board.tracks.append(
             Track(
                 (sx, sy),
@@ -476,7 +493,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
 
     for via in root.children("via"):
         vx, vy, _ = _xy(via.child("at"))
-        code = int(via.value("net", default=0) or 0)
+        code, _ = _net_of(via, board.nets)
         via_type = "through"
         for candidate in ("blind", "micro"):
             if via.child(candidate) is not None or candidate in [str(a) for a in via.atoms()]:
@@ -504,7 +521,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
         *root.children("zone"),
         *(z for fp in root.children("footprint") for z in fp.children("zone")),
     ]:
-        code = int(zone.value("net", default=0) or 0)
+        code, _ = _net_of(zone, board.nets)
         fill = zone.child("fill")
         fill_atoms = fill.atoms() if fill else []
 

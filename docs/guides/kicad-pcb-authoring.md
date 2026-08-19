@@ -215,6 +215,45 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   ground path at the same width as its forward path, alongside it, and let
   the pour be reinforcement rather than the only way home.
 
+## The numbers behind the look
+
+A reviewer can tell a hand-routed board from an autorouted one across the
+room, and DRC, ERC and every list-shaped check pass both. The tell is
+statistical, and
+[`tools/board_signature.py`](https://github.com/sabas0ba/kicad_skills/blob/main/tools/board_signature.py)
+measures it, so "looks autorouted" becomes a comparison instead of an
+opinion. Run it over KiCad's own demo projects and your board side by side;
+the corpus baseline (16 parsable demo boards) for hand-routed two-layer work:
+
+| measure | human range | what a miss looks like |
+| --- | --- | --- |
+| second-layer share of copper | 10–47% | everything on one face: the plane was priced as untouchable, so the front grew wandering channels |
+| median segment length | 1.8–3.5 mm | 0.75 mm: the router's grid cell became the drawing's rhythm |
+| corners per dm of track | 9–25 | 38: the same stutter counted the other way |
+| corner angles | 91–98% at 45° | staircases and odd angles are machine artefacts |
+| vias per dm of track | 0.3–16 | a uniform stitching carpet reads as a printed pattern, not a decision |
+
+Three habits of the hand-routed boards are worth copying outright — all
+three are visible in one glance at the `interf_u` demo:
+
+* **A layer has a direction.** Front vertical, back horizontal (or the
+  reverse): nearly every track on `interf_u` obeys it, through-hole pads act
+  as free layer changes, and the two faces stay legible separately. A search
+  that prices the back layer as merely *expensive* never learns this — it
+  uses the back only in despair, one desperate hop at a time.
+* **A bus travels as a bundle.** The four lines of a port run in one
+  corridor, one pitch apart, turning together. Route them one at a time with
+  no knowledge of each other and the same four nets scatter across four
+  corridors. The generator's router now discounts cells beside a
+  sibling's path (nets sharing a name prefix — `I2S_*`, `SPI_*` — are
+  siblings), so the bundle look wins every tie without ever buying a detour.
+* **A stroke is long, with one 45° jog.** A person covers an offset with two
+  segments: the straight along the dominant direction and one diagonal.
+  The generator redraws every wiggly stretch that way when the dogleg is
+  clear (`_doglegged`), which is what moved the op-amp board's median
+  segment from 0.75 mm to 1.5 mm and its corner rate from 38 to 23 per dm —
+  into the human range — without moving a single endpoint.
+
 ## Width, angles, and what to waive
 
 * **Power tracks get power widths** (`track.thin_power`): the rule measures

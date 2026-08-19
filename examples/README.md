@@ -43,11 +43,13 @@ waiver in the project's `gate.toml`. That pass, with what each finding became,
 is [REVIEW.md](REVIEW.md).
 
 Four of the five `reviewed/` projects **pass** their own gate. The FPGA board
-does not: it carries `route.return_path` on six signals, two `route.wander`
-runs and two acute corners. Those are floorplan questions on a 48-pin QFN
-with two layers, and they are [recorded in REVIEW.md](REVIEW.md) rather than
-waived, because a waiver would say the measurement was wrong and it is not.
-Every `as-generated/` fails.
+does not: fencing foreign copper out from under the flash and the DAC costs
+it a detour and four wandering runs on the supply rails, plus four nets over
+cuts in the back plane and two acute corners at the pour edge. Those are
+floorplan questions on a 48-pin QFN with two layers — the fix is a stated
+1.2 V spine, named in [REVIEW.md](REVIEW.md) as the next round's work rather
+than waived, because a waiver would say the measurement was wrong and it is
+not. Every `as-generated/` fails.
 
 ## When these were made, and by what
 
@@ -337,18 +339,22 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **FAIL**, 3 blocking, 2 waived | 0 / 2 / 0 | 0 / 9 / 8 |
+| `reviewed` | **FAIL**, 4 blocking, 2 waived | 0 / 2 / 0 | 0 / 10 / 8 |
 | `as-generated` | **FAIL**, 31 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
-unconnected, no schematic-parity findings. What it still fails on is the
-toolkit's own measurement of the routing, and rip-up-and-reroute took most of
-that away too — `route.detour` on VCCPLL at 5x is gone, `route.wander` is
-down from four runs to two and the acute corners from three to two. Six nets
-still run over cuts in the back-side plane (`route.return_path`), which is
-the two-layer choice itself and not something re-ordering can fix.
-[REVIEW.md](REVIEW.md) says why each is a floorplan question rather than a
-waiver. The engineering pass there found and fixed
+unconnected, no schematic-parity findings. On every *style* measure it now
+sits in the hand-routed band — median segment 1.54 mm, 17.8 corners per
+decimetre, 7.8 vias per decimetre — and `route.under_package` no longer
+fires anywhere: the boot flash and the DAC are fenced, because the 1.2 V
+core rail kept sneaking under one or the other. The fence has a price the
+gate states plainly: the rail hauls around the fences, `route.detour` and
+four `route.wander` runs say so, and four SPI/audio nets still cross cuts in
+the back plane. What this board needs next is a *stated* 1.2 V spine — the
+designer's power backbone written into the file, the way the motor board
+states its VM link — and [REVIEW.md](REVIEW.md) names that as the next
+round's work rather than waiving it. The engineering pass there found and
+fixed
 four real electrical faults here: the PCM5102A's charge pump was miswired
 (flying cap to ground instead of CAPP-CAPM — the DAC had no negative rail),
 VCCPLL was tied straight to the core rail instead of RC-filtered from it, the

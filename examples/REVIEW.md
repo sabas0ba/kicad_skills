@@ -586,3 +586,83 @@ still wander and two corners are still acute. The `return_path` six are the
 two-layer choice itself: a 48-pin QFN with no inner layer has to bring the SPI
 bus out somewhere, and re-ordering cannot make a plane that is not there.
 They are recorded here rather than waived.
+
+## 15. The reviewer's pass, round ten: learn from the boards people drew
+
+The reviewer's brief for this round was direct: relying on the autorouter and
+the numbers alone is not enough - go and organise what *pictorial*
+correctness looks like from ordinary circuits and open designs, and improve
+the drawing itself. So this round started not in the generator but in KiCad's
+own demo corpus: sixteen parsable human-drawn boards, measured and looked at.
+
+### What the corpus says
+
+[`tools/board_signature.py`](https://github.com/sabas0ba/kicad_skills/blob/main/tools/board_signature.py)
+(new) reduces "looks autorouted" to five numbers per board. Hand-routed
+two-layer work clusters tightly: 10-47% of copper on the second face, median
+segments of 1.8-3.5 mm, 9-25 corners per decimetre, 91-98% of them 45s.
+Rendering `interf_u` beside our boards made the same point visually: a layer
+has a direction, a bus travels as a bundle in one corridor, and a person
+covers an offset with two strokes - the long straight and one diagonal.
+Against that baseline the generated boards read as machine work for exactly
+three reasons: everything on one face, the router's 0.25 mm cell as the
+drawing's rhythm (op-amp median segment 0.75 mm, 38 corners/dm), and a
+uniform via carpet.
+
+### What went into the tool
+
+| built in | kind | what it does |
+| --- | --- | --- |
+| `tools/board_signature.py` | tool | the five numbers, runnable over any mix of demo and generated boards, so the comparison is repeatable rather than an impression |
+| `Router.route(follow=...)` | mechanism | cells beside a sibling net's path are discounted, so a bus (nets sharing a name prefix - `I2S_*`, `SPI_*`) travels as a bundle: the parallel-lanes look wins every tie, and the discount is a fraction of a step so it never buys a detour |
+| `_doglegged` | pass | redraws every wiggly stretch as the human stroke - the straight along the dominant direction plus one 45 - when the dogleg is clear, splitting the stretch in half recursively where a crossing blocks the whole. Endpoints never move |
+| the copper oracle's `pinned()` | fix | reshaping passes may not move copper off any point *inside* a pad of its own net - the centre alone was not enough, because a routed run can touch its pad off-centre and the overlap is the connection. Found by the pass pulling C4's connection off by a hair: one DRC unconnected item, invisible in the shape |
+| seam guard | fix | a dogleg meeting the copper it did not redraw can turn back on itself, and the chamfer pass carves that seam into a 45-degree acute corner. Junction turns are limited to a right angle, and a split is taken only when both halves redraw |
+| purposeful stitching | mechanism | the 6 mm via carpet is gone. A hand-stitched board puts vias where the plane needs them - a ring at the rim, and beside every place a signal crosses on the back layer, because that is where the plane is cut - and only then a coarse 12 mm mesh so no orphaned pour floats. Vias per decimetre: buck 41 → 18, carrier 28 → 13, all five inside the corpus band, and `layout.pour_fragmented` still reports nothing |
+| the oracle updates as it goes | fix | the clearance oracle was a snapshot, and a pass that redraws two tracks against a snapshot lets each move into the corridor the other just left - I2S_DIN and I2S_LRCK both doglegged into one lane and ended 0.03 mm apart. Every accepted redraw now goes straight back into the oracle |
+| `route_keepout=("U4", "U2")` | design | no foreign copper under the boot flash or the DAC. Fencing U4 alone just moved the 1.2 V rail under U2, which is the worse place - the DAC is the one analogue part on the board. `route.under_package` is the rule that kept saying so |
+| `_net_of` in the pcb parser | fix | KiCad also writes the name-only `(net "VCC")` form - the pic_programmer demo does - and reading the name as a code crashed the whole board. The corpus grew from 15 parsable boards to 16 |
+
+### Measured against the corpus
+
+| board | med. segment | corners/dm | vias/dm | verdict |
+| --- | --- | --- | --- | --- |
+| motor-driver | 1.77 → 1.95 mm | 18.5 → 17.5 | 13 → 8.5 | in the human band |
+| opamp-filter | 0.75 → 0.88 mm | 38.0 → 33.5 | 13 → 10.5 | direction right; the densest board in the set affords the least redrawing once every dogleg must clear DRC with a full cell of margin |
+| buck-5v | 5.75 mm | 6.2 | 41 → 18 | already past the human band - six parts in a row |
+| pico-carrier | 6.31 mm | 7.3 | 28 → 13 | likewise |
+| fpga-audio | 1.43 → 1.54 mm | 24.8 → 17.8 | 13 → 7.8 | in the human band on every style measure; the floorplan debt below is a different axis |
+
+All four still pass their gates with KiCad's own DRC, zero blocking. The
+first version of the pass scored better - op-amp at 1.50 mm and 23.5/dm -
+and was wrong twice: it pulled a connection off a pad (the `pinned()` fix)
+and it parked a redrawn segment at exactly the 0.2 mm clearance limit, which
+DRC fails by the width of a rounding error. The honest numbers are the ones
+above, and the two failures are why the oracle now demands a full router
+cell of margin.
+
+### The FPGA board: two fences and an honest trade
+
+`route.under_package` kept reporting the 1.2 V core rail under first the boot
+flash and then the DAC - the two bellies a rail sneaks through when the
+escape field has taken everything else. Fencing both (`route_keepout`) is the
+right call and the board pays for it: the rail now hauls 131 mm to cover
+40 mm, `route.detour` is back on +3V3 at 4.3x, and the gate holds four
+blocking findings (2 acute corners at the pour edge, the detour, 4
+`return_path` nets, 4 wander runs). What this board needs next is not more
+re-ordering - the rip-up loop rolled back twice trying - but a *stated* 1.2 V
+spine: the designer's power backbone, written into the file with its own
+waypoints the way the motor board states its VM link. That is the next
+round's work, and it is named here rather than waived.
+
+### What this round is really about
+
+The seven rounds before this one built rules: each finding became a number
+and the generator chased the number. This round built a *reference*: the
+drawing habits of people, measured from their boards, stated in the
+authoring guide ("The numbers behind the look"), and pushed into the
+generator as habits rather than penalties - travel with your bus, draw long
+strokes, keep a direction per layer. The difference shows in what happened
+to the op-amp board: its number barely moved, and the plot still got
+calmer, because the strokes that did redraw are the long ones the eye
+follows first.

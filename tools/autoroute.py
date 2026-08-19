@@ -32,6 +32,7 @@ from __future__ import annotations
 import heapq
 import math
 from dataclasses import dataclass, field
+from itertools import pairwise
 
 # Eight directions, orthogonal first so ties resolve toward straight lines.
 STEPS = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)]
@@ -191,6 +192,7 @@ class Router:
         goal_layer: str | None = "F.Cu",
         crowd: list[tuple[float, float]] | None = None,
         back_cost: float | None = None,
+        follow: list[list[tuple[float, float]]] | None = None,
     ) -> Path | None:
         """A path from ``start`` to ``goal``, or None when there is no room.
 
@@ -207,6 +209,14 @@ class Router:
         layer is a plane charges enough for the crossing that the search takes
         any front-side detour it can find, and only crosses where the board
         leaves it nothing else.
+
+        ``follow`` is where this net's siblings already run. A bus drawn by a
+        person travels as a bundle - parallel lanes, one pitch apart, turning
+        together (open any hand-routed two-layer board) - and a search that
+        knows nothing of its siblings scatters the same four nets across four
+        different corridors. Cells beside a sibling's path are discounted, so
+        the bundle look wins every tie; the discount is a fraction of a step,
+        so it never buys a detour that costs real millimetres.
         """
         blocked = self._blocked(net, width)
         back_cost = self.back_cost if back_cost is None else back_cost
@@ -247,6 +257,27 @@ class Router:
         for index in goal_layers:
             blocked[self.layers[index]].discard(goal_cell)
 
+        # One to three cells out: the lane beside the sibling and the one
+        # after it, so a bundle of four still feels the pull. Cell zero is the
+        # sibling's own copper and already blocked.
+        beside: set[tuple[int, int]] = set()
+        if follow:
+            on_path: set[tuple[int, int]] = set()
+            for polyline in follow:
+                for a, b in pairwise(polyline):
+                    length = math.dist(a, b)
+                    for index in range(int(length / self.pitch) + 1):
+                        t = index * self.pitch / length if length else 0.0
+                        on_path.add(
+                            self._cell((a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+                        )
+            for cx, cy in on_path:
+                for ox in (-3, -2, -1, 0, 1, 2, 3):
+                    for oy in (-3, -2, -1, 0, 1, 2, 3):
+                        beside.add((cx + ox, cy + oy))
+            beside -= on_path
+        follow_bonus = 0.3
+
         turn_penalty = 3.0
         best: dict[tuple[int, int, int, int], float] = {}
         came: dict[tuple[int, int, int, int], tuple[int, int, int, int] | None] = {}
@@ -276,6 +307,7 @@ class Router:
                     + (back_cost * step if layer else 0.0)
                     + (0.0 if heading in (index, -1) else turn_penalty)
                     + (self.crowd_cost if nxt in crowded else 0.0)
+                    - (follow_bonus * step if nxt in beside else 0.0)
                 )
                 self._relax(queue, best, came, state, (*nxt, layer, index), total)
             for other in range(len(self.layers)):

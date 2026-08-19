@@ -2724,6 +2724,24 @@ WANDER_FLOOR_MM = 5.0
 WANDER_ATTEMPTS = 6
 
 
+def _bus_of(net: str) -> str | None:
+    """The bundle a net travels with, read from its name.
+
+    I2S_LRCK, I2S_DIN, I2S_BCK and I2S_SCK are one bus; so are the four SPI
+    lines. The convention is the name's first word, and it is the same
+    convention a person uses when they route the four as parallel lanes in
+    one corridor. Power rails are not buses - their names share prefixes for
+    a different reason - and a net with no underscore travels alone.
+    """
+    base = net.lstrip("/")
+    if "_" not in base:
+        return None
+    head = base.split("_", 1)[0]
+    if not head or head[0] in "+-" or head[0].isdigit() or head.upper() == "GND":
+        return None
+    return head
+
+
 def _package_boxes(design: Design) -> list[tuple[float, float, float, float]]:
     """Every part as a rectangle, for measuring what a route had to go round.
 
@@ -2814,6 +2832,9 @@ def _route_all(
     routed = [(place[id(t)], t) for t in design.tracks if not t.auto]
     tours: list[tuple[float, Track]] = []
     packages = _package_boxes(design)
+    # Where each bus's members already run, so the next member can travel
+    # beside them (see Router.route's ``follow``).
+    bus_paths: dict[str, list[list[tuple[float, float]]]] = {}
     vias = list(design.vias)
     for index, track in enumerate(order):
         a, b = (resolve(design, point) for point in track.points)
@@ -2850,9 +2871,13 @@ def _route_all(
             # `route.return_path` picks that up instead. Thirty is where
             # neither fires. GND is not charged: its own copper is the plane.
             back_cost=None if track.net == POUR_NET else 30.0,
+            follow=bus_paths.get(_bus_of(track.net) or ""),
         )
         if path is None:
             raise Blocked(track)
+        if bus := _bus_of(track.net):
+            for _layer, bus_points in path.runs:
+                bus_paths.setdefault(bus, []).append(list(bus_points))
         for layer, points in path.runs:
             for start, end in pairwise(points):
                 router.add_track(track.net, start, end, track.width, layer)
@@ -3055,7 +3080,7 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
     )
     if not order:
         return _stitched(
-            _chamfer_tracks(_unfold_tracks(_join_runs(_untraced(_snap_to_45(design)))))
+            _chamfer_tracks(_doglegged(_unfold_tracks(_join_runs(_untraced(_snap_to_45(design))))))
         )
     digest = _routing_digest(design) if use_cache else ""
     if use_cache:
@@ -3064,7 +3089,9 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
             print(f"{design.name}: routing unchanged, reusing {digest[:8]}", file=sys.stderr)
             done = replace(design, tracks=cached[0], vias=cached[1])
             return _stitched(
-                _chamfer_tracks(_unfold_tracks(_join_runs(_untraced(_snap_to_45(done)))))
+                _chamfer_tracks(
+                    _doglegged(_unfold_tracks(_join_runs(_untraced(_snap_to_45(done)))))
+                )
             )
         order = _learned_order(design, order)
     ripped: list[Track] = []
@@ -3130,7 +3157,9 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         )
         if use_cache:
             _cache_write(design, digest, done, order)
-        return _stitched(_chamfer_tracks(_unfold_tracks(_join_runs(_untraced(_snap_to_45(done))))))
+        return _stitched(
+            _chamfer_tracks(_doglegged(_unfold_tracks(_join_runs(_untraced(_snap_to_45(done))))))
+        )
 
 
 def _on_45_grid(a, b) -> bool:
@@ -3147,18 +3176,17 @@ def _on_45_grid(a, b) -> bool:
     return dx < GEOM_EPS or dy < GEOM_EPS or abs(dx - dy) < GEOM_EPS
 
 
-def _straighten(design: Design) -> Design:
-    """Take the corners out of a stated route that no longer needs them.
+def _copper_oracle(design: Design):
+    """The geometry every reshaping pass has to respect, built once.
 
-    A hand-placed track's waypoints are written when the parts are somewhere,
-    and the parts move. What is left is copper going up, along and back down
-    to join two pads that ended up in a straight line with nothing between
-    them - which is what a reviewer sees first and has no explanation for.
-
-    Only where the straight line is genuinely clear, and only where the stated
-    route is a fifth longer than it: a route shaped on purpose - a feedback
-    tap kept away from a switch node, a loop closed deliberately - is shaped
-    because something is in the way, and stays.
+    ``others`` is every track as resolved points; ``clear(track, own, a, b)``
+    says whether the segment a-b may be drawn for that track; ``pinned(net, point)``
+    says whether copper may move away from a point - track ends, pad centres,
+    and anywhere inside a pad of the net's own, because `write_variant`
+    resolves the routes a second time and by then a pad can be an interior
+    corner of a merged polyline, touching off-centre. Reshaping through it
+    takes the copper off the pad. One oracle, shared by `_straighten` and
+    `_doglegged`, so the two passes cannot disagree about what is in the way.
     """
     others = [
         (track.net, track.layer, track.width, [resolve(design, p) for p in track.points])
@@ -3177,25 +3205,87 @@ def _straighten(design: Design) -> Design:
             centre = pad_position_of(design, part, pad)
             pad_points.add((round(centre[0], 3), round(centre[1], 3)))
 
-    def clear(track: Track, own, a, b) -> bool:
+    def clear(track: Track, skip_index: int, a, b) -> bool:
+        # 0.26, not the 0.2 the DRC asks: a redrawn segment that lands at
+        # exactly the limit fails the check by the width of a rounding
+        # error, and one router cell (0.25) of real margin costs nothing.
+        slack = 0.26
         half = track.width / 2
-        for net, layer, width, points in others:
-            if net == track.net or layer != track.layer or points is own:
+        for index, (net, layer, width, points) in enumerate(others):
+            if index == skip_index or net == track.net or layer != track.layer:
                 continue
             for s0, s1 in pairwise(points):
-                if _segment_distance(a, b, s0, s1) < half + width / 2 + 0.2:
+                if _segment_distance(a, b, s0, s1) < half + width / 2 + slack:
                     return False
         for owner, box in pads:
             if owner == track.net:
                 continue
-            if _segment_to_box(a, b, box) < half + 0.2:
+            if _segment_to_box(a, b, box) < half + slack:
                 return False
         for via in design.vias:
             if via.net == track.net:
                 continue
-            if _segment_to_box(a, b, _via_box(design, via)) < half + 0.2:
+            if _segment_to_box(a, b, _via_box(design, via)) < half + slack:
                 return False
         return True
+
+    joins = {
+        (round(point[0], 3), round(point[1], 3))
+        for _net, _layer, _width, points in others
+        for point in (points[0], points[-1])
+    }
+    joins |= pad_points
+
+    def pinned(net: str, point: tuple[float, float]) -> bool:
+        """Whether copper may not move away from this point.
+
+        Track ends and pad centres, and also any point *inside* a pad of the
+        net's own: a routed run can touch its pad off-centre - the overlap is
+        the connection - and a reshaping pass that only pins the centre pulls
+        the copper off the pad. That is one DRC unconnected item and nothing
+        visible in the shape, which is exactly how it slipped through.
+        """
+        if (round(point[0], 3), round(point[1], 3)) in joins:
+            return True
+        for owner, box in pads:
+            if owner != net:
+                continue
+            if box[0] - 0.05 <= point[0] <= box[2] + 0.05 and (
+                box[1] - 0.05 <= point[1] <= box[3] + 0.05
+            ):
+                return True
+        return False
+
+    def update(index: int, resolved_points) -> None:
+        """Put a redrawn track's new geometry into the oracle immediately.
+
+        The oracle is a snapshot, and a pass that redraws two tracks against
+        the snapshot lets each move into the corridor the other just left -
+        on the FPGA board I2S_DIN and I2S_LRCK both doglegged into the same
+        lane and ended 0.03 mm apart. Every accepted redraw goes straight
+        back into ``others`` so the next decision sees the copper as it is,
+        not as it was.
+        """
+        net, layer, width, _stale = others[index]
+        others[index] = (net, layer, width, resolved_points)
+
+    return others, clear, pinned, update
+
+
+def _straighten(design: Design) -> Design:
+    """Take the corners out of a stated route that no longer needs them.
+
+    A hand-placed track's waypoints are written when the parts are somewhere,
+    and the parts move. What is left is copper going up, along and back down
+    to join two pads that ended up in a straight line with nothing between
+    them - which is what a reviewer sees first and has no explanation for.
+
+    Only where the straight line is genuinely clear, and only where the stated
+    route is a fifth longer than it: a route shaped on purpose - a feedback
+    tap kept away from a switch node, a loop closed deliberately - is shaped
+    because something is in the way, and stays.
+    """
+    others, clear, pinned, update = _copper_oracle(design)
 
     # A waypoint another track ends on is a join, not a corner: straightening
     # through it leaves the other one in mid air, which is `route.stub` and a
@@ -3210,24 +3300,15 @@ def _straighten(design: Design) -> Design:
     # an interior corner. Straightening through that corner takes the copper
     # off the pad and the net is quietly no longer connected - which is not
     # visible in the shape, only in DRC.
-    joins = {
-        (round(point[0], 3), round(point[1], 3))
-        for _net, _layer, _width, points in others
-        for point in (points[0], points[-1])
-    }
-    joins |= pad_points
-
     tracks = []
-    for track, (_net, _layer, _width, points) in zip(design.tracks, others, strict=True):
+    for own_index, (track, (_net, _layer, _width, points)) in enumerate(
+        zip(design.tracks, others, strict=True)
+    ):
         if track.auto or len(track.points) < 3:
             tracks.append(track)
             continue
         cuts = [0]
-        cuts += [
-            index
-            for index in range(1, len(points) - 1)
-            if (round(points[index][0], 3), round(points[index][1], 3)) in joins
-        ]
+        cuts += [index for index in range(1, len(points) - 1) if pinned(track.net, points[index])]
         cuts.append(len(points) - 1)
         kept = [track.points[0]]
         for first, last in pairwise(cuts):
@@ -3241,12 +3322,137 @@ def _straighten(design: Design) -> Design:
                 direct > GEOM_EPS
                 and length > direct * 1.2
                 and _on_45_grid(stretch[0], stretch[-1])
-                and clear(track, points, stretch[0], stretch[-1])
+                and clear(track, own_index, stretch[0], stretch[-1])
             ):
                 kept.append(track.points[last])
             else:
                 kept.extend(track.points[first + 1 : last + 1])
-        tracks.append(replace(track, points=kept) if len(kept) < len(track.points) else track)
+        if len(kept) < len(track.points):
+            update(own_index, [resolve(design, point) for point in kept])
+            tracks.append(replace(track, points=kept))
+        else:
+            tracks.append(track)
+    return replace(design, tracks=tracks)
+
+
+def _doglegged(design: Design) -> Design:
+    """Redraw a wiggly stretch as the shape a human draws: one 45-degree jog.
+
+    The router thinks in grid cells and its paths keep the cell size as their
+    rhythm - the op-amp board's median segment was 0.75 mm against 1.8-3.5 mm
+    on KiCad's hand-routed demo boards, and that stutter is most of what makes
+    a plot read as autorouted. A person covers the same distance with two
+    strokes: the long straight along the dominant direction and one diagonal
+    for the offset (interf_u is drawn almost entirely from that shape).
+
+    So every free stretch between joins is offered the two dogleg orderings -
+    diagonal first, or straight first - and takes one if it is clear of every
+    other net and not longer than what it replaces. Endpoints stay put, so
+    connectivity cannot change; pads and track ends are joins, for the same
+    reason `_straighten` pins them.
+    """
+    others, clear, pinned, update = _copper_oracle(design)
+
+    tracks = []
+    for own_index, (track, (_net, _layer, _width, points)) in enumerate(
+        zip(design.tracks, others, strict=True)
+    ):
+        if track.auto or len(track.points) < 4:
+            tracks.append(track)
+            continue
+        cuts = [0]
+        cuts += [index for index in range(1, len(points) - 1) if pinned(track.net, points[index])]
+        cuts.append(len(points) - 1)
+
+        def gentle(u, v) -> bool:
+            """Whether continuing from direction u into direction v turns no
+            sharper than a right angle. Sharper is a hairpin: the dogleg's own
+            corners are 45s by construction, but the seam where it meets the
+            copper it did not redraw can turn back on itself, and the chamfer
+            pass then carves that seam into the 45-degree acute corner
+            `route.acute_angle` reports."""
+            lu, lv = math.hypot(*u), math.hypot(*v)
+            if lu < GEOM_EPS or lv < GEOM_EPS:
+                return True
+            return (u[0] * v[0] + u[1] * v[1]) / (lu * lv) >= -1e-6
+
+        def redraw(track, points, lo, hi, own_index=own_index):
+            """The stretch as dogleg strokes: whole if clear, else by halves.
+
+            A dense board rarely clears the full stretch in one stroke - some
+            other net crosses the middle of it - but the halves either side
+            of the crossing usually do clear, and a person would draw exactly
+            those. A split is taken only when *both* halves redraw: half a
+            dogleg meeting half a staircase is a seam at whatever angle the
+            two happened to arrive, and the seams read worse than the stairs.
+            """
+            a, b = points[lo], points[hi]
+            dx, dy = b[0] - a[0], b[1] - a[1]
+            if hi - lo >= 3 and not (
+                abs(dx) < GEOM_EPS or abs(dy) < GEOM_EPS or abs(abs(dx) - abs(dy)) < GEOM_EPS
+            ):
+                run = abs(abs(dx) - abs(dy))
+                diag = min(abs(dx), abs(dy))
+                sx, sy = math.copysign(1, dx), math.copysign(1, dy)
+                if abs(dx) > abs(dy):
+                    elbows = [(a[0] + sx * run, a[1]), (a[0] + sx * diag, a[1] + sy * diag)]
+                else:
+                    elbows = [(a[0], a[1] + sy * run), (a[0] + sx * diag, a[1] + sy * diag)]
+                length = sum(math.dist(points[i], points[i + 1]) for i in range(lo, hi))
+                if run + diag * math.sqrt(2) <= length + GEOM_EPS:
+                    for elbow in elbows:
+                        elbow = (round(elbow[0], 4), round(elbow[1], 4))
+                        into = (
+                            gentle(
+                                (a[0] - points[lo - 1][0], a[1] - points[lo - 1][1]),
+                                (elbow[0] - a[0], elbow[1] - a[1]),
+                            )
+                            if lo > 0
+                            else True
+                        )
+                        out = (
+                            gentle(
+                                (b[0] - elbow[0], b[1] - elbow[1]),
+                                (points[hi + 1][0] - b[0], points[hi + 1][1] - b[1]),
+                            )
+                            if hi < len(points) - 1
+                            else True
+                        )
+                        if (
+                            into
+                            and out
+                            and clear(track, own_index, a, elbow)
+                            and clear(track, own_index, elbow, b)
+                        ):
+                            return [elbow]
+            if hi - lo >= 6:
+                mid = (lo + hi) // 2
+                left = redraw(track, points, lo, mid)
+                right = redraw(track, points, mid, hi)
+                if left is not None and right is not None:
+                    seam = points[mid]
+                    if gentle(
+                        (seam[0] - left[-1][0], seam[1] - left[-1][1]),
+                        (right[0][0] - seam[0], right[0][1] - seam[1]),
+                    ):
+                        return [*left, track.points[mid], *right]
+            return None
+
+        kept = [track.points[0]]
+        changed = False
+        for first, last in pairwise(cuts):
+            drawn = redraw(track, points, first, last) if last - first >= 3 else None
+            if drawn is None:
+                kept.extend(track.points[first + 1 : last + 1])
+            else:
+                kept.extend(drawn)
+                kept.append(track.points[last])
+                changed = True
+        if changed:
+            update(own_index, [resolve(design, point) for point in kept])
+            tracks.append(replace(track, points=kept))
+        else:
+            tracks.append(track)
     return replace(design, tracks=tracks)
 
 
@@ -3797,10 +4003,23 @@ def _stitch_vias(design: Design) -> list[Via]:
     while y < bottom - 0.01:
         rim += [(round(left, 2), round(y, 2)), (round(right, 2), round(y, 2))]
         y += step
-    # the interior mesh, offset half a step off the rim's lines so a rejected
-    # rim candidate and its neighbour inside do not fail for the same reason
-    inner = 6.0
-    y = top + inner
+    # The interior: purpose first, mesh second. A hand-stitched board puts
+    # its vias where the plane needs them - beside every place a signal
+    # crosses on the back layer, because that is where the plane is cut and
+    # the return current needs a way over the cut - and only then scatters a
+    # coarse mesh so no orphaned piece of pour is left floating. The 6 mm
+    # carpet this used to lay reads as a printed pattern from across the
+    # room; KiCad's own demo boards run 0.3-16 vias per decimetre of track
+    # and none of them is a uniform grid.
+    for track in design.tracks:
+        if track.net == POUR_NET or track.layer != "B.Cu":
+            continue
+        points = [resolve(design, point) for point in track.points]
+        for end in (points[0], points[-1]):
+            for dx, dy in ((2.0, 0.0), (-2.0, 0.0), (0.0, 2.0), (0.0, -2.0)):
+                rim.append((round(end[0] + dx, 2), round(end[1] + dy, 2)))
+    inner = 12.0
+    y = top + inner / 2
     while y < bottom - 0.01:
         x = left + inner / 2
         while x < right + 0.01:
@@ -6618,7 +6837,13 @@ def fpga_audio() -> Design:
         power_flags=[("+3V3", "J1.1"), ("GND", "J1.2")],
         board_size=(100.0, 84.0),
         label_nets=("I2S_SCK", "I2S_BCK", "I2S_DIN", "I2S_LRCK"),
-        route_keepout=(),
+        # No foreign copper under the boot flash or the DAC: their bellies
+        # are the strips a rail sneaks through when everything else is full,
+        # and a rail under a part it does not feed is `route.under_package` -
+        # the plane cannot get between them on two layers. Fencing U4 alone
+        # just moved the 1.2 V rail under U2, which is the worse place: the
+        # DAC is the one analogue part on the board.
+        route_keepout=("U4", "U2"),
         tracks=[],
         vias=[],
         pour=(3.0, 3.0, 97.0, 81.0),
