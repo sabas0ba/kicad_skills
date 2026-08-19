@@ -4650,7 +4650,7 @@
 	(gr_text "kicad_skills examples" (at 194.5 66.8 0) (layer "F.SilkS") (uuid "d1011a01-bb17-561b-b9f1-0a3d3bae3339") (effects (font (size 1.0 1.0) (thickness 0.15))))
 	(gr_text "+12V" (at 117.31 72.0 0) (layer "F.SilkS") (uuid "f14a21d9-dd99-53ec-ae49-88999967b54b") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify left)))
 	(gr_text "GND" (at 103.3 77.0 0) (layer "F.SilkS") (uuid "39033553-2b5a-5f47-84d8-8f673cb36020") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify right)))
-	(gr_text "5V OK" (at 207.0 103.4 0) (layer "F.SilkS") (uuid "7ad20c84-9414-50b4-8519-dcd3d9c2ba92") (effects (font (size 0.8 0.8) (thickness 0.12))))
 	(gr_text "+5V" (at 222.7 96.0 0) (layer "F.SilkS") (uuid "c971495d-7315-5e70-b7b8-8ff4c5b72f9a") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify left)))
 	(gr_text "GND" (at 222.7 91.0 0) (layer "F.SilkS") (uuid "fadd161b-b862-5a91-8345-6d95979fb205") (effects (font (size 0.8 0.8) (thickness 0.12)) (justify left)))
+	(gr_text "5V OK" (at 207.0 103.4 0) (layer "F.SilkS") (uuid "7ad20c84-9414-50b4-8519-dcd3d9c2ba92") (effects (font (size 0.8 0.8) (thickness 0.12))))
 )

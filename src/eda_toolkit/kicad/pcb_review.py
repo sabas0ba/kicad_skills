@@ -198,6 +198,12 @@ RULE_SPEC: dict[str, RuleSpec] = {
     ),
     # -- placement ---------------------------------------------------------
     "layout.outside_outline": RuleSpec("a footprint origin outside the board outline", "error"),
+    "layout.zone_outside_outline": RuleSpec(
+        "a zone - a pour or a keep-out - whose drawn outline lies wholly "
+        "outside the board. A keep-out off the board keeps nothing out, and "
+        "every plot of the board is scaled to fit it in",
+        "error",
+    ),
     "layout.pad_collision": RuleSpec(
         "pads of two different footprints whose extents overlap on a shared layer",
         "warning",
@@ -238,6 +244,12 @@ RULE_SPEC: dict[str, RuleSpec] = {
     ),
     "layout.ground_plane": RuleSpec("the ground zones that do exist, as context", "info"),
     # -- silkscreen and mechanical ----------------------------------------
+    "silk.text_over_text": RuleSpec(
+        "two silkscreen strings on the same side whose extents overlap. The "
+        "board is the only documentation an assembled part has, and two "
+        "labels printed through each other document nothing",
+        "warning",
+    ),
     "silk.over_pad": RuleSpec(
         "a visible silkscreen string whose estimated extent overlaps a pad on the "
         "same side; ink on a pad keeps solder off it",
@@ -662,6 +674,53 @@ def rule_edge_clearance(ctx: PcbContext) -> list[Finding]:
             )
         )
     return findings
+
+
+@rule
+def rule_zone_outside_outline(ctx: PcbContext) -> list[Finding]:
+    """A zone drawn somewhere the board is not.
+
+    A footprint may carry zones of its own - a module's pad keep-out is the
+    common one - and KiCad stores those in *board* coordinates while every
+    other thing in a footprint is stored relative to it. A placer that moves
+    the pads and the graphics and forgets the zone leaves the keep-out where
+    the library drew it, which is the origin.
+
+    Nothing complains. The keep-out keeps nothing out, DRC is silent because
+    an empty region violates no rule, and the only visible sign is the plot:
+    "fit to page" fits the *bounding box*, so every view of the board comes
+    out at half scale in one corner with the missing half blank. That is how
+    this was found.
+    """
+    box = ctx.board.outline_bbox()
+    if not box:
+        return []
+    x0, y0, x1, y1 = box
+    strays = []
+    for zone in ctx.board.zones:
+        if not zone.outline:
+            continue
+        zx0 = min(p[0] for p in zone.outline)
+        zy0 = min(p[1] for p in zone.outline)
+        zx1 = max(p[0] for p in zone.outline)
+        zy1 = max(p[1] for p in zone.outline)
+        if zx1 < x0 or zx0 > x1 or zy1 < y0 or zy0 > y1:
+            kind = "keep-out" if zone.keepout else f"{zone.net or 'unnamed'} pour"
+            strays.append(
+                f"{kind} on {'/'.join(zone.layers) or '?'} at "
+                f"({zx0:.1f}, {zy0:.1f})-({zx1:.1f}, {zy1:.1f})"
+            )
+    if not strays:
+        return []
+    return [
+        Finding(
+            "layout.zone_outside_outline",
+            "error",
+            f"{len(strays)} zone(s) lie wholly outside the board outline "
+            f"({x0:.1f}, {y0:.1f})-({x1:.1f}, {y1:.1f})",
+            details={"zones": sorted(strays)[:20], "count": len(strays)},
+        )
+    ]
 
 
 @rule
@@ -1573,6 +1632,62 @@ def rule_silk_over_pad(ctx: PcbContext) -> list[Finding]:
             "warning",
             f"{len(collisions)} silkscreen item(s) print across a pad",
             details={"count": len(collisions), "examples": collisions[:8]},
+        )
+    ]
+
+
+@rule
+def rule_silk_over_silk(ctx: PcbContext) -> list[Finding]:
+    """Two silkscreen strings printed through each other.
+
+    The schematic has `readability.text_over_text` for exactly this and the
+    board had nothing, though the board is the harder case: a sheet can be
+    zoomed and a bare board cannot, and the legend beside a connector is the
+    only thing telling an assembler which pin is which.
+
+    Sides are kept apart - front ink cannot collide with back ink - and the
+    extent comes from the size the file states, not from a guess.
+    """
+    boxes = []
+    for text in ctx.board.silk_texts:
+        if text.get("hidden") or not str(text.get("text", "")).strip():
+            continue
+        box = _silk_bbox(text)
+        if box:
+            boxes.append((box, text))
+    # Bucketed, for the same reason `_PadIndex` is: a baseboard carries a few
+    # thousand silkscreen strings and asking each about every other one is
+    # minutes of arithmetic to find the handful that touch.
+    cells: dict[tuple[int, int], list[int]] = defaultdict(list)
+    cell = 5.0
+    for index, (box, _text) in enumerate(boxes):
+        for cx in range(math.floor(box[0] / cell), math.floor(box[2] / cell) + 1):
+            for cy in range(math.floor(box[1] / cell), math.floor(box[3] / cell) + 1):
+                cells[(cx, cy)].append(index)
+    collisions = []
+    for index, (box, one) in enumerate(boxes):
+        side = str(one.get("layer", ""))[:2]
+        near: set[int] = set()
+        for cx in range(math.floor(box[0] / cell), math.floor(box[2] / cell) + 1):
+            for cy in range(math.floor(box[1] / cell), math.floor(box[3] / cell) + 1):
+                near.update(cells.get((cx, cy), ()))
+        for other_index in near:
+            if other_index <= index:
+                continue
+            other_box, other = boxes[other_index]
+            if str(other.get("layer", ""))[:2] != side:
+                continue
+            if _boxes_overlap(box, other_box):
+                collisions.append(f"{one['text']!r} over {other['text']!r}")
+    collisions = sorted(set(collisions))
+    if not collisions:
+        return []
+    return [
+        _group_finding(
+            "silk.text_over_text",
+            "warning",
+            f"{len(collisions)} pair(s) of silkscreen text print through each other",
+            collisions,
         )
     ]
 

@@ -110,11 +110,13 @@ mismatches).
 | `layout.no_decoupling` | — | IC supply pad with no capacitor on that net |
 | `layout.no_ground_plane` / `layout.unfilled_zone` | — | return path quality |
 | `layout.outside_outline` | — | footprints off the board |
+| `layout.zone_outside_outline` | — | a zone — a pour or a keep-out — drawn wholly off the board. A footprint may carry zones of its own and KiCad stores *those* in board coordinates while everything else in a footprint is stored relative to it, so a placer that moves the pads and forgets the zone leaves the keep-out at the origin. Nothing else complains: the keep-out keeps nothing out, DRC is silent because an empty region violates no rule, and the only visible sign is that every plot comes out at half scale in one corner |
 | `layout.double_sided_assembly` | — | bottom side parts (assembly cost) |
 | `fab.many_drill_sizes` | 6 | drill count drives fab cost |
 | `silk.missing_reference` | — | parts without a visible designator |
 | `mechanical.no_mounting_holes`, `test.no_testpoints` | — | informational |
 | `silk.over_pad` | — | silkscreen printed across a pad: ink on a pad keeps solder off it |
+| `silk.text_over_text` | — | two silkscreen strings on the same side printed through each other. The schematic has `readability.text_over_text` for this and the board had nothing, though the board is the harder case: a sheet can be zoomed and a bare board cannot, and the legend beside a connector is the only thing telling an assembler which pin is which. Fires on 6 of KiCad's 16 parsable demo boards, 173 times — real ink on ink, measured from the font size the file states rather than from a character count, which is why it is a warning and not an info |
 | `silk.text_too_small` | 0.8 mm | below the screen printer's limit it comes back a smudge |
 | `layout.pad_collision` | — | pads of two footprints sharing copper - parts placed on top of each other |
 | `layout.off_grid_placement` | 0.5 mm | footprint origins off the placement grid |

@@ -82,6 +82,23 @@ has its return current detoured around it: the loop grows by the detour
   `route.detour` reports 4x, look at what is walling the corridor off before
   touching the router: on the motor board it was the bulk-cap-to-charge-pump
   run standing between the package and the header.
+* **Order is the other half of it.** Routing one net at a time means an early
+  net takes the lane a later one needed, and the later one then goes round —
+  the op-amp's feedback wrap had thirteen millimetres to cover and took
+  fifty-six of them, because everything nearer was already spoken for. Two
+  things fix most of it. Route **shortest first**: a thirteen millimetre
+  connection has few ways to be made and a forty millimetre one has many, so
+  the short ones should choose while there is still room. And when a track
+  does come out long, **rip it up and route it first** — the same loop that
+  handles a net with no room at all handles a net with no *sensible* room,
+  and a track that still tours from first pick has nowhere better to be.
+* **Price a wrap against going round, not through.** A run from one side of a
+  package to the other cannot take the straight line, because the straight
+  line is through the package: a SOT-23-5's feedback wrap is three
+  millimetres of separation and eighteen of copper, and that is correct.
+  Measure it against the shortest path that clears the packages — which is
+  what `route.wander` does — or a re-ordering loop spends its afternoon
+  chasing wraps that were right all along.
 * **What remains is a costed decision.** I2S and SPI at single-digit
   megahertz over millimetre gaps is acceptable and waivable, with the
   frequency and the gap in the waiver text; the same crossing under a clock
@@ -225,6 +242,23 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   router takes instead cut the plane under the same net's own front copper,
   and `route.return_path` picks that up. Thirty is where neither fires, and
   finding it took a sweep, not an argument.
+* **A footprint's own zones do not move with it.** Everything else inside a
+  footprint — pads, graphics, text — is stored relative to the part and KiCad
+  places it for you. A `zone` is not: KiCad stores a footprint zone in *board*
+  coordinates, so a library entry drawn at the origin stays at the origin
+  however the part is placed. The Raspberry Pi Pico module carries two pad
+  keep-outs and for four rounds they sat at (0, −6), off the board, keeping
+  nothing out. DRC is silent — an empty region violates nothing — and the only
+  visible sign was the plot: "fit to page" fits the bounding *box*, so every
+  view of that board came out at half scale in one corner.
+  `layout.zone_outside_outline` reports it.
+* **On the silkscreen, the anchored string wins and the free one moves.** A
+  connector legend names one pin of one connector and has to sit against it; a
+  designator can go anywhere legible. So place the legends first and let the
+  designators get out of their way — the same order the schematic side uses
+  for a label and a field. And weigh a pad far above a courtyard when choosing
+  where a string goes: a legend a little close to a part is still readable,
+  and ink on a pad is a pad that will not wet.
 * **Never draw one run on top of another.** Two runs of a net that meet at a
   point and leave it along the same line are one run drawn twice: the shorter
   carries nothing the longer does not, and on the plot it reads as a track

@@ -46,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import autoroute
 
 from eda_toolkit.kicad import s_expression as sexp
+from eda_toolkit.kicad.pcb_review import _shortest_clear
 from eda_toolkit.kicad.s_expression import Bare, SNode
 from eda_toolkit.kicad.schematic import transform_pin
 
@@ -2708,8 +2709,60 @@ class Blocked(Exception):
         self.track = track
 
 
-def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Track]], list[Via]]:
-    """Route every ``auto`` track in ``order``, or say which one had no room."""
+# The ratio at which a routed track stops being a route and starts being a
+# tour. Deliberately `pcb_review.THRESHOLDS["wander_ratio"]`: the generator is
+# laying copper so that rule finds nothing, so the number it aims at has to be
+# the number the rule will measure it against.
+WANDER_LIMIT = 2.0
+# ...and its floor, for the same reason: below five millimetres of excess the
+# knee that takes a track round a pad is a detour and is also correct.
+WANDER_FLOOR_MM = 5.0
+# How many times the loop will re-order for quality. Each attempt re-routes
+# the whole board, which on the fine-pitch one is the better part of an hour,
+# and the tracks it has promoted stay at the front - so a handful of passes
+# buys most of what an afternoon of them would.
+WANDER_ATTEMPTS = 6
+
+
+def _package_boxes(design: Design) -> list[tuple[float, float, float, float]]:
+    """Every part as a rectangle, for measuring what a route had to go round.
+
+    A run from one side of a package to the other cannot take the straight
+    line, because the straight line is through the package: a SOT-23-5's
+    feedback wrap is three millimetres of separation and eighteen of copper,
+    and it is right. `route.wander` prices it against going *round*, so the
+    generator has to price it the same way or it spends its afternoon chasing
+    wraps that are correct.
+    """
+    boxes = []
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        pads = [pad_box(design, part, pad) for pad in node.children("pad")]
+        if len(pads) < 2:
+            continue
+        boxes.append(
+            (
+                min(b[0] for b in pads),
+                min(b[1] for b in pads),
+                max(b[2] for b in pads),
+                max(b[3] for b in pads),
+            )
+        )
+    return boxes
+
+
+def _route_all(
+    design: Design, order: list[Track]
+) -> tuple[list[tuple[int, Track]], list[Via], list[tuple[float, Track]]]:
+    """Route every ``auto`` track in ``order``, or say which one had no room.
+
+    The third return is what each track cost in the end: the ratio of the
+    copper it took to the straight line between its own two ends, for every
+    track that came out longer than `WANDER_LIMIT` times it. A net routed
+    last takes what the ones before it left, and what they leave is sometimes
+    a tour of the board - which is a routing order problem, not a floorplan
+    one, and the caller can do something about it.
+    """
     router = autoroute.Router(*design.board_size)
     for part in design.footprints():
         node = footprint_definition(part.footprint)
@@ -2759,6 +2812,8 @@ def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Trac
     # not shuffle when a retry changes the order things are routed in.
     place = {id(track): index for index, track in enumerate(design.tracks)}
     routed = [(place[id(t)], t) for t in design.tracks if not t.auto]
+    tours: list[tuple[float, Track]] = []
+    packages = _package_boxes(design)
     vias = list(design.vias)
     for index, track in enumerate(order):
         a, b = (resolve(design, point) for point in track.points)
@@ -2807,7 +2862,16 @@ def _route_all(design: Design, order: list[Track]) -> tuple[list[tuple[int, Trac
         for point in path.vias:
             router.add_via(track.net, point, VIA_SIZE)
             vias.append(Via(track.net, x=point[0], y=point[1], size=VIA_SIZE))
-    return routed, vias
+        laid = sum(
+            math.dist(start, end) for _layer, points in path.runs for start, end in pairwise(points)
+        )
+        # `_shortest_clear` is `route.wander`'s own baseline, imported rather
+        # than copied: the generator is laying copper so that rule finds
+        # nothing, and two implementations of the same measurement drift.
+        direct = _shortest_clear(a, b, packages)
+        if direct > 0.5 and laid > WANDER_LIMIT * direct and laid - direct > WANDER_FLOOR_MM:
+            tours.append((laid / direct, track))
+    return routed, vias, tours
 
 
 ROUTE_CACHE = Path(__file__).resolve().parent.parent / ".cache" / "routes"
@@ -2917,6 +2981,24 @@ def _cache_write(design: Design, digest: str, done: Design, order: list[Track]) 
         pass
 
 
+def _save_order(design: Design, order: list[Track]) -> None:
+    """Write the routing order down as soon as it changes, not at the end.
+
+    The order is what the rip-up loop spends its afternoon learning, and on
+    the fine-pitch board an afternoon is the literal cost: eleven rip-ups and
+    four re-orderings, an hour of routing between each. Saving only on success
+    means a machine that goes away in the middle throws all of it out. This is
+    the only state worth keeping from a run that has not finished.
+    """
+    try:
+        ROUTE_CACHE.mkdir(parents=True, exist_ok=True)
+        (ROUTE_CACHE / f"{design.name}.order.json").write_text(
+            json.dumps([_track_signature(design, t) for t in order])
+        )
+    except OSError:
+        pass
+
+
 def _learned_order(design: Design, order: list[Track]) -> list[Track]:
     """Start from the order that worked last time, where it still applies."""
     try:
@@ -2941,12 +3023,31 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
     again - the cheapest form of rip-up there is, and enough for boards this
     size. A net that fails twice is a floorplan that does not work, and says so.
 
+    A net that finds *bad* room gets the same treatment. Having somewhere to
+    go is not the same as having somewhere sensible to go: the op-amp's
+    feedback wrap has to get from one side of a SOT-23-5 to the other, and
+    routed last it took a fifty-six millimetre tour of the board to cover
+    thirteen millimetres, because everything nearer was already spoken for.
+    That is the shape `route.wander` reports and it is an ordering problem, so
+    the loop that fixes ordering fixes it: the worst tour goes to the front
+    and the set is routed again. A track that still tours from first pick has
+    nowhere better to be, and is left alone rather than chased.
+
     The result is cached against everything the router read (see
     `_routing_digest`), because most of what gets edited around here does not
     move copper and the FPGA board takes the better part of an hour to route.
     """
     design = _straighten(design)
-    order = [track for track in design.tracks if track.auto]
+    # Shortest first. A thirteen millimetre connection has few ways to be made
+    # and a forty millimetre one has many, so the short ones are the ones that
+    # have to choose while there is still room - and a short net forced into a
+    # long path is exactly the ratio `route.wander` measures. (The learned
+    # order below overrides this where it applies; this is what a fresh clone,
+    # which has no learned order, starts from.)
+    order = sorted(
+        (track for track in design.tracks if track.auto),
+        key=lambda t: math.dist(*(resolve(design, point) for point in t.points)),
+    )
     if not order:
         return _stitched(
             _chamfer_tracks(_unfold_tracks(_join_runs(_untraced(_snap_to_45(design)))))
@@ -2962,9 +3063,10 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
             )
         order = _learned_order(design, order)
     ripped: list[Track] = []
+    relaid: list[Track] = []
     while True:
         try:
-            routed, vias = _route_all(design, order)
+            routed, vias, tours = _route_all(design, order)
         except Blocked as blocked:
             if blocked.track in ripped:
                 raise SystemExit(
@@ -2975,9 +3077,30 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
             ripped.append(blocked.track)
             order.remove(blocked.track)
             order.insert(0, blocked.track)
+            _save_order(design, order)
             print(
                 f"{design.name}: ripping up for {blocked.track.net} "
                 f"{blocked.track.points} (attempt {len(ripped)})",
+                file=sys.stderr,
+            )
+            continue
+        # The worst one *this loop has not already tried*. A wrap that still
+        # tours from first pick has nowhere better to be, and taking `max` over
+        # everything would let it stand in front of the ones that do.
+        worst = max(
+            ((r, t) for r, t in tours if t not in relaid and t not in ripped),
+            key=lambda pair: pair[0],
+            default=None,
+        )
+        if worst is not None and len(relaid) < WANDER_ATTEMPTS:
+            ratio, track = worst
+            relaid.append(track)
+            order.remove(track)
+            order.insert(0, track)
+            _save_order(design, order)
+            print(
+                f"{design.name}: {track.net} {track.points} came out {ratio:.1f}x "
+                f"the straight line - routing it first (attempt {len(relaid)})",
                 file=sys.stderr,
             )
             continue
@@ -3804,7 +3927,14 @@ def emit_board(design: Design, path: Path) -> None:
         for other in design.footprints()
         for pad in footprint_definition(other.footprint).children("pad")
     ]
-    printed: list[tuple[float, float, float, float]] = []
+    # The connector legends are placed before any designator, and the
+    # designators then have to miss them: a legend names one pin of one
+    # connector and has to sit against it, while a designator can go anywhere
+    # legible. Computed here and computed again when the silk is emitted -
+    # the placement reads nothing that changes in between, so the two agree.
+    legend_boxes: list[tuple[float, float, float, float]] = []
+    _board_silk(design, legend_boxes=legend_boxes)
+    printed: list[tuple[float, float, float, float]] = list(legend_boxes)
     for part in design.footprints():
         node = footprint_definition(part.footprint)
         bx, by, angle = part.board
@@ -3813,6 +3943,7 @@ def emit_board(design: Design, path: Path) -> None:
         )
         _reuuid(node, design.name, "fp", part.ref)
         node.args.insert(2, _uuid_node(stable_uuid(design.name, "fp", part.ref)))
+        _place_footprint_zones(node, ox + bx, oy + by, angle)
         _set_property(node, "Reference", part.ref)
         _move_reference_off_pads(design, part, node, all_pads, printed)
         _set_property(node, "Value", part.value)
@@ -3879,7 +4010,7 @@ def emit_board(design: Design, path: Path) -> None:
         lines.append(_zone(design, codes["GND"], "B.Cu"))
         lines.append(_zone(design, codes["GND"], "F.Cu", smd_isolated=True))
 
-    lines.extend(_board_silk(design))
+    lines.extend(_board_silk(design, printed))
 
     lines.append(")")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -3927,6 +4058,32 @@ def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, flo
     return (min(xs), min(ys), max(xs), max(ys))
 
 
+def _place_footprint_zones(node: SNode, bx: float, by: float, angle: float) -> None:
+    """Move a footprint's own zones to where the footprint was placed.
+
+    Everything else inside a footprint - pads, graphics, text - is stored
+    relative to it and KiCad places it for you. A `zone` is not: KiCad stores
+    a footprint zone in *board* coordinates, so a library entry drawn at the
+    origin stays at the origin however the part is placed.
+
+    The Raspberry Pi Pico module carries two pad keep-outs, and for four
+    rounds they sat at (0, -6) - off the board, keeping nothing out. DRC is
+    silent (an empty region violates nothing) and the only visible sign was
+    the plot: "fit to page" fits the bounding *box*, so every view of that
+    board came out at half scale in one corner. `layout.zone_outside_outline`
+    reports it now; this is what stops it happening.
+    """
+    for zone in node.children("zone"):
+        for polygon in zone.walk("polygon"):
+            pts = polygon.child("pts")
+            for xy in pts.children("xy") if pts else []:
+                atoms = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                if len(atoms) < 2:
+                    continue
+                rx, ry = _rotate(float(atoms[0]), float(atoms[1]), angle)
+                xy.args = [round(bx + rx, 6), round(by + ry, 6)]
+
+
 def _silk_box(
     text: str, x: float, y: float, size: float, justify: str = ""
 ) -> tuple[float, float, float, float]:
@@ -3964,6 +4121,7 @@ def _silk_intrusion(
     design: Design,
     box: tuple[float, float, float, float],
     taken: list[tuple[float, float, float, float]],
+    heavy: list[tuple[float, float, float, float]] | None = None,
 ) -> float:
     """How much of other people's board a silk box takes, in mm^2.
 
@@ -3971,6 +4129,11 @@ def _silk_intrusion(
     what separates "half a legend across a module's pads" from "a tenth of a
     millimetre into a chip capacitor's courtyard": both are one collision, and
     only one of them matters.
+
+    ``heavy`` is the copper. A courtyard grazed is a legend a little close to
+    a part and `silk.over_pad` says nothing about it; a *pad* covered is a pad
+    that will not wet. Fifty times the area is what keeps the second from ever
+    winning a tie against the first.
     """
     width, height = design.board_size
     outside = (
@@ -3979,12 +4142,16 @@ def _silk_intrusion(
         + max(0.0, box[2] - (width - 1.0))
         + max(0.0, box[3] - (height - 1.0))
     )
-    over = sum(
-        max(0.0, min(box[2], c[2]) - max(box[0], c[0]))
-        * max(0.0, min(box[3], c[3]) - max(box[1], c[1]))
-        for c in taken
-    )
-    return over + outside * 100.0  # off the board is never the better option
+
+    def area(boxes):
+        return sum(
+            max(0.0, min(box[2], c[2]) - max(box[0], c[0]))
+            * max(0.0, min(box[3], c[3]) - max(box[1], c[1]))
+            for c in boxes
+        )
+
+    # off the board is never the better option, and neither is a pad
+    return area(taken) + area(heavy or []) * 50.0 + outside * 100.0
 
 
 def _silk_clear(
@@ -3996,12 +4163,21 @@ def _silk_clear(
     return _silk_intrusion(design, box, taken) <= 0.0
 
 
-def _board_silk(design: Design) -> list[str]:
+def _board_silk(
+    design: Design,
+    printed: list[tuple[float, float, float, float]] | None = None,
+    legend_boxes: list[tuple[float, float, float, float]] | None = None,
+) -> list[str]:
     """What the silkscreen says beyond the references.
 
     Three things a bare board has to answer without its schematic: which board
     it is (name and revision, bottom left), which signal is on which connector
     pin (the reverse-connection insurance), and what the indicators mean.
+
+    ``printed`` is where the designators ended up. They are placed first, in
+    the footprint emitter, and this is the only way what comes after can miss
+    them - which is the difference between "3V3 OK" beside its LED and "3V3
+    OK" printed through the word D3.
     """
     out: list[str] = []
     if not design.rev:
@@ -4011,6 +4187,14 @@ def _board_silk(design: Design) -> list[str]:
     width, height = design.board_size
     courtyards = {part.ref: _part_extent(design, part) for part in design.footprints()}
     taken = list(courtyards.values())
+    # Every string this function has put on the board so far, so the next one
+    # measures against it as well as against the parts.
+    placed: list[tuple[float, float, float, float]] = []
+    all_pads = [
+        pad_box(design, part, pad)
+        for part in design.footprints()
+        for pad in footprint_definition(part.footprint).children("pad")
+    ]
     # Bottom centre is where a board says its own name, and on a board with
     # room that is where it stays. A carrier whose module runs the length of
     # it has no bottom centre to write in, so the next-best strips are offered
@@ -4065,6 +4249,7 @@ def _board_silk(design: Design) -> list[str]:
             ]
             xs = [p[0] for _n, _p, p in pads]
             ys = [p[1] for _n, _p, p in pads]
+            own_pads = [pad_box(design, part, pad) for _n, pad, _p in pads]
             # labels go perpendicular to the pad row, on the board side, and
             # clear the whole footprint - a screw terminal's body silk would
             # swallow a pad-edge offset
@@ -4084,30 +4269,80 @@ def _board_silk(design: Design) -> list[str]:
                 # and on a carrier, where the module is inboard, it has to,
                 # because inboard is a pad and silk over a pad is a pad that
                 # will not wet.
+                # Either side of the pad row, and then further out along it.
+                # Two spots is not a choice when a chip part sits in the strip
+                # beside the connector: both are occupied and the legend takes
+                # the least bad one, which is still ink on ink.
                 if row_along_x:
-                    sides = [(px, by0 - 1.2, ""), (px, by1 + 1.2, "")]
+                    sides = [(px, by0 - gap, "") for gap in (1.2, 2.6, 4.0)] + [
+                        (px, by1 + gap, "") for gap in (1.2, 2.6, 4.0)
+                    ]
                     if height / 2 - py > 0:
-                        sides.reverse()
+                        sides = sides[3:] + sides[:3]
                 else:
-                    sides = [(bx0 - 1.6, py, "right"), (bx1 + 1.6, py, "left")]
+                    sides = [(bx0 - gap, py, "right") for gap in (1.6, 3.0, 4.4)] + [
+                        (bx1 + gap, py, "left") for gap in (1.6, 3.0, 4.4)
+                    ]
                     if width / 2 - px < 0:
-                        sides.reverse()
-                others = [box for ref, box in courtyards.items() if ref != part.ref]
+                        sides = sides[3:] + sides[:3]
+                # Deliberately *not* the designators. A legend names one pin
+                # of one connector and has to sit against it; a designator can
+                # go anywhere legible. So the legend is placed first and the
+                # designator gets out of its way - the same order the schematic
+                # side uses for a label and a field.
+                others = [
+                    *(box for ref, box in courtyards.items() if ref != part.ref),
+                    # ...and this connector's *own* pads. Its courtyard is left
+                    # out because the legend has to sit against the part it
+                    # names, but "against" is not "on": ink on a pad is a pad
+                    # that will not wet, which is what reaching further out
+                    # along the row started doing.
+                    *own_pads,
+                    *placed,
+                ]
                 tx, ty, justify = min(
                     sides,
                     key=lambda side: _silk_intrusion(
-                        design, _silk_box(net, side[0], side[1], 0.8, side[2]), others
+                        design, _silk_box(net, side[0], side[1], 0.8, side[2]), others, all_pads
                     ),
                 )
+                placed.append(_silk_box(net, tx, ty, 0.8, justify))
+                if legend_boxes is not None:
+                    legend_boxes.append(_silk_box(net, tx, ty, 0.8, justify))
                 out.append(
                     _silk_text_item(design, net, tx, ty, (part.ref, number), justify=justify)
                 )
+    for part in design.footprints():
         if part.silk_label:
             bx, by, _angle = part.board
             dy = height / 2 - by
+            # Inboard of the part first - a label at the board edge is a label
+            # half off it - then further out, then either side. The designator
+            # is already on the board by now and is the thing this collides
+            # with: both want the clear millimetre next to a two-pad part.
+            reach = math.copysign(1.0, dy)
+            spots = [
+                (bx, by + reach * 2.6, ""),
+                (bx, by + reach * 4.0, ""),
+                (bx, by - reach * 2.6, ""),
+                (bx, by - reach * 4.0, ""),
+                (bx + 4.0, by, "left"),
+                (bx - 4.0, by, "right"),
+                (bx, by + reach * 5.4, ""),
+            ]
+            tx, ty, justify = min(
+                spots,
+                key=lambda spot: _silk_intrusion(
+                    design,
+                    _silk_box(part.silk_label, spot[0], spot[1], 0.8, spot[2]),
+                    [*taken, *(printed or []), *placed],
+                    all_pads,
+                ),
+            )
+            placed.append(_silk_box(part.silk_label, tx, ty, 0.8, justify))
             out.append(
                 _silk_text_item(
-                    design, part.silk_label, bx, by + math.copysign(2.6, dy), (part.ref, "label")
+                    design, part.silk_label, tx, ty, (part.ref, "label"), justify=justify
                 )
             )
     return out

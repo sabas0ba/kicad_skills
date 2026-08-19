@@ -136,6 +136,7 @@ _AI_BLOCKING = (
     "layout.odd_rotation",
     "layout.pad_collision",
     "layout.outside_outline",
+    "layout.zone_outside_outline",
     "layout.no_decoupling",
     "layout.decoupling_distance",
     "layout.decoupling_via",

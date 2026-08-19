@@ -908,3 +908,41 @@ def test_a_foreign_track_under_a_package_is_reported():
     ]
     around = board_from(footprints=[ic], tracks=[track(10, 32, 30, 32, net="OTHER")])
     assert pcb_review.rule_route_under_package(ctx_for(around)) == []
+
+
+def test_a_keepout_left_at_the_origin_is_reported():
+    """A footprint zone is stored in board coordinates, so a placer that moves
+    the pads and forgets the zone leaves the keep-out where the library drew
+    it - and nothing else on the board complains."""
+    stray = pcb.Zone(
+        net="",
+        layers=["F.Cu"],
+        filled=False,
+        keepout=True,
+        outline=[(0.05, -5.95), (1.95, -5.95), (1.95, -4.05), (0.05, -4.05)],
+    )
+    findings = pcb_review.rule_zone_outside_outline(ctx_for(board_from(zones=[stray])))
+    assert [f.rule for f in findings] == ["layout.zone_outside_outline"]
+    assert findings[0].severity == "error"
+    assert "keep-out" in findings[0].details["zones"][0]
+
+    # the same keep-out under the part it belongs to
+    stray.outline = [(20.0, 20.0), (22.0, 20.0), (22.0, 22.0), (20.0, 22.0)]
+    assert pcb_review.rule_zone_outside_outline(ctx_for(board_from(zones=[stray]))) == []
+
+
+def test_two_silk_strings_through_each_other_are_reported():
+    board = board_from(silk=[silk("J1", 10.0, 10.0), silk("IN GND OUT", 11.0, 10.2)])
+    findings = pcb_review.rule_silk_over_silk(ctx_for(board))
+    assert [f.rule for f in findings] == ["silk.text_over_text"]
+    assert findings[0].details["examples"] == ["'J1' over 'IN GND OUT'"]
+
+    # two rows apart, and the same pair reads
+    board = board_from(silk=[silk("J1", 10.0, 10.0), silk("IN GND OUT", 11.0, 13.0)])
+    assert pcb_review.rule_silk_over_silk(ctx_for(board)) == []
+
+    # front ink cannot collide with back ink
+    board = board_from(
+        silk=[silk("J1", 10.0, 10.0), silk("IN GND OUT", 11.0, 10.2, layer="B.SilkS")]
+    )
+    assert pcb_review.rule_silk_over_silk(ctx_for(board)) == []

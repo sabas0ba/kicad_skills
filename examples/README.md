@@ -42,11 +42,10 @@ either turned into a rule, fixed in `reviewed/`, or answered with a reasoned
 waiver in the project's `gate.toml`. That pass, with what each finding became,
 is [REVIEW.md](REVIEW.md).
 
-Three of the five `reviewed/` projects **pass** their own gate. The op-amp
-filter and the FPGA board do not: between them they carry one `route.wander`
-finding, and — on the FPGA — a `route.detour`, seven `route.return_path`,
-four more `route.wander`, three acute corners and one unconnected item. Every
-one of those is a floorplan question on a two-layer board, and they are
+Four of the five `reviewed/` projects **pass** their own gate. The FPGA board
+does not: it carries a `route.detour`, seven `route.return_path`, four
+`route.wander`, three acute corners and one unconnected item. Those are
+floorplan questions on a 48-pin QFN with two layers, and they are
 [recorded in REVIEW.md](REVIEW.md) rather than waived, because a waiver would
 say the measurement was wrong and it is not. Every `as-generated/` fails.
 
@@ -161,7 +160,7 @@ charge pump, bypass and pull-up the datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 4 findings waived | 0 / 3 / 0 | 0 / 5 / 7 |
+| `reviewed` | **PASS**, 4 findings waived | 0 / 3 / 0 | 0 / 4 / 7 |
 | `as-generated` | **FAIL**, 35 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
@@ -231,7 +230,7 @@ that reaches VSYS the way the Pico datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 9 findings waived | 0 / 2 / 0 | 0 / 9 / 7 |
+| `reviewed` | **PASS**, 9 findings waived | 0 / 2 / 0 | 0 / 7 / 7 |
 | `as-generated` | **FAIL**, 34 blocking | — | — |
 
 Under KiCad's own checks `reviewed` has no errors and no unconnected items, on
@@ -291,15 +290,15 @@ filter is referenced to.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **FAIL**, 1 blocking, 4 waived | 0 / 0 / 0 | 0 / 11 / 6 |
-| `as-generated` | **FAIL**, 38 blocking | — | — |
+| `reviewed` | **PASS**, 4 findings waived | 0 / 0 / 0 | 0 / 9 / 6 |
+| `as-generated` | **FAIL**, 39 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
-errors, no unconnected items, no parity findings. What fails its gate is the
-toolkit's own measurement: one `route.wander` finding, a run of `/OUT` that
-leaves its pad and comes back. Every placement tried so far moves it between
-`+5V` and `OUT` without removing it, which is what a congested two-layer
-board looks like when the measurement is honest.
+errors, no unconnected items, no parity findings. It also passes its own
+gate now. The `route.wander` finding it used to carry was `/OUT`'s feedback
+wrap: thirteen millimetres from one side of the op-amp to the other, routed
+last, taking fifty-six millimetres round the board because everything nearer
+was already spoken for. Routing it first costs nothing and removes it.
 
 | as-generated | reviewed |
 | --- | --- |

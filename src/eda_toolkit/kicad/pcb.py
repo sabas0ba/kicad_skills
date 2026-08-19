@@ -494,7 +494,16 @@ def parse(path: str | os.PathLike[str]) -> Board:
             )
         )
 
-    for zone in root.children("zone"):
+    # A footprint may carry zones of its own - a module's pad keep-out, most
+    # often - and KiCad stores those in *board* coordinates, not footprint
+    # ones. They are board items in every way that matters here, so they are
+    # read alongside the top-level ones; a placer that forgets to move them
+    # leaves the keep-out sitting at the origin, off the board, which is
+    # exactly what `layout.zone_outside_outline` is for.
+    for zone in [
+        *root.children("zone"),
+        *(z for fp in root.children("footprint") for z in fp.children("zone")),
+    ]:
         code = int(zone.value("net", default=0) or 0)
         fill = zone.child("fill")
         fill_atoms = fill.atoms() if fill else []
