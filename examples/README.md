@@ -40,8 +40,15 @@ After the five were built, the whole set was read the way an engineer would
 read it — circuit theory, layout physics, readability — and every finding was
 either turned into a rule, fixed in `reviewed/`, or answered with a reasoned
 waiver in the project's `gate.toml`. That pass, with what each finding became,
-is [REVIEW.md](REVIEW.md). Every `reviewed/` project now **passes** its own
-gate; every `as-generated/` still fails it.
+is [REVIEW.md](REVIEW.md).
+
+Three of the five `reviewed/` projects **pass** their own gate. The op-amp
+filter and the FPGA board do not: between them they carry one `route.wander`
+finding, and — on the FPGA — a `route.detour`, seven `route.return_path`,
+four more `route.wander`, three acute corners and one unconnected item. Every
+one of those is a floorplan question on a two-layer board, and they are
+[recorded in REVIEW.md](REVIEW.md) rather than waived, because a waiver would
+say the measurement was wrong and it is not. Every `as-generated/` fails.
 
 ## When these were made, and by what
 
@@ -284,11 +291,15 @@ filter is referenced to.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 4 findings waived | 0 / 0 / 0 | 0 / 11 / 6 |
+| `reviewed` | **FAIL**, 1 blocking, 4 waived | 0 / 0 / 0 | 0 / 11 / 6 |
 | `as-generated` | **FAIL**, 38 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
-errors, no unconnected items, no parity findings.
+errors, no unconnected items, no parity findings. What fails its gate is the
+toolkit's own measurement: one `route.wander` finding, a run of `/OUT` that
+leaves its pad and comes back. Every placement tried so far moves it between
+`+5V` and `OUT` without removing it, which is what a congested two-layer
+board looks like when the measurement is honest.
 
 | as-generated | reviewed |
 | --- | --- |
@@ -327,12 +338,16 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 6 findings waived | 0 / 2 / 0 | 0 / 6 / 9 |
-| `as-generated` | **FAIL**, 26 blocking | — | — |
+| `reviewed` | **FAIL**, 5 blocking, 2 waived | 0 / 2 / 0 | 1 / 10 / 8 |
+| `as-generated` | **FAIL**, 31 blocking | — | — |
 
-Under KiCad's own checks `reviewed` has no DRC errors, nothing unconnected and
-no schematic-parity findings; silkscreen warnings between the fans are all
-that is left. The engineering pass in [REVIEW.md](REVIEW.md) found and fixed
+Under KiCad's own checks `reviewed` has one unconnected item left and no
+other DRC error; the schematic has no parity findings and silkscreen warnings
+between the fans are the rest. It is the one board in the set whose *routing*
+is still wrong rather than merely tight — `route.detour` on VCCPLL at 5x,
+`route.return_path` on seven signals, `route.wander` on four runs and three
+acute corners — and [REVIEW.md](REVIEW.md) says why each one is a floorplan
+question rather than a waiver. The engineering pass there found and fixed
 four real electrical faults here: the PCM5102A's charge pump was miswired
 (flying cap to ground instead of CAPP-CAPM — the DAC had no negative rail),
 VCCPLL was tied straight to the core rail instead of RC-filtered from it, the
@@ -436,8 +451,14 @@ And the two things no rule caught at all became rules in the review round:
   `route.return_path` (signal over cuts in the other layer's ground fill —
   the electromagnetic cost of the two-layer choice).
 * **Strings printed through each other** → `readability.text_over_text` (any
-  two printed strings whose extents overlap, or a string across a symbol
-  body). Nothing about it changes the netlist, so only the plot shows it.
+  two printed strings whose extents overlap — a designator, a value, a
+  rating, a design note or a net label — or any of them across a symbol
+  body). The body is the shape KiCad draws, read out of the schematic's own
+  `lib_symbols`: an LED's two pins span 2.54 mm and its arrows reach 4.6 mm
+  the other way, so a value cleared of the *pins* still prints through the
+  part. Nothing about it changes the netlist, so only the plot shows it —
+  which is why every one of these was found by re-rendering rather than by
+  running the tool.
 
 [REVIEW.md](REVIEW.md) is the full pass: what was found, what each finding
 became, and the calibration of every new rule against KiCad's demo corpus.

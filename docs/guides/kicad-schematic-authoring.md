@@ -150,6 +150,27 @@ in a note beside them (`test.no_testpoints` notices when there are none).
 * **A power symbol's name moves too.** Four grounds hanging off one row of
   pins put four "GND"s on one line a pin pitch apart, which prints as
   GNGNGNGND. Offer the row below and either side of the stem.
+* **Measure against the shape the part is drawn as, not the box its pins
+  span.** They are not the same box and the difference is not small: an LED's
+  two pins are 2.54 mm apart and its emission arrows reach 4.6 mm off to one
+  side, so a rating block cleared of the pins prints straight through the
+  part. The outline is in the file — a schematic embeds the full library
+  definition of every symbol it uses, graphics included — so both the author
+  and `readability.text_over_text` can read the same rectangle out of
+  `lib_symbols`.
+* **A rotated part flips its own fields.** KiCad adds the symbol's angle to
+  each field's, and where the sum is half a turn it keeps the glyphs upright
+  by swapping the justification rather than printing them upside down. So a
+  string meant to read to the *right* of its anchor has to be written
+  `justify right` on a part standing at 90°. Get it wrong and every rotated
+  part's fields print on the opposite side from the one they were placed on,
+  which no amount of collision checking will catch — the check and the plot
+  are looking at different rectangles.
+* **A note is the string with room to move.** A field is anchored to its part
+  and a label to its wire; a sentence explaining the circuit only has to be
+  *near* it. So place the notes last, against everything already on the
+  paper — the title block included, because a sentence running into it is the
+  first collision a reader sees — and let them be the ones that give way.
 * **Give each field a list of spots, not one spot.** Where a field goes is a
   question with several right answers and one wrong one, which is "wherever
   the geometry put it". State the spots in order of preference and take the
@@ -180,8 +201,9 @@ in a note beside them (`test.no_testpoints` notices when there are none).
 * **Notes, power flags and the title block get their own ground.** Notes go
   below or beside the circuit, never on it (`readability.text_over_symbol`);
   nothing goes on the outer frame strip or the title block corner
-  (`readability.margin_intrusion`); the flag row needs a clear strip of
-  sheet. When the circuit grows, these placements must move — they were
+  (`readability.margin_intrusion`, which measures the note's whole box, not
+  its anchor — a sentence can start clear of the title block and still end
+  inside it); the flag row needs a clear strip of sheet. When the circuit grows, these placements must move — they were
   chosen for the old extent.
 
 ## The failure the netlist never shows

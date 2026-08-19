@@ -214,10 +214,12 @@ RULE_SPEC: dict[str, RuleSpec] = {
         threshold="min_row_pins",
     ),
     "readability.margin_intrusion": RuleSpec(
-        "a pin or a text note inside the page's frame strip or on the title "
-        "block, where it prints over the sheet furniture. Info, not warning: "
-        "mounting holes and logos live there on purpose on human sheets, and "
-        "the ai-generated policy promotes it regardless",
+        "a pin, or any part of a text note, inside the page's frame strip or "
+        "on the title block, where it prints over the sheet furniture. A "
+        "note is measured by its extent, not its anchor - a sentence can "
+        "start clear of the block and still end inside it. Info, not "
+        "warning: mounting holes and logos live there on purpose on human "
+        "sheets, and the ai-generated policy promotes it regardless",
         "info",
         threshold="page_margin_mm",
     ),
@@ -1298,8 +1300,15 @@ def rule_margin_intrusion(ctx: ReviewContext) -> list[Finding]:
             width, height = size
             if x < margin or y < margin or x > width - margin or y > height - margin:
                 return True
-            # KiCad's standard title block: ~110 mm wide, ~30 mm tall, bottom right
-            return x > width - 115.0 and y > height - 30.0
+            # KiCad's standard title block: 110 mm wide inside a 10 mm frame,
+            # and as tall as the rows it prints - title, sheet, file, size,
+            # date, revision and the comment lines, which reaches 44 mm down
+            # from the frame on a sheet that fills them in.
+            return x > width - 120.0 and y > height - 44.0
+
+        def furniture_box(size: tuple[float, float] = doc.paper_size):
+            width, height = size
+            return (width - 120.0, height - 44.0, width - margin, height - margin)
 
         for sym in doc.symbols:
             if sym.is_power:
@@ -1309,7 +1318,19 @@ def rule_margin_intrusion(ctx: ReviewContext) -> list[Finding]:
                     intrusions.append(f"{doc.path.name}:{sym.reference or sym.lib_id}")
                     break
         for item in doc.text_items:
-            if in_furniture(item.x, item.y):
+            # A note's anchor is its top left corner, so the anchor alone says
+            # nothing: the sentence that ran into the carrier's title block
+            # started 12 mm clear of it and was 67 mm long. Measure the box.
+            box = _text_extent(item)
+            width, height = doc.paper_size
+            if (
+                in_furniture(item.x, item.y)
+                or _boxes_meet(box, furniture_box())
+                or box[0] < margin
+                or box[1] < margin
+                or box[2] > width - margin
+                or box[3] > height - margin
+            ):
                 snippet = item.text.splitlines()[0][:40]
                 intrusions.append(f"{doc.path.name}:text '{snippet}'")
     intrusions = sorted(set(intrusions))
@@ -1344,11 +1365,11 @@ def rule_text_over_wire(ctx: ReviewContext) -> list[Finding]:
         if not segments:
             continue
         for sym in doc.symbols:
-            for name, (px, py, justify) in sym.property_at.items():
+            for name in list(sym.property_at):
                 text = sym.properties.get(name, "")
                 if not text or name in ("Footprint", "Datasheet", "MPN", "Manufacturer"):
                     continue
-                box = _field_extent(text, px, py, justify)
+                box = _field_box(sym, name, text)
                 for a, b in segments:
                     if _segment_hits_rect(a, b, box):
                         collisions.append(
@@ -1388,43 +1409,40 @@ def rule_text_over_text(ctx: ReviewContext) -> list[Finding]:
     for doc in ctx.docs:
         items: list[tuple[tuple[float, float, float, float], str]] = []
         for sym in doc.symbols:
-            for name, (px, py, justify) in (sym.property_at or {}).items():
+            for name in list(sym.property_at):
                 if name in ("Footprint", "Datasheet", "MPN", "Manufacturer"):
                     continue
                 text = sym.properties.get(name, "")
                 if text:
                     items.append(
-                        (
-                            _turned(_field_extent(text, px, py, justify), px, py, 0.0),
-                            f"{sym.reference or sym.lib_id} {name}",
-                        )
+                        (_field_box(sym, name, text), f"{sym.reference or sym.lib_id} {name}")
                     )
         for label in doc.labels:
             box = _field_extent(label.text, label.x, label.y, label.justify)
             items.append((_turned(box, label.x, label.y, label.angle), f"label {label.text}"))
-        # A symbol's extent comes from its pins, so a two-pin part standing
-        # upright measures zero wide - and a name printed down its middle
-        # would read as clear. Nothing is narrower than about a pin pitch.
+        # A design note is text on the same paper as everything else. It has
+        # the room to be moved that a field anchored to a part does not, which
+        # makes it the easiest of the three to fix and the one most worth
+        # reporting.
+        for note in doc.text_items:
+            snippet = note.text.splitlines()[0][:24]
+            items.append((_text_extent(note), f"note '{snippet}'"))
+        # The box KiCad draws, not the box the pins span: an LED's two pins
+        # are 2.54 mm apart and its arrows reach 4.6 mm the other way, so a
+        # value cleared of the pins still prints through the part. Power
+        # symbols are left out - their name sits under the glyph by KiCad's
+        # own convention, and calling that a collision would fault every
+        # ground on every sheet ever drawn.
         bodies = []
         for sym in doc.symbols:
-            box = sym.bbox() if not sym.is_power else None
-            if not box:
-                continue
-            pad_x = max(0.0, 1.27 - (box[2] - box[0]) / 2)
-            pad_y = max(0.0, 1.27 - (box[3] - box[1]) / 2)
-            bodies.append(
-                (
-                    (box[0] - pad_x, box[1] - pad_y, box[2] + pad_x, box[3] + pad_y),
-                    sym.reference or sym.lib_id,
-                )
-            )
+            box = sym.body_bbox() if not sym.is_power else None
+            if box:
+                bodies.append((box, sym.reference or sym.lib_id))
         for index, (box, what) in enumerate(items):
             for other, other_what in items[index + 1 :]:
                 if _boxes_meet(box, other):
                     collisions.append(f"{doc.path.name}:{what} over {other_what}")
             for body, ref in bodies:
-                if what.startswith(f"{ref} "):
-                    continue  # a part's own fields sit against its own body
                 if _boxes_meet(box, body):
                     collisions.append(f"{doc.path.name}:{what} over {ref}")
     collisions = sorted(set(collisions))
@@ -1472,6 +1490,26 @@ def _turned(box, x: float, y: float, angle: float):
     return (x + dy0, y - dx1, x + dy1, y - dx0)
 
 
+_FLIP = {"left": "right", "right": "left"}
+
+
+def _field_box(sym: schematic.Symbol, name: str, text: str):
+    """Where a symbol field's ink actually lands on the sheet.
+
+    A field carries its own angle *and* inherits the symbol's, and KiCad adds
+    the two. At 180 degrees it would print backwards, so KiCad keeps the
+    glyphs upright and swaps the justification instead - which is why a value
+    written `justify left` on a part rotated 90 degrees prints to the *left*
+    of its anchor. Reading the stored justification literally puts the box on
+    the wrong side of the part, and every rule built on it then measures air.
+    """
+    px, py, justify = sym.property_at[name]
+    angle = (sym.angle + sym.property_angle.get(name, 0.0)) % 360
+    if round(angle) in (180, 270):
+        justify = " ".join(_FLIP.get(word, word) for word in justify.split())
+    return _turned(_field_extent(text, px, py, justify), px, py, angle)
+
+
 def _field_extent(text: str, x: float, y: float, justify: str) -> tuple[float, float, float, float]:
     """The box a symbol field roughly covers, from its anchor and justify.
 
@@ -1480,7 +1518,11 @@ def _field_extent(text: str, x: float, y: float, justify: str) -> tuple[float, f
     apart as clear of each other, which on the plot is one unreadable word.
     """
     width = len(text) * 1.4
-    height = 1.6
+    # A row is taller than the 1.27 mm glyph: KiCad stacks a symbol's own
+    # fields on a 2.54 mm pitch, and the plot shows that two strings one pin
+    # pitch apart - 1.27 mm - print through each other. 1.9 mm is the height
+    # that separates those two cases and nothing else.
+    height = 1.9
     if "right" in justify:
         x0, x1 = x - width, x
     elif "left" in justify:
@@ -1546,7 +1588,7 @@ def rule_text_over_symbol(ctx: ReviewContext) -> list[Finding]:
         for sym in doc.symbols:
             if sym.is_power:
                 continue
-            box = sym.bbox()
+            box = sym.body_bbox()
             if box:
                 boxes.append((box, sym.reference or sym.lib_id))
         for item in doc.text_items:

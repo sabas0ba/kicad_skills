@@ -800,3 +800,94 @@ def test_a_name_printed_down_a_two_pin_part_is_reported():
     # reading the other way, off the part, is clear
     doc.labels = [Label(text="LED_A", kind="local", x=50.0, y=45.0, angle=90.0, justify="left")]
     assert sch_review.rule_text_over_text(sheet_ctx(doc)) == []
+
+
+def test_a_note_that_ends_inside_the_title_block_is_reported():
+    from eda_toolkit.kicad.schematic import Text
+
+    # The anchor is 12 mm clear of the block; the sentence is 67 mm long.
+    doc = sheet(paper=(297.0, 210.0))
+    doc.text_items = [
+        Text(
+            text="The back plane necessarily opens under the module's two rows",
+            x=165.1,
+            y=168.0,
+            justify="left top",
+        )
+    ]
+    findings = sch_review.rule_margin_intrusion(sheet_ctx(doc))
+    assert [f.rule for f in findings] == ["readability.margin_intrusion"]
+
+    # the same sentence in the left column clears it
+    doc.text_items[0].x = 20.32
+    assert sch_review.rule_margin_intrusion(sheet_ctx(doc)) == []
+
+
+def test_a_value_clear_of_the_pins_can_still_be_drawn_through_the_part():
+    # An LED's two pins are 2.54 mm apart and its emission arrows reach
+    # 4.6 mm off to one side. Measured against the pins the value is clear;
+    # measured against the shape KiCad draws it is printed on the arrows.
+    led = placed(
+        "D1",
+        50.0,
+        50.0,
+        [pin("1", 50.0, 48.73), pin("2", 50.0, 51.27)],
+        lib_id="Device:LED",
+        outline=[(48.73, 48.73), (54.6, 51.27)],
+        properties={"Value": "green"},
+        property_at={"Value": (52.0, 50.0, "left")},
+    )
+    findings = sch_review.rule_text_over_text(sheet_ctx(sheet(symbols=[led])))
+    assert findings[0].details["examples"] == ["sheet.kicad_sch:D1 Value over D1"]
+
+    # the same string on the other side of the part, where nothing is drawn
+    led.property_at["Value"] = (45.0, 50.0, "right")
+    assert sch_review.rule_text_over_text(sheet_ctx(sheet(symbols=[led]))) == []
+
+
+def test_a_rotated_part_prints_its_fields_on_the_side_kicad_puts_them():
+    # KiCad adds the symbol's angle to the field's own; at half a turn it
+    # keeps the glyphs upright and swaps the justification instead. So this
+    # `justify left` value prints to the *left* of its anchor, over the part.
+    part = placed(
+        "R1",
+        50.0,
+        50.0,
+        [pin("1", 50.0, 47.0), pin("2", 50.0, 53.0)],
+        angle=90.0,
+        properties={"Value": "10k"},
+        property_at={"Value": (54.0, 50.0, "left")},
+        property_angle={"Value": 90.0},
+    )
+    findings = sch_review.rule_text_over_text(sheet_ctx(sheet(symbols=[part])))
+    assert findings[0].details["examples"] == ["sheet.kicad_sch:R1 Value over R1"]
+
+    # read literally - no flip - the box is 4.2 mm to the right and clear
+    part.property_angle["Value"] = 0.0
+    part.angle = 0.0
+    assert sch_review.rule_text_over_text(sheet_ctx(sheet(symbols=[part]))) == []
+
+
+def test_a_note_printed_through_a_designator_is_reported():
+    from eda_toolkit.kicad.schematic import Text
+
+    doc = sheet(
+        symbols=[
+            placed(
+                "R1",
+                80.0,
+                80.0,
+                properties={"Reference": "R1"},
+                property_at={"Reference": (60.0, 40.0, "left")},
+            )
+        ]
+    )
+    doc.text_items = [Text(text="C1 100n bypasses the rail", x=55.0, y=39.0, justify="left top")]
+    findings = sch_review.rule_text_over_text(sheet_ctx(doc))
+    assert findings[0].details["examples"] == [
+        "sheet.kicad_sch:R1 Reference over note 'C1 100n bypasses the rai'"
+    ]
+
+    # the same note two rows further down clears the designator
+    doc.text_items = [Text(text="C1 100n bypasses the rail", x=55.0, y=44.0, justify="left top")]
+    assert sch_review.rule_text_over_text(sheet_ctx(doc)) == []

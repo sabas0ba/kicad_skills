@@ -486,3 +486,54 @@ of routing; they are recorded here rather than waived. The opamp board keeps
 one wander finding: every placement tried moves it between `+5V` and `OUT`
 without removing it, which is what a congested two-layer board looks like when
 the measurement is honest.
+
+## 13. The reviewer's pass, round eight: the boxes were the wrong boxes
+
+Round seven took `readability.text_over_text` to zero on all five sheets and
+called the red circles closed. Re-rendering the plots said otherwise: an LED
+with its ratings printed across its own arrows, a note running through a
+capacitor's designator, "50ppm" and "GND" printed on the same line, a
+sentence lapping the title block.
+
+The rule reported none of them, and for one reason each time - it was
+measuring a rectangle that is not the one on the paper.
+
+### What went into the tool
+
+| built in | kind | what it catches |
+| --- | --- | --- |
+| `Symbol.outline` / `Symbol.body_bbox` | parser | the shape KiCad actually draws. A schematic embeds the full library definition of every symbol it uses, graphics included, so the outline is knowable from the file alone. It had been guessed from the pins, and an LED's two pins span 2.54 mm while its emission arrows reach 4.6 mm the other way - which is why a value "cleared of the pins" printed through the part |
+| `Symbol.property_angle` / `sch_review._field_box` | parser + rule | which way a field reads. KiCad adds the symbol's own rotation to the field's, and where the sum is half a turn it keeps the glyphs upright by swapping the justification instead. Every rotated part's fields were therefore measured on the opposite side from the one they print on - the check and the plot were looking at different rectangles |
+| notes in `readability.text_over_text` | rule | a design note printed through a designator, a value or another note. The rule had compared fields with fields and fields with symbols, and left the third kind of string on the sheet out of it |
+| `readability.margin_intrusion` measured by extent | rule | a note that *ends* on the title block. It had tested the anchor point alone, and the sentence that ran into the carrier's title block started 12 mm clear of it and was 67 mm long. The block's own geometry was wrong too - 110 mm wide inside a 10 mm frame and 44 mm tall on a sheet that fills its comment rows, not the 115 by 30 the rule assumed. On KiCad's demo corpus this takes it from 1 sheet and 5 findings to 2 and 7 |
+| a 1.9 mm text row | rule | two strings one pin pitch apart. The row had been measured at 1.6 mm, which reads 1.27 mm of separation as a third of a millimetre of overlap - inside the tolerance, and on the plot one unreadable word. KiCad stacks a part's own fields on a 2.54 mm pitch, and 1.9 mm is what separates those two cases |
+
+That last change is why the corpus numbers moved: `text_over_text` now fires
+on 15 of KiCad's 18 demo sheets rather than 14, and `text_over_wire` on 11
+rather than 10 - but `text_over_wire` reports 602 findings where it reported
+942, because the boxes that were on the wrong side of a rotated part have
+stopped being counted. Both stay **info**, promoted to errors by the
+`ai-generated` policy.
+
+### What the tool then made us fix
+
+| fixed | how | measured |
+| --- | --- | --- |
+| ratings printed through their own part | the generator measured the block against the pin column plus 2 mm. It reads the same library outline the rule reads now, and a part's own body is on the list its designator and value have to miss | buck's D2, the carrier's D1 and D3, the motor board's D2 and C3, the opamp's R1/R2/C3/C6 |
+| a lying part's ratings placed blind | only the *upright* branch searched for clear paper; a part on its side stacked its ratings 5.08 mm under its body whatever was there. Under the FPGA board's oscillator sits its own ground symbol, so "50ppm" printed through the word GND. The flat case now asks the same question - which row, how far left or right | fpga: `X1 Tolerance over #PWR20 Value`, to 0 |
+| every rotated part's fields on the wrong side | the generator picks a side and then writes the justification KiCad will render, flipping it where the symbol's rotation flips it. Placing text against a rule while writing a file the rule reads differently is not placement at all | all five sheets |
+| a note through the circuit, and through the title block | notes are emitted last and are the string with room to move: a field is anchored to its part and a label to its wire, but a sentence only has to be near its subject. Each block now slides to the nearest clear paper within a centimetre, measured against the symbols, every string already placed, the wires, and the title block | motor: the bridge note off D2; fpga: the bank note off C12; carrier: the plane note out of the title block |
+| a note ending on the title block | the carrier's plane note is fifty-eight characters starting in the right-hand column: 67 mm of sentence with 55 mm of paper beside it. No amount of sliding fixes a line wider than the space left for it, so the anchor moved to the left column - which is the case the slide *cannot* handle, and worth saying so | carrier: `margin_intrusion` 2 → 0 |
+| a designator with a wire either side | six candidate spots above a two-pin part are none at all when both flanks carry a net. The ladder reaches outwards now, and a `PWR_FLAG`'s name ladder was half duplicates - it read `justify left` for the spot to its left, which puts the same box back over the flag | `text_over_wire` on the reviewed sheets: 8 → 0 |
+
+The fixture moved too. `tests/fixtures/example_project` had `10k` printed
+down its own resistor and `100n` on both capacitors' plates - three collisions
+that had been there since the fixture was written and that nothing could see.
+
+### Where the five sheets stand
+
+`readability.text_over_text`, `text_over_wire` and `text_over_symbol` all
+report **0 on every `reviewed/` sheet**, measured against the drawn outlines
+rather than the pin boxes. The one collision left anywhere in the set is on
+`opamp-filter/as-generated`, where two net labels print through each other -
+which is the variant whose job is to be wrong.

@@ -411,6 +411,67 @@ def symbol_pins(lib_id: str, unit: int | None = None) -> list[PinDef]:
     return out
 
 
+def symbol_body(lib_id: str, unit: int | None = None) -> list[tuple[float, float]]:
+    """The corners of the shape the library draws, in library coordinates.
+
+    Pins are a poor stand-in for it. An LED's two pins span 2.54 mm and its
+    emission arrows reach 4.6 mm off to one side; a value cleared of the pins
+    still prints through the part, which is exactly what the plot showed.
+    """
+    corners: list[tuple[float, float]] = []
+    for sub in symbol_definition(lib_id).children("symbol"):
+        name = str(sub.atom(0, ""))
+        parts = name.rsplit("_", 2)
+        this = int(parts[1]) if len(parts) == 3 and parts[1].isdigit() else 0
+        if unit is not None and this not in (unit, 0):
+            continue
+        for poly in sub.children("polyline"):
+            pts = poly.child("pts")
+            for xy in pts.children("xy") if pts else []:
+                atoms = xy.atoms()
+                if len(atoms) >= 2:
+                    corners.append((float(atoms[0]), float(atoms[1])))
+        for rect in sub.children("rectangle"):
+            start, end = rect.child("start"), rect.child("end")
+            if start is None or end is None:
+                continue
+            sx, sy = (float(a) for a in start.atoms()[:2])
+            ex, ey = (float(a) for a in end.atoms()[:2])
+            corners.extend([(sx, sy), (ex, sy), (ex, ey), (sx, ey)])
+        for circle in sub.children("circle"):
+            centre = circle.child("center")
+            if centre is None:
+                continue
+            cx, cy = (float(a) for a in centre.atoms()[:2])
+            r = float(circle.value("radius", default=0.0) or 0.0)
+            corners.extend([(cx - r, cy - r), (cx + r, cy + r)])
+        for arc in sub.children("arc"):
+            for tag in ("start", "mid", "end"):
+                node = arc.child(tag)
+                if node is not None:
+                    atoms = node.atoms()
+                    corners.append((float(atoms[0]), float(atoms[1])))
+    return corners
+
+
+def body_box(part: Part) -> tuple[float, float, float, float] | None:
+    """Where on the sheet the part is actually drawn, pins and graphics both."""
+    pts = [pin_geometry(part, pin)[0] for pin in symbol_pins(part.lib_id, part.unit)]
+    sx, sy = part.sheet
+    pts += [
+        transform_pin(cx, cy, sx, sy, part.angle, part.mirror)
+        for cx, cy in symbol_body(part.lib_id, part.unit)
+    ]
+    if not pts:
+        return None
+    return (
+        min(p[0] for p in pts),
+        min(p[1] for p in pts),
+        max(p[0] for p in pts),
+        max(p[1] for p in pts),
+    )
+
+
 def pin_geometry(part: Part, pin: PinDef) -> tuple[tuple[float, float], tuple[float, float]]:
     """Where the pin ends on the sheet, and where a stub off it would end.
 
@@ -1257,25 +1318,46 @@ def emit_schematic(design: Design) -> str:
                 f'(uuid "{stable_uuid(design.name, "junction", a[0], a[1])}"))'
             )
 
-    for index, note in enumerate(design.notes, start=1):
+    # What a note must not print over. The title block is on the list because
+    # it is printed text like any other, and a sentence that runs into it is
+    # the one collision a reader sees before they see the circuit.
+    page_w, page_h = {"A4": (297.0, 210.0), "A3": (420.0, 297.0)}.get(design.paper, (297.0, 210.0))
+    # The title block is 120 mm wide and 44 mm tall on the sheets KiCad draws
+    # with this many comment rows; the numbers are rounded outwards, because a
+    # note that stops one millimetre short of it still reads.
+    note_avoid = [
+        body_boxes,
+        text_index,
+        wire_index,
+        [(page_w - 125.0, page_h - 46.0, page_w + 12.0, page_h + 12.0)],
+    ]
+
+    if design.notes:
         # Below the circuit, not beside it. Started at the top of the sheet the
         # notes ran straight through the input section - which no rule catches,
         # because nothing about it changes the netlist. It is only visible by
         # looking at the plot, which is why the plot is in the documentation.
-        y = design.notes_at[1] + index * 5.08
-        escaped = note.replace('"', '\\"')
-        body.append(
-            f'  (text "{escaped}" (at {design.notes_at[0]} {round(y, 2)} 0) '
-            f'{_effects(justify="left top")} (uuid "{stable_uuid(design.name, "note", index)}"))'
-        )
+        first = (design.notes_at[0], design.notes_at[1] + 5.08)
+        dx, dy = _place_note(design.notes, first, 5.08, note_avoid)
+        text_index.add(_note_box(design.notes, first[0] + dx, first[1] + dy, 5.08))
+        for index, note in enumerate(design.notes, start=1):
+            y = design.notes_at[1] + index * 5.08 + dy
+            escaped = note.replace('"', '\\"')
+            body.append(
+                f'  (text "{escaped}" (at {round(design.notes_at[0] + dx, 2)} {round(y, 2)} 0) '
+                f"{_effects(justify='left top')} "
+                f'(uuid "{stable_uuid(design.name, "note", index)}"))'
+            )
     # Anchored notes: each block sits beside the circuit it explains, so the
     # reader never has to carry a sentence across the sheet to its subject.
     for bindex, (at, block) in enumerate(design.note_blocks, start=1):
+        dx, dy = _place_note(block, at, 4.0, note_avoid)
+        text_index.add(_note_box(block, at[0] + dx, at[1] + dy, 4.0))
         for lindex, line in enumerate(block):
-            y = at[1] + lindex * 4.0
+            y = at[1] + lindex * 4.0 + dy
             escaped = line.replace('"', '\\"')
             body.append(
-                f'  (text "{escaped}" (at {at[0]} {round(y, 2)} 0) '
+                f'  (text "{escaped}" (at {round(at[0] + dx, 2)} {round(y, 2)} 0) '
                 f"{_effects(justify='left top')} "
                 f'(uuid "{stable_uuid(design.name, "noteblock", bindex, lindex)}"))'
             )
@@ -1283,6 +1365,47 @@ def emit_schematic(design: Design) -> str:
     lines += body
     lines += ["  (sheet_instances", '    (path "/" (page "1"))', "  )", ")"]
     return "\n".join(lines) + "\n"
+
+
+def _note_box(lines: list[str], x: float, y: float, pitch: float):
+    """The block a run of note lines covers, as `sch_review._text_extent` sees it.
+
+    Notes are anchored `left top`, one `(text ...)` item per line, so the
+    block is as wide as its longest line and as tall as one row per line.
+    """
+    widest = max((len(line) for line in lines), default=0)
+    return (x, y, x + widest * 1.1, y + (len(lines) - 1) * pitch + 2.54)
+
+
+# How far a block of notes may be slid to find clear paper, ordered nearest
+# first so a note with room keeps the spot it was given. Two centimetres is
+# about the limit of "beside the circuit it explains", which is the whole
+# reason it is where it is; the ordering means the reach is only used when the
+# near paper is full.
+_NOTE_SHIFTS = sorted(
+    {
+        (round(dx, 4), round(dy, 4))
+        for dx in (0.0, *(sign * n * 2.54 for n in range(1, 9) for sign in (1, -1)))
+        for dy in (0.0, *(sign * n * 2.54 for n in range(1, 9) for sign in (1, -1)))
+    },
+    key=lambda d: (abs(d[0]) + abs(d[1]), abs(d[0]), d[1] < 0, d[0] < 0),
+)
+
+
+def _place_note(lines: list[str], at, pitch: float, obstacles) -> tuple[float, float]:
+    """Slide a block of notes to the nearest paper nothing else is printed on.
+
+    Of the three kinds of string on a sheet a note is the one with room to
+    move: a field is anchored to its part and a label to its wire, but a
+    sentence explaining the circuit only has to be near it. So the notes go
+    last and they are the ones that give way.
+    """
+    scored = []
+    for rank, (dx, dy) in enumerate(_NOTE_SHIFTS):
+        box = _note_box(lines, at[0] + dx, at[1] + dy, pitch)
+        scored.append((sum(_hits(group, box) for group in obstacles), rank, dx, dy))
+    scored.sort(key=lambda item: item[:2])
+    return scored[0][2], scored[0][3]
 
 
 def _wire(design: Design, ref: str, number: str, a, b) -> str:
@@ -1330,21 +1453,17 @@ def _label_options(at, end) -> list[tuple[float, str]]:
 
 
 def _body_boxes(design: Design) -> list[tuple[float, float, float, float]]:
-    """Every symbol as `rule_text_over_text` sees it: pins, then a pin pitch.
+    """Every symbol as `rule_text_over_text` sees it: the shape KiCad draws.
 
-    A two-pin part standing upright measures zero wide from its pins alone,
-    and a name printed down its middle would read as clear of it.
+    The review rule reads the same outline out of the schematic's own
+    `lib_symbols`, so both sides are looking at the same rectangle - which is
+    the only way placing text to satisfy the rule can be honest.
     """
     boxes = []
     for part in design.parts:
-        pts = [pin_geometry(part, pin)[0] for pin in symbol_pins(part.lib_id, part.unit)]
-        if len(pts) < 2:
-            continue
-        x0, y0 = min(p[0] for p in pts), min(p[1] for p in pts)
-        x1, y1 = max(p[0] for p in pts), max(p[1] for p in pts)
-        pad_x = max(0.0, 1.27 - (x1 - x0) / 2)
-        pad_y = max(0.0, 1.27 - (y1 - y0) / 2)
-        boxes.append((x0 - pad_x, y0 - pad_y, x1 + pad_x, y1 + pad_y))
+        box = body_box(part)
+        if box is not None:
+            boxes.append(box)
     return boxes
 
 
@@ -1604,7 +1723,7 @@ def _text_box(text: str, x: float, y: float, justify: str) -> tuple[float, float
     looking at the same rectangle the rule will look at, not a near miss.
     """
     width = len(text) * 1.4
-    height = 1.6
+    height = 1.9
     if "right" in justify:
         x0, x1 = x - width, x
     elif "left" in justify:
@@ -1735,10 +1854,14 @@ def _power_flag(
         (
             round(x + dx, 4),
             round(y - dy, 4),
-            "left" if dx < 0 else "right",
+            # The name reads *away* from the flag: to the left of it, right
+            # justified. Written the other way round the two sides produce
+            # almost the same box, so half the ladder was a duplicate of the
+            # other half and the flag had half the room it looked like it had.
+            "right" if dx < 0 else "left",
         )
-        for dy in (6.35, 7.62, 10.16, 12.7, 15.24)
-        for dx in (1.27, -1.27, 3.81, -3.81, 7.62, -7.62)
+        for dy in (6.35, 7.62, 10.16, 12.7, 15.24, 17.78, 20.32)
+        for dx in (1.27, -1.27, 3.81, -3.81, 7.62, -7.62, 11.43, -11.43)
     ]
     vx, vy, vjust = _pick_field("PWR_FLAG", candidates, wires, avoid, texts)
     if texts is not None:
@@ -1788,6 +1911,21 @@ def _symbol_instance(
     root = stable_uuid(design.name, "sheet")
     mirror = f" (mirror {part.mirror})" if part.mirror else ""
     text_angle = part.angle % 180  # 90/270 need the counter-turn, 0/180 do not
+    # KiCad adds the symbol's rotation to the field's own angle, and where the
+    # sum is half a turn it keeps the glyphs upright by swapping the
+    # justification rather than printing them upside down. So a string the
+    # placer decided should read to the *right* of its anchor has to be
+    # written `justify right` on a part standing at 90 degrees. Without this
+    # every rotated part's fields printed on the opposite side from the one
+    # they were measured on - which is how an LED ended up with its ratings
+    # drawn through its own arrows.
+    flip = round((part.angle + text_angle) % 360) in (180, 270)
+
+    def written(justify: str) -> str:
+        if not flip:
+            return justify
+        return " ".join({"left": "right", "right": "left"}.get(w, w) for w in justify.split())
+
     # A passive's ratings belong on the page, not only in the machine-checked
     # fields: an engineer reads "100n 50V 10%" at the part, not in a table.
     # An upright small part gets value and ratings together beside the body -
@@ -1804,18 +1942,24 @@ def _symbol_instance(
     side, justify = 1.0, "left"
     nudge = 0.0
     block_offset = 3.81
+    flat_dx, flat_dy = 0.0, 5.08
     block: tuple[float, float, float, float] | None = None
     rows_n = len(ratings) + 1 if side_value else len(ratings)
-    # The symbol's own ground. Measured from the pins plus 2 mm, because a
-    # symbol is wider than its pin column - a diode's emission arrows reach out
-    # past its body, and a block that clears the pins can still be drawn on
-    # them.
-    own = (
-        min(p[0] for p in points) - 2.0,
-        top - 1.0,
-        max(p[0] for p in points) + 2.0,
-        bottom + 1.0,
+    # The symbol's own ground, from the shape the library actually draws. The
+    # pin column is not it: a diode's emission arrows reach 4.6 mm past its
+    # pins, and a block measured against the pins alone prints on them.
+    drawn = body_box(part) or (
+        min(p[0] for p in points),
+        top,
+        max(p[0] for p in points),
+        bottom,
     )
+    own = (drawn[0] - 0.5, min(drawn[1], top) - 1.0, drawn[2] + 0.5, max(drawn[3], bottom) + 1.0)
+    # From here on "above the part" and "below the part" mean above and below
+    # what KiCad draws. A regulator's rectangle stands 2.5 mm proud of its top
+    # pin row, so a designator placed one row above the *pins* is a designator
+    # printed on the box.
+    top, bottom = min(top, drawn[1]), max(bottom, drawn[3])
     if upright and rows_n and avoid is not None:
         # 1.45 mm per glyph is the default font's real advance; undersizing it
         # here let two blocks land one millimetre apart and read as one word
@@ -1887,6 +2031,37 @@ def _symbol_instance(
         side = direction
         justify = "left" if direction > 0 else "right"
         block = (x0, y0 + nudge, x1, y1 + nudge)
+    elif rows_n and avoid is not None:
+        # A lying part stacks its ratings under its value, centred - and used
+        # to do so without looking. Under an oscillator sits its own ground
+        # symbol, so "5.08 mm below the body" put "50ppm" straight through the
+        # word GND. The question is the same one the upright branch asks
+        # sideways: which row, and how far left or right, prints over nothing.
+        width = max(len(v) for n, v in part.fields.items() if n in ratings) * 1.45 + 0.5
+        options = [
+            (dx, dy)
+            for dy in (5.08, 7.62, 10.16, 12.7, 15.24)
+            for dx in (0.0, 2.54, -2.54, 5.08, -5.08, 7.62, -7.62, 10.16, -10.16)
+        ]
+        scored = []
+        for rank, (dx, dy) in enumerate(options):
+            box = (
+                x + dx - width / 2,
+                bottom + dy - 1.27,
+                x + dx + width / 2,
+                bottom + dy + (rows_n - 1) * 2.54 + 1.27,
+            )
+            scored.append(
+                (_hits(texts or [], box), _hits(wires or [], box), _hits(avoid, box), rank, dx, dy)
+            )
+        scored.sort(key=lambda item: item[:4])
+        _t, _w, _a, _rank, flat_dx, flat_dy = scored[0]
+        block = (
+            x + flat_dx - width / 2,
+            bottom + flat_dy - 1.27,
+            x + flat_dx + width / 2,
+            bottom + flat_dy + (rows_n - 1) * 2.54 + 1.27,
+        )
 
     def row_at(index: int) -> tuple[float, float]:
         return (
@@ -1918,6 +2093,15 @@ def _symbol_instance(
                 (round(x + side * 1.27, 4), above, near),
                 (round(x - side * 1.27, 4), above, far),
             ]
+        # And then outwards. A capacitor with a wire either side of its stub
+        # has none of the six spots above it free, and a designator printed on
+        # a net is worse than one two millimetres further out than habit.
+        ref_options += [
+            (round(x + sign * reach, 4), round(top - row, 4), "left" if sign > 0 else "right")
+            for row in (1.27, 2.54, 3.81, 5.08)
+            for reach in (2.54, 3.81, 5.08, 6.35, 8.89)
+            for sign in (int(side), -int(side))
+        ]
     else:
         # A wide part has no stub column to step out of, so the designator
         # stays centred above it and only steps up a row if that lands on a
@@ -1938,11 +2122,11 @@ def _symbol_instance(
     # The block is placed first and the designator gets out of *its* way: a
     # rating block has three strings that have to stay together and a
     # designator has one that can go anywhere legible.
-    rx, ry, ref_justify = _pick_field(part.ref, ref_options, wires, avoid, texts, [block])
+    rx, ry, ref_justify = _pick_field(part.ref, ref_options, wires, avoid, texts, [block, own])
     ref_at: tuple[float, float] = (rx, ry)
 
     if side_value:
-        value_prop = _property("Value", part.value, *row_at(0), False, justify, text_angle)
+        value_prop = _property("Value", part.value, *row_at(0), False, written(justify), text_angle)
     else:
         # Same argument as the designator: below the part is where the wire
         # leaving its bottom pin runs.
@@ -1959,21 +2143,21 @@ def _symbol_instance(
                     round(bottom + step + row, 4),
                     "left" if sign > 0 else "right",
                 )
-                for row in (0.0, 1.27, 2.54)
-                for reach in (step, step + 2.54, step + 5.08, step + 7.62)
+                for row in (0.0, 1.27, 2.54, 3.81, 5.08)
+                for reach in (step, step + 2.54, step + 5.08, step + 7.62, step + 10.16)
                 for sign in (1, -1)
             ],
             wires,
             avoid,
             texts,
-            [block, _text_box(part.ref, rx, ry, ref_justify)],
+            [block, own, _text_box(part.ref, rx, ry, ref_justify)],
         )
-        value_prop = _property("Value", part.value, vx, vy, False, vjust, text_angle)
+        value_prop = _property("Value", part.value, vx, vy, False, written(vjust), text_angle)
     lines = [
         f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}){mirror} (unit {part.unit})',
         "    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)",
         f'    (uuid "{uid}")',
-        _property("Reference", part.ref, *ref_at, False, ref_justify, text_angle),
+        _property("Reference", part.ref, *ref_at, False, written(ref_justify), text_angle),
         value_prop,
         _property("Footprint", part.footprint, x, y, True),
         _property("Datasheet", part.fields.get("Datasheet", "~"), x, y, True),
@@ -1984,12 +2168,15 @@ def _symbol_instance(
             continue
         if name in ratings and small:
             if upright:
-                lines.append(_property(name, value, *row_at(shown), False, justify, text_angle))
+                lines.append(
+                    _property(name, value, *row_at(shown), False, written(justify), text_angle)
+                )
             else:
-                row = (x, round(bottom + 5.08 + shown * 2.54, 4))
+                row = (
+                    round(x + flat_dx, 4),
+                    round(bottom + flat_dy + shown * 2.54, 4),
+                )
                 lines.append(_property(name, value, row[0], row[1], False, angle=text_angle))
-                width = max(len(v) for n, v in part.fields.items() if n in ratings) * 1.45 + 0.5
-                block = (x - width / 2, bottom + 3.81, x + width / 2, bottom + 5.08 + shown * 2.54)
             shown += 1
         else:
             lines.append(_property(name, value, x, y, True))
@@ -5227,7 +5414,11 @@ def pico_carrier() -> Design:
                 ],
             ),
             (
-                (165.1, 160.02),
+                # The left column, not under the AGND note: fifty-eight
+                # characters starting at the right-hand column run 67 mm and
+                # end inside the title block, and no amount of sliding fixes
+                # a line that is wider than the paper left beside it.
+                (20.32, 163.0),
                 [
                     "The back plane necessarily opens under the module's two",
                     "pin rows: forty through-holes at 2.54 mm leave no copper",
