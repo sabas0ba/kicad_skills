@@ -2982,13 +2982,18 @@ def _cache_write(design: Design, digest: str, done: Design, order: list[Track]) 
 
 
 def _save_order(design: Design, order: list[Track]) -> None:
-    """Write the routing order down as soon as it changes, not at the end.
+    """Write the routing order down as soon as a rip-up changes it.
 
     The order is what the rip-up loop spends its afternoon learning, and on
-    the fine-pitch board an afternoon is the literal cost: eleven rip-ups and
-    four re-orderings, an hour of routing between each. Saving only on success
-    means a machine that goes away in the middle throws all of it out. This is
-    the only state worth keeping from a run that has not finished.
+    the fine-pitch board an afternoon is the literal cost: eleven rip-ups, a
+    routing pass between each. Saving only on success means a machine that
+    goes away in the middle throws all of it out.
+
+    Only the rip-ups. A rip-up is knowledge - that net has to go early or it
+    has no room - and it holds whatever else changes. A promotion for
+    tidiness is a guess, and writing those down poisons the file for the next
+    run: the guess that made a net unroutable comes back as the starting
+    order.
     """
     try:
         ROUTE_CACHE.mkdir(parents=True, exist_ok=True)
@@ -3064,11 +3069,27 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         order = _learned_order(design, order)
     ripped: list[Track] = []
     relaid: list[Track] = []
+    # An order that routed everything, and whether tours may still be chased.
+    # Feasibility is the hard constraint and tidiness is not: promoting a
+    # wandering net to the front can take the only lane some other net had, and
+    # when it does the answer is to go back to the order that worked rather
+    # than to declare the floorplan impossible.
+    safe_order: list[Track] | None = None
+    chase = True
     while True:
         try:
             routed, vias, tours = _route_all(design, order)
         except Blocked as blocked:
             if blocked.track in ripped:
+                if safe_order is not None:
+                    print(
+                        f"{design.name}: re-ordering for tidiness left {blocked.track.net} "
+                        f"{blocked.track.points} with no lane - going back to the order that "
+                        "routed and keeping the tours",
+                        file=sys.stderr,
+                    )
+                    order, ripped, chase = list(safe_order), [], False
+                    continue
                 raise SystemExit(
                     f"{design.name}: no route for {blocked.track.net} between "
                     f"{blocked.track.points} even with first pick of the board - "
@@ -3087,17 +3108,17 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         # The worst one *this loop has not already tried*. A wrap that still
         # tours from first pick has nowhere better to be, and taking `max` over
         # everything would let it stand in front of the ones that do.
+        safe_order = list(order)
         worst = max(
             ((r, t) for r, t in tours if t not in relaid and t not in ripped),
             key=lambda pair: pair[0],
             default=None,
         )
-        if worst is not None and len(relaid) < WANDER_ATTEMPTS:
+        if chase and worst is not None and len(relaid) < WANDER_ATTEMPTS:
             ratio, track = worst
             relaid.append(track)
             order.remove(track)
             order.insert(0, track)
-            _save_order(design, order)
             print(
                 f"{design.name}: {track.net} {track.points} came out {ratio:.1f}x "
                 f"the straight line - routing it first (attempt {len(relaid)})",
