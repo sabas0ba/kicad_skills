@@ -208,12 +208,22 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   width. Bundle parallel runs tight, keep them short, and send them along the
   edge: a track through the middle bisects the plane, the same track along the
   edge only trims it.
-* **Stitch the middle, not just the rim.** In the dense part of a board the
-  channels shred the pour into pieces, and a piece that touches no ground pad
-  of its own is not poured copper at all — the filler drops it as an orphan,
-  which is where the blank areas on a plot come from. A ground via every few
-  millimetres gives each piece something to hold onto, and is the return path
-  the pour was there to provide.
+* **Stitch the middle, not just the rim — and stitch every piece.** In the
+  dense part of a board the channels shred the pour into pieces, and a piece
+  that touches no ground pad of its own is not poured copper at all — the
+  filler drops it as an orphan, which is where the blank areas on a plot come
+  from. A ground via every few millimetres gives each piece something to hold
+  onto, and each surviving piece should hold at least one of its own: a strip
+  whose only tie is somewhere far away reads as fenced-off copper even when
+  it is not.
+* **The board's outermost feature should be ground.** Pour to within about a
+  millimetre of the outline, so a trace that has to run near the edge keeps
+  shell copper outside it — a signal as the outermost copper has no return
+  beside it and no shield either. And keep the pour out of sharp corners: the
+  wedge it fills where two tracks converge at 45 degrees tapers to a point,
+  which is an acid trap on the board and a spike to the eye. Retract dead-end
+  strips to where the plane is wide; a narrow channel that connects two wide
+  regions is worth keeping, a narrow tongue that dead-ends is not.
 * **Pour ground on both faces and stitch them** (`layout.pour_single_sided`):
   the spare face's copper is free ground impedance, but only if a ring of
   stitching vias ties it to the plane — an unstitched island or edge strip

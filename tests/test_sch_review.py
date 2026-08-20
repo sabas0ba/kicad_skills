@@ -653,6 +653,27 @@ def test_furniture_intrusion_is_reported():
     assert sch_review.rule_margin_intrusion(sheet_ctx(clear)) == []
 
 
+def test_a_power_symbols_name_reaching_the_frame_is_reported():
+    """The PWR_FLAG whose printed name crosses into the ruler strip."""
+    flag = placed(
+        "#FLG01",
+        14.0,
+        50.0,
+        [pin("1", 14.0, 50.0, "power_in")],
+        lib_id="power:PWR_FLAG",
+    )
+    flag.properties = {"Value": "PWR_FLAG"}
+    flag.property_at = {"Value": (13.0, 48.0, "right")}
+    doc = sheet(symbols=[flag], paper=(297.0, 210.0))
+    findings = sch_review.rule_margin_intrusion(sheet_ctx(doc))
+    assert [f.rule for f in findings] == ["readability.margin_intrusion"]
+    assert any("PWR_FLAG" in e for e in findings[0].details["examples"])
+
+    # the same flag well inside the frame is clear
+    flag.property_at = {"Value": (40.0, 48.0, "right")}
+    assert sch_review.rule_margin_intrusion(sheet_ctx(doc)) == []
+
+
 def test_a_note_printed_over_a_symbol_is_reported():
     from eda_toolkit.kicad.schematic import Text
 

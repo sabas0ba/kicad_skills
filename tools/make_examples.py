@@ -4481,29 +4481,96 @@ def _stitch_vias(design: Design) -> list[Via]:
         segments.extend((track.net, track.width, a, b) for a, b in pairwise(points))
     holes = [via_position(design, via) for via in design.vias]
 
-    kept: list[Via] = []
-    for vx, vy in rim:
+    def clears(vx: float, vy: float) -> bool:
         radius = 0.4
-        ok = True
         for (bx0, by0, bx1, by1), net in pads:
             grow = 0.4 if net == POUR_NET else radius + 0.3
             if bx0 - grow <= vx <= bx1 + grow and by0 - grow <= vy <= by1 + grow:
-                ok = False
-                break
-        if ok:
-            for net, width, a, b in segments:
-                if net == POUR_NET:
-                    continue
-                # The via is square to `check_board`, so it is square here
-                # too: measured as a circle it clears by its radius and the
-                # corner is 0.17 mm nearer, which is a short nobody drew.
-                pad = (vx - radius, vy - radius, vx + radius, vy + radius)
-                if _segment_to_box(a, b, pad) < width / 2 + 0.45:
-                    ok = False
-                    break
-        if ok and all(math.dist((vx, vy), hole) >= 1.2 for hole in holes):
+                return False
+        for net, width, a, b in segments:
+            if net == POUR_NET:
+                continue
+            # The via is square to `check_board`, so it is square here
+            # too: measured as a circle it clears by its radius and the
+            # corner is 0.17 mm nearer, which is a short nobody drew.
+            pad = (vx - radius, vy - radius, vx + radius, vy + radius)
+            if _segment_to_box(a, b, pad) < width / 2 + 0.45:
+                return False
+        return all(math.dist((vx, vy), hole) >= 1.2 for hole in holes)
+
+    kept: list[Via] = []
+    for vx, vy in rim:
+        if clears(vx, vy):
             holes.append((vx, vy))
             kept.append(Via(POUR_NET, x=vx, y=vy))
+
+    # Then the guarantee the mesh cannot give: every piece of the front pour
+    # holds a via of its own. The clearance channels shred the front face
+    # into strips - the band above a connector row, the shell along an edge -
+    # and a strip whose only tie is somewhere far away reads as fenced-off
+    # copper even when it is not; the reviewer circled three of them on two
+    # boards. The pieces are taken *before* the orphan drop, so a strip
+    # nothing else reaches gets a via here instead of staying a blank.
+    pieces = _fill_rectangles(design, "F.Cu", POUR_NET, smd_isolated=True, connected=False)
+    parent = list(range(len(pieces)))
+
+    def find(index: int) -> int:
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    def overlap(a, b) -> bool:
+        return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+    for i in range(len(pieces)):
+        for j in range(i + 1, len(pieces)):
+            if overlap(pieces[i], pieces[j]):
+                parent[find(i)] = find(j)
+    groups: dict[int, list[int]] = defaultdict(list)
+    for i in range(len(pieces)):
+        groups[find(i)].append(i)
+    ground = [via_position(design, v) for v in design.vias if v.net == POUR_NET]
+    ground += [(v.x, v.y) for v in kept]
+    for members in groups.values():
+        area = sum((pieces[i][2] - pieces[i][0]) * (pieces[i][3] - pieces[i][1]) for i in members)
+        if area < 8.0:
+            continue  # too small to earn a drill; the orphan drop takes it
+        if any(
+            pieces[i][0] <= gx <= pieces[i][2] and pieces[i][1] <= gy <= pieces[i][3]
+            for i in members
+            for gx, gy in ground
+        ):
+            continue
+        biggest = sorted(
+            members,
+            key=lambda i: min(pieces[i][2] - pieces[i][0], pieces[i][3] - pieces[i][1]),
+            reverse=True,
+        )
+        placed = False
+        for i in biggest[:8]:
+            x0, y0, x1, y1 = pieces[i]
+            if min(x1 - x0, y1 - y0) < 1.1:
+                continue
+            cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+            for vx, vy in (
+                (cx, cy),
+                (cx, (y0 + 3 * y1) / 4),
+                (cx, (3 * y0 + y1) / 4),
+                ((x0 + 3 * x1) / 4, cy),
+                ((3 * x0 + x1) / 4, cy),
+            ):
+                if not (x0 + 0.55 <= vx <= x1 - 0.55 and y0 + 0.55 <= vy <= y1 - 0.55):
+                    continue
+                vx, vy = round(vx, 2), round(vy, 2)
+                if clears(vx, vy):
+                    holes.append((vx, vy))
+                    kept.append(Via(POUR_NET, x=vx, y=vy))
+                    ground.append((vx, vy))
+                    placed = True
+                    break
+            if placed:
+                break
     return kept
 
 
@@ -5026,9 +5093,17 @@ def _board_silk(
     return out
 
 
-ZONE_CLEARANCE = 0.4  # what the pour keeps away from copper of another net
+ZONE_CLEARANCE = 0.25  # what the pour keeps away from copper of another net
+# 0.25, not the 0.4 it used to be: a 2.54 mm header column carries pads about
+# 1.5 mm tall, and at 0.4 of clearance a side the web between neighbours came
+# to 0.34 mm - under ZONE_SLIVER, so the sweep dropped every one and the
+# column became a full-height slot through the plane. The reviewer circled
+# three of those. At 0.25 the web is 0.44 mm and the plane flows between the
+# pins, which is what every hand-laid carrier board shows; the boards' DRC
+# clearance is 0.2, so the pour still clears everything it must.
 ZONE_SLIVER = 0.35  # a strip of plane thinner than this is not worth filling
 ZONE_WELD = 0.05  # how far neighbouring islands are grown into each other
+ZONE_TONGUE = 0.9  # a dead-end strip narrower than this is a wedge, not plane
 # Every hole is rounded outward onto this grid. Without it a diagonal track puts
 # an x edge every fraction of a millimetre, the sweep below never sees two
 # neighbouring columns agree, and the plane comes out as a thousand slivers
@@ -5090,7 +5165,7 @@ def _hole_boxes(
 
 
 def _fill_rectangles(
-    design: Design, layer: str, net: str, smd_isolated: bool = False
+    design: Design, layer: str, net: str, smd_isolated: bool = False, connected: bool = True
 ) -> list[tuple[float, float, float, float]]:
     """The pour outline minus the holes, as a set of rectangles.
 
@@ -5144,7 +5219,83 @@ def _fill_rectangles(
         for left, right, free in slabs
         for top, bottom in free
     ]
-    return _connected_islands(design, islands, layer, net)
+    islands = _pruned_tongues(design, islands, layer, net)
+    if connected:
+        return _connected_islands(design, islands, layer, net)
+    # ``connected=False`` is for the stitcher, which wants to see the pieces
+    # *before* the orphan drop - an orphan it can reach with a via is not an
+    # orphan any more, it is the strip the reviewer wanted filled.
+    return islands
+
+
+def _pruned_tongues(design, islands, layer: str, net: str):
+    """Retract the tapering tongues the sweep leaves in a sharp corner.
+
+    Where a diagonal track converges on a straight one the free space
+    between them tapers to a point, and the sweep dutifully fills it down
+    to ZONE_SLIVER: a two-millimetre wedge with a sharp tip, which is an
+    acid trap on the board and a spike to the eye - both circled by the
+    reviewer. A strip narrower than ZONE_TONGUE that touches the rest of
+    the plane on at most one side is such a tongue - a narrow *channel*
+    touches on two - so it is dropped, and the drop repeats until the
+    tongue has retracted to where the plane is wide. A strip that feeds
+    this net's own pad or via stays: narrow beats disconnected.
+    """
+    anchors: list[tuple[float, float, float, float]] = []
+    for via in design.vias:
+        if via.net == net:
+            vx, vy = via_position(design, via)
+            anchors.append((vx - 0.4, vy - 0.4, vx + 0.4, vy + 0.4))
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            if f"{part.ref}.{number}" in design.nets.get(net, ()) and pad_layer(pad) in (
+                None,
+                layer,
+            ):
+                anchors.append(pad_box(design, part, pad))
+
+    def overlaps(a, b) -> bool:
+        return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+    CELL = 5.0
+    grid: dict[tuple[int, int], set[int]] = defaultdict(set)
+
+    def cells(box):
+        for cx in range(int(box[0] // CELL), int(box[2] // CELL) + 1):
+            for cy in range(int(box[1] // CELL), int(box[3] // CELL) + 1):
+                yield (cx, cy)
+
+    active = set(range(len(islands)))
+    for index in active:
+        for cell in cells(islands[index]):
+            grid[cell].add(index)
+
+    def thin(index) -> bool:
+        box = islands[index]
+        return min(box[2] - box[0], box[3] - box[1]) < ZONE_TONGUE and not any(
+            overlaps(box, anchor) for anchor in anchors
+        )
+
+    queue = [index for index in active if thin(index)]
+    while queue:
+        index = queue.pop()
+        if index not in active:
+            continue
+        box = islands[index]
+        beside = {
+            other
+            for cell in cells(box)
+            for other in grid[cell]
+            if other != index and other in active and overlaps(box, islands[other])
+        }
+        if len(beside) <= 1:
+            active.remove(index)
+            for cell in cells(box):
+                grid[cell].discard(index)
+            queue.extend(other for other in beside if thin(other))
+    return [islands[index] for index in sorted(active)]
 
 
 def _connected_islands(design, islands, layer: str, net: str):
@@ -5665,7 +5816,7 @@ def buck_5v() -> Design:
         board_size=(126.0, 56.0),
         tracks=tracks,
         vias=vias,
-        pour=(2.0, 2.0, 124.0, 54.0),
+        pour=(1.2, 1.2, 124.8, 54.8),
         wired_power=("+12V", "+5V"),
     )
 
@@ -5700,7 +5851,9 @@ def motor_driver() -> Design:
             "Connector:Screw_Terminal_01x02",
             "VM 2.7-10.8V",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            sheet=(30.0, 80.0),
+            # 38, not 30: mirrored, the connector prints its long value to the
+            # left, and at 30 that string reached the sheet frame's ruler strip.
+            sheet=(38.0, 80.0),
             board=(82.0, 8.0, 270.0),
             mirror="y",
             fields={
@@ -5965,7 +6118,7 @@ def motor_driver() -> Design:
         board_size=(88.0, 50.0),
         tracks=[],
         vias=[],
-        pour=(3.0, 3.0, 85.0, 47.0),
+        pour=(1.2, 1.2, 86.8, 48.8),
         label_nets=("nSLEEP", "AIN1", "AIN2", "BIN1", "BIN2", "nFAULT"),
     )
 
@@ -6214,7 +6367,12 @@ def pico_carrier() -> Design:
             "22u",
             "Capacitor_SMD:C_1210_3225Metric",
             sheet=(127.0, 45.72),
-            board=(52.0, 9.54, 90.0),
+            # 8.52, not 9.54: VSYS runs along y = 10, and at 9.54 the pad sat
+            # a millimetre south of it - the line passed straight by and fed
+            # the capacitor through a stub, which on a rail that is really a
+            # transmission line is a tap, not a bypass. At 8.52 the supply pad
+            # is *on* the line: current flows in one side and out the other.
+            board=(52.0, 8.52, 90.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
@@ -6345,7 +6503,7 @@ def pico_carrier() -> Design:
         board_size=(88.0, 62.0),
         tracks=[],
         vias=[],
-        pour=(2.5, 2.5, 85.5, 59.5),
+        pour=(1.2, 1.2, 86.8, 60.8),
         # High enough that the last line stays inside the sheet frame.
         notes_at=(20.0, 146.0),
         # The module's 2.54 mm pad pitch decides where everything goes; snapping
@@ -6794,7 +6952,7 @@ def opamp_filter() -> Design:
             Via("GND", x=33.0, y=24.0),
             Via("GND", x=44.0, y=20.0),
         ],
-        pour=(2.5, 2.5, 55.5, 39.5),
+        pour=(1.2, 1.2, 56.8, 40.8),
         notes_at=(18.0, 20.0),
     ).snapped()
 
@@ -7011,7 +7169,9 @@ def fpga_audio() -> Design:
             "Connector:Screw_Terminal_01x02",
             "3V3 IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            sheet=(30.0, 40.0),
+            # 38, not 30: the PWR_FLAG pair lands to the connector's left, and
+            # at 30 its printed name reached into the sheet frame's ruler strip.
+            sheet=(38.0, 40.0),
             board=(8.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
@@ -7284,7 +7444,7 @@ def fpga_audio() -> Design:
         route_keepout=("U4", "U2"),
         tracks=[],
         vias=[],
-        pour=(3.0, 3.0, 97.0, 81.0),
+        pour=(1.2, 1.2, 98.8, 82.8),
         # Four units of one symbol and twenty-odd parts do not fit on A4.
         paper="A3",
     ).snapped()

@@ -295,6 +295,11 @@ class Router:
         # length, and finishing on a merely-nearby cell leaves the branch end
         # a sixth of a millimetre off the trunk - electrically joined, but a
         # loose end to anything that measures the centrelines.
+        # ...and not within a couple of millimetres of the goal: that close,
+        # a tee saves almost no copper and moves the junction just off the
+        # pad - a bypass capacitor fed by a one-millimetre stub from the line
+        # that should flow through its pad, which a reviewer reads as a tap
+        # hung on a transmission line. Near the pad, the pad wins.
         tee_cells: set[tuple[int, int, int]] = set()
         for tee_layer, polyline in tee or ():
             layer_index = self.layers.index(tee_layer)
@@ -305,7 +310,10 @@ class Router:
                     t = index / samples
                     point = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
                     cell = self._cell(point)
-                    if _point_to_segment(self._point(cell), a, b) < 1e-4:
+                    if (
+                        _point_to_segment(self._point(cell), a, b) < 1e-4
+                        and math.dist(self._point(cell), goal) >= 2.0
+                    ):
                         tee_cells.add((*cell, layer_index))
 
         turn_penalty = 3.0

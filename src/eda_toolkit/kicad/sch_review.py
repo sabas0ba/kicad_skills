@@ -214,7 +214,7 @@ RULE_SPEC: dict[str, RuleSpec] = {
         threshold="min_row_pins",
     ),
     "readability.margin_intrusion": RuleSpec(
-        "a pin, or any part of a text note, inside the page's frame strip or "
+        "a pin, a symbol field's printed box, or any part of a text note, inside the page's frame strip or "
         "on the title block, where it prints over the sheet furniture. A "
         "note is measured by its extent, not its anchor - a sentence can "
         "start clear of the block and still end inside it. Info, not "
@@ -1310,13 +1310,35 @@ def rule_margin_intrusion(ctx: ReviewContext) -> list[Finding]:
             width, height = size
             return (width - 120.0, height - 44.0, width - margin, height - margin)
 
+        width, height = doc.paper_size
         for sym in doc.symbols:
-            if sym.is_power:
-                continue
-            for pin in sym.pins:
-                if in_furniture(pin.x, pin.y):
-                    intrusions.append(f"{doc.path.name}:{sym.reference or sym.lib_id}")
-                    break
+            if not sym.is_power:
+                for pin in sym.pins:
+                    if in_furniture(pin.x, pin.y):
+                        intrusions.append(f"{doc.path.name}:{sym.reference or sym.lib_id}")
+                        break
+            # A power symbol's pin is a dot, but its printed name is not: the
+            # PWR_FLAG pair beside a connector reaches a full name-width left
+            # of its anchor, and parked near the edge that name prints across
+            # the frame's ruler strip. Fields are text like any other, so
+            # they are measured like any other - power symbols included.
+            for name in list(sym.property_at):
+                if name in ("Footprint", "Datasheet", "MPN", "Manufacturer"):
+                    continue
+                text = sym.properties.get(name, "")
+                if not text:
+                    continue
+                box = _field_box(sym, name, text)
+                if (
+                    _boxes_meet(box, furniture_box())
+                    or box[0] < margin
+                    or box[1] < margin
+                    or box[2] > width - margin
+                    or box[3] > height - margin
+                ):
+                    intrusions.append(
+                        f"{doc.path.name}:{sym.reference or sym.lib_id} {name} '{text[:16]}'"
+                    )
         for item in doc.text_items:
             # A note's anchor is its top left corner, so the anchor alone says
             # nothing: the sentence that ran into the carrier's title block
