@@ -44,13 +44,14 @@ is [REVIEW.md](REVIEW.md).
 
 Four of the five `reviewed/` projects **pass** their own gate. The FPGA board
 does not: fencing foreign copper out from under the flash and the DAC still
-costs it three SPI nets over cuts in the back plane, two signal detours and
-three corners the pour edge and a fold leave behind. The supply rails no
-longer wander — the 1.2 V core rail rides a stated spine under the FPGA's own
-die, and every branch taps the nearest point of its own copper rather than
-funnelling into a pad. What remains is floorplan on a 48-pin QFN with two
-layers, stated by the gate rather than waived, because a waiver would say the
-measurement was wrong and it is not. Every `as-generated/` fails.
+costs it four SPI nets over cuts in the back plane (11-20 mm each), three
+detours on the 3.3 V rail and two corners. The 1.2 V core rail rides a stated
+spine under the FPGA's own die and no longer wanders; the 3.3 V rail — twenty
+links across four packages — is the spine that remains to be stated, and
+[REVIEW.md](REVIEW.md) names it as the next round's work. What remains is
+floorplan on a 48-pin QFN with two layers, stated by the gate rather than
+waived, because a waiver would say the measurement was wrong and it is not.
+Every `as-generated/` fails.
 
 ## When these were made, and by what
 
@@ -293,8 +294,8 @@ filter is referenced to.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 4 findings waived | 0 / 0 / 0 | 0 / 9 / 6 |
-| `as-generated` | **FAIL**, 33 blocking | — | — |
+| `reviewed` | **PASS**, 5 findings waived | 0 / 0 / 0 | 0 / 10 / 6 |
+| `as-generated` | **FAIL**, 37 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
 errors, no unconnected items, no parity findings. It also passes its own
@@ -341,7 +342,7 @@ a 1.2 V regulator for the core — on two layers.
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **FAIL**, 3 blocking, 2 waived | 0 / 2 / 0 | 0 / 9 / 8 |
-| `as-generated` | **FAIL**, 29 blocking | — | — |
+| `as-generated` | **FAIL**, 30 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
 unconnected, no schematic-parity findings. On every *style* measure it now
@@ -355,9 +356,9 @@ back-side stroke under the FPGA's own die, tapped by every branch at the
 nearest point — the tee described in [REVIEW.md](REVIEW.md) is what makes
 tapping possible. The rails no longer wander, and the board is 15% lighter
 in copper for it. The fence still has a price the gate states plainly:
-three SPI nets over cuts in the back plane, two signal detours
-(`route.wander` at 2.1x and 2.6x), and three corners (`route.acute_angle`:
-two 45s at the pour edge, one fold). The engineering pass there found and
+four SPI nets over cuts in the back plane (11-20 mm each), three detours on
+the 3.3 V rail (`route.wander`, 2.4-3.0x - the twenty-link net that still
+wants a stated spine of its own), and two corners (`route.acute_angle`). The engineering pass there found and
 fixed
 four real electrical faults here: the PCM5102A's charge pump was miswired
 (flying cap to ground instead of CAPP-CAPM — the DAC had no negative rail),

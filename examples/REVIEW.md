@@ -800,3 +800,70 @@ instead, with no layer change. The corrected stroke sits at y = 42.25:
 a quarter-millimetre off the pads' inner ends, and still on the router's
 quarter-millimetre grid - off it, no tee could land on the stroke, which
 would have defeated the reason it exists.
+
+## 18. The reviewer's pass, round thirteen: the plane is a drawing too
+
+Six circles this time, five of them about the same thing seen from
+different corners: the ground plane is part of the drawing, and the
+generator treated it as leftovers. A wedge of pour tapering to a point in
+a 45-degree corner on the motor board; the op-amp board's 5 V feed running
+outside its own shell, the outermost copper on the board with no return
+beside it; the carrier's top edge a blank strip and its back plane sliced
+into panels; the FPGA board's bottom band and line-out pocket fenced off
+by the SPI bundle; and - the sixth - the FPGA sheet's power-entry block
+printing over the frame's ruler strip.
+
+### What went into the tool
+
+| built in | kind | what it does |
+| --- | --- | --- |
+| `_pruned_tongues` | fill pass | a dead-end strip of pour narrower than `ZONE_TONGUE` (0.9 mm) retracts until the plane is wide again - a narrow *channel* touches neighbours on two sides and stays; a strip feeding this net's own pad or via stays too. The acid-trap wedges in bent corners go away as a class |
+| pour to 1.2 mm of the edge | design | the pour rectangles stop 1.2 mm inside the outline instead of 2-3 mm, so an edge-hugging trace keeps shell copper *outside* it and the board's outermost feature is ground again |
+| per-piece stitching | `_stitch_vias` | every piece of the front pour over 8 mm² holds a via of its own, placed against the same clearance checks as the mesh - and the pieces are taken *before* the orphan drop, so a strip nothing else reached gets a via instead of staying a blank |
+| `ZONE_CLEARANCE` 0.4 → 0.25 | fill | at 0.4 the web between a 2.54 mm header's pads came to 0.34 mm - under `ZONE_SLIVER`, so every column became a full-height slot. At 0.25 the web is 0.44 mm and the plane flows between the pins. DRC clearance on these boards is 0.2, so nothing legal got closer than allowed |
+| tee stays 2 mm off the pad | router | the round-twelve tee moved junctions off the pads - and promptly fed the carrier's bulk capacitor through a one-millimetre stub from the rail. Within two millimetres of the goal a tee saves nothing and costs the flow-through, so there the pad wins |
+| `readability.margin_intrusion` reads fields | rule | the rule measured pins and notes but not symbol fields, and power symbols not at all - and the FPGA sheet's PWR_FLAG printed its name across the ruler strip. Fields are text like any other now, power symbols included. Seven findings across KiCad's 18 demo projects - people do park a label on the frame here and there, which is why the rule stays `info` and only the `ai-generated` policy promotes it - and three real catches on our own sheets the moment the rule could see: the motor board's power connector, and two more corners of the FPGA sheet |
+
+### What stayed by hand
+
+Two of the circles were placement, not machinery. The carrier's 22 µF
+bulk capacitor sat a millimetre south of the VSYS run, so the rail passed
+straight by and fed it through a stub - it now sits *on* the run, current
+in one pad-side and out the other, no stub at all. And two power-entry
+connectors (the FPGA board's and, once the extended rule could see, the
+motor board's too) moved eight millimetres in from the sheet edge so
+their printed names clear the frame.
+
+One cut stays, stated rather than hidden: the carrier module's own pad
+columns still slot the back plane top to bottom. The module footprint
+carries a 2.2 mm unplated pad behind every castellation at 2.54 mm pitch,
+which leaves negative room for a web at any legal clearance - that is
+what soldering a forty-pin module onto two layers costs. The panels it
+makes are tied along the full top and bottom bands the wider pour now
+reaches, and the middle panel carries the module's eight ground pins
+straight into the plane.
+
+### Two more circles while the paint dried
+
+The reviewer's next pass found the hook and the step (round thirteen's
+last two circles, on the op-amp board): two runs of the reference rail
+down the same lane - the second *rode* the first, because a net's own
+copper costs the search nothing and nothing forbade travelling along it -
+and a width that changed from 0.5 to 0.3 mid-run, where power-width links
+met a 0.3 mm escape. The ride is now priced (crossing own copper stays
+cheap, travelling along it never wins), VREF runs 0.3 end to end with a
+waiver stating its current, and the divider's 5 V feed keeps the trunk's
+width to the junction. Measured after: zero doubled runs and zero mid-run
+width steps on all five boards.
+
+### Where it landed
+
+All four fast boards pass their gates. The FPGA board still does not, and
+its three blocking findings have a single name now: `route.return_path`
+holds four SPI nets at 11-20 mm over plane cuts (the worst used to be 27),
+`route.acute_angle` two corners, and `route.wander` three detours all on
+the 3.3 V rail - the twenty-link net that wants the same stated spine the
+1.2 V rail got. That is the named next work. Everything else measured
+clean across all five: zero crossings, zero rides, zero mid-run width
+steps, every pour piece over 8 mm² holding its own via, and the planes'
+outer shell reaching to 1.2 mm of every edge.

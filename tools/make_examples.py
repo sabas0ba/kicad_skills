@@ -7184,9 +7184,10 @@ def fpga_audio() -> Design:
             "Connector:Screw_Terminal_01x02",
             "3V3 IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            # 38, not 30: the PWR_FLAG pair lands to the connector's left, and
-            # at 30 its printed name reached into the sheet frame's ruler strip.
-            sheet=(38.0, 40.0),
+            # 42, not 30: the PWR_FLAG pair lands to the connector's left with
+            # its name printed left of that again, and anywhere nearer the edge
+            # the name reaches into the sheet frame's ruler strip.
+            sheet=(42.0, 40.0),
             board=(8.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
@@ -7199,7 +7200,9 @@ def fpga_audio() -> Design:
             "Connector:Conn_01x03_Pin",
             "AUDIO OUT",
             "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
-            sheet=(395.0, 110.0),
+            # 388, not 395: the GND symbol lands to the connector's right, and
+            # at 395 its printed name crossed the right frame strip of the A3.
+            sheet=(388.0, 110.0),
             board=(95.0, 38.0, 0.0),
             fields={
                 "MPN": "61300311121",
