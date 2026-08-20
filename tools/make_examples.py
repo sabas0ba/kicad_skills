@@ -2770,6 +2770,111 @@ def _package_boxes(design: Design) -> list[tuple[float, float, float, float]]:
     return boxes
 
 
+def _tee_component(
+    laid: list[tuple[str, list[tuple[float, float]], int]],
+    via_points: list[tuple[float, float]],
+    pads: list[tuple[tuple[float, float, float, float], str | None]],
+    seed: tuple[float, float],
+) -> list[tuple[str, list[tuple[float, float]], int]]:
+    """The net's already-laid copper that ``seed`` is electrically joined to.
+
+    This is what makes a tee safe to offer the router: a link that finishes on
+    its own net's copper is only finished if that copper already reaches the
+    pad the link named - ending on an island of the same net that nothing
+    joins yet leaves the pad unconnected, and DRC is the only thing that would
+    notice. Runs join where one's end lies on another, through a via of the
+    net, and through the net's own pads; the component is grown outward from
+    the pad ``seed`` sits on.
+    """
+    TOL = 0.05
+
+    def on_run(point, entry) -> bool:
+        _layer, points, _index = entry
+        return any(_segment_distance(point, point, s0, s1) < TOL for s0, s1 in pairwise(points))
+
+    def inside(point, box) -> bool:
+        return box[0] - TOL <= point[0] <= box[2] + TOL and box[1] - TOL <= point[1] <= box[3] + TOL
+
+    pad_hits: list[set[int]] = []
+    via_hits: list[set[int]] = []
+    for layer, points, _index in laid:
+        pad_hits.append(
+            {
+                number
+                for number, (box, pad_side) in enumerate(pads)
+                if pad_side in (None, layer) and any(inside(point, box) for point in points)
+            }
+        )
+        via_hits.append(
+            {
+                number
+                for number, point in enumerate(via_points)
+                if on_run(point, (layer, points, _index))
+            }
+        )
+
+    def linked(i: int, j: int) -> bool:
+        if pad_hits[i] & pad_hits[j] or via_hits[i] & via_hits[j]:
+            return True
+        if laid[i][0] != laid[j][0]:
+            return False
+        pi, pj = laid[i][1], laid[j][1]
+        return (
+            on_run(pi[0], laid[j])
+            or on_run(pi[-1], laid[j])
+            or on_run(pj[0], laid[i])
+            or on_run(pj[-1], laid[i])
+        )
+
+    seed_pads = {number for number, (box, _side) in enumerate(pads) if inside(seed, box)}
+    member = [
+        bool(seed_pads & pad_hits[index]) or on_run(seed, entry) for index, entry in enumerate(laid)
+    ]
+    grew = True
+    while grew:
+        grew = False
+        for i in range(len(laid)):
+            if member[i]:
+                continue
+            if any(member[j] and linked(i, j) for j in range(len(laid))):
+                member[i] = True
+                grew = True
+    return [entry for index, entry in enumerate(laid) if member[index]]
+
+
+def _absorb_tee(
+    routed: list[tuple[int, Track]],
+    component: list[tuple[str, list[tuple[float, float]], int]],
+    layer: str,
+    landing: tuple[float, float],
+) -> None:
+    """Make a tee landing a stated corner of the run it landed on.
+
+    Every reshaping pass pins the points other copper ends on - but only if
+    the point is a *vertex* of the polyline. A branch that ends mid-segment is
+    connected copper the trunk does not know about, and the first pass to
+    straighten or chamfer that stretch moves the trunk out from under the
+    join. Inserting the landing as a corner makes it a join like any other:
+    `_straighten` and `_doglegged` cut there, `_chamfer_tracks` leaves it.
+    """
+    for entry_layer, points, _index in component:
+        if entry_layer != layer:
+            continue
+        if any(math.dist(landing, point) < 1e-3 for point in points):
+            return  # an existing corner or end - already a join
+    for entry_layer, points, rindex in component:
+        if entry_layer != layer:
+            continue
+        for cut in range(len(points) - 1):
+            if _segment_distance(landing, landing, points[cut], points[cut + 1]) < 1e-3:
+                points.insert(cut + 1, landing)
+                place_index, track = routed[rindex]
+                stated = list(track.points)
+                stated.insert(cut + 1, landing)
+                routed[rindex] = (place_index, replace(track, points=stated))
+                return
+
+
 def _route_all(
     design: Design, order: list[Track]
 ) -> tuple[list[tuple[int, Track]], list[Via], list[tuple[float, Track]]]:
@@ -2783,6 +2888,11 @@ def _route_all(
     one, and the caller can do something about it.
     """
     router = autoroute.Router(*design.board_size)
+    # The same pads again, keyed by net, for the connectivity question the
+    # tee asks: which copper already reaches the pad this link names.
+    net_pads: dict[str, list[tuple[tuple[float, float, float, float], str | None]]] = defaultdict(
+        list
+    )
     for part in design.footprints():
         node = footprint_definition(part.footprint)
         for pad in node.children("pad"):
@@ -2793,6 +2903,8 @@ def _route_all(
             )
             x0, y0, x1, y1 = pad_box(design, part, pad)
             router.add(autoroute.Obstacle(x0, y0, x1, y1, net, pad_layer(pad)))
+            if net:
+                net_pads[net].append(((x0, y0, x1, y1), pad_layer(pad)))
     # The interior of a kept-out package: the strip between its pad rows,
     # closed to every net - a track that must pass goes around or under on
     # the other face beyond the body, not beneath the die.
@@ -2831,6 +2943,13 @@ def _route_all(
     # not shuffle when a retry changes the order things are routed in.
     place = {id(track): index for index, track in enumerate(design.tracks)}
     routed = [(place[id(t)], t) for t in design.tracks if not t.auto]
+    # Every run laid so far, by net, with where it sits in ``routed`` - the
+    # copper a later link of the same net may tee into (see `_tee_component`).
+    laid_runs: dict[str, list[tuple[str, list[tuple[float, float]], int]]] = defaultdict(list)
+    for rindex, (_position, stated) in enumerate(routed):
+        laid_runs[stated.net].append(
+            (stated.layer, [resolve(design, point) for point in stated.points], rindex)
+        )
     tours: list[tuple[float, Track]] = []
     packages = _package_boxes(design)
     # Where each bus's members already run, so the next member can travel
@@ -2839,16 +2958,44 @@ def _route_all(
     vias = list(design.vias)
     for index, track in enumerate(order):
         a, b = (resolve(design, point) for point in track.points)
+        start_hole = through_hole(design, track.points[0])
+        goal_hole = through_hole(design, track.points[-1])
+        # What this link may tee into: the net's own copper, already joined
+        # to one of the link's ends. Joined to the goal, the search may
+        # finish on it; joined to the start, the link is routed the other
+        # way round so it still may - that is the common case, a trunk
+        # arriving at a pad and the next link leaving the same pad. Without
+        # this every junction the net has sits on a pad, because a pad is
+        # the only place a link is allowed to finish.
+        # ...but only toward a *pad*: a link that names a bare coordinate is
+        # aimed at a stated junction - the end of a trunk someone drew - and
+        # landing anywhere short of it strands the trunk's tail as a stub.
+        # A pad is a terminal in its own right, so copper between the
+        # landing and the pad still ends somewhere real.
+        entries = laid_runs.get(track.net, ())
+        net_vias = [via_position(design, v) for v in vias if v.net == track.net]
+        component = (
+            _tee_component(entries, net_vias, net_pads.get(track.net, []), b)
+            if entries and isinstance(track.points[-1], str)
+            else []
+        )
+        if (
+            not component
+            and entries
+            and track.goal_layer is None
+            and isinstance(track.points[0], str)
+        ):
+            component = _tee_component(entries, net_vias, net_pads.get(track.net, []), a)
+            if component:
+                a, b = b, a
+                start_hole, goal_hole = goal_hole, start_hole
         path = router.route(
             track.net,
             a,
             b,
             track.width,
-            start_layer=None if through_hole(design, track.points[0]) else track.layer,
-            goal_layer=(
-                track.goal_layer
-                or (None if through_hole(design, track.points[-1]) else track.layer)
-            ),
+            start_layer=None if start_hole else track.layer,
+            goal_layer=track.goal_layer or (None if goal_hole else track.layer),
             crowd=[
                 resolve(design, point)
                 for later in order[index + 1 :]
@@ -2873,6 +3020,7 @@ def _route_all(
             # neither fires. GND is not charged: its own copper is the plane.
             back_cost=None if track.net == POUR_NET else 30.0,
             follow=bus_paths.get(_bus_of(track.net) or ""),
+            tee=[(layer, points) for layer, points, _index in component] or None,
         )
         if path is None:
             raise Blocked(track)
@@ -2885,6 +3033,17 @@ def _route_all(
             routed.append(
                 (place[id(track)], replace(track, points=list(points), layer=layer, auto=False))
             )
+            # A separate copy, index-aligned with the track's own points:
+            # `_absorb_tee` inserts a landing into both at the same position.
+            laid_runs[track.net].append((layer, list(points), len(routed) - 1))
+        # A route that finished on the trunk instead of the pad: make the
+        # landing a corner the trunk states, or the clean-up passes will
+        # move the trunk out from under the join.
+        if component and path.runs:
+            landing_layer, landing_points = path.runs[-1]
+            landing = landing_points[-1]
+            if math.dist(landing, b) > GEOM_EPS:
+                _absorb_tee(routed, component, landing_layer, landing)
         for point in path.vias:
             router.add_via(track.net, point, VIA_SIZE)
             vias.append(Via(track.net, x=point[0], y=point[1], size=VIA_SIZE))
@@ -2942,6 +3101,8 @@ def _routing_digest(design: Design) -> str:
         lines.append(f"V {via.net}|{via_position(design, via)}|{via.size}|{via.drill}")
     lines.append(Path(autoroute.__file__).read_text())
     lines.append(inspect.getsource(_route_all))
+    lines.append(inspect.getsource(_tee_component))
+    lines.append(inspect.getsource(_absorb_tee))
     return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:32]
 
 

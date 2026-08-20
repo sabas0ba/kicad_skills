@@ -137,6 +137,14 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
 * **Branch as a Y, not a T.** Where one track splits, bring the branches in
   at 45 so the join is a fork, not a crossroads: a square tee is the same
   etch nick as a square corner, twice.
+* **Junctions belong on the trunk, not on a pad.** A pad used as a
+  three-way junction is legal and common, but a net whose *every* junction
+  sits on a pad is a net drawn pad-to-pad: three diagonals converging on one
+  0603 is the tell. Tap the nearest point of copper the net already has —
+  the branch gets shorter and the pad stops being a crossroads. (The example
+  generator does this itself: a link whose far end is already reachable
+  through laid copper is allowed to finish on that copper instead of
+  funnelling into the named pad.)
 * **One width per run.** Widening a track after it has already run narrow
   for centimetres buys nothing — the narrow length sets the current. Leave
   a pin field as wide as the row allows and widen at the field's edge, in

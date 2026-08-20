@@ -193,6 +193,7 @@ class Router:
         crowd: list[tuple[float, float]] | None = None,
         back_cost: float | None = None,
         follow: list[list[tuple[float, float]]] | None = None,
+        tee: list[tuple[str, list[tuple[float, float]]]] | None = None,
     ) -> Path | None:
         """A path from ``start`` to ``goal``, or None when there is no room.
 
@@ -217,6 +218,17 @@ class Router:
         different corridors. Cells beside a sibling's path are discounted, so
         the bundle look wins every tie; the discount is a fraction of a step,
         so it never buys a detour that costs real millimetres.
+
+        ``tee`` is this net's own copper that is already joined to the goal,
+        as (layer, polyline) runs. Without it every link has to finish on the
+        pad it names, so a net with three branches funnels all three into one
+        pad and the junction can only ever sit there - converging diagonals
+        on the plot, where a person would tap the trunk at the nearest point.
+        With it the search may finish on any cell whose centre lies exactly
+        on that copper: the junction lands where the geometry is shortest,
+        which is a tee, and a tee is how people draw it. The caller owns the
+        connectivity claim - copper that is *not* yet joined to the goal
+        would end the search with the goal still unconnected.
         """
         blocked = self._blocked(net, width)
         back_cost = self.back_cost if back_cost is None else back_cost
@@ -278,6 +290,24 @@ class Router:
             beside -= on_path
         follow_bonus = 0.3
 
+        # Only cells whose *centre* is exactly on the copper may end the
+        # search: a 45-degree run passes between centres for most of its
+        # length, and finishing on a merely-nearby cell leaves the branch end
+        # a sixth of a millimetre off the trunk - electrically joined, but a
+        # loose end to anything that measures the centrelines.
+        tee_cells: set[tuple[int, int, int]] = set()
+        for tee_layer, polyline in tee or ():
+            layer_index = self.layers.index(tee_layer)
+            for a, b in pairwise(polyline):
+                length = math.dist(a, b)
+                samples = int(length / self.pitch * 2) + 1
+                for index in range(samples + 1):
+                    t = index / samples
+                    point = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+                    cell = self._cell(point)
+                    if _point_to_segment(self._point(cell), a, b) < 1e-4:
+                        tee_cells.add((*cell, layer_index))
+
         turn_penalty = 3.0
         best: dict[tuple[int, int, int, int], float] = {}
         came: dict[tuple[int, int, int, int], tuple[int, int, int, int] | None] = {}
@@ -292,6 +322,8 @@ class Router:
             cx, cy, layer, heading = state
             if (cx, cy) == goal_cell and layer in goal_layers:
                 return self._reconstruct(state, came, start, goal)
+            if (cx, cy, layer) in tee_cells and (cx, cy) != goal_cell:
+                return self._reconstruct(state, came, start, self._point((cx, cy)))
             for index, (dx, dy) in enumerate(STEPS):
                 nxt = (cx + dx, cy + dy)
                 if not (0 <= nxt[0] < self.columns and 0 <= nxt[1] < self.rows):
@@ -402,3 +434,15 @@ class Router:
 def _direction(delta: tuple[float, float]) -> tuple[float, float]:
     length = math.hypot(*delta)
     return (0.0, 0.0) if length == 0 else (round(delta[0] / length, 6), round(delta[1] / length, 6))
+
+
+def _point_to_segment(
+    point: tuple[float, float], a: tuple[float, float], b: tuple[float, float]
+) -> float:
+    """Distance from ``point`` to the segment a-b."""
+    ax, ay = b[0] - a[0], b[1] - a[1]
+    length = ax * ax + ay * ay
+    if length < 1e-18:
+        return math.dist(point, a)
+    t = max(0.0, min(1.0, ((point[0] - a[0]) * ax + (point[1] - a[1]) * ay) / length))
+    return math.dist(point, (a[0] + ax * t, a[1] + ay * t))
