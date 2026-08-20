@@ -7420,7 +7420,10 @@ def fpga_audio() -> Design:
     # grid, which is what lets a tee land on the stroke at all.
     SPINE_1V2 = ((25.5, 42.25), (42.2, 42.25))
     vias.append(Via("+1V2", x=SPINE_1V2[0][0], y=SPINE_1V2[0][1]))
-    vias.append(Via("+1V2", x=SPINE_1V2[1][0], y=SPINE_1V2[1][1]))
+    # No via on the east end: the exposed pad owns the die centre on the
+    # front - a through via there is a short against U1's ground paddle -
+    # and none is needed, because the east tap is a back-side link that
+    # starts exactly where the stroke ends.
     anchored.append(Track("+1V2", "B.Cu", POWER, [SPINE_1V2[0], SPINE_1V2[1]]))
 
     # Every endpoint goes through `end`, which returns the far end of a pin's
