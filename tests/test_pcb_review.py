@@ -946,3 +946,48 @@ def test_two_silk_strings_through_each_other_are_reported():
         silk=[silk("J1", 10.0, 10.0), silk("IN GND OUT", 11.0, 10.2, layer="B.SilkS")]
     )
     assert pcb_review.rule_silk_over_silk(ctx_for(board)) == []
+
+
+def test_a_net_crossing_its_own_copper_is_reported():
+    """Same potential, so DRC is silent - but the X on the plot is real."""
+    parts = [
+        footprint("R1", 5, 5, [pad("1", 5, 5, "SIG")]),
+        footprint("R2", 15, 15, [pad("1", 15, 15, "SIG")]),
+    ]
+    board = board_from(
+        footprints=parts,
+        tracks=[
+            track(5, 5, 15, 15, net="SIG"),  # the diagonal
+            track(5, 15, 15, 5, net="SIG"),  # its own branch, straight through it
+        ],
+    )
+    findings = pcb_review.rule_self_crossing(ctx_for(board))
+    assert [f.rule for f in findings] == ["route.self_crossing"]
+    assert findings[0].details["count"] == 1
+
+    # two branches *meeting* at a shared endpoint are a junction, not a cross
+    board = board_from(
+        footprints=parts,
+        tracks=[track(5, 5, 10, 10, net="SIG"), track(10, 10, 15, 5, net="SIG")],
+    )
+    assert pcb_review.rule_self_crossing(ctx_for(board)) == []
+
+    # two different nets crossing are a short: DRC's finding, not this rule's
+    board = board_from(
+        footprints=parts,
+        tracks=[track(5, 5, 15, 15, net="SIG"), track(5, 15, 15, 5, net="OTHER")],
+    )
+    assert pcb_review.rule_self_crossing(ctx_for(board)) == []
+
+
+def test_a_poured_net_may_cross_itself():
+    """A plane is a mesh on purpose; its stitching is not a redundant loop."""
+    zone = pcb.Zone(
+        net="GND", layers=["B.Cu"], filled=True, outline=[(0, 0), (50, 0), (50, 40), (0, 40)]
+    )
+    board = board_from(
+        footprints=[footprint("R1", 5, 5, [pad("1", 5, 5, "GND")])],
+        tracks=[track(5, 5, 15, 15, net="GND"), track(5, 15, 15, 5, net="GND")],
+        zones=[zone],
+    )
+    assert pcb_review.rule_self_crossing(ctx_for(board)) == []

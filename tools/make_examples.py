@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import autoroute
 
+from eda_toolkit.kicad import pcb_review
 from eda_toolkit.kicad import s_expression as sexp
 from eda_toolkit.kicad.pcb_review import _shortest_clear
 from eda_toolkit.kicad.s_expression import Bare, SNode
@@ -3080,7 +3081,9 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
     )
     if not order:
         return _stitched(
-            _chamfer_tracks(_doglegged(_unfold_tracks(_join_runs(_untraced(_snap_to_45(design))))))
+            _chamfer_tracks(
+                _doglegged(_unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(design))))))
+            )
         )
     digest = _routing_digest(design) if use_cache else ""
     if use_cache:
@@ -3090,7 +3093,7 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
             done = replace(design, tracks=cached[0], vias=cached[1])
             return _stitched(
                 _chamfer_tracks(
-                    _doglegged(_unfold_tracks(_join_runs(_untraced(_snap_to_45(done)))))
+                    _doglegged(_unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done))))))
                 )
             )
         order = _learned_order(design, order)
@@ -3158,7 +3161,9 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         if use_cache:
             _cache_write(design, digest, done, order)
         return _stitched(
-            _chamfer_tracks(_doglegged(_unfold_tracks(_join_runs(_untraced(_snap_to_45(done))))))
+            _chamfer_tracks(
+                _doglegged(_unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done))))))
+            )
         )
 
 
@@ -3174,6 +3179,269 @@ def _on_45_grid(a, b) -> bool:
     """
     dx, dy = abs(b[0] - a[0]), abs(b[1] - a[1])
     return dx < GEOM_EPS or dy < GEOM_EPS or abs(dx - dy) < GEOM_EPS
+
+
+def _unlooped(design: Design) -> Design:
+    """Cut the redundant loops out of a net's copper.
+
+    Routing one link of a net at a time treats the net's own copper as free
+    space, so a later link happily crosses an earlier one - same potential,
+    DRC silent - and the net ends up carrying a closed loop with an X drawn
+    on the plot. `route.self_crossing` measures it; a person never draws it.
+
+    The cut is a graph question. Split every same-net, same-layer crossing at
+    its intersection so the X becomes a node, build the net's node graph
+    (vias stitch the layers), and while any cycle remains, remove the longest
+    chain of the cycle that runs junction-to-junction: connectivity is kept
+    by definition - a cycle has two ways round - and the amputated X is left
+    as an ordinary corner. The pour net keeps its loops; a plane is a mesh on
+    purpose. Vias stranded on removed copper go with it.
+    """
+    keep_nets = {POUR_NET}
+    segs: list[dict] = []
+    passthrough: list[Track] = []
+    for track in design.tracks:
+        if track.net in keep_nets or track.auto:
+            passthrough.append(track)
+            continue
+        points = [resolve(design, point) for point in track.points]
+        for a, b in pairwise(points):
+            if math.dist(a, b) < GEOM_EPS:
+                continue
+            segs.append(
+                {"net": track.net, "layer": track.layer, "width": track.width, "a": a, "b": b}
+            )
+
+    def _cross_point(p1, p2, p3, p4):
+        d1 = (p2[0] - p1[0], p2[1] - p1[1])
+        d2 = (p4[0] - p3[0], p4[1] - p3[1])
+        denom = d1[0] * d2[1] - d1[1] * d2[0]
+        if abs(denom) < 1e-12:
+            return None
+        t = ((p3[0] - p1[0]) * d2[1] - (p3[1] - p1[1]) * d2[0]) / denom
+        u = ((p3[0] - p1[0]) * d1[1] - (p3[1] - p1[1]) * d1[0]) / denom
+        if 1e-6 < t < 1 - 1e-6 and 1e-6 < u < 1 - 1e-6:
+            return (round(p1[0] + t * d1[0], 4), round(p1[1] + t * d1[1], 4))
+        return None
+
+    # Split at every same-net, same-layer crossing so the X is a node.
+    changed = True
+    while changed:
+        changed = False
+        for i in range(len(segs)):
+            for j in range(i + 1, len(segs)):
+                one, other = segs[i], segs[j]
+                if one["net"] != other["net"] or one["layer"] != other["layer"]:
+                    continue
+                point = _cross_point(one["a"], one["b"], other["a"], other["b"])
+                if point is None:
+                    continue
+                segs[i : i + 1] = [
+                    {**one, "b": point},
+                    {**one, "a": point},
+                ]
+                # j moved by one because i split into two
+                k = j + 1
+                other = segs[k]
+                segs[k : k + 1] = [
+                    {**other, "b": point},
+                    {**other, "a": point},
+                ]
+                changed = True
+                break
+            if changed:
+                break
+
+    def key(point):
+        return (round(point[0], 3), round(point[1], 3))
+
+    pad_nodes: dict[str, set] = defaultdict(set)
+    pad_geometry: dict[str, list] = defaultdict(list)
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            owner = next(
+                (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes), None
+            )
+            if owner:
+                centre = pad_position_of(design, part, pad)
+                pad_nodes[owner].add(key(centre))
+                pad_geometry[owner].append((centre, pad_box(design, part, pad)))
+
+    # A segment that passes *over* a pad of its own net feeds that pad by the
+    # overlap - KiCad's connectivity is geometric, this graph is endpoint
+    # topology, and the difference disconnected two pads the first time the
+    # cutter ran: the only chain feeding R1 crossed the pad mid-run, the graph
+    # had no node there, and the chain looked redundant. Split the segment at
+    # the pad and the feed becomes an anchor the cut has to respect.
+    for net, geometry in pad_geometry.items():
+        index = 0
+        while index < len(segs):
+            seg = segs[index]
+            if seg["net"] != net:
+                index += 1
+                continue
+            a, b = seg["a"], seg["b"]
+            length = math.dist(a, b)
+            split_at = None
+            for centre, box in geometry:
+                if length < GEOM_EPS:
+                    break
+                t = ((centre[0] - a[0]) * (b[0] - a[0]) + (centre[1] - a[1]) * (b[1] - a[1])) / (
+                    length * length
+                )
+                if not 0.01 < t < 0.99:
+                    continue
+                point = (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+                if not (
+                    box[0] - 0.05 <= point[0] <= box[2] + 0.05
+                    and box[1] - 0.05 <= point[1] <= box[3] + 0.05
+                ):
+                    continue
+                if key(point) in (key(a), key(b)):
+                    continue
+                split_at = (round(point[0], 4), round(point[1], 4))
+                break
+            if split_at is None:
+                index += 1
+                continue
+            segs[index : index + 1] = [{**seg, "b": split_at}, {**seg, "a": split_at}]
+            pad_nodes[net].add(key(split_at))
+
+    def in_pad(net: str, node) -> bool:
+        """Whether a node sits inside a pad of its own net.
+
+        The pad's copper connects everything inside its outline, so a node in
+        there is fed whatever the track graph says - and the escape fan draws
+        a deliberate micro-hook inside off-grid pads to guarantee the overlap.
+        The first version of this cutter read one of those hooks as a
+        dangling loop and amputated a pad's only feed with it.
+        """
+        for _centre, box in pad_geometry.get(net, ()):
+            if box[0] - 0.05 <= node[0] <= box[2] + 0.05 and (
+                box[1] - 0.05 <= node[1] <= box[3] + 0.05
+            ):
+                return True
+        return False
+
+    removed: set[int] = set()
+    immune: set[int] = set()
+    nets = sorted({seg["net"] for seg in segs})
+    for net in nets:
+        while True:
+            indices = [i for i, seg in enumerate(segs) if seg["net"] == net and i not in removed]
+            # Immune edges go into the spanning tree first, so the cycle the
+            # search reports is always closed by a removable edge - or by
+            # nothing, and the net is done.
+            indices.sort(key=lambda i: (i not in immune, i))
+            graph: dict[tuple, list[tuple]] = defaultdict(list)
+            for i in indices:
+                a, b = key(segs[i]["a"]), key(segs[i]["b"])
+                if a == b:
+                    removed.add(i)
+                    continue
+                graph[a].append((b, i))
+                graph[b].append((a, i))
+            # a spanning forest; any edge it does not use closes a cycle
+            parent: dict[tuple, tuple] = {}
+
+            def find(x, parent=parent):
+                while parent.setdefault(x, x) != x:
+                    parent[x] = parent[parent[x]]
+                    x = parent[x]
+                return x
+
+            extra = None
+            used: set[int] = set()
+            for i in indices:
+                if i in removed:
+                    continue
+                a, b = key(segs[i]["a"]), key(segs[i]["b"])
+                ra, rb = find(a), find(b)
+                if ra == rb:
+                    if i in immune:
+                        # an immune closure - a pad hook - is allowed to stand
+                        continue
+                    extra = i
+                    break
+                parent[ra] = rb
+                used.add(i)
+            if extra is None:
+                break
+            # the cycle: tree path between the extra edge's ends, plus the edge
+            start, goal = key(segs[extra]["a"]), key(segs[extra]["b"])
+            tree: dict[tuple, list[tuple]] = defaultdict(list)
+            for i in used:
+                a, b = key(segs[i]["a"]), key(segs[i]["b"])
+                tree[a].append((b, i))
+                tree[b].append((a, i))
+            back: dict[tuple, tuple] = {start: (None, None)}
+            queue = [start]
+            while queue:
+                here = queue.pop(0)
+                if here == goal:
+                    break
+                for nxt, i in tree[here]:
+                    if nxt not in back:
+                        back[nxt] = (here, i)
+                        queue.append(nxt)
+            # the cycle as a closed walk: nodes[k] -edge[k]-> nodes[k+1],
+            # with the extra edge closing goal back to start
+            path_nodes = [goal]
+            path_edges = []
+            node = goal
+            while back.get(node, (None, None))[0] is not None:
+                prev, i = back[node]
+                path_edges.append(i)
+                path_nodes.append(prev)
+                node = prev
+            cyc_nodes = list(reversed(path_nodes))  # start ... goal
+            cyc_edges = [*reversed(path_edges), extra]  # start->...->goal->start
+            count = len(cyc_edges)
+            if all(in_pad(net, n) for n in cyc_nodes):
+                # a loop wholly inside one pad is the escape fan's entry
+                # hook, not redundant copper: it is what overlaps the pad
+                immune.update(cyc_edges)
+                continue
+            anchors = [
+                k
+                for k, n in enumerate(cyc_nodes)
+                if n in pad_nodes.get(net, ()) or in_pad(net, n) or len(graph[n]) >= 3
+            ]
+            if len(anchors) < 2:
+                # a loop hanging off at most one point of the tree feeds
+                # nothing: all of it is redundant
+                removed.update(cyc_edges)
+                continue
+            # chains: the runs of cycle edges between consecutive anchors,
+            # walking the closed cycle once around from the first anchor
+            chains = []
+            for which, at in enumerate(anchors):
+                nxt = anchors[(which + 1) % len(anchors)]
+                span = (nxt - at) % count or count
+                chains.append([cyc_edges[(at + step) % count] for step in range(span)])
+
+            def chain_len(chain, segs=segs):
+                return sum(math.dist(segs[i]["a"], segs[i]["b"]) for i in chain)
+
+            removed.update(max(chains, key=chain_len))
+
+    kept_segs = [seg for i, seg in enumerate(segs) if i not in removed]
+    # vias left with no copper on any layer at their node go with the loop
+    alive_nodes: dict[str, set] = defaultdict(set)
+    for seg in kept_segs:
+        alive_nodes[seg["net"]].add(key(seg["a"]))
+        alive_nodes[seg["net"]].add(key(seg["b"]))
+    vias = [
+        via
+        for via in design.vias
+        if via.net in keep_nets or key(via_position(design, via)) in alive_nodes[via.net]
+    ]
+    tracks = passthrough + [
+        Track(seg["net"], seg["layer"], seg["width"], [seg["a"], seg["b"]]) for seg in kept_segs
+    ]
+    return replace(design, tracks=tracks, vias=vias)
 
 
 def _copper_oracle(design: Design):
@@ -3212,7 +3480,16 @@ def _copper_oracle(design: Design):
         slack = 0.26
         half = track.width / 2
         for index, (net, layer, width, points) in enumerate(others):
-            if index == skip_index or net == track.net or layer != track.layer:
+            if index == skip_index or layer != track.layer:
+                continue
+            if net == track.net:
+                # The net's own copper may be touched - that is a junction -
+                # but not crossed: a redraw that slices through its own
+                # net's other branch is `route.self_crossing`, the X the
+                # loop-cutter just spent its time removing.
+                for s0, s1 in pairwise(points):
+                    if pcb_review._properly_crosses(a, b, s0, s1):
+                        return False
                 continue
             for s0, s1 in pairwise(points):
                 if _segment_distance(a, b, s0, s1) < half + width / 2 + slack:

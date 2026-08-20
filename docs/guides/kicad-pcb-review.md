@@ -137,6 +137,7 @@ mismatches).
 | `layout.pour_fragmented` | 70 % | a ground pour whose largest island holds less than this share of its copper: the plane is pieces |
 | `route.mixed_track_widths` | 3 widths | a net nobody decided the width of |
 | `route.detour` | 2.5x | routed copper against the minimum spanning tree of the net's pads — the scenic tour an autorouter leaves |
+| `route.self_crossing` | — | a net whose own copper crosses itself on one layer. The same potential, so DRC has nothing to say — but two branches of one net crossing means the copper carries a redundant loop, and a person never draws one: the plot reads as tracks driven through each other. KiCad's demo boards carry at most one to three, at dense escapes |
 | `route.wander` | 2.0x | one run of copper — pad or junction at each end — against the shortest way between those two ends that clears the packages in between. `route.detour` weighs a whole net and a net hides things; this is the track that leaves its pad, goes three sides of a rectangle and arrives 4 mm away |
 | `route.return_path` | 10 mm | on a two-layer board, signal track running over cuts in the other layer's ground fill: the return current detours and the loop grows |
 

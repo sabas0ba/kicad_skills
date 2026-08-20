@@ -666,3 +666,49 @@ strokes, keep a direction per layer. The difference shows in what happened
 to the op-amp board: its number barely moved, and the plot still got
 calmer, because the strokes that did redraw are the long ones the eye
 follows first.
+
+## 16. The reviewer's pass, round eleven: "are the other checks really passing?"
+
+The reviewer looked at the plots, saw tracks driven straight through each
+other, and asked the only fair question: with crossings that blatant, are
+the other checks actually passing?
+
+They were, and both halves of that are worth writing down. Measured
+directly - every pair of same-layer segments on every reviewed board -
+there is not one crossing between *different* nets: KiCad's DRC reports
+zero errors, zero shorts, zero unconnected items on all five, and the DRC
+is not being fooled. What the plots show is thirteen places (FPGA), one
+(op-amp) and one (buck) where a net crosses **itself**. Same potential, so
+DRC has nothing to say; no length ratio catches it, because the loop can be
+short; and no rule of ours looked. The checks were honest. The check *list*
+had a hole exactly the shape of what the eye catches first.
+
+### What went into the tool
+
+| built in | kind | what it does |
+| --- | --- | --- |
+| `route.self_crossing` | rule | a net whose own copper crosses itself on one layer, warning, promoted by `ai-generated`. On KiCad's demo corpus: 6 of 16 boards carry one to three, at dense escapes - ours carried thirteen on one board |
+| `_unlooped` | pass | the fix, as a graph question: split every same-net crossing so the X is a node, and while any cycle remains in the net's copper, remove the longest junction-to-junction chain of the cycle. Connectivity is kept by definition - a cycle has two ways round - and the amputated X is left as an ordinary corner. The pour net keeps its mesh |
+| the oracle refuses new X's | guard | `_doglegged` and `_straighten` may touch their own net's copper - that is a junction - but not cross it, or they would redraw the loops the cutter just removed |
+
+### What the cutter got wrong twice before it was right
+
+Both failures were the same lesson: **KiCad's connectivity is geometric,
+a track graph is endpoint topology, and the difference is exactly a pad.**
+The escape fan draws a deliberate micro-hook *inside* an off-grid pad -
+copper overlapping copper is the connection - and the graph saw a dangling
+loop feeding nothing, called it redundant, and amputated a pad's only feed:
+one DRC unconnected item per pad, invisible in the shape. The cutter now
+treats any node inside a pad of the net's own as an anchor, refuses to
+touch a cycle that sits wholly inside one pad, and splits segments that
+pass over a pad so the feed is a node the cut has to respect. The DRC run
+that verifies all this is the point of the reviewer's question.
+
+### Where it landed
+
+Self-crossings on the five reviewed boards: **0, 0, 0, 0, 0** (were 13, 1,
+1, 0, 0). Cutting the loops removed real copper, and the FPGA board got
+lighter for it: `route.detour` on +3V3 retired outright, `route.wander`
+4 → 3, `route.return_path` down to 3 nets, and KiCad's DRC is clean again -
+zero errors, zero unconnected. Its gate is down to three blocking findings,
+all floorplan, all named in round ten's "what this board needs next".

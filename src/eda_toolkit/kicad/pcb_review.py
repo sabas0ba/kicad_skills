@@ -179,6 +179,14 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "warning",
         threshold="detour_ratio",
     ),
+    "route.self_crossing": RuleSpec(
+        "a net whose own copper crosses itself on one layer. The same "
+        "potential, so DRC has nothing to say - but two branches of one net "
+        "crossing means the copper carries a redundant loop, and a person "
+        "never draws one: the plot reads as tracks driven through each other. "
+        "KiCad's demo boards carry at most one to three, at dense escapes",
+        "warning",
+    ),
     "route.wander": RuleSpec(
         "one continuous run of copper - pad or junction at each end, nothing "
         "branching in between - longer than wander_ratio times the straight "
@@ -2225,6 +2233,73 @@ def rule_detour(ctx: PcbContext) -> list[Finding]:
 # Below this much excess copper a wandering run is not worth talking about:
 # the knee that takes a track round a pad is a detour and is also correct.
 _WANDER_FLOOR_MM = 5.0
+
+
+def _properly_crosses(p1, p2, p3, p4) -> bool:
+    """Two segments intersecting at an interior point of both.
+
+    Sharing an endpoint is a junction and touching collinearly is a lap
+    joint; neither is a crossing. Only the X - where each segment passes
+    strictly through the other - counts, because only the X means the net
+    loops back over itself.
+    """
+    for e in (p1, p2):
+        for f in (p3, p4):
+            if abs(e[0] - f[0]) < 1e-6 and abs(e[1] - f[1]) < 1e-6:
+                return False
+
+    def _orient(a, b, c):
+        v = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+        return 0 if abs(v) < 1e-9 else (1 if v > 0 else -1)
+
+    o1, o2 = _orient(p1, p2, p3), _orient(p1, p2, p4)
+    o3, o4 = _orient(p3, p4, p1), _orient(p3, p4, p2)
+    return o1 != o2 and o3 != o4 and 0 not in (o1, o2, o3, o4)
+
+
+@rule
+def rule_self_crossing(ctx: PcbContext) -> list[Finding]:
+    """A net crossing its own copper on one layer.
+
+    DRC cannot see it - the two branches are the same potential - and no
+    length ratio catches it either, because the loop can be short. But it is
+    exactly what a reviewer's eye catches on the plot: tracks that look
+    driven through each other. Electrically it is a redundant loop; visually
+    it is the clearest single tell of machine routing.
+
+    Ground is skipped for the same reason `route.wander` skips it: a poured
+    net is a mesh on purpose.
+    """
+    zoned = {z.net for z in ctx.board.zones if not z.keepout and z.net}
+    by_group: dict[tuple[str, str], list[pcb.Track]] = defaultdict(list)
+    for track in ctx.board.tracks:
+        if not track.net or track.net in zoned or track.length < GEOM_TOL:
+            continue
+        if ctx.net_class_of(track.net) == "ground":
+            continue
+        by_group[(track.net, track.layer)].append(track)
+    offenders = []
+    for (net, layer), tracks in sorted(by_group.items()):
+        for i in range(len(tracks)):
+            for j in range(i + 1, len(tracks)):
+                one, other = tracks[i], tracks[j]
+                if _properly_crosses(one.start, one.end, other.start, other.end):
+                    x = (one.start[0] + one.end[0] + other.start[0] + other.end[0]) / 4
+                    y = (one.start[1] + one.end[1] + other.start[1] + other.end[1]) / 4
+                    offenders.append(f"{net} on {layer} near ({x:.1f}, {y:.1f})")
+    if not offenders:
+        return []
+    return [
+        _group_finding(
+            "route.self_crossing",
+            "warning",
+            f"{len(offenders)} place(s) where a net's own copper crosses "
+            "itself - the same potential, so DRC is silent, but the copper "
+            "carries a redundant loop and the plot reads as tracks driven "
+            "through each other",
+            offenders,
+        )
+    ]
 
 
 @rule

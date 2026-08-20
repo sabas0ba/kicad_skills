@@ -44,12 +44,12 @@ is [REVIEW.md](REVIEW.md).
 
 Four of the five `reviewed/` projects **pass** their own gate. The FPGA board
 does not: fencing foreign copper out from under the flash and the DAC costs
-it a detour and four wandering runs on the supply rails, plus four nets over
-cuts in the back plane and two acute corners at the pour edge. Those are
-floorplan questions on a 48-pin QFN with two layers — the fix is a stated
-1.2 V spine, named in [REVIEW.md](REVIEW.md) as the next round's work rather
-than waived, because a waiver would say the measurement was wrong and it is
-not. Every `as-generated/` fails.
+it three wandering runs on the supply rails, plus three nets over cuts in
+the back plane and two acute corners at the pour edge. Those are floorplan
+questions on a 48-pin QFN with two layers — the fix is a stated 1.2 V spine,
+named in [REVIEW.md](REVIEW.md) as the next round's work rather than waived,
+because a waiver would say the measurement was wrong and it is not. Every
+`as-generated/` fails.
 
 ## When these were made, and by what
 
@@ -339,18 +339,19 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **FAIL**, 4 blocking, 2 waived | 0 / 2 / 0 | 0 / 10 / 8 |
+| `reviewed` | **FAIL**, 3 blocking, 2 waived | 0 / 2 / 0 | 0 / 9 / 8 |
 | `as-generated` | **FAIL**, 31 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
 unconnected, no schematic-parity findings. On every *style* measure it now
-sits in the hand-routed band — median segment 1.54 mm, 17.8 corners per
-decimetre, 7.8 vias per decimetre — and `route.under_package` no longer
+sits in the hand-routed band — and `route.under_package` no longer
 fires anywhere: the boot flash and the DAC are fenced, because the 1.2 V
-core rail kept sneaking under one or the other. The fence has a price the
-gate states plainly: the rail hauls around the fences, `route.detour` and
-four `route.wander` runs say so, and four SPI/audio nets still cross cuts in
-the back plane. What this board needs next is a *stated* 1.2 V spine — the
+core rail kept sneaking under one or the other. Cutting the redundant loops
+out of the supply rails (`route.self_crossing`, and the `_unlooped` pass it
+drove into the generator) then retired `route.detour` outright. The fence
+still has a price the gate states plainly: three `route.wander` runs on the
+rails, three SPI nets over cuts in the back plane, two acute corners at the
+pour edge. What this board needs next is a *stated* 1.2 V spine — the
 designer's power backbone written into the file, the way the motor board
 states its VM link — and [REVIEW.md](REVIEW.md) names that as the next
 round's work rather than waiving it. The engineering pass there found and
