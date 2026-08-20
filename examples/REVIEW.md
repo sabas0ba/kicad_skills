@@ -712,3 +712,91 @@ lighter for it: `route.detour` on +3V3 retired outright, `route.wander`
 4 → 3, `route.return_path` down to 3 nets, and KiCad's DRC is clean again -
 zero errors, zero unconnected. Its gate is down to three blocking findings,
 all floorplan, all named in round ten's "what this board needs next".
+
+## 17. The reviewer's pass, round twelve: the circle on C15
+
+The reviewer circled one spot on the FPGA board's front render — a cluster
+of 45-degree tracks converging on one 0402 — and asked whether the judging
+is buggy, or missing a fundamental viewpoint.
+
+Measured, the spot was electrically blameless: every track in the circle is
+the same net (the 1.2 V rail), nothing crosses, DRC is clean, and no rule
+had anything to say. The first suspicion — that a pad being used as a
+junction is itself the defect — did not survive contact with the corpus:
+counting pads that carry three or more track arms across the 16 parsable
+KiCad demo boards finds them everywhere people route by hand (10 on the
+Jetson carrier, 95 on the VME board). Humans tee on pads freely. That is
+not the missing viewpoint.
+
+The missing viewpoint was one level down, in the router's contract: **a
+link was only allowed to finish on the pad it names.** A net with three
+branches therefore funnelled all three into one capacitor pad — the
+junction could not form anywhere else, however awkward the convergence,
+because nowhere else was a legal place to stop. People do not route under
+that constraint: they tap the trunk at the nearest point, and the junction
+lands where the geometry is shortest.
+
+### What went into the tool
+
+| built in | kind | what it does |
+| --- | --- | --- |
+| `tee` in `Router.route` | router | the search may finish on any cell whose centre lies exactly on the net's own already-laid copper, not only on the named pad; the junction then forms wherever is nearest |
+| `_tee_component` | guard | only copper already electrically joined to the link's endpoint counts — through shared points, the net's vias and the net's pads — or the named pad is left unconnected and only DRC would notice |
+| pad-named endpoints only | guard | a link aimed at a bare coordinate is aimed at the stated end of a trunk someone drew, and stopping short of it strands the trunk's tail as a stub; a pad is a terminal in its own right, so copper between a tee landing and a pad still ends somewhere real |
+| `_absorb_tee` | pass | a landing mid-segment is inserted into the trunk's points as a stated corner, so every reshaping pass pins the join the way it pins any other track end |
+
+Each guard cost one broken board to learn: the first regeneration left a
+0.5 mm stub of the op-amp's 5 V trunk hanging in air, because a link had
+teed onto the trunk half a millimetre before the stated coordinate the
+trunk was drawn to end on.
+
+### The stated 1.2 V spine
+
+Round ten named the FPGA board's next work: state the 1.2 V rail the way
+the motor board states its VM link. The tee is what makes a stated spine
+worth having — branches can tap it anywhere — and the corridor came from
+looking at what the router had been doing instead: its consumers sit on
+both sides of the FPGA, every east-west lane south of the package is a
+comb of SPI escapes, and the link-by-link answer was a 122 mm tour of the
+board's south edge to cover 39 mm. The one corridor nothing else can use
+is under the FPGA's own die: the QFN's pads are surface copper, the strip
+between its south pad row and its ground-via grid is empty on the back,
+and the rail is the package's own supply, so nothing runs under a part it
+does not feed. One straight stroke on the back, a via at each end, and the
+links tap it.
+
+### Where it landed
+
+The circled defect is gone as a class, not as an instance: on the
+regenerated FPGA board C15 is fed by one arm, the junctions sit on the
+trunks, and no small pad on any of the five boards carries more than three
+arms - which is where the human corpus sits too. The tee also made the
+boards lighter: the op-amp board lost 12% of its copper, the FPGA board
+15% (1860 mm down to 1583 mm), because a branch that may stop at the
+nearest trunk no longer duplicates the trunk's own distance. Crossings
+stay at zero on all five, KiCad's DRC stays at zero errors, and the four
+boards that passed their gates still pass them with the same waivers.
+
+The FPGA board also finally got the spine, and the round shows why the
+order of those two things mattered: regenerated with the tee alone, the
+rail still toured (122 mm for 39) and the signals it displaced put seven
+nets over plane cuts - worse than the three the board started with. The
+spine reclaimed the corridors: `route.return_path` is back to three nets
+(all SPI, 11-28 mm), `route.wander` no longer names a rail at all (two
+signal detours remain, 2.1x and 2.6x), and `route.acute_angle` holds two
+45-degree corners at the pour edge plus one folded corner the clean-up
+passes have not learned to unfold. Three blocking findings, all
+floorplan-class, all still stated by the gate rather than waived - the
+honest price of a QFN-48 on two layers, now without the tours that used
+to sit on top of it.
+
+Stating the spine took three broken boards of its own, each caught by
+`check_board` before anything was written: a through via parked in the
+west escape comb lands on whichever escape line owns that lane; at
+y = 42.5 the east via missed the QFN's south pads by a tenth of a
+millimetre; and the die centre belongs to the exposed pad, so the east
+end may not drill at all - the stroke and its tap meet on the back
+instead, with no layer change. The corrected stroke sits at y = 42.25:
+a quarter-millimetre off the pads' inner ends, and still on the router's
+quarter-millimetre grid - off it, no tee could land on the stroke, which
+would have defeated the reason it exists.

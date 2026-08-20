@@ -43,13 +43,14 @@ waiver in the project's `gate.toml`. That pass, with what each finding became,
 is [REVIEW.md](REVIEW.md).
 
 Four of the five `reviewed/` projects **pass** their own gate. The FPGA board
-does not: fencing foreign copper out from under the flash and the DAC costs
-it three wandering runs on the supply rails, plus three nets over cuts in
-the back plane and two acute corners at the pour edge. Those are floorplan
-questions on a 48-pin QFN with two layers — the fix is a stated 1.2 V spine,
-named in [REVIEW.md](REVIEW.md) as the next round's work rather than waived,
-because a waiver would say the measurement was wrong and it is not. Every
-`as-generated/` fails.
+does not: fencing foreign copper out from under the flash and the DAC still
+costs it three SPI nets over cuts in the back plane, two signal detours and
+three corners the pour edge and a fold leave behind. The supply rails no
+longer wander — the 1.2 V core rail rides a stated spine under the FPGA's own
+die, and every branch taps the nearest point of its own copper rather than
+funnelling into a pad. What remains is floorplan on a 48-pin QFN with two
+layers, stated by the gate rather than waived, because a waiver would say the
+measurement was wrong and it is not. Every `as-generated/` fails.
 
 ## When these were made, and by what
 
@@ -340,7 +341,7 @@ a 1.2 V regulator for the core — on two layers.
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **FAIL**, 3 blocking, 2 waived | 0 / 2 / 0 | 0 / 9 / 8 |
-| `as-generated` | **FAIL**, 31 blocking | — | — |
+| `as-generated` | **FAIL**, 29 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
 unconnected, no schematic-parity findings. On every *style* measure it now
@@ -348,13 +349,15 @@ sits in the hand-routed band — and `route.under_package` no longer
 fires anywhere: the boot flash and the DAC are fenced, because the 1.2 V
 core rail kept sneaking under one or the other. Cutting the redundant loops
 out of the supply rails (`route.self_crossing`, and the `_unlooped` pass it
-drove into the generator) then retired `route.detour` outright. The fence
-still has a price the gate states plainly: three `route.wander` runs on the
-rails, three SPI nets over cuts in the back plane, two acute corners at the
-pour edge. What this board needs next is a *stated* 1.2 V spine — the
-designer's power backbone written into the file, the way the motor board
-states its VM link — and [REVIEW.md](REVIEW.md) names that as the next
-round's work rather than waiving it. The engineering pass there found and
+drove into the generator) then retired `route.detour` outright. The stated
+1.2 V spine named as the last round's work is now in the file: one straight
+back-side stroke under the FPGA's own die, tapped by every branch at the
+nearest point — the tee described in [REVIEW.md](REVIEW.md) is what makes
+tapping possible. The rails no longer wander, and the board is 15% lighter
+in copper for it. The fence still has a price the gate states plainly:
+three SPI nets over cuts in the back plane, two signal detours
+(`route.wander` at 2.1x and 2.6x), and three corners (`route.acute_angle`:
+two 45s at the pour edge, one fold). The engineering pass there found and
 fixed
 four real electrical faults here: the PCM5102A's charge pump was miswired
 (flying cap to ground instead of CAPP-CAPM — the DAC had no negative rail),
