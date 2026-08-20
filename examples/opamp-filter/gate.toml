@@ -29,3 +29,13 @@ rule = "layout.decoupling_distance"
 location = "U2.4"
 reason = """U2.4 is the inverting input tied back to the output - the same \
 VREF node, judged above."""
+
+[[waivers]]
+rule = "track.thin_power"
+reason = """VREF is U2's buffered half-rail, not a supply: its load is the \
+filter's bias network, microamps against the ampere that 0.3 mm of 1 oz \
+copper carries at a 10 C rise (IPC-2221). It runs at 0.3 mm end to end on \
+purpose - the SOT-23-5's escape is 0.3 mm whatever the rest of the run \
+says, and a run that steps to 0.5 at the first corner past the escape is a \
+width change nobody chose, which the reviewer circled. The rule reads the \
+net's name and cannot read its current; this design states it here."""
