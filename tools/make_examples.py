@@ -7400,6 +7400,26 @@ def fpga_audio() -> Design:
             )
         )
 
+    # The 1.2 V rail gets a stated spine, the way the motor board states its
+    # VM link. Its consumers sit on both sides of the FPGA, and every
+    # east-west lane south of the package is a comb of SPI escapes - routed
+    # link by link the rail toured the south edge of the board to get
+    # across (122 mm for 39). The one corridor nothing else can use is under
+    # the FPGA's own die: the QFN's pads are surface copper, the strip
+    # between its south pad row and its ground-via grid is empty on the
+    # back, and the rail is the package's own supply, so nothing foreign
+    # runs under anything. One straight stroke, back side, a via at each
+    # end; the links then tap it wherever is nearest.
+    # The west via sits west of the escape column (x = 27), because the
+    # column is a comb of horizontal escape lines at every half-millimetre
+    # of y - including 42.5 - and a through via parked in the comb lands on
+    # whichever line owns that lane. The east via stops short of the east
+    # pad row (x = 43.45) by its own clearance.
+    SPINE_1V2 = ((25.5, 42.5), (42.2, 42.5))
+    vias.append(Via("+1V2", x=SPINE_1V2[0][0], y=SPINE_1V2[0][1]))
+    vias.append(Via("+1V2", x=SPINE_1V2[1][0], y=SPINE_1V2[1][1]))
+    anchored.append(Track("+1V2", "B.Cu", POWER, [SPINE_1V2[0], SPINE_1V2[1]]))
+
     # Every endpoint goes through `end`, which returns the far end of a pin's
     # escape when it has one and the pad itself when it does not.
     tracks = [*escapes, *anchored]
@@ -7442,7 +7462,10 @@ def fpga_audio() -> Design:
                 ("U3.5", "C3.1"),
                 ("C3.1", "C4.1"),
                 ("C4.1", "U1.5"),
-                ("C4.1", "C15.1"),
+                # ...one link into each end of the stated spine, in place of
+                # the C4-to-C15 haul that had to cross the SPI comb.
+                ("C4.1", SPINE_1V2[0]),
+                (SPINE_1V2[1], "C15.1"),
                 ("C15.1", "U1.30"),
                 ("C15.1", "R3.1"),
             ],
