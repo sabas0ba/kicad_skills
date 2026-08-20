@@ -7463,9 +7463,10 @@ def fpga_audio() -> Design:
                 ("C3.1", "C4.1"),
                 ("C4.1", "U1.5"),
                 # ...one link into each end of the stated spine, in place of
-                # the C4-to-C15 haul that had to cross the SPI comb.
+                # the C4-to-C15 haul that had to cross the SPI comb. (The
+                # east tap is stated separately below: it has to leave on
+                # the back.)
                 ("C4.1", SPINE_1V2[0]),
-                (SPINE_1V2[1], "C15.1"),
                 ("C15.1", "U1.30"),
                 ("C15.1", "R3.1"),
             ],
@@ -7493,6 +7494,12 @@ def fpga_audio() -> Design:
     for net, width, pairs in routes:
         for a, b in pairs:
             tracks.append(Track(net, "F.Cu", width, [end(a), end(b)], auto=True))
+
+    # The tap from the spine's east via leaves on the back: the via sits in
+    # the pocket between the QFN's own pad rows, and on the front the rows
+    # are the wall - the first regeneration proved there is no lane. The
+    # goal stays on the front because C15's pad is front copper.
+    tracks.append(Track("+1V2", "B.Cu", SIG, [SPINE_1V2[1], "C15.1"], auto=True, goal_layer="F.Cu"))
 
     for pad, target in (
         ("J1.2", (12.0, 12.0)),
