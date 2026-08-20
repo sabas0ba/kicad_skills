@@ -194,6 +194,7 @@ class Router:
         back_cost: float | None = None,
         follow: list[list[tuple[float, float]]] | None = None,
         tee: list[tuple[str, list[tuple[float, float]]]] | None = None,
+        avoid: list[tuple[str, list[tuple[float, float]]]] | None = None,
     ) -> Path | None:
         """A path from ``start`` to ``goal``, or None when there is no room.
 
@@ -229,6 +230,15 @@ class Router:
         which is a tee, and a tee is how people draw it. The caller owns the
         connectivity claim - copper that is *not* yet joined to the goal
         would end the search with the goal still unconnected.
+
+        ``avoid`` is the rest of this net's copper - laid, but not joined to
+        the goal, so the search may not finish on it. It may not *ride* it
+        either: the net's own copper costs nothing to sit on, and a search
+        that exploits that lays a second run down the middle of the first -
+        two millimetres of doubled track and a pair of corners a quarter
+        millimetre apart, which the reviewer circled as a hook. Cells along
+        that copper carry a surcharge, so crossing it stays cheap and
+        travelling along it never wins.
         """
         blocked = self._blocked(net, width)
         back_cost = self.back_cost if back_cost is None else back_cost
@@ -315,6 +325,17 @@ class Router:
                         and math.dist(self._point(cell), goal) >= 2.0
                     ):
                         tee_cells.add((*cell, layer_index))
+        avoid_cells: set[tuple[int, int, int]] = set()
+        for avoid_layer, polyline in avoid or ():
+            layer_index = self.layers.index(avoid_layer)
+            for a, b in pairwise(polyline):
+                length = math.dist(a, b)
+                samples = int(length / self.pitch * 2) + 1
+                for index in range(samples + 1):
+                    t = index / samples
+                    point = (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+                    avoid_cells.add((*self._cell(point), layer_index))
+        ride_cost = 4.0
 
         turn_penalty = 3.0
         best: dict[tuple[int, int, int, int], float] = {}
@@ -347,6 +368,7 @@ class Router:
                     + (back_cost * step if layer else 0.0)
                     + (0.0 if heading in (index, -1) else turn_penalty)
                     + (self.crowd_cost if nxt in crowded else 0.0)
+                    + (ride_cost * step if (*nxt, layer) in avoid_cells else 0.0)
                     - (follow_bonus * step if nxt in beside else 0.0)
                 )
                 self._relax(queue, best, came, state, (*nxt, layer, index), total)

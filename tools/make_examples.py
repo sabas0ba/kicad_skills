@@ -3021,6 +3021,14 @@ def _route_all(
             back_cost=None if track.net == POUR_NET else 30.0,
             follow=bus_paths.get(_bus_of(track.net) or ""),
             tee=[(layer, points) for layer, points, _index in component] or None,
+            # ...and the rest of the net's copper - laid but not joined to
+            # the goal - may be crossed but not ridden (see Router.route).
+            avoid=[
+                (layer, points)
+                for layer, points, index in entries
+                if index not in {i for _l, _p, i in component}
+            ]
+            or None,
         )
         if path is None:
             raise Blocked(track)
@@ -7010,7 +7018,11 @@ def opamp_filter() -> Design:
         Track("FILT_IN", "F.Cu", SIG, ["R2.2", u1w["3"]], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["TP1.1", "R2.2"], auto=True),
         Track("OUT", "F.Cu", SIG, ["TP2.1", "C6.1"], auto=True),
-        Track("VREF", "F.Cu", POWER, ["TP3.1", "C2.2"], auto=True),
+        # VREF and its taps run at signal width end to end: the escape from
+        # the SOT-23-5 is 0.3 mm whatever the link says, and a run that steps
+        # to 0.5 at the first corner past it is a step nobody chose. The
+        # reference is a buffered half-rail carrying microamps; 0.3 is honest.
+        Track("VREF", "F.Cu", SIG, ["TP3.1", "C2.2"], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["C2.1", u1w["3"]], auto=True),
         # U1's wrap runs escape to escape: its inverting pin has an escape
         # anyway, because it carries the output on to C6. U2's runs pad to
@@ -7022,9 +7034,9 @@ def opamp_filter() -> Design:
         Track("OUT", "F.Cu", SIG, [u1e["4"], "C6.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["C6.2", "J3.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["J3.1", "R6.1"], auto=True),
-        Track("VREF", "F.Cu", POWER, ["U2.1", "U2.4"], auto=True),
-        Track("VREF", "F.Cu", POWER, [u2w["1"], "C2.2"], auto=True),
-        Track("VREF", "F.Cu", POWER, [u2w["1"], "R5.2"], auto=True),
+        Track("VREF", "F.Cu", SIG, ["U2.1", "U2.4"], auto=True),
+        Track("VREF", "F.Cu", SIG, [u2w["1"], "C2.2"], auto=True),
+        Track("VREF", "F.Cu", SIG, [u2w["1"], "R5.2"], auto=True),
         Track("MID", "F.Cu", SIG, ["R3.2", "R4.1"], auto=True),
         Track("MID", "F.Cu", SIG, ["R4.1", "C4.1"], auto=True),
         Track("MID", "F.Cu", SIG, ["C4.1", u2w["3"]], auto=True),
@@ -7032,7 +7044,10 @@ def opamp_filter() -> Design:
         Track("+5V", "F.Cu", POWER, ["C5.1", u1w["2"]], auto=True),
         Track("+5V", "F.Cu", POWER, ["C5.1", "C7.1"], auto=True),
         Track("+5V", "F.Cu", POWER, ["C7.1", u2w["2"]], auto=True),
-        Track("+5V", "F.Cu", SIG, ["C7.1", "R3.1"], auto=True),
+        # ...and the divider's feed keeps the rail's width to the junction:
+        # a 0.3 branch butt-joined onto 0.5 trunk mid-run is the same
+        # nobody-chose-this step, seen from the other side.
+        Track("+5V", "F.Cu", POWER, ["C7.1", "R3.1"], auto=True),
     ]
     # Each ground pad drops to the plane a couple of millimetres away, on the
     # side away from the signal it returns: the loop closes at the part. The
