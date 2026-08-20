@@ -163,7 +163,7 @@ charge pump, bypass and pull-up the datasheet asks for.
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 4 findings waived | 0 / 3 / 0 | 0 / 4 / 7 |
-| `as-generated` | **FAIL**, 35 blocking | — | — |
+| `as-generated` | **FAIL**, 36 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
 unconnected items, zero parity findings, on 9.0.9 and 10.0.4. What the gate
@@ -293,7 +293,7 @@ filter is referenced to.
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 4 findings waived | 0 / 0 / 0 | 0 / 9 / 6 |
-| `as-generated` | **FAIL**, 39 blocking | — | — |
+| `as-generated` | **FAIL**, 33 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
 errors, no unconnected items, no parity findings. It also passes its own
