@@ -7412,10 +7412,13 @@ def fpga_audio() -> Design:
     # end; the links then tap it wherever is nearest.
     # The west via sits west of the escape column (x = 27), because the
     # column is a comb of horizontal escape lines at every half-millimetre
-    # of y - including 42.5 - and a through via parked in the comb lands on
-    # whichever line owns that lane. The east via stops short of the east
-    # pad row (x = 43.45) by its own clearance.
-    SPINE_1V2 = ((25.5, 42.5), (42.2, 42.5))
+    # of y and a through via parked in the comb lands on whichever line owns
+    # that lane. The east via stops short of the east pad row by its own
+    # clearance, and the whole stroke sits at 42.25 - a quarter-millimetre
+    # off the south pad row's reach (their inner ends are at y = 43.01, and
+    # at 42.5 the via missed them by a tenth), and still on the router's
+    # grid, which is what lets a tee land on the stroke at all.
+    SPINE_1V2 = ((25.5, 42.25), (42.2, 42.25))
     vias.append(Via("+1V2", x=SPINE_1V2[0][0], y=SPINE_1V2[0][1]))
     vias.append(Via("+1V2", x=SPINE_1V2[1][0], y=SPINE_1V2[1][1]))
     anchored.append(Track("+1V2", "B.Cu", POWER, [SPINE_1V2[0], SPINE_1V2[1]]))
