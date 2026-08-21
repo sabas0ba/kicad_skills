@@ -3987,11 +3987,15 @@ def _spread_hairpins(design: Design) -> Design:
             sy = math.copysign(1.0, delta[1]) if ady > GEOM_EPS else 0.0
             if adx >= ady:
                 straight_first = (round(spread[0] + sx * run, 4), spread[1])
-                diag_first = (round(spread[0] + sx * diag, 4), round(spread[1] + sy * diag, 4))
             else:
                 straight_first = (spread[0], round(spread[1] + sy * run, 4))
-                diag_first = (round(spread[0] + sx * diag, 4), round(spread[1] + sy * diag, 4))
-            elbows = [straight_first, diag_first]
+            diag_first = (round(spread[0] + sx * diag, 4), round(spread[1] + sy * diag, 4))
+            # Diagonal first: the reviewer drew the shape - out of the fold's
+            # base at twelve o'clock, quarter-to-two, then three - and the
+            # diagonal-first order is what produces it. Straight-first put a
+            # stub of straight between the turn and the diagonal: one more
+            # corner than the turn needs.
+            elbows = [diag_first, straight_first]
             # ...checking every new corner, the rejoin at d against the leg
             # that follows it included: easing one hairpin must not fold
             # another at the seam. Both dogleg orders are offered, the way
