@@ -867,3 +867,50 @@ the 3.3 V rail - the twenty-link net that wants the same stated spine the
 clean across all five: zero crossings, zero rides, zero mid-run width
 steps, every pour piece over 8 mm² holding its own via, and the planes'
 outer shell reaching to 1.2 mm of every edge.
+
+## 19. The reviewer's pass, round fourteen: the fold, correctly this time
+
+The reviewer accepted the round and re-reviewed - with one correction.
+Round thirteen read the two circles on the motor board as pour wedges and
+pruned the pour; the circles were about the *bends*. Each circled corner
+is a legal 45 on its own; the pair of them - a 90 and a 45 with a tenth
+of a millimetre between - turns the run 135 degrees from its direction of
+travel, folded into half a millimetre. The angle rule is structurally
+blind to it: it measures one corner at a time, and every corner passes.
+
+### What went into the tool
+
+| built in | kind | what it does |
+| --- | --- | --- |
+| `route.hairpin` | rule | two same-direction corners within 1.2 mm of track whose signed turns sum past 100 degrees. Signed, so a staircase's alternating 45s cancel; arms shorter than 0.8 mm are a clearance artefact skirting a via, not a legible fold; a fold whose middle sits inside its own pad is the escape fan's micro-hook and stays. Six findings across KiCad's 18 demo projects - info, promoted only under `ai-generated` |
+| `_spread_hairpins` | pass | the generator's answer: the fold's middle leg stretches to 1.2 mm and the exit re-doglegs onto the far end of the outgoing straight. Aimed at the first vertex it folded straight back - the exit carries a redundant collinear point half a millimetre out, and the first attempt found it the hard way |
+| stitch vias stay inside the pour | guard | a candidate offset from a track end can land past the pour and onto the outline itself - two did, one dead on the board edge - where it is an edge violation and an orphan at once. `check_board` cannot see either; KiCad's DRC caught both, and the candidate filter now owns the bound |
+
+The motor board's two circled folds are now wraps: the same 135 degrees,
+drawn as spread 45s over two millimetres, which is how a person turns
+back. All five boards measure zero hairpins, zero crossings, zero doubled
+runs, zero mid-run width steps.
+
+### Where the FPGA board stands
+
+Twice this round the FPGA board was re-routed from a cold cache, and the
+two draws tell the story of what the rip-up loop's learned order was
+worth: the first came back with one bad net (the line-out pair touring at
+4.3x, `route.detour` and `route.wander` both naming it) on top of the
+standing SPI-over-cuts debt; the second came back worse - four tours, a
+stub and an off-grid corner - and was discarded for the first. The
+committed board is that better draw: zero DRC errors, zero hairpins, zero
+crossings, and four blocking findings - three corners, one line-out tour,
+five SPI/CRESET nets at 11-19 mm over plane cuts, and the tour again as
+`route.wander`. The 3.3 V spine and a floorplan that gives the line-out
+pair a corridor stay the named next work.
+
+The reversal of fortune is worth writing down: the environment reclaimed
+the container twice during this round, and each reclaim rolled the
+working tree - and the route cache with it - back a day. The code came
+back from the remote in minutes each time; the FPGA board's *route* did
+not, because a route is an afternoon of rip-up learning keyed to code
+that no longer hashes the same. The five commits of history survived
+because every one of them was pushed the moment it existed. The lesson is
+already this repository's working agreement; the round is what enforcing
+it looks like.

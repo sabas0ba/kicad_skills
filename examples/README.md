@@ -44,11 +44,11 @@ is [REVIEW.md](REVIEW.md).
 
 Four of the five `reviewed/` projects **pass** their own gate. The FPGA board
 does not: fencing foreign copper out from under the flash and the DAC still
-costs it four SPI nets over cuts in the back plane (11-20 mm each), three
-detours on the 3.3 V rail and two corners. The 1.2 V core rail rides a stated
-spine under the FPGA's own die and no longer wanders; the 3.3 V rail — twenty
-links across four packages — is the spine that remains to be stated, and
-[REVIEW.md](REVIEW.md) names it as the next round's work. What remains is
+costs it five nets over cuts in the back plane (11-19 mm each), one tour on
+the line-out pair and three corners. The 1.2 V core rail rides a stated
+spine under the FPGA's own die and no longer wanders; the 3.3 V rail and a
+corridor for the line-out pair are the floorplan work that remains, and
+[REVIEW.md](REVIEW.md) names both as the next round's. What remains is
 floorplan on a 48-pin QFN with two layers, stated by the gate rather than
 waived, because a waiver would say the measurement was wrong and it is not.
 Every `as-generated/` fails.
@@ -341,8 +341,8 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **FAIL**, 3 blocking, 2 waived | 0 / 2 / 0 | 0 / 9 / 8 |
-| `as-generated` | **FAIL**, 30 blocking | — | — |
+| `reviewed` | **FAIL**, 4 blocking, 2 waived | 0 / 2 / 0 | 0 / 10 / 8 |
+| `as-generated` | **FAIL**, 34 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
 unconnected, no schematic-parity findings. On every *style* measure it now
@@ -356,9 +356,10 @@ back-side stroke under the FPGA's own die, tapped by every branch at the
 nearest point — the tee described in [REVIEW.md](REVIEW.md) is what makes
 tapping possible. The rails no longer wander, and the board is 15% lighter
 in copper for it. The fence still has a price the gate states plainly:
-four SPI nets over cuts in the back plane (11-20 mm each), three detours on
-the 3.3 V rail (`route.wander`, 2.4-3.0x - the twenty-link net that still
-wants a stated spine of its own), and two corners (`route.acute_angle`). The engineering pass there found and
+five SPI/CRESET nets over cuts in the back plane (11-19 mm each), the
+line-out pair touring at 4.3x (`route.detour` and `route.wander` both name
+it - the corridor it wants is floorplan), and three corners
+(`route.acute_angle`). The engineering pass there found and
 fixed
 four real electrical faults here: the PCM5102A's charge pump was miswired
 (flying cap to ground instead of CAPP-CAPM — the DAC had no negative rail),
