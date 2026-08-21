@@ -3965,6 +3965,20 @@ def _spread_hairpins(design: Design) -> Design:
                 round(b[0] + direction[0] * STRIDE, 4),
                 round(b[1] + direction[1] * STRIDE, 4),
             )
+            # Rejoin at the far end of the outgoing *straight*, not at the
+            # first vertex: the exit often carries a redundant collinear
+            # point half a millimetre out, and a dogleg aimed at that folds
+            # straight back on itself.
+            rejoin = index + 2
+            while rejoin + 1 < len(pts) and not pinned(track.net, pts[rejoin]):
+                onward = (
+                    pts[rejoin + 1][0] - pts[rejoin][0],
+                    pts[rejoin + 1][1] - pts[rejoin][1],
+                )
+                if abs(_signed_turn(v, onward)) > 1e-6:
+                    break
+                rejoin += 1
+            d = pts[rejoin]
             delta = (d[0] - spread[0], d[1] - spread[1])
             adx, ady = abs(delta[0]), abs(delta[1])
             run = abs(adx - ady)
@@ -3981,7 +3995,7 @@ def _spread_hairpins(design: Design) -> Design:
             # ...checking every new corner, the rejoin at d against the leg
             # that follows it included: easing one hairpin must not fold
             # another at the seam.
-            after = [pts[index + 3]] if index + 3 < len(pts) else []
+            after = [pts[rejoin + 1]] if rejoin + 1 < len(pts) else []
             corners_ok = all(
                 abs(
                     _signed_turn(
@@ -3993,7 +4007,7 @@ def _spread_hairpins(design: Design) -> Design:
                 for p, q, r in zip(legs, legs[1:], [*legs[2:], *after], strict=False)
             )
             if corners_ok and all(clear(track, own_index, p, q) for p, q in pairwise(legs)):
-                pts[index + 1 : index + 2] = middle_points
+                pts[index + 1 : rejoin] = middle_points
                 changed = True
                 index += 1
                 continue
