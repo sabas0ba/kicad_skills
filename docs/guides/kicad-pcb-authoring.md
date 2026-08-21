@@ -134,12 +134,13 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   the 45 grid entirely (`route.odd_angle`) reads as a slip of the mouse. A
   fine-pitch fan does not need shallow angles either: stagger the 45 bends
   so no two neighbours turn abreast and the escape holds the grid.
-* **A reversal is two corners a stride apart, not one fold.** A net that has
+* **A reversal is an arc of successive 45s, not one fold.** A net that has
   to double back — an escape that leaves one way, a destination the other —
-  turns 135 degrees somewhere, and folding the whole turn into half a
-  millimetre reads as a hairpin however legal each corner is alone
-  (`route.hairpin`). Put a track-width-or-three of straight between the two
-  corners and the same turn reads as a deliberate wrap.
+  turns 135 degrees or more somewhere, and folding the whole turn into half
+  a millimetre reads as a hairpin however legal each corner is alone
+  (`route.hairpin`). Turn through every intermediate 45 right where the line
+  leaves the part — nine o'clock, half-past ten, twelve, half-past one,
+  three — and the same turn reads as a drawn curve.
 * **Branch as a Y, not a T.** Where one track splits, bring the branches in
   at 45 so the join is a fork, not a crossroads: a square tee is the same
   etch nick as a square corner, twice.
@@ -225,11 +226,7 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
 * **The board's outermost feature should be ground.** Pour to within about a
   millimetre of the outline, so a trace that has to run near the edge keeps
   shell copper outside it — a signal as the outermost copper has no return
-  beside it and no shield either. And keep the pour out of sharp corners: the
-  wedge it fills where two tracks converge at 45 degrees tapers to a point,
-  which is an acid trap on the board and a spike to the eye. Retract dead-end
-  strips to where the plane is wide; a narrow channel that connects two wide
-  regions is worth keeping, a narrow tongue that dead-ends is not.
+  beside it and no shield either.
 * **Pour ground on both faces and stitch them** (`layout.pour_single_sided`):
   the spare face's copper is free ground impedance, but only if a ring of
   stitching vias ties it to the plane — an unstitched island or edge strip

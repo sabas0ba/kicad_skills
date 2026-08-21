@@ -3960,6 +3960,68 @@ def _spread_hairpins(design: Design) -> Design:
             if pinned(track.net, b) or pinned(track.net, c):
                 index += 1
                 continue
+            # First choice: no fold at all. Retract along the incoming leg
+            # to just past the line-out and turn through the intermediate
+            # 45s in one arc - nine o'clock, half-past ten, twelve,
+            # half-past one, three, as the reviewer drew it - rejoining the
+            # outgoing straight where the arc meets its line. The fold's
+            # own corners disappear instead of being spread.
+            rejoin = index + 2
+            while rejoin + 1 < len(pts) and not pinned(track.net, pts[rejoin]):
+                onward = (
+                    pts[rejoin + 1][0] - pts[rejoin][0],
+                    pts[rejoin + 1][1] - pts[rejoin][1],
+                )
+                if abs(_signed_turn(v, onward)) > 1e-6:
+                    break
+                rejoin += 1
+            q = pts[rejoin]
+            lu = math.hypot(*u)
+            lv = math.hypot(*v)
+            h_in = (u[0] / lu, u[1] / lu)
+            h_out = (v[0] / lv, v[1] / lv)
+            total = _signed_turn(h_in, h_out)
+            if abs(abs(total) - 180.0) < 1e-6:
+                total = math.copysign(180.0, turn_in)
+            steps = round(abs(total) / 45.0)
+
+            def _rot(vec, degrees_):
+                r = math.radians(degrees_)
+                cr, sr = math.cos(r), math.sin(r)
+                return (vec[0] * cr - vec[1] * sr, vec[0] * sr + vec[1] * cr)
+
+            def _cross(p1, p2):
+                return p1[0] * p2[1] - p1[1] * p2[0]
+
+            arced = False
+            if 2 <= steps <= 4 and lu > 0.7:
+                sigma = 45.0 if total > 0 else -45.0
+                mids = [_rot(h_in, sigma * i) for i in range(1, steps)]
+                sum_mid = (sum(p[0] for p in mids), sum(p[1] for p in mids))
+                a0 = a
+                base = _cross((a0[0] - q[0], a0[1] - q[1]), h_out)
+                per_lead = _cross(h_in, h_out)
+                per_t = _cross(sum_mid, h_out)
+                lead = 0.3
+                while not arced and abs(per_t) > 1e-9 and lead <= lu - 0.3 + 1e-9:
+                    t = -(base + per_lead * lead) / per_t
+                    if t >= 0.35:
+                        point = (a0[0] + h_in[0] * lead, a0[1] + h_in[1] * lead)
+                        chain = [(round(point[0], 4), round(point[1], 4))]
+                        for mid in mids:
+                            point = (point[0] + mid[0] * t, point[1] + mid[1] * t)
+                            chain.append((round(point[0], 4), round(point[1], 4)))
+                        forward = (q[0] - point[0]) * h_out[0] + (q[1] - point[1]) * h_out[1]
+                        if forward > GEOM_EPS and all(
+                            clear(track, own_index, p1, p2) for p1, p2 in pairwise([a0, *chain, q])
+                        ):
+                            pts[index:rejoin] = chain
+                            changed = True
+                            arced = True
+                    lead += 0.25
+            if arced:
+                index += 1
+                continue
             direction = (m[0] / middle, m[1] / middle)
             spread = (
                 round(b[0] + direction[0] * STRIDE, 4),
@@ -5244,7 +5306,6 @@ ZONE_CLEARANCE = 0.25  # what the pour keeps away from copper of another net
 # clearance is 0.2, so the pour still clears everything it must.
 ZONE_SLIVER = 0.35  # a strip of plane thinner than this is not worth filling
 ZONE_WELD = 0.05  # how far neighbouring islands are grown into each other
-ZONE_TONGUE = 0.9  # a dead-end strip narrower than this is a wedge, not plane
 # Every hole is rounded outward onto this grid. Without it a diagonal track puts
 # an x edge every fraction of a millimetre, the sweep below never sees two
 # neighbouring columns agree, and the plane comes out as a thousand slivers
@@ -5360,83 +5421,12 @@ def _fill_rectangles(
         for left, right, free in slabs
         for top, bottom in free
     ]
-    islands = _pruned_tongues(design, islands, layer, net)
     if connected:
         return _connected_islands(design, islands, layer, net)
     # ``connected=False`` is for the stitcher, which wants to see the pieces
     # *before* the orphan drop - an orphan it can reach with a via is not an
     # orphan any more, it is the strip the reviewer wanted filled.
     return islands
-
-
-def _pruned_tongues(design, islands, layer: str, net: str):
-    """Retract the tapering tongues the sweep leaves in a sharp corner.
-
-    Where a diagonal track converges on a straight one the free space
-    between them tapers to a point, and the sweep dutifully fills it down
-    to ZONE_SLIVER: a two-millimetre wedge with a sharp tip, which is an
-    acid trap on the board and a spike to the eye - both circled by the
-    reviewer. A strip narrower than ZONE_TONGUE that touches the rest of
-    the plane on at most one side is such a tongue - a narrow *channel*
-    touches on two - so it is dropped, and the drop repeats until the
-    tongue has retracted to where the plane is wide. A strip that feeds
-    this net's own pad or via stays: narrow beats disconnected.
-    """
-    anchors: list[tuple[float, float, float, float]] = []
-    for via in design.vias:
-        if via.net == net:
-            vx, vy = via_position(design, via)
-            anchors.append((vx - 0.4, vy - 0.4, vx + 0.4, vy + 0.4))
-    for part in design.footprints():
-        node = footprint_definition(part.footprint)
-        for pad in node.children("pad"):
-            number = str(pad.atom(0, ""))
-            if f"{part.ref}.{number}" in design.nets.get(net, ()) and pad_layer(pad) in (
-                None,
-                layer,
-            ):
-                anchors.append(pad_box(design, part, pad))
-
-    def overlaps(a, b) -> bool:
-        return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
-
-    CELL = 5.0
-    grid: dict[tuple[int, int], set[int]] = defaultdict(set)
-
-    def cells(box):
-        for cx in range(int(box[0] // CELL), int(box[2] // CELL) + 1):
-            for cy in range(int(box[1] // CELL), int(box[3] // CELL) + 1):
-                yield (cx, cy)
-
-    active = set(range(len(islands)))
-    for index in active:
-        for cell in cells(islands[index]):
-            grid[cell].add(index)
-
-    def thin(index) -> bool:
-        box = islands[index]
-        return min(box[2] - box[0], box[3] - box[1]) < ZONE_TONGUE and not any(
-            overlaps(box, anchor) for anchor in anchors
-        )
-
-    queue = [index for index in active if thin(index)]
-    while queue:
-        index = queue.pop()
-        if index not in active:
-            continue
-        box = islands[index]
-        beside = {
-            other
-            for cell in cells(box)
-            for other in grid[cell]
-            if other != index and other in active and overlaps(box, islands[other])
-        }
-        if len(beside) <= 1:
-            active.remove(index)
-            for cell in cells(box):
-                grid[cell].discard(index)
-            queue.extend(other for other in beside if thin(other))
-    return [islands[index] for index in sorted(active)]
 
 
 def _connected_islands(design, islands, layer: str, net: str):
