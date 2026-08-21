@@ -3982,35 +3982,40 @@ def _spread_hairpins(design: Design) -> Design:
             delta = (d[0] - spread[0], d[1] - spread[1])
             adx, ady = abs(delta[0]), abs(delta[1])
             run = abs(adx - ady)
+            diag = min(adx, ady)
             sx = math.copysign(1.0, delta[0]) if adx > GEOM_EPS else 0.0
             sy = math.copysign(1.0, delta[1]) if ady > GEOM_EPS else 0.0
             if adx >= ady:
-                elbow = (round(spread[0] + sx * run, 4), spread[1])
+                straight_first = (round(spread[0] + sx * run, 4), spread[1])
+                diag_first = (round(spread[0] + sx * diag, 4), round(spread[1] + sy * diag, 4))
             else:
-                elbow = (spread[0], round(spread[1] + sy * run, 4))
-            middle_points = [spread]
-            if math.dist(spread, elbow) > GEOM_EPS and math.dist(elbow, d) > GEOM_EPS:
-                middle_points.append(elbow)
-            legs = [b, *middle_points, d]
+                straight_first = (spread[0], round(spread[1] + sy * run, 4))
+                diag_first = (round(spread[0] + sx * diag, 4), round(spread[1] + sy * diag, 4))
+            elbows = [straight_first, diag_first]
             # ...checking every new corner, the rejoin at d against the leg
             # that follows it included: easing one hairpin must not fold
-            # another at the seam.
+            # another at the seam. Both dogleg orders are offered, the way
+            # `_doglegged` offers them - a crowded pocket often admits one.
             after = [pts[rejoin + 1]] if rejoin + 1 < len(pts) else []
-            corners_ok = all(
-                abs(
-                    _signed_turn(
-                        (q[0] - p[0], q[1] - p[1]),
-                        (r[0] - q[0], r[1] - q[1]),
+            for elbow in elbows:
+                middle_points = [spread]
+                if math.dist(spread, elbow) > GEOM_EPS and math.dist(elbow, d) > GEOM_EPS:
+                    middle_points.append(elbow)
+                legs = [b, *middle_points, d]
+                corners_ok = all(
+                    abs(
+                        _signed_turn(
+                            (q[0] - p[0], q[1] - p[1]),
+                            (r[0] - q[0], r[1] - q[1]),
+                        )
                     )
+                    <= 90.0 + 1e-6
+                    for p, q, r in zip(legs, legs[1:], [*legs[2:], *after], strict=False)
                 )
-                <= 90.0 + 1e-6
-                for p, q, r in zip(legs, legs[1:], [*legs[2:], *after], strict=False)
-            )
-            if corners_ok and all(clear(track, own_index, p, q) for p, q in pairwise(legs)):
-                pts[index + 1 : rejoin] = middle_points
-                changed = True
-                index += 1
-                continue
+                if corners_ok and all(clear(track, own_index, p, q) for p, q in pairwise(legs)):
+                    pts[index + 1 : rejoin] = middle_points
+                    changed = True
+                    break
             index += 1
         if changed:
             update(own_index, pts)
@@ -4609,6 +4614,12 @@ def _stitch_vias(design: Design) -> list[Via]:
 
     def clears(vx: float, vy: float) -> bool:
         radius = 0.4
+        # Inside the pour, by the via's own size plus the edge rule's
+        # clearance: a candidate offset from a track end can land past the
+        # pour and onto the outline itself, where it is both an edge
+        # violation and an orphan the fill never reaches.
+        if not (x0 + 0.7 <= vx <= x1 - 0.7 and y0 + 0.7 <= vy <= y1 - 0.7):
+            return False
         for (bx0, by0, bx1, by1), net in pads:
             grow = 0.4 if net == POUR_NET else radius + 0.3
             if bx0 - grow <= vx <= bx1 + grow and by0 - grow <= vy <= by1 + grow:

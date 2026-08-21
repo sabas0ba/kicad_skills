@@ -78,8 +78,10 @@ THRESHOLDS = {
 # Copper geometry is stored in nm; anything below this is file noise.
 GEOM_TOL = 0.001
 
-# How close two corners sit before their turns read as one bend (route.hairpin).
+# How close two corners sit before their turns read as one bend, and how long
+# the arms either side must be before the bend is legible (route.hairpin).
 HAIRPIN_WINDOW_MM = 1.2
+HAIRPIN_ARM_MM = 0.8
 
 # `rule_drc` builds its ids from a bucket name held in a variable, so unlike
 # every other rule here its prefixes cannot be read out of the source. They are
@@ -165,8 +167,9 @@ RULE_SPEC: dict[str, RuleSpec] = {
     ),
     "route.hairpin": RuleSpec(
         "a run that turns back on itself: two same-direction corners within "
-        "1.2 mm of track whose signed turns sum past hairpin_turn_deg - each "
-        "corner legal alone, the pair the fold the eye reads at arm's length",
+        "1.2 mm of track, arms of 0.8 mm or more either side, signed turns "
+        "summing past hairpin_turn_deg - each corner legal alone, the pair "
+        "the fold the eye reads at arm's length",
         "info",
         threshold="hairpin_turn_deg",
     ),
@@ -1868,6 +1871,12 @@ def rule_hairpin(ctx: PcbContext) -> list[Finding]:
             math.atan2(vmid[0] * vout[1] - vmid[1] * vout[0], vmid[0] * vout[0] + vmid[1] * vout[1])
         )
         if turn_in * turn_out <= 0 or abs(turn_in) + abs(turn_out) < limit - 0.5:
+            continue
+        # A fold is only a fold if it has arms: a quarter-millimetre bump
+        # skirting a via is a clearance artefact, invisible at any zoom a
+        # person reviews at, and the demo corpus is full of them. The motor
+        # board's circled hairpins carried arms of two millimetres and more.
+        if min(math.dist(u, middle.start), math.dist(w, middle.end)) < HAIRPIN_ARM_MM:
             continue
         mid = ((middle.start[0] + middle.end[0]) / 2, (middle.start[1] + middle.end[1]) / 2)
         if any(
