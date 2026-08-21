@@ -3961,11 +3961,11 @@ def _spread_hairpins(design: Design) -> Design:
                 index += 1
                 continue
             # First choice: no fold at all. Retract along the incoming leg
-            # to just past the line-out, stand the turn up square, and take
-            # the remaining 45s - twelve o'clock, half-past one, three, as
-            # the reviewer drew it - rejoining the outgoing straight where
-            # the turn meets its line. The fold's own corners disappear
-            # instead of being spread.
+            # - all the way to its head when the board allows - stand the
+            # turn up square, and take the remaining 45s - twelve o'clock,
+            # half-past one, three, as the reviewer drew it - rejoining the
+            # outgoing straight where the turn meets its line. The fold's
+            # own corners disappear instead of being spread.
             rejoin = index + 2
             while rejoin + 1 < len(pts) and not pinned(track.net, pts[rejoin]):
                 onward = (
@@ -3994,36 +3994,83 @@ def _spread_hairpins(design: Design) -> Design:
                 return p1[0] * p2[1] - p1[1] * p2[0]
 
             arced = False
-            if 3 <= steps <= 4 and lu > 0.7:
+            if 3 <= steps <= 4:
                 sigma = 45.0 if total > 0 else -45.0
-                # Square up at the line-out, then take the 45s: twelve
+                # Stand the turn up square, then take the 45s: twelve
                 # o'clock, half-past one, three. The first 45 - half-past
                 # ten - made the turn read as an S; the reviewer wants the
                 # turn to stand up straight where the line leaves the part,
                 # so the intermediate headings start at 90 degrees.
                 mids = [_rot(h_in, sigma * i) for i in range(2, steps)]
-                sum_mid = (sum(p[0] for p in mids), sum(p[1] for p in mids))
                 a0 = a
-                base = _cross((a0[0] - q[0], a0[1] - q[1]), h_out)
-                per_lead = _cross(h_in, h_out)
-                per_t = _cross(sum_mid, h_out)
+                # Where to land: the outgoing straight - and, when the turn
+                # keeps rolling the same way at its far end, the straight
+                # after it too. An exit that only runs a couple of
+                # millimetres before its next 45 leaves no room to rejoin
+                # it without a stub out the old heading; carrying the turn
+                # through that 45 and landing on the longer line beyond is
+                # what lets the turn start right at the head of the leg.
+                frames = [(rejoin, q, h_out, mids)]
+                if steps < 4 and not pinned(track.net, q) and rejoin + 1 < len(pts):
+                    w = (pts[rejoin + 1][0] - q[0], pts[rejoin + 1][1] - q[1])
+                    lw = math.hypot(*w)
+                    if lw > GEOM_EPS:
+                        h_next = (w[0] / lw, w[1] / lw)
+                        if abs(_signed_turn(h_out, h_next) - sigma) < 1e-6:
+                            rejoin2 = rejoin + 1
+                            while rejoin2 + 1 < len(pts) and not pinned(track.net, pts[rejoin2]):
+                                onward = (
+                                    pts[rejoin2 + 1][0] - pts[rejoin2][0],
+                                    pts[rejoin2 + 1][1] - pts[rejoin2][1],
+                                )
+                                if abs(_signed_turn(w, onward)) > 1e-6:
+                                    break
+                                rejoin2 += 1
+                            frames.append(
+                                (rejoin2, pts[rejoin2], h_next, [*mids, _rot(h_in, sigma * steps)])
+                            )
+                # No stub out the old heading if it can be helped: turning
+                # square right at the head of the incoming straight is the
+                # reviewer's ideal - the 45 the escape already carries makes
+                # that corner - so lead 0 goes first, and a short stub is
+                # kept only where the square turn does not fit.
+                leads = [0.0]
                 lead = 0.3
-                while not arced and abs(per_t) > 1e-9 and lead <= lu - 0.3 + 1e-9:
-                    t = -(base + per_lead * lead) / per_t
-                    if t >= 0.35:
+                while lead <= lu - 0.3 + 1e-9:
+                    leads.append(lead)
+                    lead += 0.25
+                for lead in leads:
+                    if arced:
+                        break
+                    for rj, qq, ho, mm in frames:
+                        sum_mid = (sum(p[0] for p in mm), sum(p[1] for p in mm))
+                        per_t = _cross(sum_mid, ho)
+                        if abs(per_t) <= 1e-9:
+                            continue
+                        base = _cross((a0[0] - qq[0], a0[1] - qq[1]), ho)
+                        t = -(base + _cross(h_in, ho) * lead) / per_t
+                        if t < 0.35:
+                            continue
+                        if lead < GEOM_EPS and index > 1:
+                            prev = pts[index - 2]
+                            hp = (a0[0] - prev[0], a0[1] - prev[1])
+                            if abs(_signed_turn(hp, mm[0])) > 90.0 + 1e-6:
+                                continue
                         point = (a0[0] + h_in[0] * lead, a0[1] + h_in[1] * lead)
-                        chain = [(round(point[0], 4), round(point[1], 4))]
-                        for mid in mids:
+                        chain = (
+                            [] if lead < GEOM_EPS else [(round(point[0], 4), round(point[1], 4))]
+                        )
+                        for mid in mm:
                             point = (point[0] + mid[0] * t, point[1] + mid[1] * t)
                             chain.append((round(point[0], 4), round(point[1], 4)))
-                        forward = (q[0] - point[0]) * h_out[0] + (q[1] - point[1]) * h_out[1]
+                        forward = (qq[0] - point[0]) * ho[0] + (qq[1] - point[1]) * ho[1]
                         if forward > GEOM_EPS and all(
-                            clear(track, own_index, p1, p2) for p1, p2 in pairwise([a0, *chain, q])
+                            clear(track, own_index, p1, p2) for p1, p2 in pairwise([a0, *chain, qq])
                         ):
-                            pts[index:rejoin] = chain
+                            pts[index:rj] = chain
                             changed = True
                             arced = True
-                    lead += 0.25
+                            break
             if arced:
                 index += 1
                 continue

@@ -919,20 +919,21 @@ it looks like.
 
 Two more corrections, both accepted in full.
 
-The reversal is now a *turn from the line-out*, not a spread fold - and
-it took one more correction to get the shape right. The first cut turned
-through every intermediate 45 - nine o'clock out of the part, half-past
-ten, twelve, half-past one, three - and that half-past-ten heading made
-the turn read as an S. The reviewer's drawing was simpler: stand the
-turn up square where the line leaves the part, then take the remaining
-45s - twelve o'clock, half-past one, three. `_spread_hairpins` retracts
-along the incoming leg, starts the intermediate headings at 90 degrees,
-and solves the leg length so the turn lands exactly on the outgoing
-straight (the square stand-up gets its 45 from the ordinary chamfer
-pass); the fold's corners disappear rather than being spread, and the
-three-millimetre ride out to the fan column - the real redundancy the
-reviewer pointed at - goes with them. On the motor board the whole
-figure sits inside a millimetre and a half of the fan.
+The reversal is now a continuation of the escape, not a spread fold -
+and it took three passes to hear the drawing correctly. The first arc
+kept a lead stub out the old heading and took every 45 from there; the
+stub meant the trace stepped back to nine o'clock after the escape's
+own diagonal had already left that heading, and the reviewer had to
+point at the bend twice. The final form has no stub: `_spread_hairpins`
+starts the turn right at the head of the incoming straight - where the
+escape's 45 already points the line - stands it up square, takes the
+remaining 45s, and solves the equal leg length so the turn lands
+exactly on the outgoing line; when the exit leg is too short to land
+on, it carries the turn through the exit's own 45 and lands on the
+straight beyond. On the motor board each of the two nets now draws one
+continuous curve from pad to bus - nine o'clock, half-past ten, twelve,
+half-past one, three - with the fold, its corners, and the
+three-millimetre ride to the fan column all gone.
 
 And the round-thirteen tongue pruning is reverted outright. It was built
 on the misreading round fourteen corrected - the pour filling a bent
@@ -946,6 +947,6 @@ Where it landed: all four fast boards pass their gates; every board
 measures zero hairpins, zero crossings, zero doubled runs. The FPGA
 board's fresh route reproduced its round-fourteen debt to the digit -
 three corners, the line-out tour at 4.3x, four nets at 11-18 mm over
-plane cuts - which after three independent cold draws looks less like
+plane cuts - which after four independent cold draws looks less like
 luck and more like the floorplan fact the gate says it is. The 3.3 V
 spine and a line-out corridor stay the named next work.
