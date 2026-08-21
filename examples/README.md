@@ -44,7 +44,7 @@ is [REVIEW.md](REVIEW.md).
 
 Four of the five `reviewed/` projects **pass** their own gate. The FPGA board
 does not: fencing foreign copper out from under the flash and the DAC still
-costs it five nets over cuts in the back plane (11-19 mm each), one tour on
+costs it four nets over cuts in the back plane (11-18 mm each), one tour on
 the line-out pair and three corners. The 1.2 V core rail rides a stated
 spine under the FPGA's own die and no longer wanders; the 3.3 V rail and a
 corridor for the line-out pair are the floorplan work that remains, and
@@ -356,7 +356,7 @@ back-side stroke under the FPGA's own die, tapped by every branch at the
 nearest point — the tee described in [REVIEW.md](REVIEW.md) is what makes
 tapping possible. The rails no longer wander, and the board is 15% lighter
 in copper for it. The fence still has a price the gate states plainly:
-five SPI/CRESET nets over cuts in the back plane (11-19 mm each), the
+four SPI/CRESET nets over cuts in the back plane (11-18 mm each), the
 line-out pair touring at 4.3x (`route.detour` and `route.wander` both name
 it - the corridor it wants is floorplan), and three corners
 (`route.acute_angle`). The engineering pass there found and

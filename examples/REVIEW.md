@@ -914,3 +914,34 @@ that no longer hashes the same. The five commits of history survived
 because every one of them was pushed the moment it existed. The lesson is
 already this repository's working agreement; the round is what enforcing
 it looks like.
+
+## 20. The reviewer's pass, round fifteen: the arc, and the retraction
+
+Two more corrections, both accepted in full.
+
+The reversal is now an *arc from the line-out*, not a spread fold: nine
+o'clock out of the part, half-past ten, twelve, half-past one, three -
+every intermediate 45 in order, starting three tenths of a millimetre
+from where the line leaves the escape. `_spread_hairpins` retracts along
+the incoming leg and solves the arc's leg length so it lands exactly on
+the outgoing straight; the fold's corners disappear rather than being
+spread, and the three-millimetre ride out to the fan column - the real
+redundancy the reviewer pointed at - goes with them. On the motor board
+the two reversals are five headings each, the whole figure inside a
+millimetre and a half of the fan.
+
+And the round-thirteen tongue pruning is reverted outright. It was built
+on the misreading round fourteen corrected - the pour filling a bent
+corner was never the complaint - and the reviewer called the leftover
+retractions what they were: an incorrect fix left in place. The fill goes
+back to what the sweep makes of the copper, the guide sentence that
+recommended the pruning is gone, and the boards regenerate identically
+minus the missing wedges.
+
+Where it landed: all four fast boards pass their gates; every board
+measures zero hairpins, zero crossings, zero doubled runs. The FPGA
+board's fresh route reproduced its round-fourteen debt to the digit -
+three corners, the line-out tour at 4.3x, four nets at 11-18 mm over
+plane cuts - which after three independent cold draws looks less like
+luck and more like the floorplan fact the gate says it is. The 3.3 V
+spine and a line-out corridor stay the named next work.
