@@ -39,6 +39,10 @@ THRESHOLDS = {
     "max_decoupling_via_mm": 1.5,
     # Interior angle below which a corner is an acid trap and an impedance step.
     "min_track_angle_deg": 90.0,
+    # A reversal split over two corners: each corner legal on its own, the
+    # pair a hairpin. The limit is the two corners' signed sum; how close
+    # they sit before the pair reads as one bend is HAIRPIN_WINDOW_MM below.
+    "hairpin_turn_deg": 100.0,
     # How far in from the board edge a connector may sit before the cable has
     # to cross the board to reach it.
     "max_connector_edge_mm": 6.0,
@@ -73,6 +77,9 @@ THRESHOLDS = {
 
 # Copper geometry is stored in nm; anything below this is file noise.
 GEOM_TOL = 0.001
+
+# How close two corners sit before their turns read as one bend (route.hairpin).
+HAIRPIN_WINDOW_MM = 1.2
 
 # `rule_drc` builds its ids from a bucket name held in a variable, so unlike
 # every other rule here its prefixes cannot be read out of the source. They are
@@ -155,6 +162,13 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "acid trap, and a discontinuity for anything fast",
         "info",
         threshold="min_track_angle_deg",
+    ),
+    "route.hairpin": RuleSpec(
+        "a run that turns back on itself: two same-direction corners within "
+        "1.2 mm of track whose signed turns sum past hairpin_turn_deg - each "
+        "corner legal alone, the pair the fold the eye reads at arm's length",
+        "info",
+        threshold="hairpin_turn_deg",
     ),
     "route.right_angle": RuleSpec(
         "two same-net segments meeting at a full 90 degrees - two 45s cost "
@@ -1783,6 +1797,100 @@ def rule_pad_collision(ctx: PcbContext) -> list[Finding]:
             f"{len(collisions)} pad pair(s) from different footprints overlap - "
             "the parts are placed on top of each other",
             details={"count": len(collisions), "examples": collisions[:8]},
+        )
+    ]
+
+
+@rule
+def rule_hairpin(ctx: PcbContext) -> list[Finding]:
+    """A run that turns back on itself over two adjacent corners.
+
+    A pin whose escape leaves one way and whose net goes the other has to
+    turn back, and a router folds the whole reversal into half a
+    millimetre: a 90 and a 45 with a tenth of a millimetre between them.
+    Each corner passes `route.acute_angle` on its own; the pair is the fold
+    the eye reads at arm's length. Measured as the middle segment of any
+    three-in-a-row: if it is shorter than the window and the two corners
+    turn the same way past the limit between them, that is a hairpin. A
+    fold whose middle lies inside a pad of its own net is the escape fan's
+    deliberate micro-hook and stays.
+    """
+    limit = ctx.thresholds["hairpin_turn_deg"]
+    window = HAIRPIN_WINDOW_MM
+    if limit <= 0:
+        return []
+    board = ctx.board
+    endpoints = _track_endpoints(board)
+    own_pads: dict[str, list[tuple[float, float, float, float]]] = defaultdict(list)
+    for fp in board.footprints:
+        for pad in fp.pads:
+            if pad.net:
+                own_pads[pad.net].append(pad.bbox(angle_offset=fp.angle))
+
+    def neighbour(index: int, point: tuple[float, float]) -> int | None:
+        joined = endpoints.get(_key_of(point, board.tracks[index].layer), ())
+        if len(joined) != 2:
+            return None
+        other = joined[0] if joined[1] == index else joined[1]
+        mate = board.tracks[other]
+        this = board.tracks[index]
+        if mate.net != this.net or mate.layer != this.layer or "arc" in (mate.kind, this.kind):
+            return None
+        return other
+
+    def far_end(index: int, near: tuple[float, float]) -> tuple[float, float]:
+        track = board.tracks[index]
+        return (
+            track.end if math.dist(track.start, near) < math.dist(track.end, near) else track.start
+        )
+
+    folds = []
+    positions = []
+    for index, middle in enumerate(board.tracks):
+        if middle.kind != "segment" or not middle.net:
+            continue
+        length = math.dist(middle.start, middle.end)
+        if length < GEOM_TOL or length >= window:
+            continue
+        before = neighbour(index, middle.start)
+        after = neighbour(index, middle.end)
+        if before is None or after is None or before == after:
+            continue
+        u = far_end(before, middle.start)
+        w = far_end(after, middle.end)
+        vin = (middle.start[0] - u[0], middle.start[1] - u[1])
+        vmid = (middle.end[0] - middle.start[0], middle.end[1] - middle.start[1])
+        vout = (w[0] - middle.end[0], w[1] - middle.end[1])
+        turn_in = math.degrees(
+            math.atan2(vin[0] * vmid[1] - vin[1] * vmid[0], vin[0] * vmid[0] + vin[1] * vmid[1])
+        )
+        turn_out = math.degrees(
+            math.atan2(vmid[0] * vout[1] - vmid[1] * vout[0], vmid[0] * vout[0] + vmid[1] * vout[1])
+        )
+        if turn_in * turn_out <= 0 or abs(turn_in) + abs(turn_out) < limit - 0.5:
+            continue
+        mid = ((middle.start[0] + middle.end[0]) / 2, (middle.start[1] + middle.end[1]) / 2)
+        if any(
+            box[0] <= mid[0] <= box[2] and box[1] <= mid[1] <= box[3]
+            for box in own_pads.get(middle.net, ())
+        ):
+            continue
+        folds.append(
+            f"{middle.net} at ({round(mid[0], 2)}, {round(mid[1], 2)}): "
+            f"{round(abs(turn_in) + abs(turn_out))} deg over {round(length, 2)} mm"
+        )
+        positions.append(mid)
+    folds = sorted(set(folds))
+    if not folds:
+        return []
+    return [
+        Finding(
+            "route.hairpin",
+            "info",
+            f"{len(folds)} run(s) turn back on themselves - two same-direction "
+            f"corners summing past {limit:.0f} deg within {window} mm read as "
+            "one folded bend, however legal each corner is alone",
+            details={"count": len(folds), "examples": folds[:8], "positions": positions},
         )
     ]
 

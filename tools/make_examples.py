@@ -3251,7 +3251,11 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
     if not order:
         return _stitched(
             _chamfer_tracks(
-                _doglegged(_unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(design))))))
+                _spread_hairpins(
+                    _doglegged(
+                        _unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(design)))))
+                    )
+                )
             )
         )
     digest = _routing_digest(design) if use_cache else ""
@@ -3262,7 +3266,11 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
             done = replace(design, tracks=cached[0], vias=cached[1])
             return _stitched(
                 _chamfer_tracks(
-                    _doglegged(_unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done))))))
+                    _spread_hairpins(
+                        _doglegged(
+                            _unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done)))))
+                        )
+                    )
                 )
             )
         order = _learned_order(design, order)
@@ -3331,7 +3339,9 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
             _cache_write(design, digest, done, order)
         return _stitched(
             _chamfer_tracks(
-                _doglegged(_unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done))))))
+                _spread_hairpins(
+                    _doglegged(_unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done))))))
+                )
             )
         )
 
@@ -3897,6 +3907,100 @@ def _doglegged(design: Design) -> Design:
         if changed:
             update(own_index, [resolve(design, point) for point in kept])
             tracks.append(replace(track, points=kept))
+        else:
+            tracks.append(track)
+    return replace(design, tracks=tracks)
+
+
+def _signed_turn(u: tuple[float, float], v: tuple[float, float]) -> float:
+    """The direction change from u to v, in signed degrees."""
+    return math.degrees(math.atan2(u[0] * v[1] - u[1] * v[0], u[0] * v[0] + u[1] * v[1]))
+
+
+def _spread_hairpins(design: Design) -> Design:
+    """Give a doubling-back corner pair room to read as a wrap.
+
+    A pin whose escape leaves one way and whose net goes the other has to
+    turn back - on the motor board, 135 degrees. The router folds the whole
+    reversal into half a millimetre: a 90 and a 45 with a tenth of a
+    millimetre between them, each corner blameless on its own, the pair a
+    hairpin the eye reads at arm's length - and the reviewer circled both.
+    A person makes the same turn with the same two corners a stride apart,
+    and it reads as a deliberate wrap. So any two same-direction corners
+    summing past 100 degrees within 1.2 mm get the middle leg extended to
+    the stride and the exit re-drawn as a dogleg back onto the old path -
+    where the board leaves room; where it does not, `route.hairpin` says so.
+    """
+    others, clear, pinned, update = _copper_oracle(design)
+    STRIDE = 1.2
+
+    tracks = []
+    for own_index, (track, (_net, _layer, _width, points)) in enumerate(
+        zip(design.tracks, others, strict=True)
+    ):
+        if len(points) < 4:
+            tracks.append(track)
+            continue
+        pts = [tuple(point) for point in points]
+        changed = False
+        index = 1
+        while index < len(pts) - 2:
+            a, b, c, d = pts[index - 1], pts[index], pts[index + 1], pts[index + 2]
+            u = (b[0] - a[0], b[1] - a[1])
+            m = (c[0] - b[0], c[1] - b[1])
+            v = (d[0] - c[0], d[1] - c[1])
+            middle = math.hypot(*m)
+            if min(math.hypot(*u), middle, math.hypot(*v)) < GEOM_EPS or middle >= STRIDE:
+                index += 1
+                continue
+            turn_in, turn_out = _signed_turn(u, m), _signed_turn(m, v)
+            if turn_in * turn_out <= 0 or abs(turn_in) + abs(turn_out) < 100.0:
+                index += 1
+                continue
+            if pinned(track.net, b) or pinned(track.net, c):
+                index += 1
+                continue
+            direction = (m[0] / middle, m[1] / middle)
+            spread = (
+                round(b[0] + direction[0] * STRIDE, 4),
+                round(b[1] + direction[1] * STRIDE, 4),
+            )
+            delta = (d[0] - spread[0], d[1] - spread[1])
+            adx, ady = abs(delta[0]), abs(delta[1])
+            run = abs(adx - ady)
+            sx = math.copysign(1.0, delta[0]) if adx > GEOM_EPS else 0.0
+            sy = math.copysign(1.0, delta[1]) if ady > GEOM_EPS else 0.0
+            if adx >= ady:
+                elbow = (round(spread[0] + sx * run, 4), spread[1])
+            else:
+                elbow = (spread[0], round(spread[1] + sy * run, 4))
+            middle_points = [spread]
+            if math.dist(spread, elbow) > GEOM_EPS and math.dist(elbow, d) > GEOM_EPS:
+                middle_points.append(elbow)
+            legs = [b, *middle_points, d]
+            # ...checking every new corner, the rejoin at d against the leg
+            # that follows it included: easing one hairpin must not fold
+            # another at the seam.
+            after = [pts[index + 3]] if index + 3 < len(pts) else []
+            corners_ok = all(
+                abs(
+                    _signed_turn(
+                        (q[0] - p[0], q[1] - p[1]),
+                        (r[0] - q[0], r[1] - q[1]),
+                    )
+                )
+                <= 90.0 + 1e-6
+                for p, q, r in zip(legs, legs[1:], [*legs[2:], *after], strict=False)
+            )
+            if corners_ok and all(clear(track, own_index, p, q) for p, q in pairwise(legs)):
+                pts[index + 1 : index + 2] = middle_points
+                changed = True
+                index += 1
+                continue
+            index += 1
+        if changed:
+            update(own_index, pts)
+            tracks.append(replace(track, points=pts))
         else:
             tracks.append(track)
     return replace(design, tracks=tracks)

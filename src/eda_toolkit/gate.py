@@ -158,6 +158,7 @@ _AI_BLOCKING = (
     "route.detour",
     "route.wander",
     "route.self_crossing",
+    "route.hairpin",
     "route.return_path",
     "via.small_drill",
     "via.annular_ring",

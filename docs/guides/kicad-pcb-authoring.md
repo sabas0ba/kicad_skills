@@ -134,6 +134,12 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   the 45 grid entirely (`route.odd_angle`) reads as a slip of the mouse. A
   fine-pitch fan does not need shallow angles either: stagger the 45 bends
   so no two neighbours turn abreast and the escape holds the grid.
+* **A reversal is two corners a stride apart, not one fold.** A net that has
+  to double back — an escape that leaves one way, a destination the other —
+  turns 135 degrees somewhere, and folding the whole turn into half a
+  millimetre reads as a hairpin however legal each corner is alone
+  (`route.hairpin`). Put a track-width-or-three of straight between the two
+  corners and the same turn reads as a deliberate wrap.
 * **Branch as a Y, not a T.** Where one track splits, bring the branches in
   at 45 so the join is a fork, not a crossroads: a square tee is the same
   etch nick as a square corner, twice.

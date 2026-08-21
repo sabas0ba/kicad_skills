@@ -980,6 +980,56 @@ def test_a_net_crossing_its_own_copper_is_reported():
     assert pcb_review.rule_self_crossing(ctx_for(board)) == []
 
 
+def test_a_folded_reversal_is_a_hairpin():
+    """90 + 45 within a tenth of a millimetre is one fold, not two corners."""
+    parts = [footprint("R1", 2, 10, [pad("1", 2, 10, "SIG")])]
+    board = board_from(
+        footprints=parts,
+        tracks=[
+            track(10, 10, 5, 10, net="SIG"),  # west
+            track(5, 10, 5, 9.9, net="SIG"),  # north, 0.1 mm
+            track(5, 9.9, 8, 6.9, net="SIG"),  # back north-east
+        ],
+    )
+    findings = pcb_review.rule_hairpin(ctx_for(board))
+    assert [f.rule for f in findings] == ["route.hairpin"]
+    assert findings[0].details["count"] == 1
+
+    # the same two corners a stride apart read as a deliberate wrap
+    board = board_from(
+        footprints=parts,
+        tracks=[
+            track(10, 10, 5, 10, net="SIG"),
+            track(5, 10, 5, 8.5, net="SIG"),
+            track(5, 8.5, 8, 5.5, net="SIG"),
+        ],
+    )
+    assert pcb_review.rule_hairpin(ctx_for(board)) == []
+
+    # a staircase alternates direction: the signed turns cancel
+    board = board_from(
+        footprints=parts,
+        tracks=[
+            track(0, 10, 2, 8, net="SIG"),
+            track(2, 8, 3, 8, net="SIG"),
+            track(3, 8, 5, 6, net="SIG"),
+        ],
+    )
+    assert pcb_review.rule_hairpin(ctx_for(board)) == []
+
+    # a fold whose middle sits inside its own pad is the escape fan's hook
+    hooked = [footprint("U1", 5, 10, [pad("1", 5, 9.95, "SIG", size=(1.0, 1.0))])]
+    board = board_from(
+        footprints=hooked,
+        tracks=[
+            track(10, 10, 5, 10, net="SIG"),
+            track(5, 10, 5, 9.9, net="SIG"),
+            track(5, 9.9, 8, 6.9, net="SIG"),
+        ],
+    )
+    assert pcb_review.rule_hairpin(ctx_for(board)) == []
+
+
 def test_a_poured_net_may_cross_itself():
     """A plane is a mesh on purpose; its stitching is not a redundant loop."""
     zone = pcb.Zone(
