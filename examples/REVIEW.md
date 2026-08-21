@@ -919,16 +919,20 @@ it looks like.
 
 Two more corrections, both accepted in full.
 
-The reversal is now an *arc from the line-out*, not a spread fold: nine
-o'clock out of the part, half-past ten, twelve, half-past one, three -
-every intermediate 45 in order, starting three tenths of a millimetre
-from where the line leaves the escape. `_spread_hairpins` retracts along
-the incoming leg and solves the arc's leg length so it lands exactly on
-the outgoing straight; the fold's corners disappear rather than being
-spread, and the three-millimetre ride out to the fan column - the real
-redundancy the reviewer pointed at - goes with them. On the motor board
-the two reversals are five headings each, the whole figure inside a
-millimetre and a half of the fan.
+The reversal is now a *turn from the line-out*, not a spread fold - and
+it took one more correction to get the shape right. The first cut turned
+through every intermediate 45 - nine o'clock out of the part, half-past
+ten, twelve, half-past one, three - and that half-past-ten heading made
+the turn read as an S. The reviewer's drawing was simpler: stand the
+turn up square where the line leaves the part, then take the remaining
+45s - twelve o'clock, half-past one, three. `_spread_hairpins` retracts
+along the incoming leg, starts the intermediate headings at 90 degrees,
+and solves the leg length so the turn lands exactly on the outgoing
+straight (the square stand-up gets its 45 from the ordinary chamfer
+pass); the fold's corners disappear rather than being spread, and the
+three-millimetre ride out to the fan column - the real redundancy the
+reviewer pointed at - goes with them. On the motor board the whole
+figure sits inside a millimetre and a half of the fan.
 
 And the round-thirteen tongue pruning is reverted outright. It was built
 on the misreading round fourteen corrected - the pour filling a bent

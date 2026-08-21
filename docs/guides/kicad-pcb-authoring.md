@@ -138,9 +138,9 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   to double back — an escape that leaves one way, a destination the other —
   turns 135 degrees or more somewhere, and folding the whole turn into half
   a millimetre reads as a hairpin however legal each corner is alone
-  (`route.hairpin`). Turn through every intermediate 45 right where the line
-  leaves the part — nine o'clock, half-past ten, twelve, half-past one,
-  three — and the same turn reads as a drawn curve.
+  (`route.hairpin`). Stand the turn up square right where the line leaves
+  the part and take the remaining 45s in order — nine o'clock out, twelve,
+  half-past one, three — and the same turn reads as a drawn curve.
 * **Branch as a Y, not a T.** Where one track splits, bring the branches in
   at 45 so the join is a fork, not a crossroads: a square tee is the same
   etch nick as a square corner, twice.

@@ -3961,11 +3961,11 @@ def _spread_hairpins(design: Design) -> Design:
                 index += 1
                 continue
             # First choice: no fold at all. Retract along the incoming leg
-            # to just past the line-out and turn through the intermediate
-            # 45s in one arc - nine o'clock, half-past ten, twelve,
-            # half-past one, three, as the reviewer drew it - rejoining the
-            # outgoing straight where the arc meets its line. The fold's
-            # own corners disappear instead of being spread.
+            # to just past the line-out, stand the turn up square, and take
+            # the remaining 45s - twelve o'clock, half-past one, three, as
+            # the reviewer drew it - rejoining the outgoing straight where
+            # the turn meets its line. The fold's own corners disappear
+            # instead of being spread.
             rejoin = index + 2
             while rejoin + 1 < len(pts) and not pinned(track.net, pts[rejoin]):
                 onward = (
@@ -3994,9 +3994,14 @@ def _spread_hairpins(design: Design) -> Design:
                 return p1[0] * p2[1] - p1[1] * p2[0]
 
             arced = False
-            if 2 <= steps <= 4 and lu > 0.7:
+            if 3 <= steps <= 4 and lu > 0.7:
                 sigma = 45.0 if total > 0 else -45.0
-                mids = [_rot(h_in, sigma * i) for i in range(1, steps)]
+                # Square up at the line-out, then take the 45s: twelve
+                # o'clock, half-past one, three. The first 45 - half-past
+                # ten - made the turn read as an S; the reviewer wants the
+                # turn to stand up straight where the line leaves the part,
+                # so the intermediate headings start at 90 degrees.
+                mids = [_rot(h_in, sigma * i) for i in range(2, steps)]
                 sum_mid = (sum(p[0] for p in mids), sum(p[1] for p in mids))
                 a0 = a
                 base = _cross((a0[0] - q[0], a0[1] - q[1]), h_out)
