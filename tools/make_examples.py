@@ -5429,6 +5429,15 @@ ZONE_CLEARANCE = 0.25  # what the pour keeps away from copper of another net
 # pins, which is what every hand-laid carrier board shows; the boards' DRC
 # clearance is 0.2, so the pour still clears everything it must.
 ZONE_SLIVER = 0.35  # a strip of plane thinner than this is not worth filling
+# What the zone states in the file, for KiCad's own filler to honour. The
+# minimum width is what stops the plane squeezing into a gap it cannot be
+# etched into reliably - a web narrower than this is a sliver the fab may or
+# may not deliver - and the thermal numbers are the relief a pad gets where the
+# plane meets it: a gap all round and four spokes across it, so a soldering
+# iron can bring the joint up to temperature instead of the whole plane.
+ZONE_MIN_WIDTH = 0.25
+THERMAL_GAP = 0.4
+THERMAL_SPOKE = 0.5
 ZONE_WELD = 0.05  # how far neighbouring islands are grown into each other
 # Every hole is rounded outward onto this grid. Without it a diagonal track puts
 # an x edge every fraction of a millimetre, the sweep below never sees two
@@ -5638,13 +5647,21 @@ def _connected_islands(design, islands, layer: str, net: str):
 
 
 def _zone(design: Design, code: int, layer: str = "B.Cu", smd_isolated: bool = False) -> str:
-    """The ground pour, and the fill that goes with it.
+    """The ground pour, declared but not filled.
 
-    The fill is computed here rather than left for KiCad because the committed
-    board has to be complete on its own: an unfilled zone means DRC reports
-    every ground pad unconnected, and the fabrication output ships without a
-    plane. KiCad's own filler is not available - it needs a display, and the
-    container has none - so this is the same subtraction done by hand.
+    The fill used to be computed here, by sweeping the outline and subtracting
+    everything of another net, because KiCad's own filler was believed to need
+    a display the container has not got. It does not: `pcbnew`'s `ZONE_FILLER`
+    runs headless in both images, and `_kicad_fill` below hands every board to
+    it after this file is written.
+
+    That is worth more than tidiness. The sweep was *this file's* idea of the
+    clearance rule, and a reviewer found the two disagreeing - copper reaching
+    within 0.075 mm of a pad it should have kept 0.25 from, on a board whose
+    DRC was green, because `pcb drc --refill-zones` throws the committed fill
+    away and checks KiCad's. What is drawn and what is checked are the same
+    polygon now, and the clearance, the minimum width and the thermal spokes
+    all come from the board's own rules.
 
     ``smd_isolated`` makes the zone connect through-hole only: on the component
     face, a thermal spoke to a fine-pitch pad is hostage to whatever copper
@@ -5667,19 +5684,15 @@ def _zone(design: Design, code: int, layer: str = "B.Cu", smd_isolated: bool = F
         connect,
         f"\t\t\t(clearance {ZONE_CLEARANCE})",
         "\t\t)",
-        f"\t\t(min_thickness {ZONE_SLIVER / 2})",
+        f"\t\t(min_thickness {ZONE_MIN_WIDTH})",
         "\t\t(filled_areas_thickness no)",
         "\t\t(fill yes",
-        "\t\t\t(thermal_gap 0.5)",
-        "\t\t\t(thermal_bridge_width 0.5)",
+        f"\t\t\t(thermal_gap {THERMAL_GAP})",
+        f"\t\t\t(thermal_bridge_width {THERMAL_SPOKE})",
         "\t\t)",
         f"\t\t(polygon (pts {pts}))",
+        "\t)",
     ]
-    for left, top, right, bottom in _fill_rectangles(design, layer, POUR_NET, smd_isolated):
-        corners = [(left, top), (right, top), (right, bottom), (left, bottom)]
-        island = " ".join(f"(xy {round(ox + x, 4)} {round(oy + y, 4)})" for x, y in corners)
-        lines.append(f'\t\t(filled_polygon (layer "{layer}") (pts {island}))')
-    lines.append("\t)")
     return "\n".join(lines)
 
 
@@ -7999,6 +8012,41 @@ DESIGNS = {
 # ---------------------------------------------------------------------------
 
 
+def _kicad_fill(board: Path) -> None:
+    """Hand the written board to KiCad's own zone filler.
+
+    `pcbnew` ships in both container images and its `ZONE_FILLER` runs without
+    a display, which an earlier note in this file said it could not. Filling
+    here rather than computing the polygons ourselves is what makes the
+    committed fill and the fill DRC checks the same object: `pcb drc
+    --refill-zones` replaces whatever the file holds, so a fill of our own
+    devising was checked by nobody, and it drifted - copper 0.075 mm from a pad
+    on a board reported clean.
+
+    The board is saved by the same KiCad that generated the rest of it, so the
+    file format does not move; running the generator under the older matrix
+    version keeps it readable by both, as the fixture requires.
+    """
+    import importlib
+    import sys as _sys
+
+    if "/usr/lib/python3/dist-packages" not in _sys.path:
+        _sys.path.append("/usr/lib/python3/dist-packages")
+    try:
+        pcbnew = importlib.import_module("pcbnew")
+    except ImportError:  # pragma: no cover - only outside the container
+        print(
+            f"{board.stem}: pcbnew is not importable, the zones stay unfilled "
+            "(run the generator in the container)",
+            file=sys.stderr,
+        )
+        return
+    loaded = pcbnew.LoadBoard(str(board))
+    if not pcbnew.ZONE_FILLER(loaded).Fill(loaded.Zones()):
+        raise SystemExit(f"{board.stem}: KiCad's zone filler refused the board")
+    loaded.Save(str(board))
+
+
 def write_variant(design: Design, root: Path, *, check: bool = True) -> None:
     shorts = schematic_shorts(design) if check else []
     if shorts:
@@ -8016,7 +8064,9 @@ def write_variant(design: Design, root: Path, *, check: bool = True) -> None:
     root.mkdir(parents=True, exist_ok=True)
     (root / f"{design.name}.kicad_sch").write_text(emit_schematic(design), encoding="utf-8")
     (root / f"{design.name}.kicad_pro").write_text(emit_project(design), encoding="utf-8")
-    emit_board(design, root / f"{design.name}.kicad_pcb")
+    board = root / f"{design.name}.kicad_pcb"
+    emit_board(design, board)
+    _kicad_fill(board)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -27,12 +27,30 @@ class Pad:
     layers: list[str]
     net: str = ""
     net_code: int = 0
+    roundrect_rratio: float = 0.0
 
     @property
     def annular_ring(self) -> float | None:
         if self.drill is None:
             return None
         return (min(self.size) - self.drill) / 2.0
+
+    @property
+    def corner_radius(self) -> float:
+        """How far the copper is cut back at each corner of the pad's extent.
+
+        A bounding box is a poor stand-in for a pad when the question is
+        clearance: the corner of a roundrect 0603 land is a quarter of a
+        millimetre away from where its box says it is, which is the whole
+        clearance rule. Rectangles return nought, so measuring against the box
+        minus this radius, plus the radius back as a disc, is exact for every
+        shape these boards use.
+        """
+        if self.shape in ("circle", "oval"):
+            return min(self.size) / 2.0
+        if self.shape == "roundrect":
+            return min(self.size) * self.roundrect_rratio
+        return 0.0
 
     def bbox(self, angle_offset: float = 0.0, margin: float = 0.0) -> tuple[float, ...]:
         """Axis-aligned extent of the pad, exact for a rotated rectangle.
@@ -449,6 +467,9 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     layers=_layer_list(pad_node.child("layers")),
                     net=net_name,
                     net_code=net_code,
+                    roundrect_rratio=float(
+                        pad_node.value("roundrect_rratio", default=0.0) or 0.0
+                    ),
                 )
             )
         board.footprints.append(fp)

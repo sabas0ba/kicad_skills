@@ -176,14 +176,44 @@ def export_sch_svg(schematic: str | os.PathLike[str], out_dir: str | os.PathLike
 # -- board ----------------------------------------------------------------
 
 
+def _has_unfilled_zone(board: str | os.PathLike[str]) -> bool:
+    """Whether any zone that asks to be filled carries no fill.
+
+    Imported here rather than at module scope: `pcb` is the layer above this
+    one, and only this question needs it.
+    """
+    from . import pcb
+
+    try:
+        parsed = pcb.parse(board)
+    except Exception:  # an unreadable board is KiCad's to complain about
+        return True
+    return any(z.fill_enabled and not z.fills for z in parsed.zones if not z.keepout)
+
+
 def drc(
     board: str | os.PathLike[str],
     *,
     schematic_parity: bool = True,
     all_track_errors: bool = True,
     units: str = "mm",
+    refill: bool | None = None,
 ) -> dict[str, Any]:
-    """Run DRC (with zone refill) and return the JSON report."""
+    """Run DRC and return the JSON report.
+
+    ``refill`` decides whose zone fill is checked, and the default answers
+    "whatever the board actually ships". A board whose zones are already filled
+    is checked as it stands, because that fill is what goes to the fab and what
+    the plots draw; refilling first would replace it with KiCad's own and
+    report on a board nobody has. That is not hypothetical - it hid a
+    generated fill that reached within a tenth of a millimetre of foreign pads
+    and left two hundred pieces of copper KiCad calls isolated, on boards whose
+    DRC had been green for weeks.
+
+    A board with an *unfilled* zone is refilled first, because otherwise every
+    pad on that net reads as unconnected and the report is noise;
+    `layout.unfilled_zone` is the finding that says the file is incomplete.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "drc.json"
         args = [
@@ -197,9 +227,10 @@ def drc(
             "-o",
             str(out),
         ]
-        if supports(["pcb", "drc"], "--refill-zones"):
-            # KiCad 10 only. Without it, zones keep whatever fill the file has,
-            # which is what rule_unfilled_zone warns about.
+        if refill is None:
+            refill = _has_unfilled_zone(board)
+        if refill and supports(["pcb", "drc"], "--refill-zones"):
+            # KiCad 10 only; on 9 the file's own fill is all there is.
             args.append("--refill-zones")
         if schematic_parity:
             args.append("--schematic-parity")
