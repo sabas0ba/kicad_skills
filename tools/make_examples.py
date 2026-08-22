@@ -4450,6 +4450,7 @@ def _pipeline(design: Design) -> Design:
     # go on after all of it, because a taper is built against the end of a run
     # and an end that moves afterwards leaves the taper pointing at nothing.
     design = _unspiked(design)
+    design = _surfaced(design)
     design = _teardrops(design)
     return _stitched(design)
 
@@ -4574,6 +4575,71 @@ def _landed(design: Design) -> Design:
         file=sys.stderr,
     )
     return replace(design, tracks=tracks, vias=kept)
+
+
+# How long a back-layer hop may be and still be worth trying to lift. Beyond
+# this the front had a reason to refuse it, and the search is wasted.
+SURFACE_MAX_MM = 14.0
+
+
+def _surfaced(design: Design) -> Design:
+    """Lift a short back-layer hop to the front, where the front is empty.
+
+    The back of a two-layer board is a ground plane, and every signal laid
+    across it saws the plane in two under its own return current: the return
+    goes round the cut, the loop grows by the detour, and `route.return_path`
+    measures the result. The router already prices a millimetre on the plane
+    side at thirty on the front, but it pays that price *while routing*, before
+    the rest of the board exists - so a hop it bought at the time may have
+    clear front-side air beside it by the end.
+
+    So each short back-layer run is offered the front once more, against the
+    finished board. Where it fits, the copper moves up and the plane heals; and
+    a layer change nothing needs any more takes its via with it. Where it does
+    not, nothing happens: the run stays where the router put it.
+    """
+    if not design.pour:
+        return design
+    foreign_vias, foreign_pads, around = _route_obstacles(design)
+    tracks = list(design.tracks)
+    lifted = 0
+    for index, track in enumerate(tracks):
+        if track.layer != "B.Cu" or track.net == POUR_NET:
+            continue
+        points = [resolve(design, point) for point in track.points]
+        if sum(math.dist(a, b) for a, b in pairwise(points)) > SURFACE_MAX_MM:
+            continue
+        front = replace(track, layer="F.Cu")
+        if all(
+            _clear_of(front, a, b, foreign_vias, foreign_pads, around(a))
+            for a, b in pairwise(points)
+        ):
+            tracks[index] = front
+            lifted += 1
+    if not lifted:
+        return design
+    # A via joins two faces, and a face with nothing left on it needs no join.
+    back: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for track in tracks:
+        if track.layer != "B.Cu":
+            continue
+        points = [resolve(design, point) for point in track.points]
+        back[track.net].extend((points[0], points[-1]))
+    vias = [
+        via
+        for via in design.vias
+        if via.net == POUR_NET
+        or any(
+            math.dist(via_position(design, via), end) <= via.size / 2 + GEOM_EPS
+            for end in back.get(via.net, ())
+        )
+    ]
+    print(
+        f"{design.name}: {lifted} back-layer hop(s) had clear air on the front by "
+        f"the end, lifted; {len(design.vias) - len(vias)} via(s) went with them",
+        file=sys.stderr,
+    )
+    return replace(design, tracks=tracks, vias=vias)
 
 
 def _stitched(design: Design) -> Design:
