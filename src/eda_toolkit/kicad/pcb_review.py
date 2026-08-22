@@ -1733,6 +1733,20 @@ def rule_placement(ctx: PcbContext) -> list[Finding]:
     return findings
 
 
+# A socket lands inside the outline a pin header already draws, so a header
+# asks for nothing above its courtyard. A screw terminal's wires leave
+# horizontally from its face and a barrel jack swallows a plug the size of
+# itself again: those are the ones a mounting hole has to stay out of.
+_SOCKET_FOOTPRINTS = ("pinheader", "pinsocket", "conn_01x", "conn_02x")
+
+
+def _mating_connector(fp: pcb.Footprint) -> bool:
+    """Whether what plugs into this part reaches past the part."""
+    if not fp.ref.upper().startswith(("J", "P")):
+        return False
+    return not any(name in fp.lib_id.lower() for name in _SOCKET_FOOTPRINTS)
+
+
 def _fastener_holes(board: pcb.Board) -> list[pcb.Footprint]:
     """The footprints a screw actually goes through."""
     holes = []
@@ -1805,7 +1819,7 @@ def rule_fastener_clearance(ctx: PcbContext) -> list[Finding]:
                 continue
             distance = _box_circle_gap(box, hole.x, hole.y)
             # A connector is judged by what plugs into it, not by its outline.
-            connector = fp.ref.upper().startswith(("J", "P"))
+            connector = _mating_connector(fp)
             wanted = head + gap + (access if connector else 0.0)
             if distance >= wanted:
                 continue

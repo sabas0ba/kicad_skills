@@ -4443,8 +4443,14 @@ def _pipeline(design: Design) -> Design:
     design = _spread_hairpins(design)
     design = _chamfer_tracks(design)
     design = _unspiked(design)
-    design = _teardrops(design)
     design = _joined(design)
+    design = _landed(design)
+    # Landing a joint on its pad moves a track end, and a moved end is a new
+    # corner: the de-spike runs again over what that left behind. The fillets
+    # go on after all of it, because a taper is built against the end of a run
+    # and an end that moves afterwards leaves the taper pointing at nothing.
+    design = _unspiked(design)
+    design = _teardrops(design)
     return _stitched(design)
 
 
@@ -4489,6 +4495,85 @@ def _joined(design: Design) -> Design:
         file=sys.stderr,
     )
     return replace(design, vias=[*design.vias, *added])
+
+
+def _drilled_pads(design: Design) -> list[tuple[str | None, tuple[float, float], float]]:
+    """Every plated hole on the board, as net, centre and drill radius."""
+    out: list[tuple[str | None, tuple[float, float], float]] = []
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            drill = pad.child("drill")
+            if drill is None:
+                continue
+            sizes = [a for a in drill.atoms() if isinstance(a, (int, float))]
+            if not sizes:
+                continue
+            number = str(pad.atom(0, ""))
+            net = next(
+                (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes), None
+            )
+            out.append((net, pad_position_of(design, part, pad), float(sizes[0]) / 2))
+    return out
+
+
+def _landed(design: Design) -> Design:
+    """A layer change beside a through-hole pad belongs on the pad.
+
+    A plated hole joins the two faces by itself - that is what plating a hole
+    is - so a via a millimetre from one of its own net's pads buys nothing and
+    costs the thing a fab measures: hole to hole. Two drills a millimetre
+    apart leave 0.15 mm of laminate between them at a 0.25 mm rule, and the
+    board comes back with a note or does not come back at all.
+
+    So the joint moves onto the pad: every track end at the via slides to the
+    pad centre, the via goes, and the copper is joined by the hole that was
+    already there. Only a pad of the via's own net will do, and only one near
+    enough that the slide cannot reach past what the run already cleared.
+    """
+    if not design.vias:
+        return design
+    pads = [entry for entry in _drilled_pads(design) if entry[0]]
+    if not pads:
+        return design
+    moves: dict[tuple[float, float], tuple[float, float]] = {}
+    kept: list[Via] = []
+    for via in design.vias:
+        centre = via_position(design, via)
+        landing = next(
+            (
+                position
+                for net, position, radius in pads
+                if net == via.net
+                # near enough to be the same joint, and close enough that the
+                # drills would foul: beyond this the via is a via
+                and GEOM_EPS < math.dist(centre, position) <= radius + via.size / 2 + 0.6
+            ),
+            None,
+        )
+        if landing is None:
+            kept.append(via)
+            continue
+        moves[(round(centre[0], 3), round(centre[1], 3))] = landing
+    if not moves:
+        return design
+    tracks = []
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        moved = [moves.get((round(x, 3), round(y, 3)), (x, y)) for x, y in points]
+        deduped = [moved[0]]
+        for point in moved[1:]:
+            if math.dist(point, deduped[-1]) > GEOM_EPS:
+                deduped.append(point)
+        if len(deduped) < 2:
+            continue
+        tracks.append(replace(track, points=deduped))
+    print(
+        f"{design.name}: {len(moves)} layer change(s) sat beside a plated hole of "
+        "their own net, landed on it",
+        file=sys.stderr,
+    )
+    return replace(design, tracks=tracks, vias=kept)
 
 
 def _stitched(design: Design) -> Design:
@@ -8597,6 +8682,26 @@ DESIGNS = {
 # ---------------------------------------------------------------------------
 
 
+def _mating_room(part: Part) -> float:
+    """What a part needs above its courtyard for the thing that plugs into it.
+
+    A screw terminal's wires leave horizontally from its face, a barrel jack
+    swallows a plug the size of the jack again, and a screw driven beside
+    either can only be driven before the cable goes on - which on a board that
+    gets serviced is never. A pin header is the other case: the socket that
+    fits it lands inside the same outline the header already draws, so it asks
+    for nothing beyond the screw head's own room, and treating the two alike
+    is what left a carrier lined with headers with two mounting holes on one
+    edge.
+    """
+    if part.ref[:1].upper() not in ("J", "P"):
+        return 0.0
+    library = part.footprint.lower()
+    if any(name in library for name in ("pinheader", "pinsocket", "conn_01x", "conn_02x")):
+        return 0.0
+    return CONNECTOR_ACCESS
+
+
 def _corner_spots(
     design: Design,
     count: int,
@@ -8604,14 +8709,20 @@ def _corner_spots(
     extra: Sequence[tuple[float, float]] = (),
     extra_keep: float = 0.0,
 ) -> list[tuple[float, float]]:
-    """Up to ``count`` free positions near the corners, nearest corner first.
+    """Up to ``count`` free positions round the edge, nearest corner first.
 
     Shared by the screw holes and the fiducials, which want the same thing: a
-    place at the edge of the board where nothing else is. Each corner is tried
-    at the inset the part needs, then slid along its two edges, then a little
-    way in along the diagonal - a corner occupied by a connector body has no
-    room at the corner itself, and something ten millimetres along the edge is
-    still a corner as far as the board is concerned.
+    place at the edge of the board where nothing else is, and where what the
+    part *brings with it* - a washer, a camera's clear view - also fits.
+
+    The corners are where both belong, so each corner is what the search asks
+    for; what it settles for is the nearest free point on a ring round the
+    board. A corner with a screw terminal in it has no room at the corner
+    itself and plenty fifteen millimetres along the edge, and a board whose
+    whole perimeter is taken has room one ring further in. Walking the ring
+    rather than sliding along two edges is what keeps a crowded board from
+    coming back with one screw hole in it: the answer is usually there, a
+    little further round than the old search was willing to look.
     """
     width, height = design.board_size
     inset = keep + 0.6
@@ -8619,13 +8730,7 @@ def _corner_spots(
     # a screw terminal and the fingers that fit both live above the courtyard,
     # so a screw tucked against one can only be driven before the cable goes
     # on - and on a board that gets serviced, that is never.
-    taken = [
-        (
-            *_part_extent(design, part),
-            CONNECTOR_ACCESS if part.ref[:1].upper() in ("J", "P") else 0.0,
-        )
-        for part in design.footprints()
-    ]
+    taken = [(*_part_extent(design, part), _mating_room(part)) for part in design.footprints()]
     for track in design.tracks:
         points = [resolve(design, point) for point in track.points]
         half = track.width / 2
@@ -8650,34 +8755,76 @@ def _corner_spots(
         )
 
     grid = design.board_grid or 0.5
-    found: list[tuple[float, float]] = []
-    corners = [
-        (inset, inset, 1, 1),
-        (width - inset, inset, -1, 1),
-        (inset, height - inset, 1, -1),
-        (width - inset, height - inset, -1, -1),
-    ][:count]
-    for cx, cy, sx, sy in corners:
-        for step in range(0, 34):
-            for x, y in (
-                (cx + sx * step * 0.5, cy),
-                (cx, cy + sy * step * 0.5),
-                (cx + sx * step * 0.35, cy + sy * step * 0.35),
-            ):
-                if not (inset <= x <= width - inset and inset <= y <= height - inset):
-                    continue
-                x = round(round(x / grid) * grid, 3)
-                y = round(round(y / grid) * grid, 3)
-                if (
-                    free(x, y)
-                    and all(math.dist((x, y), other) > keep + extra_keep for other in extra)
-                    and all(math.dist((x, y), other) > 2 * keep for other in found)
-                ):
-                    found.append((x, y))
-                    break
-            else:
-                continue
+
+    def snap(value: float) -> float:
+        return round(round(value / grid) * grid, 3)
+
+    # The rings: the edge first, then two steps inboard. A hole belongs at the
+    # edge, so an inner ring only ever wins when the edge has nothing left.
+    rings: list[list[tuple[float, float]]] = []
+    for depth in (0.0, 3.0, 6.0):
+        left, top = inset + depth, inset + depth
+        right, bottom = width - inset - depth, height - inset - depth
+        if right - left < 2 * keep or bottom - top < 2 * keep:
             break
+        ring: list[tuple[float, float]] = []
+        steps = max(2, int((right - left) / 0.5))
+        for index in range(steps + 1):
+            x = snap(left + (right - left) * index / steps)
+            ring.append((x, snap(top)))
+            ring.append((x, snap(bottom)))
+        steps = max(2, int((bottom - top) / 0.5))
+        for index in range(steps + 1):
+            y = snap(top + (bottom - top) * index / steps)
+            ring.append((snap(left), y))
+            ring.append((snap(right), y))
+        rings.append(ring)
+
+    corners = [
+        (inset, inset),
+        (width - inset, inset),
+        (inset, height - inset),
+        (width - inset, height - inset),
+    ][:count]
+    found: list[tuple[float, float]] = []
+
+    def usable(point: tuple[float, float]) -> bool:
+        return (
+            free(*point)
+            and all(math.dist(point, other) > keep + extra_keep for other in extra)
+            and all(math.dist(point, other) > 2 * keep for other in found)
+        )
+
+    for corner in corners:
+        # This corner's own quarter of the board, and nowhere else. A board
+        # bolts down flat when the screws are spread, and a search that asked
+        # only for the nearest free point put three of the four along one edge
+        # - each of them the nearest thing to a different corner, all of them
+        # in the same place. A quarter with no room gives no screw: three that
+        # hold the board flat beat four that hold one side of it.
+        quarters = [
+            [
+                point
+                for point in ring
+                if (point[0] <= width / 2) == (corner[0] <= width / 2)
+                and (point[1] <= height / 2) == (corner[1] <= height / 2)
+            ]
+            for ring in rings
+        ]
+        spot = None
+        for ring in quarters:
+            spot = next(
+                (
+                    point
+                    for point in sorted(ring, key=lambda p: math.dist(p, corner))
+                    if usable(point)
+                ),
+                None,
+            )
+            if spot is not None:
+                break
+        if spot is not None:
+            found.append(spot)
     return found
 
 
