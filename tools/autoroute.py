@@ -45,6 +45,10 @@ class Obstacle:
 
     ``layer`` of None means every copper layer, which is what a through-hole pad
     or a via is.
+
+    ``pad`` marks the rectangle as a component land. A track of the same net may
+    of course sit on its own pad - that is how it connects - but a *via* may
+    not, whoever owns it: see :meth:`route`.
     """
 
     x0: float
@@ -53,6 +57,7 @@ class Obstacle:
     y1: float
     net: str
     layer: str | None = None
+    pad: bool = False
 
 
 @dataclass
@@ -257,10 +262,27 @@ class Router:
             for site in self.via_sites
             for cell in self._cells_in(site[0], site[1], site[0], site[1], self.via_pitch)
         }
+        # And it never lands on a pad - its own net's pad included, which
+        # `_blocked` would have let through. A drilled hole in a land is a
+        # hole solder wicks down: the joint starves, and the assembler has no
+        # way to tell that from a cold one. Via-in-pad is a real technique and
+        # a filled-and-capped one, plated over before assembly; a board that
+        # has not specified that process may not draw it. So the pad keeps the
+        # via's own radius plus clearance away from it, and the escape becomes
+        # a short stub of copper out of the land to a via that stands beside
+        # it - which is what a hand layout draws anyway.
+        pad_keep = self.via_size / 2 + self.clearance
+        pad_cells = {
+            cell
+            for obstacle in self.obstacles
+            if obstacle.pad
+            for cell in self._cells_in(obstacle.x0, obstacle.y0, obstacle.x1, obstacle.y1, pad_keep)
+        }
         vias_ok = {
             cell
             for cell in ((cx, cy) for cx in range(self.columns) for cy in range(self.rows))
             if cell not in crowded_holes
+            and cell not in pad_cells
             and not any(cell in via_blocked[layer] for layer in self.layers)
         }
 

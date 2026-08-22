@@ -51,6 +51,20 @@ pin, its capacitor, and the plane.
   router reaches: a via at the end of a routed track puts that track's
   inductance inside the loop, which is exactly what the rule measures.
   This retired seven findings on the densest example board.
+* **Beside the land, never in it** (`via.in_pad`). The stub is not a
+  formality: a hole inside a land is a hole solder wicks down during reflow,
+  and the joint above it starves — indistinguishable, on the assembled board,
+  from a cold one. Via-in-pad is a real technique and a *process*, the barrel
+  filled with resin and plated flat before the board sees paste; a layout that
+  has not specified that process may not draw it. The net makes no difference
+  — a ground via touching a ground land wicks just as much, and the plane
+  gains nothing from the two touching here rather than a stub apart. Keep the
+  via's own radius plus the clearance off the land's edge; the one exception
+  is the exposed thermal pad under a package, where the via array is what the
+  datasheet asks for. State the fill spec for those and waive them by name.
+  The router enforces this itself: a pad, whoever owns it, is a place a layer
+  change may not happen, so an escape that has to drop to the plane leaves
+  the land first and turns its via beside it.
 * **The distance half is package geometry.** A fine-pitch part spends the
   budget escaping the package before any capacitor can be placed; on two
   layers with parts on one side, that is a fact, not a mistake. The fix that

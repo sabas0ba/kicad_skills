@@ -378,9 +378,7 @@ def cmd_pcb_review(args: argparse.Namespace) -> int:
         from .kicad import pcb, review_map
 
         board = pcb.parse(pcb.find_board(args.target))
-        payload["map"] = review_map.render_review_map(
-            board, payload.get("findings", []), args.map
-        )
+        payload["map"] = review_map.render_review_map(board, payload.get("findings", []), args.map)
     emit(payload, as_json=args.json, text_renderer=_render_findings)
     if args.output:
         write_json(args.output, payload)

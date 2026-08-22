@@ -104,6 +104,7 @@ mismatches).
 | `track.below_minimum` | 0.15 mm | tracks the fab cannot make |
 | `track.thin_power` | 10 mm neck | a contiguous run of power/ground track under 0.4 mm longer than the neck allowance — pad entries and fine-pitch escapes pass, thin trunks fail |
 | `via.small_drill` / `via.annular_ring` | 0.3 mm / 0.13 mm | via geometry vs fab capability |
+| `via.in_pad` | 0 mm gap | a via whose copper reaches a surface-mount land, its own net's included: solder wicks down an open barrel and the joint above it starves, and nothing on the assembled board tells that apart from a cold joint. Via-in-pad is a filled-and-capped *process*, not a drawing. The exposed thermal pad under a package is exempt — the via array in one is what the datasheet asks for, and nothing a signal reaches is 4 mm² |
 | `board.edge_clearance` | 0.3 mm | copper too close to the outline (measured against the real Edge.Cuts geometry - arcs, circles and cutouts included, not a bounding box) |
 | `board.copper_outside_outline` | — | copper past the outline entirely: it would be milled away |
 | `layout.decoupling_distance` | 5 mm | nearest decoupling cap to each IC supply pad |

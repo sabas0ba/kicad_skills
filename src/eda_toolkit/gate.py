@@ -162,6 +162,7 @@ _AI_BLOCKING = (
     "route.return_path",
     "via.small_drill",
     "via.annular_ring",
+    "via.in_pad",
     "track.thin_power",
     "board.edge_clearance",
 )

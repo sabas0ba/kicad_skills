@@ -37,6 +37,10 @@ THRESHOLDS = {
     # A decoupling capacitor whose ground pad has to travel this far to reach a
     # via has already lost the inductance argument.
     "max_decoupling_via_mm": 1.5,
+    # Copper-to-copper gap a via has to leave a surface-mount land. Zero is the
+    # honest floor - a via that merely touches a land still drills into it - and
+    # a house rule that wants breathing room raises it.
+    "min_via_pad_gap_mm": 0.0,
     # Interior angle below which a corner is an acid trap and an impedance step.
     "min_track_angle_deg": 90.0,
     # A reversal split over two corners: each corner legal on its own, the
@@ -82,6 +86,13 @@ GEOM_TOL = 0.001
 # the arms either side must be before the bend is legible (route.hairpin).
 HAIRPIN_WINDOW_MM = 1.2
 HAIRPIN_ARM_MM = 0.8
+
+# What makes a land a thermal one rather than a signal one (via.in_pad). An
+# exposed pad under a package is the one land a via array belongs in, and
+# nothing a single signal reaches is anywhere near this big: the largest
+# 0603 land is under a square millimetre, a 2.54 mm header's is under two.
+THERMAL_PAD_AREA_MM2 = 4.0
+THERMAL_PAD_MIN_SIDE_MM = 2.0
 
 # `rule_drc` builds its ids from a bucket name held in a variable, so unlike
 # every other rule here its prefixes cannot be read out of the source. They are
@@ -140,6 +151,14 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "a via whose (size - drill)/2 is under the limit",
         "warning",
         threshold="min_annular_ring_mm",
+    ),
+    "via.in_pad": RuleSpec(
+        "a via whose copper comes closer than the limit to a surface-mount "
+        "land, its own net's included - solder wicks down an open barrel in a "
+        "land and the joint starves. Exposed thermal pads are exempt: the via "
+        "array in one is what the package's datasheet asks for",
+        "warning",
+        threshold="min_via_pad_gap_mm",
     ),
     "fab.many_drill_sizes": RuleSpec(
         "more distinct drill diameters than the limit, which costs money",
@@ -592,6 +611,78 @@ def rule_vias(ctx: PcbContext) -> list[Finding]:
             )
         )
     return findings
+
+
+@rule
+def rule_via_in_pad(ctx: PcbContext) -> list[Finding]:
+    """Vias drilled into a surface-mount land.
+
+    A hole in a land is a hole solder wicks down. The joint above it starves,
+    and nothing on the assembled board distinguishes that from a cold one -
+    which is why via-in-pad is a process, not a drawing: the barrel is filled
+    with resin and plated flat before the board ever sees paste. A layout that
+    has not specified that process may not draw it, and the fix costs nothing:
+    a short stub out of the land to a via that stands beside it.
+
+    The net does not enter into it. A ground via touching a ground land wicks
+    exactly as much solder as a signal one, and the plane gains nothing from
+    the two being one piece of copper here rather than a stub away.
+
+    The exception is the exposed pad under a package, where the via array *is*
+    the datasheet's answer to getting the heat out, and every QFN reference
+    layout draws one. Nothing a signal reaches is that big, which is how they
+    are told apart here.
+    """
+    board = ctx.board
+    if not board.vias:
+        return []
+    limit = ctx.thresholds["min_via_pad_gap_mm"]
+    copper = set(board.copper_layers)
+    lands = []
+    for fp in board.footprints:
+        for pad in fp.pads:
+            if pad.drill:
+                continue  # a land with its own hole is not one a via ruins
+            layers = _pad_layers(pad, board) & copper
+            if not layers:
+                continue  # a paste or mask aperture, not copper
+            w, h = pad.size
+            if w * h >= THERMAL_PAD_AREA_MM2 and min(w, h) >= THERMAL_PAD_MIN_SIDE_MM:
+                continue
+            lands.append((fp, pad, layers, pad.bbox(angle_offset=fp.angle)))
+    if not lands:
+        return []
+    hits = []
+    for via in board.vias:
+        for fp, pad, layers, (x0, y0, x1, y1) in lands:
+            if not layers & set(via.layers):
+                continue
+            dx = max(x0 - via.x, 0.0, via.x - x1)
+            dy = max(y0 - via.y, 0.0, via.y - y1)
+            gap = math.hypot(dx, dy) - via.size / 2
+            if gap < limit - 1e-9:
+                hits.append((f"{fp.ref}.{pad.number}", round(gap, 3), via))
+                break
+    if not hits:
+        return []
+    return [
+        Finding(
+            "via.in_pad",
+            "warning",
+            f"{len(hits)} via(s) in a surface-mount land - solder wicks down the "
+            f"barrel unless the via is filled and capped, and the joint above it "
+            f"starves",
+            details={
+                "count": len(hits),
+                "examples": [
+                    f"{where}: via at ({via.x}, {via.y}) "
+                    + ("inside the land" if gap <= -via.size / 2 else f"{gap} mm of copper gap")
+                    for where, gap, via in hits[:6]
+                ],
+                "positions": [[via.x, via.y] for _where, _gap, via in hits],
+            },
+        )
+    ]
 
 
 @rule

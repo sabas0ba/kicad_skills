@@ -1041,3 +1041,41 @@ def test_a_poured_net_may_cross_itself():
         zones=[zone],
     )
     assert pcb_review.rule_self_crossing(ctx_for(board)) == []
+
+
+def test_a_via_in_a_land_is_reported_whoever_owns_it():
+    """A hole in a land starves the joint above it, ground pad or not."""
+    parts = [
+        footprint("C1", 10, 10, [pad("1", 9.5, 10, "+5V"), pad("2", 10.5, 10, "GND")]),
+    ]
+    on_the_land = pcb.Via(
+        x=10.5, y=10, size=0.8, drill=0.4, layers=["F.Cu", "B.Cu"], net_code=1, net="GND"
+    )
+    findings = pcb_review.rule_via_in_pad(ctx_for(board_from(footprints=parts, vias=[on_the_land])))
+    assert [f.rule for f in findings] == ["via.in_pad"]
+    assert findings[0].details["count"] == 1
+    assert "C1.2" in findings[0].details["examples"][0]
+
+    # touching the land's edge is still drilling into it: the copper of a
+    # 0.8 mm via reaches 0.4 mm out of its centre, and the land ends at 11.0
+    touching = pcb.Via(
+        x=11.35, y=10, size=0.8, drill=0.4, layers=["F.Cu", "B.Cu"], net_code=1, net="GND"
+    )
+    assert pcb_review.rule_via_in_pad(ctx_for(board_from(footprints=parts, vias=[touching])))
+
+    # a stub away, it is the layout every hand board draws
+    beside = pcb.Via(
+        x=11.8, y=10, size=0.8, drill=0.4, layers=["F.Cu", "B.Cu"], net_code=1, net="GND"
+    )
+    assert pcb_review.rule_via_in_pad(ctx_for(board_from(footprints=parts, vias=[beside]))) == []
+
+    # the exposed pad under a package is the one land a via array belongs in
+    package = [
+        footprint(
+            "U1", 30, 20, [pad("49", 30, 20, "GND", size=(3.5, 3.5)), pad("1", 27, 20, "SIG")]
+        )
+    ]
+    thermal = pcb.Via(
+        x=30, y=20, size=0.8, drill=0.4, layers=["F.Cu", "B.Cu"], net_code=1, net="GND"
+    )
+    assert pcb_review.rule_via_in_pad(ctx_for(board_from(footprints=package, vias=[thermal]))) == []

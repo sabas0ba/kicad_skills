@@ -2902,7 +2902,7 @@ def _route_all(
                 "",
             )
             x0, y0, x1, y1 = pad_box(design, part, pad)
-            router.add(autoroute.Obstacle(x0, y0, x1, y1, net, pad_layer(pad)))
+            router.add(autoroute.Obstacle(x0, y0, x1, y1, net, pad_layer(pad), pad=True))
             if net:
                 net_pads[net].append(((x0, y0, x1, y1), pad_layer(pad)))
     # The interior of a kept-out package: the strip between its pad rows,
@@ -4738,8 +4738,12 @@ def _stitch_vias(design: Design) -> list[Via]:
         # violation and an orphan the fill never reaches.
         if not (x0 + 0.7 <= vx <= x1 - 0.7 and y0 + 0.7 <= vy <= y1 - 0.7):
             return False
-        for (bx0, by0, bx1, by1), net in pads:
-            grow = 0.4 if net == POUR_NET else radius + 0.3
+        for (bx0, by0, bx1, by1), _net in pads:
+            # Same distance whoever owns the pad. A ground via touching a
+            # ground land is still a hole in a land, and solder wicks down it
+            # exactly as it does on a signal pad; the plane gains nothing from
+            # the two being one piece of copper here rather than a stub away.
+            grow = radius + 0.3
             if bx0 - grow <= vx <= bx1 + grow and by0 - grow <= vy <= by1 + grow:
                 return False
         for net, width, a, b in segments:
