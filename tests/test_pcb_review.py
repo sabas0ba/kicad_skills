@@ -1145,3 +1145,80 @@ def test_a_fine_pitch_board_with_no_fiducial_is_reported():
         [pad(str(n), 30 + n * 2.54, 10, "SIG") for n in range(1, 6)],
     )
     assert pcb_review.rule_fiducials(ctx_for(board_from(footprints=[coarse]))) == []
+
+
+def hole(ref, x, y, net=""):
+    """A mounting hole: one plated or unplated pad, and a courtyard the size
+    of the drill, which is what the library draws and what misled the placer."""
+    fp = footprint(
+        ref,
+        x,
+        y,
+        [pad("1", x, y, net, size=(3.2, 3.2), type_="np_thru_hole", drill=3.2)],
+        attrs=("through_hole",),
+    )
+    fp.lib_id = "MountingHole:MountingHole_3.2mm_M3"
+    fp.courtyard = [(x - 1.8, y - 1.8), (x + 1.8, y - 1.8), (x + 1.8, y + 1.8), (x - 1.8, y + 1.8)]
+    return fp
+
+
+def test_a_screw_head_that_lands_on_a_part_is_reported():
+    """Seven millimetres of washer, not 3.2 mm of drill, is what has to fit."""
+    parts = [hole("H1", 20, 20)]
+    near = footprint("C1", 24, 20, [pad("1", 24, 20, "+5V")])
+    near.courtyard = [(23, 19), (25, 19), (25, 21), (23, 21)]
+    findings = pcb_review.rule_fastener_clearance(ctx_for(board_from(footprints=[*parts, near])))
+    assert [f.rule for f in findings] == ["mechanical.fastener_clearance"]
+    assert findings[0].details["items"][0]["part"] == "C1"
+
+    far = footprint("C1", 30, 20, [pad("1", 30, 20, "+5V")])
+    far.courtyard = [(29, 19), (31, 19), (31, 21), (29, 21)]
+    assert pcb_review.rule_fastener_clearance(ctx_for(board_from(footprints=[*parts, far]))) == []
+
+
+def test_a_hole_the_cable_covers_is_reported_against_the_connector():
+    """A connector is judged by what plugs into it, not by its outline."""
+    connector = footprint("J1", 26, 20, [pad("1", 26, 20, "+5V")])
+    connector.courtyard = [(25, 18), (27, 18), (27, 22), (25, 22)]
+    findings = pcb_review.rule_fastener_clearance(
+        ctx_for(board_from(footprints=[hole("H1", 20, 20), connector]))
+    )
+    # the body itself is 1 mm clear of the head; the mating space is not
+    assert [f.rule for f in findings] == ["mechanical.connector_access"]
+    assert findings[0].details["items"][0]["hole"] == "H1"
+
+
+def test_copper_under_a_screw_head_is_reported():
+    """An uninsulated washer resting on a track is a short waiting to happen."""
+    under = track(16, 23, 24, 23, net="SIG")
+    board = board_from(footprints=[hole("H1", 20, 20)], tracks=[under])
+    assert "mechanical.fastener_copper" in rules_of(
+        pcb_review.rule_fastener_clearance(ctx_for(board))
+    )
+
+    # the hole's own net is the bond, not an accident
+    bonded = board_from(
+        footprints=[hole("H1", 20, 20, net="GND")], tracks=[track(16, 23, 24, 23, net="GND")]
+    )
+    assert "mechanical.fastener_copper" not in rules_of(
+        pcb_review.rule_fastener_clearance(ctx_for(bonded))
+    )
+
+
+def test_a_designator_printed_off_the_board_is_reported():
+    """Ink past the outline is never printed - the offcut takes it away."""
+    off = {
+        "text": "H1",
+        "x": 20,
+        "y": -3,
+        "height": 1.0,
+        "width": 1.0,
+        "thickness": 0.15,
+        "layer": "F.SilkS",
+        "footprint": "H1",
+    }
+    findings = pcb_review.rule_silk_off_board(ctx_for(board_from(silk=[off])))
+    assert [f.rule for f in findings] == ["silk.off_board"]
+
+    on = dict(off, y=3)
+    assert pcb_review.rule_silk_off_board(ctx_for(board_from(silk=[on]))) == []
