@@ -2781,6 +2781,86 @@
       )
       (embedded_fonts no)
     )
+    (symbol "Mechanical:Fiducial"
+      (exclude_from_sim no)
+      (in_bom no)
+      (on_board yes)
+      (property "Reference" "FID"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "Fiducial"
+        (at 0 3.175 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Fiducial Marker"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "fiducial marker"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "Fiducial*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Fiducial_0_1"
+        (circle
+          (center 0 0)
+          (radius 1.27)
+          (stroke
+            (width 0.508)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
     (symbol "Mechanical:MountingHole"
       (pin_names
         (offset 1.016)
@@ -3698,7 +3778,7 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "ac6f9dd7-43be-5f48-9014-928f200be8b4")
     (property "Reference" "H1" (at 100.33 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 105.41 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 105.41 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "MPN" "n/a" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
@@ -3709,7 +3789,7 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "af3bdbc3-efdf-50cd-a2b4-11edd4b45f14")
     (property "Reference" "H2" (at 113.03 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 118.11 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 118.11 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "MPN" "n/a" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
@@ -3720,7 +3800,7 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "bb5ec079-b167-5ee0-9fbf-bb8ece0db88b")
     (property "Reference" "H3" (at 125.73 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 130.81 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 130.81 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "MPN" "n/a" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
@@ -3731,12 +3811,45 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "ef4c6c94-9333-54ef-a621-ef926bbcc237")
     (property "Reference" "H4" (at 138.43 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 143.51 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 143.51 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 139.7 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 139.7 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "MPN" "n/a" (at 139.7 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "Manufacturer" "n/a" (at 139.7 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (instances (project "pico-carrier" (path "/f86b03a2-2f64-5dc5-a6a7-b575bc25ae3a" (reference "H4") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 101.6 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "a60bb9f9-cc0c-56f8-9d58-dbafa1349f9b")
+    (property "Reference" "FID1" (at 102.87 166.37 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "Fiducial" (at 97.79 172.72 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "pico-carrier" (path "/f86b03a2-2f64-5dc5-a6a7-b575bc25ae3a" (reference "FID1") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 114.3 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "1ef07212-d3c1-51dd-96f9-a4a014a46e88")
+    (property "Reference" "FID2" (at 115.57 166.37 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "Fiducial" (at 115.57 175.26 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "pico-carrier" (path "/f86b03a2-2f64-5dc5-a6a7-b575bc25ae3a" (reference "FID2") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 127.0 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "a8948395-564b-5efe-949b-4f801ac13235")
+    (property "Reference" "FID3" (at 128.27 166.37 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "Fiducial" (at 128.27 175.26 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "pico-carrier" (path "/f86b03a2-2f64-5dc5-a6a7-b575bc25ae3a" (reference "FID3") (unit 1))))
   )
   (wire (pts (xy 180.34 107.95) (xy 180.34 105.41)) (stroke (width 0) (type default)) (uuid "6b4e9a78-10b2-5984-bb7a-8e133614546c"))
   (wire (pts (xy 72.39 82.55) (xy 80.01 82.55)) (stroke (width 0) (type default)) (uuid "44e4a26b-823c-5ec5-a04f-9765e041fc7c"))

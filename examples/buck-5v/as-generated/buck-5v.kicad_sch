@@ -1145,6 +1145,86 @@
       )
       (embedded_fonts no)
     )
+    (symbol "Mechanical:Fiducial"
+      (exclude_from_sim no)
+      (in_bom no)
+      (on_board yes)
+      (property "Reference" "FID"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "Fiducial"
+        (at 0 3.175 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Fiducial Marker"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "fiducial marker"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "Fiducial*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Fiducial_0_1"
+        (circle
+          (center 0 0)
+          (radius 1.27)
+          (stroke
+            (width 0.508)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
     (symbol "Mechanical:MountingHole"
       (pin_names
         (offset 1.016)
@@ -1935,7 +2015,7 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "d4b157d4-4bd0-5e55-9412-5c4838703693")
     (property "Reference" "H1" (at 24.44 166.18 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 29.52 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 29.52 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 25.71 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 25.71 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (instances (project "buck-5v" (path "/ec98644d-848c-5056-a4cb-c829189be5c3" (reference "H1") (unit 1))))
@@ -1944,7 +2024,7 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "4243895c-fac1-521b-9827-61d7b968926f")
     (property "Reference" "H2" (at 37.14 166.18 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 42.22 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 42.22 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (instances (project "buck-5v" (path "/ec98644d-848c-5056-a4cb-c829189be5c3" (reference "H2") (unit 1))))
@@ -1953,19 +2033,46 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "9390af47-91aa-5dff-bbe7-b24da2c3ad9a")
     (property "Reference" "H3" (at 49.84 166.18 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 54.92 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 54.92 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 51.11 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 51.11 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (instances (project "buck-5v" (path "/ec98644d-848c-5056-a4cb-c829189be5c3" (reference "H3") (unit 1))))
   )
-  (symbol (lib_id "Mechanical:MountingHole") (at 51.11 169.99 0.0) (unit 1)
+  (symbol (lib_id "Mechanical:MountingHole") (at 63.81 169.99 0.0) (unit 1)
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "111932db-bc21-5696-9a09-d5392f5f648e")
-    (property "Reference" "H4" (at 52.38 166.18 0) (effects (font (size 1.27 1.27)) (justify left)))
-    (property "Value" "M33" (at 60.0 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
-    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 51.11 169.99 0) (effects (font (size 1.27 1.27)) hide))
-    (property "Datasheet" "~" (at 51.11 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Reference" "H4" (at 62.54 166.18 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M3" (at 67.62 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 63.81 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 63.81 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (instances (project "buck-5v" (path "/ec98644d-848c-5056-a4cb-c829189be5c3" (reference "H4") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 25.71 169.99 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "574d505d-9a82-514d-a70f-e2bb62c6d8ac")
+    (property "Reference" "FID1" (at 26.98 166.18 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "Fiducial" (at 21.9 172.53 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 25.71 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 25.71 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "buck-5v" (path "/ec98644d-848c-5056-a4cb-c829189be5c3" (reference "FID1") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 38.41 169.99 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "3b4ca171-a9e1-5fbf-a5c9-60a14b55c3cb")
+    (property "Reference" "FID2" (at 39.68 166.18 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "Fiducial" (at 39.68 175.07 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "buck-5v" (path "/ec98644d-848c-5056-a4cb-c829189be5c3" (reference "FID2") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 38.41 169.99 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "932a2cc3-2653-53b7-b451-d66519b8322f")
+    (property "Reference" "FID3" (at 40.95 163.64 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "Fiducial" (at 37.14 175.07 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "buck-5v" (path "/ec98644d-848c-5056-a4cb-c829189be5c3" (reference "FID3") (unit 1))))
   )
   (wire (pts (xy 46.03 65.85) (xy 53.65 65.85)) (stroke (width 0) (type default)) (uuid "e9642fd2-55bb-5220-a014-8991e7c99645"))
   (wire (pts (xy 53.65 65.85) (xy 53.65 70.93)) (stroke (width 0) (type default)) (uuid "41c67e2a-7689-59c7-94e7-50d7f415c04f"))

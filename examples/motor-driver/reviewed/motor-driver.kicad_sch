@@ -1617,6 +1617,86 @@
       )
       (embedded_fonts no)
     )
+    (symbol "Mechanical:Fiducial"
+      (exclude_from_sim no)
+      (in_bom no)
+      (on_board yes)
+      (property "Reference" "FID"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "Fiducial"
+        (at 0 3.175 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Fiducial Marker"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "fiducial marker"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "Fiducial*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Fiducial_0_1"
+        (circle
+          (center 0 0)
+          (radius 1.27)
+          (stroke
+            (width 0.508)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
     (symbol "Mechanical:MountingHole_Pad"
       (pin_numbers
         (hide yes)
@@ -2231,7 +2311,7 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "6f7c7165-92db-566b-92dd-6318372b1c62")
     (property "Reference" "H1" (at 24.13 165.1 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 29.21 173.99 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 29.21 173.99 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3_Pad" (at 25.4 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 25.4 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "MPN" "n/a" (at 25.4 170.18 0) (effects (font (size 1.27 1.27)) hide))
@@ -2244,7 +2324,7 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "85bfd828-5616-57a0-9a28-764913f2f29c")
     (property "Reference" "H2" (at 36.83 165.1 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 41.91 173.99 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 41.91 173.99 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3_Pad" (at 38.099999999999994 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 38.099999999999994 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "MPN" "n/a" (at 38.099999999999994 170.18 0) (effects (font (size 1.27 1.27)) hide))
@@ -2257,13 +2337,46 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "b09ff8b6-9110-54ce-9289-a4d5206e7444")
     (property "Reference" "H3" (at 49.53 165.1 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 54.61 173.99 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 54.61 173.99 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3_Pad" (at 50.8 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 50.8 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "MPN" "n/a" (at 50.8 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (property "Manufacturer" "n/a" (at 50.8 170.18 0) (effects (font (size 1.27 1.27)) hide))
     (pin "1" (uuid "b09ff8b6-9110-54ce-9289-a4d5206e7444-p1"))
     (instances (project "motor-driver" (path "/bddeec65-fa67-5f6a-9af2-d98e98d56e38" (reference "H3") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 63.5 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "32032d60-3150-5276-8ad2-6914a25020f4")
+    (property "Reference" "FID1" (at 62.23 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "Fiducial" (at 67.31 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 63.5 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 63.5 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 63.5 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 63.5 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "motor-driver" (path "/bddeec65-fa67-5f6a-9af2-d98e98d56e38" (reference "FID1") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 76.2 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "e51b7345-1430-51be-a158-27281a290ea8")
+    (property "Reference" "FID2" (at 74.93 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "Fiducial" (at 80.01 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 76.2 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 76.2 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 76.2 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 76.2 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "motor-driver" (path "/bddeec65-fa67-5f6a-9af2-d98e98d56e38" (reference "FID2") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 88.9 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "363947a7-445f-513a-ab73-59518a806c1d")
+    (property "Reference" "FID3" (at 87.63 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "Fiducial" (at 92.71 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 88.9 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 88.9 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 88.9 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 88.9 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "motor-driver" (path "/bddeec65-fa67-5f6a-9af2-d98e98d56e38" (reference "FID3") (unit 1))))
   )
   (wire (pts (xy 45.72 80.01) (xy 45.72 77.47)) (stroke (width 0) (type default)) (uuid "518448c1-9378-5df4-9452-411c0bc33a3b"))
   (wire (pts (xy 45.72 82.55) (xy 53.34 82.55)) (stroke (width 0) (type default)) (uuid "825bd35b-a90e-5a76-9c6b-98825004d84b"))

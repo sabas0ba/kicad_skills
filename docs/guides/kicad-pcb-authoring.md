@@ -218,6 +218,52 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
 * **Indicators say what they indicate**: "5V OK" beside the power LED, the
   function beside every switch. A lit LED nobody can interpret is decoration.
 
+## Building the board, not just routing it
+
+Everything above is about whether the circuit works. This is about whether
+the board can be *made* — a separate question with its own failures, and the
+one an agent generating artwork forgets, because none of it shows up in a
+netlist.
+
+* **Let KiCad fill the pour.** Declare the zone and leave it empty; the
+  filler honours the clearance, the minimum width and the thermal settings
+  the board itself states. Computing the fill yourself means maintaining a
+  second opinion about the clearance rule, and the two drift: ours reached
+  within 0.075 mm of foreign pads on boards whose DRC was green, because
+  `--refill-zones` had been throwing the committed fill away and checking
+  KiCad's instead. `pcbnew`'s `ZONE_FILLER` runs headless — no display
+  needed — so there is no reason to hand-roll it.
+* **Check the fill you ship, not one you could have had.** If the zones are
+  filled, run DRC without refilling: the file's polygons are what the fab
+  gets and what the plot draws. Refill only when a zone is empty, and treat
+  that as the finding it is.
+* **Relieve the drilled pads thermally.** A plane is a heat sink; a joint
+  that is part of one cannot be soldered by hand, because the iron's heat
+  goes into the copper instead of the joint. Thermal relief - a gap all
+  round, bridged by spokes - is KiCad's default and worth keeping
+  (`layout.solid_pad_connection`). Surface pads are the other way round:
+  they reflow in an oven that is heating the plane anyway, and solid is
+  often the better thermal answer.
+* **Fillet the entry into a land** (a teardrop). The step from a 0.2 mm
+  track to a 1.7 mm pad is where copper cracks - the connector gets levered
+  on and off, the drill wanders a few tenths, and the corner is the stress
+  riser. Taper the last half-millimetre into the pad instead. Replace the
+  end of the run with the taper rather than laying copper on top of it: the
+  same copper drawn twice is a nought-degree corner and `route.acute_angle`
+  will say so.
+* **Give the board mounting holes** before you route it, not after. M3 (a
+  3.2 mm drill) near the corners is the default; a corner with a connector
+  body in it takes the hole a few millimetres along the edge instead. They
+  are obstacles, so a board routed first has nowhere to put them. Whether
+  their pads carry ground is the *enclosure's* decision: bond them when the
+  case is metal and part of the shield, leave them plain when it is not and
+  a ground loop is the only thing the bond would add.
+* **Fiducials, if a machine is placing the parts.** A pick-and-place aligns
+  to two or three copper dots in bare mask windows, not to the board
+  outline, which is cut to a tolerance ten times looser than the placement.
+  Three near three different corners gives it rotation as well as offset
+  (`fab.no_fiducials` reports a fine-pitch board without them).
+
 ## Connectors, pours and returns
 
 * **Power and interface connectors live on the board edge, facing out** —

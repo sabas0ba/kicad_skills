@@ -1119,3 +1119,29 @@ def test_a_plane_that_floods_its_own_drilled_pads_is_reported():
     # a plane with no drilled pad of its own has no iron to worry about
     smd_only = footprint("C1", 20, 20, [pad("1", 20, 20, "GND"), pad("2", 21, 20, "SIG")])
     assert pcb_review.rule_solid_pad_connection(ctx_for(board_from([smd_only], zones=[zone]))) == []
+
+
+def test_a_fine_pitch_board_with_no_fiducial_is_reported():
+    """A machine placing a 0.5 mm part aligns to copper dots, not to the outline."""
+    fine = footprint(
+        "U1",
+        10,
+        10,
+        [pad(str(n), 10 + n * 0.5, 10, "SIG", size=(0.3, 1.0)) for n in range(1, 6)],
+    )
+    findings = pcb_review.rule_fiducials(ctx_for(board_from(footprints=[fine])))
+    assert [f.rule for f in findings] == ["fab.no_fiducials"]
+    assert "U1" in findings[0].details["examples"][0]
+
+    # with the targets on the board, nothing to say
+    marks = footprint("FID1", 2, 2, [pad("1", 2, 2, "")], attrs=("smd",))
+    assert pcb_review.rule_fiducials(ctx_for(board_from(footprints=[fine, marks]))) == []
+
+    # and a board of 1.27 mm parts is one tweezers can build
+    coarse = footprint(
+        "J1",
+        30,
+        10,
+        [pad(str(n), 30 + n * 2.54, 10, "SIG") for n in range(1, 6)],
+    )
+    assert pcb_review.rule_fiducials(ctx_for(board_from(footprints=[coarse]))) == []

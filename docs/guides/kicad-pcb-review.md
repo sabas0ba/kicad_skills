@@ -96,8 +96,11 @@ a work session so the state of the design is visible rather than described.
 
 1. **`pcb review --text`** — DRC first. Errors are hard stops: shorts,
    clearance violations, unconnected copper, parity mismatches with the
-   schematic. The tool refills zones before checking, so pours are evaluated
-   the way the fab will see them.
+   schematic. A board whose zones are already filled is checked **as it
+   stands** — that fill is what goes to the fab and what the plots draw, and
+   refilling first would report on a board nobody has. Only an unfilled zone
+   is refilled before checking, because otherwise every pad on that net reads
+   as unconnected; `layout.unfilled_zone` is the finding that says so.
 2. **`pcb review --map findings.png` then Read it.** The same findings, drawn
    where they are: a numbered mark per located finding over the copper, keyed
    to a legend in the JSON. A count in a list is a statistic and gets waived;
@@ -139,6 +142,7 @@ mismatches).
 | `layout.outside_outline` | — | footprints off the board |
 | `layout.zone_outside_outline` | — | a zone — a pour or a keep-out — drawn wholly off the board. A footprint may carry zones of its own and KiCad stores *those* in board coordinates while everything else in a footprint is stored relative to it, so a placer that moves the pads and forgets the zone leaves the keep-out at the origin. Nothing else complains: the keep-out keeps nothing out, DRC is silent because an empty region violates no rule, and the only visible sign is that every plot comes out at half scale in one corner |
 | `layout.double_sided_assembly` | — | bottom side parts (assembly cost) |
+| `fab.no_fiducials` | 0.8 mm pitch | a board carrying parts at or below that pitch with no fiducial for the assembly machine to align to. It aligns to *copper*, not to the drawing: two or three dots in bare mask windows, and everything else measured from them. Without them it has the routed outline, cut to a tolerance ten times looser than the placement being asked for. Context, not a fault — plenty of boards are built one at a time with tweezers |
 | `fab.many_drill_sizes` | 6 | drill count drives fab cost |
 | `silk.missing_reference` | — | parts without a visible designator |
 | `mechanical.no_mounting_holes`, `test.no_testpoints` | — | informational |

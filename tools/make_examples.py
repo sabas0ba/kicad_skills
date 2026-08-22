@@ -252,6 +252,10 @@ class Design:
     # row. They carry no net unless the holes are grounded, so anywhere the
     # drawing has room will do.
     mounting_sheet: tuple[float, float] | None = None
+    # How many fiducials the board carries for the assembly machine to align
+    # to. Three is the usual answer on an SMD board; nought says the board is
+    # hand-built and the machine is not coming.
+    fiducials: int = 0
     # The grid `snapped` puts footprints on. A board whose placement is set by a
     # module's own 2.54 mm pad pitch cannot also sit on 0.5 mm, and pretending
     # otherwise moves the pads off the pins they have to land on.
@@ -5242,17 +5246,42 @@ def _silk_text_item(
 
 
 def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, float] | None:
-    """The footprint's courtyard extent on the board, or None without one."""
+    """The footprint's courtyard extent on the board, or None without one.
+
+    Circles count. A mounting hole and a fiducial both draw their courtyard as
+    one `fp_circle`, and a reader that only knows about lines and rectangles
+    decides they take up no room at all - which is how three fiducials came to
+    be placed on top of three screw holes.
+    """
     node = footprint_definition(part.footprint)
     bx, by, angle = part.board
     xs: list[float] = []
     ys: list[float] = []
-    for line in (*node.children("fp_line"), *node.children("fp_rect")):
-        layer = line.child("layer")
+    for shape in (
+        *node.children("fp_line"),
+        *node.children("fp_rect"),
+        *node.children("fp_circle"),
+        *node.children("fp_arc"),
+    ):
+        layer = shape.child("layer")
         if not layer or "CrtYd" not in str(layer.atom(0, "")):
             continue
-        for key in ("start", "end"):
-            at = line.child(key)
+        if shape.name == "fp_circle":
+            centre = shape.child("center")
+            edge = shape.child("end")
+            if centre is None or edge is None:
+                continue
+            ca = [a for a in centre.atoms() if isinstance(a, (int, float))]
+            ea = [a for a in edge.atoms() if isinstance(a, (int, float))]
+            if len(ca) < 2 or len(ea) < 2:
+                continue
+            radius = math.dist((float(ca[0]), float(ca[1])), (float(ea[0]), float(ea[1])))
+            rx, ry = _rotate(float(ca[0]), float(ca[1]), angle)
+            xs.extend((bx + rx - radius, bx + rx + radius))
+            ys.extend((by + ry - radius, by + ry + radius))
+            continue
+        for key in ("start", "mid", "end"):
+            at = shape.child(key)
             if at:
                 atoms = [a for a in at.atoms() if isinstance(a, (int, float))]
                 if len(atoms) >= 2:
@@ -6224,6 +6253,7 @@ def buck_5v() -> Design:
         vias=vias,
         pour=(1.2, 1.2, 124.8, 54.8),
         mounting=Mounting(),
+        fiducials=3,
         wired_power=("+12V", "+5V"),
     )
 
@@ -6530,6 +6560,7 @@ def motor_driver() -> Design:
         # ground so the enclosure is at the circuit's reference rather than
         # floating beside it.
         mounting=Mounting(grounded=True),
+        fiducials=3,
         label_nets=("nSLEEP", "AIN1", "AIN2", "BIN1", "BIN2", "nFAULT"),
     )
 
@@ -6916,6 +6947,7 @@ def pico_carrier() -> Design:
         vias=[],
         pour=(1.2, 1.2, 86.8, 60.8),
         mounting=Mounting(),
+        fiducials=3,
         # High enough that the last line stays inside the sheet frame.
         notes_at=(20.0, 146.0),
         # The module's 2.54 mm pad pitch decides where everything goes; snapping
@@ -7366,6 +7398,7 @@ def opamp_filter() -> Design:
         ],
         pour=(1.2, 1.2, 56.8, 40.8),
         mounting=Mounting(),
+        fiducials=3,
         notes_at=(18.0, 20.0),
     ).snapped()
 
@@ -7869,6 +7902,7 @@ def fpga_audio() -> Design:
         vias=[],
         pour=(1.2, 1.2, 98.8, 82.8),
         mounting=Mounting(),
+        fiducials=3,
         # Four units of one symbol and twenty-odd parts do not fit on A4.
         paper="A3",
     ).snapped()
@@ -8158,6 +8192,110 @@ DESIGNS = {
 # ---------------------------------------------------------------------------
 
 
+def _corner_spots(
+    design: Design, count: int, keep: float, extra: Sequence[tuple[float, float]] = ()
+) -> list[tuple[float, float]]:
+    """Up to ``count`` free positions near the corners, nearest corner first.
+
+    Shared by the screw holes and the fiducials, which want the same thing: a
+    place at the edge of the board where nothing else is. Each corner is tried
+    at the inset the part needs, then slid along its two edges, then a little
+    way in along the diagonal - a corner occupied by a connector body has no
+    room at the corner itself, and something ten millimetres along the edge is
+    still a corner as far as the board is concerned.
+    """
+    width, height = design.board_size
+    inset = keep + 0.6
+    taken = [_part_extent(design, part) for part in design.footprints()]
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        half = track.width / 2
+        for a, b in pairwise(points):
+            taken.append(
+                (
+                    min(a[0], b[0]) - half,
+                    min(a[1], b[1]) - half,
+                    max(a[0], b[0]) + half,
+                    max(a[1], b[1]) + half,
+                )
+            )
+
+    def free(cx: float, cy: float) -> bool:
+        return all(
+            not (box[0] - keep <= cx <= box[2] + keep and box[1] - keep <= cy <= box[3] + keep)
+            for box in taken
+        )
+
+    grid = design.board_grid or 0.5
+    found: list[tuple[float, float]] = []
+    corners = [
+        (inset, inset, 1, 1),
+        (width - inset, inset, -1, 1),
+        (inset, height - inset, 1, -1),
+        (width - inset, height - inset, -1, -1),
+    ][:count]
+    for cx, cy, sx, sy in corners:
+        for step in range(0, 34):
+            for x, y in (
+                (cx + sx * step * 0.5, cy),
+                (cx, cy + sy * step * 0.5),
+                (cx + sx * step * 0.35, cy + sy * step * 0.35),
+            ):
+                if not (inset <= x <= width - inset and inset <= y <= height - inset):
+                    continue
+                x = round(round(x / grid) * grid, 3)
+                y = round(round(y / grid) * grid, 3)
+                if free(x, y) and all(
+                    math.dist((x, y), other) > 2 * keep for other in (*found, *extra)
+                ):
+                    found.append((x, y))
+                    break
+            else:
+                continue
+            break
+    return found
+
+
+def place_fiducials(design: Design) -> Design:
+    """Three targets for the assembly machine to find the board with.
+
+    A pick-and-place aligns to the *board*, not to the drawing: it looks for
+    two or three copper dots in a bare mask window and works out where
+    everything else is from them. Without them the machine has only the board
+    outline, which is cut to a tolerance ten times looser than the placement
+    it is being asked for, and a 0.5 mm pitch part lands where the router
+    happened to leave it.
+
+    Three, near three different corners, so the machine gets rotation as well
+    as offset - and near the corners rather than in the middle because that is
+    where the arithmetic is most sensitive and where a board has room.
+    """
+    if not design.fiducials or not design.pour:
+        return design
+    holes = [part.board[:2] for part in design.footprints() if part.ref.startswith("H")]
+    spots = _corner_spots(design, design.fiducials, keep=2.0, extra=holes)
+    if not spots:
+        return design
+    parts = list(design.parts)
+    sheet_x, sheet_y = _free_sheet_row(design, len(spots))
+    for index, (x, y) in enumerate(spots, start=1):
+        parts.append(
+            Part(
+                f"FID{index}",
+                "Mechanical:Fiducial",
+                "Fiducial",
+                "Fiducial:Fiducial_1mm_Mask2mm",
+                sheet=(sheet_x + (index - 1) * 12.7, sheet_y),
+                board=(x, y, 0.0),
+                fields={"MPN": "n/a", "Manufacturer": "n/a"},
+            )
+        )
+    keepouts = tuple(design.keepouts) + tuple(
+        (x - 2.0, y - 2.0, x + 2.0, y + 2.0) for x, y in spots
+    )
+    return replace(design, parts=parts, keepouts=keepouts)
+
+
 def _free_sheet_row(design: Design, count: int) -> tuple[float, float]:
     """Somewhere on the sheet with room for a row of ``count`` symbols.
 
@@ -8189,11 +8327,8 @@ def mount_holes(design: Design) -> Design:
 
     A board with no way to bolt it down is a board somebody will bolt down
     anyway, through whatever hole they can find. Four is the usual answer and
-    the corners are the usual place, so each corner is tried first at the
-    inset a screw head needs, then slid along the two edges it belongs to
-    until it clears every part - the corner nearest a connector often has no
-    room at the corner itself, and a hole ten millimetres along the edge holds
-    the board just as well as one that fouls the connector body.
+    the corners are the usual place; `_corner_spots` finds which of them the
+    parts have left free.
 
     The holes are parts, so they reach the schematic too and the board keeps
     its parity; they are placed before routing, so the search treats them as
@@ -8202,64 +8337,7 @@ def mount_holes(design: Design) -> Design:
     spec = design.mounting
     if spec is None or not design.pour:
         return design
-    width, height = design.board_size
-    inset = spec.keep + 0.6
-    # A part's courtyard, not its pads: a screw terminal's body reaches well
-    # past its copper, and a hole that clears the pads can still put the screw
-    # head through the connector. Courtyard overlap is a DRC error and the
-    # first thing this got wrong.
-    taken = [_part_extent(design, part) for part in design.footprints()]
-    # Copper somebody placed by hand counts as occupied too: a hole drilled
-    # through a stated escape is a broken net, and this runs before the router
-    # so those are the only tracks there are.
-    for track in design.tracks:
-        points = [resolve(design, point) for point in track.points]
-        half = track.width / 2
-        for a, b in pairwise(points):
-            taken.append(
-                (
-                    min(a[0], b[0]) - half,
-                    min(a[1], b[1]) - half,
-                    max(a[0], b[0]) + half,
-                    max(a[1], b[1]) + half,
-                )
-            )
-
-    def free(cx: float, cy: float) -> bool:
-        keep = spec.keep
-        return all(
-            not (box[0] - keep <= cx <= box[2] + keep and box[1] - keep <= cy <= box[3] + keep)
-            for box in taken
-        )
-
-    corners = [
-        (inset, inset, 1, 1),
-        (width - inset, inset, -1, 1),
-        (inset, height - inset, 1, -1),
-        (width - inset, height - inset, -1, -1),
-    ][: spec.count]
-    holes: list[tuple[float, float]] = []
-    for cx, cy, sx, sy in corners:
-        for step in range(0, 34):
-            for x, y in (
-                (cx + sx * step * 0.5, cy),
-                (cx, cy + sy * step * 0.5),
-                # and, failing both edges, a little way in along the diagonal:
-                # a hole an eighth of the board inboard still holds the corner,
-                # where no hole at all does not.
-                (cx + sx * step * 0.35, cy + sy * step * 0.35),
-            ):
-                if not (inset <= x <= width - inset and inset <= y <= height - inset):
-                    continue
-                grid = design.board_grid or 0.5
-                x = round(x / grid) * grid
-                y = round(y / grid) * grid
-                if free(x, y) and all(math.dist((x, y), h) > 2 * spec.keep for h in holes):
-                    holes.append((round(x, 3), round(y, 3)))
-                    break
-            else:
-                continue
-            break
+    holes = _corner_spots(design, spec.count, spec.keep)
     if not holes:
         return design
     library = "MountingHole_Pad" if spec.grounded else "MountingHole"
@@ -8273,7 +8351,7 @@ def mount_holes(design: Design) -> Design:
             Part(
                 ref,
                 f"Mechanical:{library}",
-                f"M{int(spec.drill)}"[:2] + "3",
+                "M3",
                 footprint,
                 sheet=(sheet_x + (index - 1) * 12.7, sheet_y),
                 board=(x, y, 0.0),
@@ -8382,7 +8460,9 @@ def main(argv: list[str] | None = None) -> int:
             # The screw holes go in before the router runs, not after: they are
             # obstacles, and a hole placed into a board already full of copper
             # has nowhere left to go.
-            mount_holes(replace(builder().snapped(), provenance=stamp, date=args.generated_on)),
+            place_fiducials(
+                mount_holes(replace(builder().snapped(), provenance=stamp, date=args.generated_on))
+            ),
             use_cache=not args.no_route_cache,
         )
         write_variant(design, out / name / "reviewed")

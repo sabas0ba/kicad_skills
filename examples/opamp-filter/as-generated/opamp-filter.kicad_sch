@@ -918,6 +918,86 @@
       )
       (embedded_fonts no)
     )
+    (symbol "Mechanical:Fiducial"
+      (exclude_from_sim no)
+      (in_bom no)
+      (on_board yes)
+      (property "Reference" "FID"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "Fiducial"
+        (at 0 3.175 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Fiducial Marker"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "fiducial marker"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "Fiducial*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "Fiducial_0_1"
+        (circle
+          (center 0 0)
+          (radius 1.27)
+          (stroke
+            (width 0.508)
+            (type default)
+          )
+          (fill
+            (type background)
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
     (symbol "Mechanical:MountingHole"
       (pin_names
         (offset 1.016)
@@ -1562,7 +1642,7 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "98985ff1-515e-5181-a8d6-3c83ce18c727")
     (property "Reference" "H1" (at 24.44 166.18 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 29.52 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 29.52 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 25.71 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 25.71 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "H1") (unit 1))))
@@ -1571,19 +1651,46 @@
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "e2f942cd-1bc9-5ac3-9cb1-34446061ba70")
     (property "Reference" "H2" (at 37.14 166.18 0) (effects (font (size 1.27 1.27)) (justify right)))
-    (property "Value" "M33" (at 42.22 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "M3" (at 42.22 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
     (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (property "Datasheet" "~" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "H2") (unit 1))))
   )
-  (symbol (lib_id "Mechanical:MountingHole") (at 38.41 169.99 0.0) (unit 1)
+  (symbol (lib_id "Mechanical:MountingHole") (at 51.11 169.99 0.0) (unit 1)
     (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
     (uuid "403b30e2-760b-5fd3-b71e-1801e0a1685b")
-    (property "Reference" "H3" (at 39.68 166.18 0) (effects (font (size 1.27 1.27)) (justify left)))
-    (property "Value" "M33" (at 47.3 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
-    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
-    (property "Datasheet" "~" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Reference" "H3" (at 49.84 166.18 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M3" (at 54.92 172.53 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 51.11 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 51.11 169.99 0) (effects (font (size 1.27 1.27)) hide))
     (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "H3") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 25.71 169.99 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "af5e145b-0ebb-5054-8905-592a39a811d8")
+    (property "Reference" "FID1" (at 26.98 166.18 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "Fiducial" (at 21.9 172.53 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 25.71 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 25.71 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "FID1") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 38.41 169.99 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "091ff02c-f953-5da7-96f1-1903929c1d2c")
+    (property "Reference" "FID2" (at 39.68 166.18 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "Fiducial" (at 39.68 175.07 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "FID2") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:Fiducial") (at 38.41 169.99 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "9397c31b-66b7-5240-a79d-e8147f07b1c8")
+    (property "Reference" "FID3" (at 40.95 163.64 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "Fiducial" (at 37.14 175.07 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Footprint" "Fiducial:Fiducial_1mm_Mask2mm" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 38.41 169.99 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "FID3") (unit 1))))
   )
   (wire (pts (xy 38.41 102.68) (xy 46.03 102.68)) (stroke (width 0) (type default)) (uuid "7c334f10-b9a6-5dc8-b00c-ea236326c071"))
   (wire (pts (xy 46.03 102.68) (xy 46.03 107.76)) (stroke (width 0) (type default)) (uuid "9847c584-5982-5a1c-9d6c-61d1af4d1100"))

@@ -41,6 +41,9 @@ THRESHOLDS = {
     # honest floor - a via that merely touches a land still drills into it - and
     # a house rule that wants breathing room raises it.
     "min_via_pad_gap_mm": 0.0,
+    # Pad pitch at or below which a board wants fiducials: a machine placing a
+    # 0.65 mm part from the board outline alone is placing it by luck.
+    "fiducial_pitch_mm": 0.8,
     # Interior angle below which a corner is an acid trap and an impedance step.
     "min_track_angle_deg": 90.0,
     # A reversal split over two corners: each corner legal on its own, the
@@ -164,6 +167,13 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "array in one is what the package's datasheet asks for",
         "warning",
         threshold="min_via_pad_gap_mm",
+    ),
+    "fab.no_fiducials": RuleSpec(
+        "a board carrying surface-mount parts at or below the fine-pitch limit "
+        "with no fiducial footprint (FID*/Fiducial*) for the assembly machine "
+        "to align to. Reported as context: a board built by hand needs none",
+        "info",
+        threshold="fiducial_pitch_mm",
     ),
     "fab.many_drill_sizes": RuleSpec(
         "more distinct drill diameters than the limit, which costs money",
@@ -695,6 +705,63 @@ def rule_via_in_pad(ctx: PcbContext) -> list[Finding]:
             },
         )
     ]
+
+
+@rule
+def rule_fiducials(ctx: PcbContext) -> list[Finding]:
+    """A fine-pitch board with nothing for the machine to align to.
+
+    A pick-and-place aligns to the board, not to the drawing: it finds two or
+    three copper dots in bare mask windows and works out where every part goes
+    from them. Without them it has only the routed outline, cut to a tolerance
+    ten times looser than the placement being asked of it - which is fine at
+    1.27 mm pitch and is not at 0.5 mm.
+
+    Context rather than a fault: plenty of boards are built one at a time with
+    tweezers, and those need no fiducials at all.
+    """
+    board = ctx.board
+    limit = ctx.thresholds["fiducial_pitch_mm"]
+    if any(
+        fp.ref.upper().startswith("FID") or "fiducial" in fp.lib_id.lower()
+        for fp in board.footprints
+    ):
+        return []
+    fine = []
+    for fp in board.footprints:
+        smd = [p for p in fp.pads if p.type == "smd" and p.net]
+        if len(smd) < 4:
+            continue
+        pitch = _pad_pitch(smd)
+        if pitch is not None and pitch <= limit + 1e-9:
+            fine.append((fp.ref, round(pitch, 3)))
+    if not fine:
+        return []
+    return [
+        Finding(
+            "fab.no_fiducials",
+            "info",
+            f"{len(fine)} fine-pitch part(s) at or below {limit} mm and no fiducial on the "
+            f"board - a machine placing them has only the routed outline to align to",
+            details={
+                "count": len(fine),
+                "examples": [f"{ref}: {pitch} mm pitch" for ref, pitch in sorted(fine)[:6]],
+            },
+        )
+    ]
+
+
+def _pad_pitch(pads: list[pcb.Pad]) -> float | None:
+    """The smallest centre-to-centre step between neighbouring pads."""
+    spacings = []
+    for index, pad in enumerate(pads):
+        nearest = min(
+            (math.dist((pad.x, pad.y), (other.x, other.y)) for other in pads[index + 1 :]),
+            default=None,
+        )
+        if nearest:
+            spacings.append(nearest)
+    return min(spacings) if spacings else None
 
 
 @rule
