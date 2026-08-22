@@ -258,6 +258,25 @@ netlist.
   their pads carry ground is the *enclosure's* decision: bond them when the
   case is metal and part of the shield, leave them plain when it is not and
   a ground loop is the only thing the bond would add.
+* **Clear the screw, not the hole.** The hole is 3.2 mm and what goes
+  through it is an M3 pan head on a washer: seven millimetres of steel lying
+  flat on the board, turned by a driver that wants more again. Keep every
+  part body, every track and the board edge outside that circle
+  (`mechanical.fastener_clearance`, `mechanical.fastener_copper`), and keep
+  connectors further out still - the shell, the wires leaving a screw
+  terminal and the fingers that fit both live above the courtyard, so a
+  screw tucked against one can only be driven before the cable goes on
+  (`mechanical.connector_access`).
+* **Keep the designators on the board.** A library puts a reference where
+  that footprint has room, and a part at the edge points it outward as often
+  as inward - which is how a hole in the corner comes to name itself into
+  the milling slot. Ink past the outline is not trimmed, it is never
+  printed. KiCad's own silkscreen test measures ink against the *edge*, so
+  it catches a string that straddles Edge.Cuts and says nothing about one
+  that clears it entirely; `silk.off_board` is what reports the second.
+  Measure the string the way KiCad prints it, too: its stroke font is
+  proportional, roughly one character width per millimetre of text size, and
+  an estimate a fifth under puts a legend across the land beside it.
 * **Fiducials, if a machine is placing the parts.** A pick-and-place aligns
   to two or three copper dots in bare mask windows, not to the board
   outline, which is cut to a tolerance ten times looser than the placement.
