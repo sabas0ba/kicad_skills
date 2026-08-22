@@ -4450,6 +4450,7 @@ def _pipeline(design: Design) -> Design:
     # go on after all of it, because a taper is built against the end of a run
     # and an end that moves afterwards leaves the taper pointing at nothing.
     design = _unspiked(design)
+    design = _welded(design)
     design = _surfaced(design)
     design = _teardrops(design)
     return _stitched(design)
@@ -4580,6 +4581,114 @@ def _landed(design: Design) -> Design:
 # How long a back-layer hop may be and still be worth trying to lift. Beyond
 # this the front had a reason to refuse it, and the search is wasted.
 SURFACE_MAX_MM = 14.0
+
+
+# Two points nearer than this are one point: the reshaping passes round to
+# three decimals, and a chamfer of a chamfer can leave a segment eighteen
+# microns long - too short to be copper, long enough to be a corner.
+WELD_MM = 0.06
+
+
+def _welded(design: Design) -> Design:
+    """The acute corner `_unspiked` cannot see, because it is not a bend.
+
+    Where a run of one width meets a run of another - a stitched ground tap
+    arriving at a routed spine - the corner belongs to neither track, so a pass
+    that walks one track's points at a time never meets it. The rule that reads
+    the finished board does: it sees copper, not the objects the copper was
+    written from, and a reversal there is the same acid trap as any other.
+
+    So the joint is the thing that moves. The two far ends stay where they are
+    and the point between them becomes the elbow that joins them without
+    reversing, one track keeping each leg and each keeping its own width.
+
+    `_pinned_points` is deliberately not what holds it still. That set pins
+    every track end, because moving one of a pair leaves the other in mid air -
+    which is the very case this pass exists to handle, and it handles it by
+    moving both. What may not move is a pad or a via: copper there is reaching
+    something, and the something does not move.
+    """
+
+    def key(point: tuple[float, float]) -> tuple[float, float]:
+        return (round(point[0], 3), round(point[1], 3))
+
+    anchored = {key(via_position(design, via)) for via in design.vias}
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            anchored.add(key(pad_position_of(design, part, pad)))
+
+    # Debris first. A corner cut from a corner can leave a pair of segments a
+    # few hundredths of a millimetre long, and the angle between two of those
+    # is whatever the rounding made it - 88 degrees, on a run that is visibly
+    # straight. Only a point with debris on *both* sides comes out, so a real
+    # short leg into a pad keeps its shape.
+    tracks = []
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        kept = list(points)
+        index = 1
+        while index < len(kept) - 1:
+            if (
+                key(kept[index]) not in anchored
+                and math.dist(kept[index - 1], kept[index]) < WELD_MM
+                and math.dist(kept[index], kept[index + 1]) < WELD_MM
+            ):
+                del kept[index]
+                index = max(1, index - 1)
+                continue
+            index += 1
+        tracks.append(replace(track, points=kept) if len(kept) != len(points) else track)
+
+    foreign_vias, foreign_pads, around = _route_obstacles(design)
+    ends: dict[tuple[str, str, tuple[float, float]], list[tuple[int, int]]] = defaultdict(list)
+    for index, track in enumerate(tracks):
+        points = [resolve(design, point) for point in track.points]
+        for at in (0, len(points) - 1):
+            ends[(track.net, track.layer, key(points[at]))].append((index, at))
+    moved = 0
+    for (_net, _layer, joint), owners in ends.items():
+        if len(owners) != 2 or joint in anchored:
+            continue
+        legs = []
+        for index, at in owners:
+            points = [resolve(design, point) for point in tracks[index].points]
+            if len(points) >= 2:
+                legs.append((index, at, points[1] if at == 0 else points[-2]))
+        if len(legs) != 2:
+            continue
+        first, second = legs[0][2], legs[1][2]
+        v1 = (joint[0] - first[0], joint[1] - first[1])
+        v2 = (second[0] - joint[0], second[1] - joint[1])
+        l1, l2 = math.hypot(*v1), math.hypot(*v2)
+        if l1 < GEOM_EPS or l2 < GEOM_EPS:
+            continue
+        if (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2) > -1e-9:
+            continue
+        neighbours = around(joint)
+        for knee in _elbow(first, second):
+            if math.dist(knee, first) <= GEOM_EPS or math.dist(knee, second) <= GEOM_EPS:
+                continue
+            if not all(
+                _clear_of(tracks[index], a, b, foreign_vias, foreign_pads, neighbours)
+                for index, _at, _far in legs
+                for a, b in ((first, knee), (knee, second))
+            ):
+                continue
+            for index, at, _far in legs:
+                points = [resolve(design, point) for point in tracks[index].points]
+                points[at if at == 0 else -1] = knee
+                tracks[index] = replace(tracks[index], points=points)
+            moved += 1
+            break
+    if not moved:
+        return design
+    print(
+        f"{design.name}: {moved} joint(s) between runs of different widths reversed, "
+        "moved to the elbow between their neighbours",
+        file=sys.stderr,
+    )
+    return replace(design, tracks=tracks)
 
 
 def _surfaced(design: Design) -> Design:
