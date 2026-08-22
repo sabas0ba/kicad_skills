@@ -36,6 +36,36 @@ Options: `--step` (3D model for mechanical review), `--ipc2581` (single-file
 exchange format some fabs prefer), `--fab-layers` (also plot F.Fab/B.Fab for
 the assembler), `--include-dnp`, `--pos-format ascii|csv|gerber`, `--no-zip`.
 
+## Looking at the set before you upload
+
+`--preview` plots every layer that went into the Gerber set, one PNG each plus a
+labelled contact sheet, into `preview/`:
+
+```bash
+./bin/eda.sh pcb fab hardware/ -o build/fab --preview --background black
+```
+
+```
+build/fab/
+├── gerbers/ ...
+└── preview/
+    ├── layer-F_Cu.png ...   one per exported layer, Edge.Cuts drawn on each
+    ├── contact-sheet.png    all of them tiled and labelled
+    └── images.json
+```
+
+`--background white|black|transparent` (default `white`) chooses what they are
+drawn on: black to read on a dark screen, transparent to drop a layer into a
+document or stack two of them. `--preview-dpi` defaults to 200.
+
+The preview is the only thing kept **out of the zip** — the board house wants
+the manufacturing files, not pictures of them.
+
+These are plots of the board rather than of the `.gbr` files, so they need no
+Gerber viewer; the geometry is the same, and they answer the question a file
+listing cannot. Gerber files carry no colours of their own — they are aperture
+data — which is why the background is a property of the plot, not of the export.
+
 Each step is independent: if STEP export fails, the Gerbers are still written
 and the failure is listed in `manifest.json.errors`. The command exits `2` when
 anything failed.
@@ -57,8 +87,9 @@ Then check the package itself:
   match what you ordered.
 * `drill-report.txt` lists the hole count and sizes; compare against the fab's
   minimum drill.
-* Render the layers (`pcb render`) and **look at them** - a missing layer in the
-  Gerber set is invisible in a file listing but obvious in a plot.
+* Render the layers (`--preview` above, or `pcb render`) and **look at them** - a
+  missing layer in the Gerber set is invisible in a file listing but obvious in
+  a plot.
 * Confirm the pick and place origin and units suit the assembler. Many want the
   drill/place origin rather than the sheet origin.
 

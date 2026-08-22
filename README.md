@@ -349,9 +349,11 @@ eda sch pdf      TARGET -o FILE              just the PDF
 eda pcb info     TARGET
 eda pcb review   TARGET [--text] [--collapse N] [--threshold KEY=VALUE] [-o report.json]
 eda pcb fab      TARGET -o DIR [--step] [--ipc2581] [--pos-format csv]
+                              [--preview] [--background white|black|transparent]
 eda pcb drc      TARGET [--no-parity]        raw KiCad DRC JSON
 eda pcb render   TARGET -o DIR [--views ...] [--per-layer] [--no-3d] [--no-sheet]
                               [--glb] [--dpi 300]
+                              [--background white|black|transparent]
 eda pcb glb      TARGET -o FILE              3D model a browser can display
 eda pcb electrical TARGET [--temperature-rise K] [--top N]
 eda pcb stats    TARGET
