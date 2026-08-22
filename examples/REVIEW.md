@@ -1098,3 +1098,87 @@ every edge part had its reference clipped; and `_courtyard_box` read
 lines and rectangles only, while a mounting hole draws its courtyard as
 a single circle - so the holes measured as taking up no room, and the
 first three fiducials landed on top of three of them.
+
+## 23. The reviewer's pass, round eighteen: room for the screw, ink on the board
+
+Two things, from one screenshot of the opamp board's top-left corner with two
+circles on it. One round the designator `H1`, printed above the board edge. One
+round the screw hole itself, sitting against the screw terminal's body.
+
+### The hole was placed against the drawing, not against the screw
+
+A `MountingHole_3.2mm_M3` draws its courtyard as the drill plus a whisker:
+1.8 mm of radius. What goes through it is an M3 pan head on a DIN 125 washer,
+seven millimetres of steel lying flat on the board, turned by a driver that
+wants more again. The placer avoided courtyards, so it put screw heads on
+capacitors and, on four of the five boards, inside a connector's mating space:
+
+| board | hole | reaches | clear | wanted |
+| --- | --- | --- | --- | --- |
+| fpga-audio | H1 | J1 | 0.42 mm | 2.5 mm |
+| pico-carrier | H2 | J1 | 0.53 mm | 2.5 mm |
+| motor-driver | H2 | J3 | 1.50 mm | 2.5 mm |
+| buck-5v | H1 | J1 | 1.58 mm | 2.5 mm |
+
+A connector is judged by what plugs into it. A screw terminal's wires leave
+horizontally from its face and a barrel jack swallows a plug the size of the
+jack again, so a screw beside either can only be driven before the cable goes
+on - which, on a board that gets serviced, is never. A pin header is the other
+case: the socket that fits it lands inside the outline the header already
+draws, so it asks for nothing beyond the screw head's own room. Treating the
+two alike is what left a carrier lined with headers with two holes on one edge.
+
+Three rules say all of this now - `mechanical.fastener_clearance`,
+`mechanical.connector_access`, `mechanical.fastener_copper` - and all three
+block a generated design.
+
+Making room cost a second round. The first fix kept the clearance and lost the
+holes: the search slid along two edges from each corner and gave up, so boards
+that had had four came back with one. It walks a ring round the board now, at
+the inset the screw needs, taking the nearest free point to each corner - and
+only from that corner's own quarter, because a search that asked for the
+nearest free point anywhere put three of the four along one edge, each of them
+the nearest thing to a different corner. Where a quarter has no room there is
+no screw: opamp-filter's left edge is a screw terminal, a pin header and two
+resistors standing 6 mm in, and two holes that hold the board flat are the
+honest answer there.
+
+### The ink was measured a fifth short
+
+`H1` printed off the board for two reasons, and the second is the one that
+mattered elsewhere too.
+
+The first: a designator that found nowhere to go kept the library's position,
+and a library puts a mounting hole's reference above the hole - which in a
+corner is above the board. Every silk placement is scored now, over a candidate
+set wide enough to have an answer, and the score counts ink past the outline as
+the worst thing it can do. `silk.off_board` reports it, because KiCad's own
+test measures ink against the *edge* and says nothing at all about a string
+that clears it: ink past the outline is not trimmed, it is never printed, since
+the panel is routed at the line and the designator leaves with the offcut.
+
+The second: the placement measured a string at 0.78 of the text size per
+character. KiCad's stroke font is proportional and runs 0.94 to 1.07, measured
+on written boards with `GetBoundingBox`. A fifth under is the difference
+between a legend beside a capacitor and a legend across its land, which is what
+`ADC_VREF` was doing on the carrier - and what nothing caught, because the
+generator's own check used the same short ruler as the placement it was
+checking. `_text_extent` takes the top of the measured range and adds the gap
+the fab wants; the review rule keeps its own short ruler on purpose, so it
+reports overlap it is sure of.
+
+### What came out of the pipeline behind them
+
+Moving parts and re-routing three boards turned up three more:
+
+* A 45 degree spike on the motor driver - out of a via, a quarter of a
+  millimetre in the wrong direction, then back across it. `_unspiked` redraws
+  any corner tighter than a right angle as the elbow between its neighbours,
+  one diagonal and one straight, never longer than what it replaced.
+* Two drills a millimetre apart on the opamp board: a via beside a plated pad
+  of its own net, 0.15 mm of laminate between them at a 0.25 mm rule. The
+  plating already joins the faces, so the via bought nothing. `_landed` slides
+  the joint onto the pad and drops it.
+* Landing a joint moves a track end, and a teardrop built before that points at
+  where the run used to stop - a nought-degree corner. The fillets moved to the
+  end of the pipeline.

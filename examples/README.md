@@ -55,8 +55,13 @@ All five carry what a board needs to be *made* as well as to work: the ground
 pour is filled by KiCad's own filler against the board's own rules, every
 through-hole land is relieved thermally, every track fillets into the land it
 enters, and each board has its M3 mounting holes and three fiducials for the
-assembly machine to align to. Round seventeen in [REVIEW.md](REVIEW.md) is
-where that came from, and what it cost.
+assembly machine to align to. The holes clear the *screw* rather than the
+hole - a pan head on a washer is seven millimetres across, and a screw
+terminal's wires want two more - which is why the count varies: four where the
+board has four free quarters, two on the boards whose left edge is a connector
+and a row of resistors. Three that hold a board flat beat four that hold one
+side of it. Rounds seventeen and eighteen in [REVIEW.md](REVIEW.md) are where
+that came from, and what it cost.
 
 ## When these were made, and by what
 
