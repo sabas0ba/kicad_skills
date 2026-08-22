@@ -80,6 +80,16 @@ THRESHOLDS = {
     # one bad connection inside a lot of good ones; this asks it of each run,
     # which is the shape a reader actually sees on the plot.
     "wander_ratio": 2.0,
+    # What a screw actually occupies where it meets the board: an M3 pan head
+    # on a DIN 125 washer is 7 mm across, and the driver that turns it wants
+    # more. A design using captive standoffs or countersunk heads says so by
+    # lowering this.
+    "fastener_head_mm": 7.0,
+    # Clearance from that circle to the nearest part body or board edge.
+    "fastener_gap_mm": 0.5,
+    # What a connector wants beyond its courtyard: the mating shell, the wires
+    # leaving a screw terminal, and the fingers that fit both.
+    "connector_access_mm": 2.0,
 }
 
 # Copper geometry is stored in nm; anything below this is file noise.
@@ -389,6 +399,31 @@ RULE_SPEC: dict[str, RuleSpec] = {
     ),
     "silk.missing_reference": RuleSpec(
         "a non-virtual footprint with no silkscreen text of its own", "info"
+    ),
+    "mechanical.fastener_clearance": RuleSpec(
+        "a mounting hole whose screw head and washer come within "
+        "fastener_gap_mm of a part body or the board edge",
+        "warning",
+        threshold="fastener_gap_mm",
+    ),
+    "mechanical.connector_access": RuleSpec(
+        "a mounting hole inside a connector's mating space - its courtyard "
+        "grown by connector_access_mm for the shell, the wires and the fingers "
+        "that fit them",
+        "warning",
+        threshold="connector_access_mm",
+    ),
+    "mechanical.fastener_copper": RuleSpec(
+        "bare copper of another net under the screw head, where an "
+        "uninsulated washer would sit on it",
+        "warning",
+        threshold="fastener_head_mm",
+    ),
+    "silk.off_board": RuleSpec(
+        "a silkscreen string whose middle falls outside the board outline, so "
+        "the fab never prints it; KiCad's own test only sees ink that crosses "
+        "the edge",
+        "warning",
     ),
     "mechanical.no_mounting_holes": RuleSpec("no H*/MH* footprint on the board", "info"),
     "test.no_testpoints": RuleSpec("no TP* footprint on the board", "info"),
@@ -1698,6 +1733,152 @@ def rule_placement(ctx: PcbContext) -> list[Finding]:
     return findings
 
 
+def _fastener_holes(board: pcb.Board) -> list[pcb.Footprint]:
+    """The footprints a screw actually goes through."""
+    holes = []
+    for fp in board.footprints:
+        if "mountinghole" in fp.lib_id.lower() or fp.ref.upper().startswith(("H", "MH")):
+            holes.append(fp)
+    return holes
+
+
+def _point_to_segment(
+    point: tuple[float, float], a: tuple[float, float], b: tuple[float, float]
+) -> float:
+    """How far a point is from a segment, measured to the segment."""
+    px, py = point
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    span = dx * dx + dy * dy
+    if span <= 0:
+        return math.dist(point, a)
+    t = max(0.0, min(1.0, ((px - a[0]) * dx + (py - a[1]) * dy) / span))
+    return math.dist(point, (a[0] + t * dx, a[1] + t * dy))
+
+
+def _box_circle_gap(box: tuple[float, float, float, float], cx: float, cy: float) -> float:
+    """Distance from a point to a box: zero inside it."""
+    dx = max(box[0] - cx, 0.0, cx - box[2])
+    dy = max(box[1] - cy, 0.0, cy - box[3])
+    return math.hypot(dx, dy)
+
+
+@rule
+def rule_fastener_clearance(ctx: PcbContext) -> list[Finding]:
+    """Room for the screw, not just for the hole.
+
+    A mounting hole is drawn as a hole, and what goes through it is an M3 pan
+    head on a washer - seven millimetres of steel sitting flat on the board -
+    turned by a driver that wants more. The footprint's courtyard says none of
+    that: it is the hole plus a whisker, so a placer that only avoids courtyard
+    overlap will happily put the screw head on top of a capacitor, and the
+    board will not bolt down until somebody files something.
+
+    Connectors ask for more again, and get their own finding. A screw
+    terminal's wires, a header's mating shell and the fingers that fit them all
+    live above the courtyard, so a hole tucked against a connector is a hole
+    that can only be used before the cable goes on - which, on a board that has
+    to be serviced, is never.
+
+    The same circle is checked against the board edge, because a washer that
+    overhangs does not sit flat, and against bare copper, because an
+    uninsulated head resting on a track is a short waiting for vibration.
+    """
+    board = ctx.board
+    holes = _fastener_holes(board)
+    if not holes:
+        return []
+    head = ctx.thresholds["fastener_head_mm"] / 2
+    gap = ctx.thresholds["fastener_gap_mm"]
+    access = ctx.thresholds["connector_access_mm"]
+    closed = board.outline_closed() and bool(board.edge_segments())
+
+    crowded: list[dict[str, Any]] = []
+    blocked: list[dict[str, Any]] = []
+    shorted: list[dict[str, Any]] = []
+    for hole in holes:
+        own_nets = {pad.net for pad in hole.pads if pad.net}
+        for fp in board.footprints:
+            if fp.ref == hole.ref:
+                continue
+            box = fp.courtyard_box()
+            if box is None:
+                continue
+            distance = _box_circle_gap(box, hole.x, hole.y)
+            # A connector is judged by what plugs into it, not by its outline.
+            connector = fp.ref.upper().startswith(("J", "P"))
+            wanted = head + gap + (access if connector else 0.0)
+            if distance >= wanted:
+                continue
+            entry = {
+                "hole": hole.ref,
+                "part": fp.ref,
+                "gap_mm": round(distance - head, 3),
+                "wanted_mm": round(wanted - head, 3),
+            }
+            (blocked if connector else crowded).append(entry)
+        if closed and board.edge_clearance_at(hole.x, hole.y) < head + gap:
+            crowded.append(
+                {
+                    "hole": hole.ref,
+                    "part": "board edge",
+                    "gap_mm": round(board.edge_clearance_at(hole.x, hole.y) - head, 3),
+                    "wanted_mm": round(gap, 3),
+                }
+            )
+        for track in board.tracks:
+            if track.net and track.net in own_nets:
+                continue
+            if _point_to_segment((hole.x, hole.y), track.start, track.end) - track.width / 2 < head:
+                shorted.append(
+                    {
+                        "hole": hole.ref,
+                        "item": f"track {track.net or '(no net)'}",
+                        "layer": track.layer,
+                    }
+                )
+                break
+
+    findings: list[Finding] = []
+    if crowded:
+        worst = min(entry["gap_mm"] for entry in crowded)
+        findings.append(
+            Finding(
+                "mechanical.fastener_clearance",
+                "warning",
+                f"{len(crowded)} screw head(s) reach something they should not - "
+                f"closest {worst} mm outside the {round(head * 2, 2)} mm head",
+                details={
+                    "count": len(crowded),
+                    "items": sorted(crowded, key=lambda e: e["gap_mm"])[:12],
+                },
+            )
+        )
+    if blocked:
+        worst = min(entry["gap_mm"] for entry in blocked)
+        findings.append(
+            Finding(
+                "mechanical.connector_access",
+                "warning",
+                f"{len(blocked)} mounting hole(s) sit inside a connector's mating space - "
+                f"closest {worst} mm, and the screw has to be driven before the cable goes on",
+                details={
+                    "count": len(blocked),
+                    "items": sorted(blocked, key=lambda e: e["gap_mm"])[:12],
+                },
+            )
+        )
+    if shorted:
+        findings.append(
+            Finding(
+                "mechanical.fastener_copper",
+                "warning",
+                f"{len(shorted)} mounting hole(s) have bare copper under the screw head",
+                details={"count": len(shorted), "items": shorted[:12]},
+            )
+        )
+    return findings
+
+
 @rule
 def rule_mounting_and_testpoints(ctx: PcbContext) -> list[Finding]:
     findings = []
@@ -1842,6 +2023,51 @@ def rule_silk_text_size(ctx: PcbContext) -> list[Finding]:
                     for t in small[:8]
                 ],
             },
+        )
+    ]
+
+
+@rule
+def rule_silk_off_board(ctx: PcbContext) -> list[Finding]:
+    """A designator printed where the board is not.
+
+    KiCad's own silkscreen test measures ink against the *edge*, so it reports
+    a string that straddles Edge.Cuts and says nothing at all about one that
+    clears it entirely - which is the worse of the two. Ink past the outline is
+    not trimmed, it is never printed: the panel is routed at the line and the
+    designator leaves with the offcut, so the part it names arrives anonymous.
+
+    A library places a reference where that footprint has room, and a part at
+    the edge of the board points it outward as often as inward - which is how a
+    mounting hole in the corner ends up naming itself into the milling slot.
+
+    Judged by the middle of the string rather than by its corners, so a legend
+    that merely leans over the edge stays KiCad's finding and not also ours.
+    """
+    board = ctx.board
+    if not board.edge_segments() or not board.outline_closed():
+        return []
+    off = []
+    for text in board.silk_texts:
+        if text.get("hidden") or not str(text.get("text", "")).strip():
+            continue
+        box = _silk_bbox(text)
+        if not box:
+            continue
+        cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+        if board.edge_clearance_at(cx, cy) >= 0:
+            continue
+        owner = text.get("footprint") or "board"
+        off.append(f"{owner}: {str(text.get('text'))!r} at ({round(cx, 2)}, {round(cy, 2)})")
+    if not off:
+        return []
+    return [
+        Finding(
+            "silk.off_board",
+            "warning",
+            f"{len(off)} silkscreen item(s) print past the board outline - "
+            "the fab routs the board at the line and the ink leaves with the offcut",
+            details={"count": len(off), "examples": sorted(off)[:8]},
         )
     ]
 

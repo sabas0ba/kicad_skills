@@ -21,3 +21,14 @@ under 15 mA together - call it 60 mA for the board, and the widest single run \
 carries less than half of that. The rule measures width against a default \
 power budget because a track cannot state its own current; this design \
 states it here. The four-layer answer would widen these on a plane anyway."""
+
+[[waivers]]
+rule = "erc.pin_to_pin"
+reason = """U4 is the configuration flash and its WP and HOLD pins are IO2 and \
+IO3 of a quad part, so the symbol calls them bidirectional. Held high is what \
+the datasheet asks for in single-bit SPI, which is the mode the iCE40 \
+configures in, and high here is +3V3 - the rail whose PWR_FLAG tells ERC the \
+externally supplied rail is driven. A flag is an assertion, not a driver, so \
+any IO tied to a flagged rail produces this pair. The alternative is a pull-up \
+resistor on each pin, which buys the ability to drive them from a fabric this \
+design does not wire to them."""

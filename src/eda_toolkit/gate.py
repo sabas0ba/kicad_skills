@@ -165,6 +165,10 @@ _AI_BLOCKING = (
     "via.in_pad",
     "track.thin_power",
     "board.edge_clearance",
+    # the board has to bolt into something without a file
+    "mechanical.fastener_clearance",
+    "mechanical.connector_access",
+    "mechanical.fastener_copper",
 )
 
 BUILTIN_POLICIES: dict[str, Policy] = {

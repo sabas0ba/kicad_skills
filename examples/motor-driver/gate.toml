@@ -27,3 +27,16 @@ wires they lattice the power section with eight parallel crossings, which is \
 the tangle the reviewer asked to remove. The power path, the charge pump and \
 the motor outputs are all drawn copper; only the miscellaneous logic carries \
 names, which is the convention the reviewer set for it."""
+
+[[waivers]]
+rule = "erc.pin_to_pin"
+reason = """KiCad reads AISEN and BISEN as bidirectional pins - they are the \
+sense inputs, and the package brings them out as general pins - and the GND \
+they sit on carries the PWR_FLAG that tells ERC the rail is driven. Every \
+board that ties an IO to a flagged rail gets this pair, because a PWR_FLAG is \
+an assertion and not a driver. The connection itself is the datasheet's: with \
+no external sense resistor the DRV8833 wants AISEN and BISEN at ground and \
+limits current internally, which is what the sheet note beside U1 says. The \
+alternative that satisfies ERC is a pair of zero-ohm links to ground, which \
+is two parts in the bill of materials to quiet a warning about a connection \
+nobody disputes."""

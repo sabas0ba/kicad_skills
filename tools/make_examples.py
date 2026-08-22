@@ -173,6 +173,29 @@ class Via:
     size: float = 0.8
 
 
+# What a screw actually takes up where it meets the board, and what a
+# connector takes up above it. The review rules read the same numbers from
+# their own THRESHOLDS; these are the generator's copy, and the examples are
+# what keeps the two honest.
+# How far a designator stays from the board edge: the second is the floor a
+# fab needs, the first is the room a placement is asked for before it settles
+# for the floor.
+# KiCad's stroke font is proportional: 0.94 to 1.07 of the text size per
+# character, measured on written boards. The placement takes the top of that
+# range, and the line box is 1.55 of the size tall.
+SILK_CHAR_ADVANCE = 1.07
+SILK_LINE_HEIGHT = 1.55
+# The gap the fab wants between ink and a mask opening or other ink.
+SILK_CLEARANCE = 0.2
+
+SILK_EDGE_ROOM = 1.0
+SILK_EDGE_MARGIN = 0.5
+
+FASTENER_HEAD = 7.0
+FASTENER_GAP = 0.5
+CONNECTOR_ACCESS = 2.0
+
+
 @dataclass
 class Mounting:
     """What the board asks for in the way of screw holes.
@@ -186,10 +209,12 @@ class Mounting:
 
     count: int = 4
     grounded: bool = False
-    # M3 clearance: a 3.2 mm drill, and a screw head that wants this much room
-    # around it before it sits on a part.
+    # M3 clearance: a 3.2 mm drill, and the steel that arrives with the screw.
+    # ``keep`` is what the *fastener* occupies, not what the footprint draws: a
+    # pan head on a DIN 125 washer is 7 mm across, so nothing else - part body,
+    # track, board edge - may come within half of that plus a little air.
     drill: float = 3.2
-    keep: float = 3.4
+    keep: float = FASTENER_HEAD / 2 + FASTENER_GAP
 
 
 @dataclass
@@ -2409,11 +2434,15 @@ def _move_reference_off_pads(
     bx, by, angle = part.board
     pads = [pad_box(design, part, pad) for pad in node.children("pad")]
     if not pads:
-        return
+        # A part with no pads still has a designator to place, and a mounting
+        # hole is the case that matters: it lives in a corner, its library
+        # points the reference outward, and outward is off the board. Its
+        # courtyard is the extent to step clear of.
+        court = _courtyard_box(design, part)
+        pads = [court] if court else [(bx - 1.0, by - 1.0, bx + 1.0, by + 1.0)]
     obstacles = list(all_pads if all_pads is not None else pads) + list(printed or [])
-    # the same arithmetic `_silk_bbox` uses, rounded up rather than down
-    half_x = len(part.ref) * 0.75 / 2 + 0.2
-    half_y = 1.15 / 2 + 0.1
+    # the extent KiCad will actually print, rounded up (see `_text_extent`)
+    half_x, half_y = _text_extent(part.ref, 1.0)
     # How far out to look. A designator prints horizontally whatever the
     # footprint's rotation, so on a turned part the string reaches along an
     # axis the footprint's own frame calls the other one - and a two-terminal
@@ -2421,30 +2450,34 @@ def _move_reference_off_pads(
     # are tried, at increasing distance, and near beats far.
     spread = max(box[2] - box[0] for box in pads) / 2
     steps = [round(half_x + spread + gap, 3) for gap in (0.4, 1.0, 1.8, 2.8)]
-    for cx, cy in (
+    candidates = (
         (float(atoms[0]), float(atoms[1])),
         (0.0, 0.0),
         *((0.0, sign * step) for step in steps for sign in (-1, 1)),
         *((sign * step, 0.0) for step in steps for sign in (-1, 1)),
-    ):
-        rx, ry = _rotate(cx, cy, angle)
+        # and the corners, for the part hemmed in on all four sides
+        *((sx * step * 0.8, sy * step * 0.8) for step in steps for sx in (-1, 1) for sy in (-1, 1)),
+    )
+
+    # Scored rather than first-fit, and every candidate is scored, so a part
+    # with no clear position gets the least bad one instead of keeping the
+    # library's - which for a part at the edge of the board points outward, and
+    # outward is off the board. `_silk_intrusion` is what grades them: ink past
+    # the outline is never printed at all (the panel is routed at the line and
+    # the designator leaves with the offcut), ink on a pad is a pad that will
+    # not wet, and ink on a courtyard is merely close. Ties go to the earlier
+    # candidate, which is how "near beats far" survives the change.
+    def cost(spot: tuple[float, float]) -> float:
+        rx, ry = _rotate(spot[0], spot[1], angle)
         box = (bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y)
-        # Inside the board, too. A part at the edge - a connector, a mounting
-        # hole - has its footprint's own label position pointing outward as
-        # often as not, and ink that runs off the edge is `silk_edge_clearance`
-        # and a designator the assembler cannot read.
-        width, height = design.board_size
-        if not (
-            box[0] >= 0.2 and box[2] <= width - 0.2 and box[1] >= 0.2 and box[3] <= height - 0.2
-        ):
-            continue
-        if not any(
-            box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in obstacles
-        ):
-            at.args = [cx, cy, *atoms[2:]]
-            if printed is not None:
-                printed.append(box)
-            return
+        return _silk_intrusion(design, box, obstacles)
+
+    _rank, (cx, cy) = min(enumerate(candidates), key=lambda item: (cost(item[1]), item[0]))
+    rx, ry = _rotate(cx, cy, angle)
+    at.args = [cx, cy, *atoms[2:]]
+    if printed is not None:
+        printed.append((bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y))
+    return
 
 
 def _set_property(node: SNode, name: str, value: str, *, add: bool = False) -> None:
@@ -4409,6 +4442,7 @@ def _pipeline(design: Design) -> Design:
     design = _doglegged(design)
     design = _spread_hairpins(design)
     design = _chamfer_tracks(design)
+    design = _unspiked(design)
     design = _teardrops(design)
     design = _joined(design)
     return _stitched(design)
@@ -4839,6 +4873,161 @@ def _untraced(design: Design) -> Design:
     return replace(design, tracks=tracks)
 
 
+def _route_obstacles(design: Design):
+    """What a reshaping pass has to miss: other nets' vias, pads and copper.
+
+    Returned as three things rather than one, because that is how the passes
+    ask: two lists to scan and a lookup that answers "what is near this point"
+    without walking every segment on the board.
+    """
+    foreign_vias = [(via.net, _via_box(design, via)) for via in design.vias]
+    foreign_pads: list[tuple[str | None, tuple[float, float, float, float]]] = []
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            number = str(pad.atom(0, ""))
+            owner = next(
+                (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes), None
+            )
+            foreign_pads.append((owner, pad_box(design, part, pad)))
+    CELL = 4.0
+    near: dict[tuple[int, int], list[tuple]] = defaultdict(list)
+    for other in design.tracks:
+        points = [resolve(design, point) for point in other.points]
+        for a, b in pairwise(points):
+            entry = (other.net, other.layer, other.width, a, b)
+            for cx in range(int(min(a[0], b[0]) // CELL), int(max(a[0], b[0]) // CELL) + 1):
+                for cy in range(int(min(a[1], b[1]) // CELL), int(max(a[1], b[1]) // CELL) + 1):
+                    near[(cx, cy)].append(entry)
+
+    def around(point: tuple[float, float]) -> list[tuple]:
+        cx, cy = int(point[0] // CELL), int(point[1] // CELL)
+        found: list[tuple] = []
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                found += near.get((cx + dx, cy + dy), ())
+        return found
+
+    return foreign_vias, foreign_pads, around
+
+
+def _elbow(
+    start: tuple[float, float], end: tuple[float, float]
+) -> list[tuple[float, float, float, float]]:
+    """The two ways to get from one point to another in 45 degree geometry.
+
+    Diagonal first or straight first, and nothing else: both are the shortest
+    path the grid admits, both leave `start` heading at `end`, and neither
+    steps back to a heading the line has already left - which is the whole
+    complaint about the jog this replaces.
+    """
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    sx = math.copysign(1.0, dx) if dx else 0.0
+    sy = math.copysign(1.0, dy) if dy else 0.0
+    run = min(abs(dx), abs(dy))
+    diagonal_first = (round(start[0] + sx * run, 3), round(start[1] + sy * run, 3))
+    if abs(dx) >= abs(dy):
+        straight_first = (round(end[0] - sx * run, 3), round(start[1], 3))
+    else:
+        straight_first = (round(start[0], 3), round(end[1] - sy * run, 3))
+    return [diagonal_first, straight_first]
+
+
+def _clear_of(
+    track: Track,
+    a: tuple[float, float],
+    b: tuple[float, float],
+    foreign_vias: list[tuple[str | None, tuple[float, float, float, float]]],
+    foreign_pads: list[tuple[str | None, tuple[float, float, float, float]]],
+    neighbours: list[tuple],
+) -> bool:
+    """Whether a proposed piece of copper misses everything of another net."""
+    half = track.width / 2
+    return not (
+        any(
+            net != track.net and _segment_to_box(a, b, box) < half + 0.25
+            for net, box in foreign_vias
+        )
+        or any(
+            net != track.net
+            and layer == track.layer
+            and _segment_distance(a, b, s0, s1) < half + width / 2 + 0.25
+            for net, layer, width, s0, s1 in neighbours
+        )
+        or any(
+            owner != track.net and _segment_to_box(a, b, box) < half + 0.25
+            for owner, box in foreign_pads
+        )
+    )
+
+
+def _unspiked(design: Design) -> Design:
+    """Corners tighter than a right angle, redrawn without the step back.
+
+    A router that has to land on a 45 sometimes buys the angle with a quarter
+    of a millimetre in the wrong direction first: out of the via, up, and then
+    down and to the left. Every leg is legal and the pair is a spike - an acid
+    trap on the board and, to a reader, a line that changed its mind.
+
+    The two points either side of the spike are kept and the point between them
+    is replaced by the elbow that joins them without reversing: the same L a
+    hand would draw, one diagonal and one straight, in whichever order fits.
+    Neither is ever longer than what it replaces, so nothing is spent on this
+    but the check that the new copper still clears everything the old did.
+    """
+    foreign_vias, foreign_pads, around = _route_obstacles(design)
+    pinned = _pinned_points(design)
+    tracks = []
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        if len(points) < 3:
+            tracks.append(track)
+            continue
+        out = list(points)
+        changed = False
+        index = 1
+        while index < len(out) - 1:
+            prev, corner, nxt = out[index - 1], out[index], out[index + 1]
+            v1 = (corner[0] - prev[0], corner[1] - prev[1])
+            v2 = (nxt[0] - corner[0], nxt[1] - corner[1])
+            l1, l2 = math.hypot(*v1), math.hypot(*v2)
+            if (
+                l1 < GEOM_EPS
+                or l2 < GEOM_EPS
+                or (round(corner[0], 3), round(corner[1], 3)) in pinned
+                # the interior angle: a dot product below zero is the reversing
+                # half of the circle, which is every turn sharper than a right
+                # angle
+                or (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2) > -1e-9
+            ):
+                index += 1
+                continue
+            neighbours = around(corner)
+            for knee in _elbow(prev, nxt):
+                legs = [
+                    point
+                    for point in (knee,)
+                    if math.dist(point, prev) > GEOM_EPS and math.dist(point, nxt) > GEOM_EPS
+                ]
+                if all(
+                    _clear_of(track, a, b, foreign_vias, foreign_pads, neighbours)
+                    for a, b in pairwise([prev, *legs, nxt])
+                ):
+                    out[index : index + 1] = legs
+                    changed = True
+                    break
+            index += 1
+        if not changed:
+            tracks.append(track)
+            continue
+        deduped = [out[0]]
+        for point in out[1:]:
+            if math.dist(point, deduped[-1]) > GEOM_EPS:
+                deduped.append(point)
+        tracks.append(replace(track, points=deduped))
+    return replace(design, tracks=tracks)
+
+
 def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
     """Every square corner cut to two 45s - copper bends, it does not turn.
 
@@ -5244,7 +5433,7 @@ def emit_board(design: Design, path: Path) -> None:
         pad_box(design, other, pad)
         for other in design.footprints()
         for pad in footprint_definition(other.footprint).children("pad")
-    ]
+    ] + [box for other in design.footprints() for box in _footprint_silk(design, other)]
     # The connector legends are placed before any designator, and the
     # designators then have to miss them: a legend names one pin of one
     # connector and has to sit against it, while a designator can go anywhere
@@ -5353,6 +5542,69 @@ def _silk_text_item(
     )
 
 
+def _footprint_silk(design: Design, part: Part) -> list[tuple[float, float, float, float]]:
+    """The boxes a footprint's own silkscreen graphics print in.
+
+    A designator is placed off the pads and off the other designators, and
+    every library footprint also draws itself: the two ticks beside a chip
+    resistor, the outline round a terminal block, the pin-1 wedge. Ink on ink
+    is `silk_overlap` and, on the assembled board, an unreadable label - so the
+    body counts as taken, the same as a pad does.
+
+    One box per segment rather than one round the whole part: a designator that
+    fits between an outline and its pin-1 mark should be allowed to sit there.
+    """
+    node = footprint_definition(part.footprint)
+    bx, by, angle = part.board
+    boxes: list[tuple[float, float, float, float]] = []
+    for shape in (
+        *node.children("fp_line"),
+        *node.children("fp_rect"),
+        *node.children("fp_circle"),
+        *node.children("fp_arc"),
+        *node.children("fp_poly"),
+    ):
+        layer = shape.child("layer")
+        if not layer or "SilkS" not in str(layer.atom(0, "")):
+            continue
+        points: list[tuple[float, float]] = []
+        if shape.name == "fp_circle":
+            centre, edge = shape.child("center"), shape.child("end")
+            ca = [a for a in (centre.atoms() if centre else []) if isinstance(a, (int, float))]
+            ea = [a for a in (edge.atoms() if edge else []) if isinstance(a, (int, float))]
+            if len(ca) < 2 or len(ea) < 2:
+                continue
+            radius = math.dist((float(ca[0]), float(ca[1])), (float(ea[0]), float(ea[1])))
+            rx, ry = _rotate(float(ca[0]), float(ca[1]), angle)
+            boxes.append((bx + rx - radius, by + ry - radius, bx + rx + radius, by + ry + radius))
+            continue
+        if shape.name == "fp_poly":
+            pts = shape.child("pts")
+            for xy in pts.children("xy") if pts else ():
+                atoms = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                if len(atoms) >= 2:
+                    points.append(_rotate(float(atoms[0]), float(atoms[1]), angle))
+        else:
+            for key in ("start", "mid", "end"):
+                at = shape.child(key)
+                atoms = [a for a in (at.atoms() if at else []) if isinstance(a, (int, float))]
+                if len(atoms) >= 2:
+                    points.append(_rotate(float(atoms[0]), float(atoms[1]), angle))
+        if not points:
+            continue
+        # Half the stroke, so a line is a line and not a mathematical one.
+        pad = 0.1
+        boxes.append(
+            (
+                bx + min(p[0] for p in points) - pad,
+                by + min(p[1] for p in points) - pad,
+                bx + max(p[0] for p in points) + pad,
+                by + max(p[1] for p in points) + pad,
+            )
+        )
+    return boxes
+
+
 def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, float] | None:
     """The footprint's courtyard extent on the board, or None without one.
 
@@ -5427,18 +5679,38 @@ def _place_footprint_zones(node: SNode, bx: float, by: float, angle: float) -> N
                 xy.args = [round(bx + rx, 6), round(by + ry, 6)]
 
 
+def _text_extent(text: str, size: float, thickness: float = 0.0) -> tuple[float, float]:
+    """Half the width and half the height KiCad will print a string in.
+
+    Measured against `EDA_ITEM.GetBoundingBox()` on a written board rather than
+    guessed: the stroke font advances between 0.94 and 1.07 of the size per
+    character depending on which characters they are, and the line box is 1.55
+    of the size tall. Taking the top of the first range is what makes this an
+    upper bound - the placement has to be sure a string *fits*, so its estimate
+    rounds up, where the review rule's `_silk_bbox` rounds down for the mirror
+    reason and only reports overlap it is sure of.
+
+    `SILK_CLEARANCE` is on top, because ink that merely touches a pad is still
+    `silk_over_copper`: the fab wants a gap, not a tie.
+    """
+    thickness = thickness or size * 0.15
+    half_x = (len(text) * size * SILK_CHAR_ADVANCE + thickness) / 2 + SILK_CLEARANCE
+    half_y = (size * SILK_LINE_HEIGHT + thickness) / 2 + SILK_CLEARANCE
+    return (half_x, half_y)
+
+
 def _silk_box(
     text: str, x: float, y: float, size: float, justify: str = ""
 ) -> tuple[float, float, float, float]:
-    """Roughly what a centred silk string covers, for keeping it off things."""
-    width = len(text) * size * 0.78
+    """What a silk string covers on the board, for keeping it off things."""
+    half_x, half_y = _text_extent(text, size)
     if justify == "left":
-        x0, x1 = x, x + width
+        x0, x1 = x - SILK_CLEARANCE, x + 2 * half_x - SILK_CLEARANCE
     elif justify == "right":
-        x0, x1 = x - width, x
+        x0, x1 = x - 2 * half_x + SILK_CLEARANCE, x + SILK_CLEARANCE
     else:
-        x0, x1 = x - width / 2, x + width / 2
-    return (x0, y - size * 0.8, x1, y + size * 0.8)
+        x0, x1 = x - half_x, x + half_x
+    return (x0, y - half_y, x1, y + half_y)
 
 
 def _part_extent(design: Design, part: Part) -> tuple[float, float, float, float]:
@@ -5480,10 +5752,10 @@ def _silk_intrusion(
     """
     width, height = design.board_size
     outside = (
-        max(0.0, 1.0 - box[0])
-        + max(0.0, 1.0 - box[1])
-        + max(0.0, box[2] - (width - 1.0))
-        + max(0.0, box[3] - (height - 1.0))
+        max(0.0, SILK_EDGE_ROOM - box[0])
+        + max(0.0, SILK_EDGE_ROOM - box[1])
+        + max(0.0, box[2] - (width - SILK_EDGE_ROOM))
+        + max(0.0, box[3] - (height - SILK_EDGE_ROOM))
     )
 
     def area(boxes):
@@ -5495,15 +5767,6 @@ def _silk_intrusion(
 
     # off the board is never the better option, and neither is a pad
     return area(taken) + area(heavy or []) * 50.0 + outside * 100.0
-
-
-def _silk_clear(
-    design: Design,
-    box: tuple[float, float, float, float],
-    taken: list[tuple[float, float, float, float]],
-) -> bool:
-    """Whether a silk box is inside the board and off every footprint."""
-    return _silk_intrusion(design, box, taken) <= 0.0
 
 
 def _board_silk(
@@ -5544,37 +5807,54 @@ def _board_silk(
     # in turn and the first clear one wins - silk over a pad is not a legend,
     # it is a pad you cannot solder.
     board_id = f"{design.name} rev {design.rev}"
-    spots = [
-        (width / 2, height - 4.4),
-        (width / 4, height - 4.4),
-        (3 * width / 4, height - 4.4),
-        (width / 2, 4.4),
-        (width / 4, 4.4),
-        (3 * width / 4, 4.4),
-        (3 * width / 4, height / 2),
-        (width / 4, height / 2),
-    ]
     lines = [(board_id, 1.2, "boardid")]
     if design.company:
         # the author line: a bare board also answers "whose design is this"
         lines.append((design.company, 1.0, "boardauthor"))
-    stack = max(len(text) * size * 0.78 for text, size, _key in lines), 2.4 * len(lines)
-    at = next(
-        (
-            spot
-            for spot in spots
-            if _silk_clear(
-                design,
-                (
-                    spot[0] - stack[0] / 2,
-                    spot[1] - 1.0,
-                    spot[0] + stack[0] / 2,
-                    spot[1] - 1.0 + stack[1],
-                ),
-                taken,
-            )
+    stack = (
+        max(_text_extent(text, size)[0] * 2 for text, size, _key in lines),
+        2.4 * len(lines),
+    )
+
+    def strip(y: float) -> list[tuple[float, float]]:
+        """Positions along one horizontal band, working out from its middle."""
+        offsets = [0.0]
+        for step in range(1, int(width / 4) + 1):
+            offsets.extend((-step * 2.0, step * 2.0))
+        return [
+            (width / 2 + offset, y)
+            for offset in offsets
+            if stack[0] / 2 + SILK_EDGE_ROOM
+            <= width / 2 + offset
+            <= width - stack[0] / 2 - SILK_EDGE_ROOM
+        ]
+
+    # Bottom centre is where a board says its own name, and on a board with
+    # room that is where it stays. A carrier whose module runs the length of it
+    # has no bottom centre to write in, so the band is scanned outward from
+    # there, then the top band, then the middle - and the whole list is scored,
+    # so a crowded board gets the least bad place rather than the first.
+    spots = strip(height - 4.4) + strip(4.4) + strip(height / 2)
+
+    def stack_box(spot: tuple[float, float]) -> tuple[float, float, float, float]:
+        return (
+            spot[0] - stack[0] / 2,
+            spot[1] - 1.0,
+            spot[0] + stack[0] / 2,
+            spot[1] - 1.0 + stack[1],
+        )
+
+    # The designators are already placed by the time this runs for real, and
+    # the board's own name is the string with the most freedom about where it
+    # goes - so it is the one that moves. Scored rather than first-clear, so a
+    # crowded board still gets the least bad strip instead of the first one in
+    # the list.
+    at = min(
+        spots,
+        key=lambda spot: (
+            _silk_intrusion(design, stack_box(spot), [*taken, *(printed or [])], all_pads),
+            spots.index(spot),
         ),
-        spots[0],
     )
     for index, (text, size, key) in enumerate(lines):
         out.append(_silk_text_item(design, text, at[0], at[1] + index * 2.4, key, size=size))
@@ -5617,17 +5897,34 @@ def _board_silk(
                 # beside the connector: both are occupied and the legend takes
                 # the least bad one, which is still ink on ink.
                 if row_along_x:
-                    sides = [(px, by0 - gap, "") for gap in (1.2, 2.6, 4.0)] + [
-                        (px, by1 + gap, "") for gap in (1.2, 2.6, 4.0)
+                    sides = [
+                        (px + slide, by0 - gap, "")
+                        for gap in (1.2, 2.6, 4.0, 5.4, 6.8)
+                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
+                    ] + [
+                        (px + slide, by1 + gap, "")
+                        for gap in (1.2, 2.6, 4.0, 5.4, 6.8)
+                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
                     ]
                     if height / 2 - py > 0:
                         sides = sides[3:] + sides[:3]
                 else:
-                    sides = [(bx0 - gap, py, "right") for gap in (1.6, 3.0, 4.4)] + [
-                        (bx1 + gap, py, "left") for gap in (1.6, 3.0, 4.4)
+                    # Along the row as well as away from it: a legend has to
+                    # sit against the pin it names, and half a pin pitch either
+                    # way is still against it - which is the difference between
+                    # a legend beside a capacitor and one printed across its
+                    # land.
+                    sides = [
+                        (bx0 - gap, py + slide, "right")
+                        for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
+                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
+                    ] + [
+                        (bx1 + gap, py + slide, "left")
+                        for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
+                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
                     ]
                     if width / 2 - px < 0:
-                        sides = sides[3:] + sides[:3]
+                        sides = sides[25:] + sides[:25]
                 # Deliberately *not* the designators. A legend names one pin
                 # of one connector and has to sit against it; a designator can
                 # go anywhere legible. So the legend is placed first and the
@@ -8301,7 +8598,11 @@ DESIGNS = {
 
 
 def _corner_spots(
-    design: Design, count: int, keep: float, extra: Sequence[tuple[float, float]] = ()
+    design: Design,
+    count: int,
+    keep: float,
+    extra: Sequence[tuple[float, float]] = (),
+    extra_keep: float = 0.0,
 ) -> list[tuple[float, float]]:
     """Up to ``count`` free positions near the corners, nearest corner first.
 
@@ -8314,7 +8615,17 @@ def _corner_spots(
     """
     width, height = design.board_size
     inset = keep + 0.6
-    taken = [_part_extent(design, part) for part in design.footprints()]
+    # A connector is judged by what plugs into it. The shell, the wires leaving
+    # a screw terminal and the fingers that fit both live above the courtyard,
+    # so a screw tucked against one can only be driven before the cable goes
+    # on - and on a board that gets serviced, that is never.
+    taken = [
+        (
+            *_part_extent(design, part),
+            CONNECTOR_ACCESS if part.ref[:1].upper() in ("J", "P") else 0.0,
+        )
+        for part in design.footprints()
+    ]
     for track in design.tracks:
         points = [resolve(design, point) for point in track.points]
         half = track.width / 2
@@ -8325,12 +8636,16 @@ def _corner_spots(
                     min(a[1], b[1]) - half,
                     max(a[0], b[0]) + half,
                     max(a[1], b[1]) + half,
+                    0.0,
                 )
             )
 
     def free(cx: float, cy: float) -> bool:
         return all(
-            not (box[0] - keep <= cx <= box[2] + keep and box[1] - keep <= cy <= box[3] + keep)
+            not (
+                box[0] - keep - box[4] <= cx <= box[2] + keep + box[4]
+                and box[1] - keep - box[4] <= cy <= box[3] + keep + box[4]
+            )
             for box in taken
         )
 
@@ -8353,8 +8668,10 @@ def _corner_spots(
                     continue
                 x = round(round(x / grid) * grid, 3)
                 y = round(round(y / grid) * grid, 3)
-                if free(x, y) and all(
-                    math.dist((x, y), other) > 2 * keep for other in (*found, *extra)
+                if (
+                    free(x, y)
+                    and all(math.dist((x, y), other) > keep + extra_keep for other in extra)
+                    and all(math.dist((x, y), other) > 2 * keep for other in found)
                 ):
                     found.append((x, y))
                     break
@@ -8381,7 +8698,15 @@ def place_fiducials(design: Design) -> Design:
     if not design.fiducials or not design.pour:
         return design
     holes = [part.board[:2] for part in design.footprints() if part.ref.startswith("H")]
-    spots = _corner_spots(design, design.fiducials, keep=2.0, extra=holes)
+    spots = _corner_spots(
+        design,
+        design.fiducials,
+        keep=2.0,
+        extra=holes,
+        # The screw's own half, so the washer never lands on the target the
+        # placement machine is about to photograph.
+        extra_keep=FASTENER_HEAD / 2 + FASTENER_GAP,
+    )
     if not spots:
         return design
     parts = list(design.parts)
