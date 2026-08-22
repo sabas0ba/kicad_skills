@@ -36,6 +36,7 @@ import re
 import sys
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from itertools import pairwise
 from pathlib import Path
@@ -2510,6 +2511,63 @@ def _segment_to_box(a, b, box) -> float:
     if inside:
         return 0.0
     return min(_segment_distance(a, b, c, d) for c, d in pairwise([*corners, corners[0]]))
+
+
+def anchor_site(
+    design: Design,
+    pad_ref: str,
+    away: tuple[float, float],
+    tracks: Sequence[Track],
+    vias: Sequence[Via],
+) -> tuple[float, float] | None:
+    """Where a via may stand beside ``pad_ref``, or None if nowhere may.
+
+    The loop a decoupling capacitor exists to close runs pad, via, plane, so
+    the via wants to be as near its ground pad as it can get - and *not* in it
+    (`via.in_pad`): a hole in a land is a hole solder wicks down. That leaves a
+    ring of legal positions, and which of them is free depends on what else the
+    board has already placed. Picking the nearest free one beats naming a fixed
+    offset, which is how an earlier version of this walled off the corridor its
+    neighbour's supply needed - the via was legal, and it was in the way.
+
+    Nearest first, then fanning either side of ``away`` - the direction facing
+    off the part, which is where a hand would try first.
+    """
+    boxes = [
+        pad_box(design, part, pad)
+        for part in design.footprints()
+        for pad in footprint_definition(part.footprint).children("pad")
+    ]
+    holes = [via_position(design, via) for via in vias]
+    laid = []
+    for track in tracks:
+        points = [resolve(design, point) for point in track.points]
+        laid.extend((track.net, track.width, a, b) for a, b in pairwise(points))
+    px, py = pad_position(design, pad_ref)
+    net = next((n for n, nodes in design.nets.items() if pad_ref in nodes), None)
+    radius = VIA_SIZE / 2
+    for step in range(2, 9):  # 0.5 mm out to 2.0, in quarter millimetres
+        for turn in (0, 45, -45, 90, -90, 135, -135, 180):
+            angle = math.radians(turn)
+            dx = away[0] * math.cos(angle) - away[1] * math.sin(angle)
+            dy = away[0] * math.sin(angle) + away[1] * math.cos(angle)
+            vx, vy = round(px + dx * step * 0.25, 4), round(py + dy * step * 0.25, 4)
+            box = (vx - radius, vy - radius, vx + radius, vy + radius)
+            if any(
+                bx0 - radius - ZONE_CLEARANCE <= vx <= bx1 + radius + ZONE_CLEARANCE
+                and by0 - radius - ZONE_CLEARANCE <= vy <= by1 + radius + ZONE_CLEARANCE
+                for bx0, by0, bx1, by1 in boxes
+            ):
+                continue
+            if any(
+                other != net and _segment_to_box(a, b, box) < width / 2 + ZONE_CLEARANCE
+                for other, width, a, b in laid
+            ):
+                continue
+            if any(math.dist((vx, vy), hole) < 1.2 for hole in holes):
+                continue
+            return (vx, vy)
+    return None
 
 
 def pad_box(design: Design, part: Part, pad: SNode) -> tuple[float, float, float, float]:
@@ -7447,23 +7505,23 @@ def fpga_audio() -> Design:
         cap("C2", "100n", (100.0, 48.0), (7.5, 21.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C3", "10u", (56.0, 62.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
         cap("C4", "100n", (72.0, 62.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C5", "100n", (196.0, 48.0), (56.0, 43.0, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C17", "10u", (180.0, 48.0), (59.0, 43.0, 90.0), "16V", "CL10A106MQ8NNNC"),
-        res("R3", "100R", (164.0, 48.0), (63.0, 50.0, 90.0), "RC0603FR-07100RL"),
+        cap("C5", "100n", (196.0, 48.0), (56.0, 47.0, 270.0), "25V", "CL10B104KB8NNNC"),
+        cap("C17", "10u", (180.0, 48.0), (59.0, 47.0, 270.0), "16V", "CL10A106MQ8NNNC"),
+        res("R3", "100R", (164.0, 48.0), (63.0, 54.0, 90.0), "RC0603FR-07100RL"),
         res("R4", "10k", (276.0, 232.0), (56.0, 74.0, 0.0), "RC0603FR-0710KL"),
-        cap("C6", "100n", (244.0, 84.0), (57.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C7", "100n", (244.0, 108.0), (61.0, 46.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C6", "100n", (244.0, 84.0), (57.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C7", "100n", (244.0, 108.0), (61.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C8", "100n", (236.0, 258.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C9", "100n", (84.0, 150.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C10", "100n", (244.0, 132.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C11", "100n", (300.0, 62.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C16", "100n", (328.0, 62.0), (89.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C12", "2u2", (296.0, 158.0), (60.0, 50.0, 0.0), "16V", "CL10A225KO8NNNC"),
+        cap("C12", "2u2", (296.0, 158.0), (60.0, 54.0, 0.0), "16V", "CL10A225KO8NNNC"),
         cap("C13", "2u2", (324.0, 158.0), (89.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
         cap("C14", "2u2", (352.0, 158.0), (89.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
         res("R1", "10k", (112.0, 232.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
         res("R2", "10k", (140.0, 232.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
-        cap("C15", "100n", (148.0, 62.0), (57.0, 50.0, 180.0), "25V", "CL10B104KB8NNNC"),
+        cap("C15", "100n", (148.0, 62.0), (57.0, 54.0, 180.0), "25V", "CL10B104KB8NNNC"),
     ]
 
     nets = {
@@ -7736,26 +7794,45 @@ def fpga_audio() -> Design:
     # side from the supply pad. The loop the capacitor exists to close runs
     # pad, via, plane; a via at the end of a routed track puts that track's
     # inductance inside the loop, which is what `layout.decoupling_via` measures.
-    anchored = []
-    for cref in ("C1", "C2", "C3", "C9", "C10", "C11", "C15"):
+    anchored: list[Track] = []
+    placed: set[str] = set()
+    # Every decoupling capacitor on the board, not the handful the loop began
+    # with. The rest were dropping to the plane through a routed stub with the
+    # via wherever the search chose to spend it, and once a via may no longer
+    # land in a pad (`via.in_pad`) the search ran out of room beside the
+    # densest of them altogether. Placing the via is both the fix and the
+    # better layout: the loop is pad, via, plane, with nothing routed in it.
+    for cref in (
+        "C1",
+        "C2",
+        "C3",
+        "C9",
+        "C10",
+        "C11",
+        "C15",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C8",
+        "C12",
+        "C14",
+        "C16",
+        "C17",
+    ):
         supply = pad_position(design, f"{cref}.1")
         ground = pad_position(design, f"{cref}.2")
         length = math.hypot(ground[0] - supply[0], ground[1] - supply[1]) or 1.0
-        ux = (ground[0] - supply[0]) / length
-        uy = (ground[1] - supply[1]) / length
-        offset = (round(1.2 * ux, 4), round(1.2 * uy, 4))
+        away = ((ground[0] - supply[0]) / length, (ground[1] - supply[1]) / length)
+        site = anchor_site(design, f"{cref}.2", away, [*escapes, *anchored], vias)
+        if site is None:
+            # Nowhere legal beside this one: it keeps the routed drop below,
+            # and the search spends the via where it finds room.
+            continue
+        offset = (round(site[0] - ground[0], 4), round(site[1] - ground[1], 4))
         vias.append(Via("GND", pad=f"{cref}.2", offset=offset))
-        anchored.append(
-            Track(
-                "GND",
-                "F.Cu",
-                0.4,
-                [
-                    f"{cref}.2",
-                    (round(ground[0] + offset[0], 4), round(ground[1] + offset[1], 4)),
-                ],
-            )
-        )
+        anchored.append(Track("GND", "F.Cu", 0.4, [f"{cref}.2", site]))
+        placed.add(cref)
 
     # The 1.2 V rail gets a stated spine, the way the motor board states its
     # VM link. Its consumers sit on both sides of the FPGA, and every
@@ -7864,15 +7941,22 @@ def fpga_audio() -> Design:
     # goal stays on the front because C15's pad is front copper.
     tracks.append(Track("+1V2", "B.Cu", SIG, [SPINE_1V2[1], "C15.1"], auto=True, goal_layer="F.Cu"))
 
+    # A capacitor appears here only if nothing legal stood beside its ground
+    # pad: normally its via is placed against the pad above, which is the loop
+    # the part exists to close. The rest are the grounds a stub genuinely has
+    # to carry - a connector pin, an oscillator can, the codec's own pads.
     for pad, target in (
-        ("J1.2", (12.0, 12.0)),
-        ("U3.2", (6.0, 24.0)),
         ("C4.2", (22.5, 36.0)),
         ("C5.2", (56.0, 40.8)),
         ("C17.2", (59.0, 40.8)),
         ("C6.2", (59.0, 43.5)),
         ("C7.2", (60.5, 46.5)),
         ("C8.2", (46.0, 71.0)),
+        ("C16.2", (89.0, 52.0)),
+        ("C12.2", (60.0, 53.0)),
+        ("C14.2", (91.5, 47.0)),
+        ("J1.2", (12.0, 12.0)),
+        ("U3.2", (6.0, 24.0)),
         ("X1.2", (30.0, 10.0)),
         ("U4.4", (30.0, 76.0)),
         # The codec's grounds - two real ones and three mode pins strapped low -
@@ -7884,12 +7968,11 @@ def fpga_audio() -> Design:
         ("U2.10", (86.0, 33.5)),
         ("U2.9", (86.0, 37.5)),
         ("U2.3", (86.0, 42.5)),
-        ("C16.2", (89.0, 52.0)),
-        ("C12.2", (60.0, 53.0)),
-        ("C14.2", (91.5, 47.0)),
         ("J2.2", (95.5, 45.5)),
         ("J3.6", (78.0, 70.0)),
     ):
+        if pad.partition(".")[0] in placed:
+            continue
         tracks.append(Track("GND", "F.Cu", 0.4, [end(pad), target], auto=True, goal_layer="B.Cu"))
     return replace(design, tracks=tracks, vias=vias)
 

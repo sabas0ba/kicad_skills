@@ -950,3 +950,48 @@ three corners, the line-out tour at 4.3x, four nets at 11-18 mm over
 plane cuts - which after four independent cold draws looks less like
 luck and more like the floorplan fact the gate says it is. The 3.3 V
 spine and a line-out corridor stay the named next work.
+
+## 21. The reviewer's pass, round sixteen: the hole in the land
+
+> "パッドオンビアが多用されています。これは製造上の問題があるので避けてください"
+> — via-in-pad is used a lot here; it is a manufacturing problem, please avoid it.
+
+Six circles on the op-amp board, and the reviewer said plainly that the
+board in the picture was only where they had noticed it. They were right
+on both counts: eighteen vias across three of the five boards sat inside
+a surface-mount land.
+
+A hole in a land is a hole solder wicks down during reflow. The joint
+above it starves, and nothing on the assembled board distinguishes that
+from a cold joint - it is the failure that ships. Via-in-pad is a real
+technique and a *process*: the barrel is filled with resin and plated
+flat before the board ever sees paste. A layout that has not specified
+that process may not draw it, and here nothing had.
+
+The router was the source, and the mechanism is worth writing down
+because it is the same shape as the tee bug two rounds ago. `_blocked`
+skips obstacles belonging to the route's own net - it has to, or a track
+could never reach its own pad - and the via placement test was built on
+top of it. So a layer change was legal on the very land the route
+started from, and a ground stub asked to reach the plane spent its via
+without leaving the capacitor. Pads are now marked as pads in the
+obstacle list, and a pad is a cell where a via may not go whoever owns
+it. The escape leaves the land first and turns its via beside it, which
+is the layout a hand would have drawn anyway.
+
+The stitching pass had a smaller version of the same blind spot: it kept
+a signal land a via-radius *plus clearance* away and a ground land only
+a radius, on the reasoning that ground copper touching ground copper
+harms nothing. Electrically true, and beside the point - the solder does
+not know whose net it is wicking down. Both distances are the same now.
+
+`via.in_pad` measures what is left: the copper gap from every via to
+every land, its own net's included. The one exemption is the exposed
+thermal pad under a package, where the via array *is* what the datasheet
+asks for; nothing a single signal reaches is four square millimetres, so
+the two are told apart by size. The rule blocks under the ai-generated
+policy, because a generated board has no reason to draw a via in a land.
+
+The test fixture had one too - twenty-five microns of overlap into C1's
+ground land, invisible on any plot - which is the useful part of a rule
+that measures rather than looks.

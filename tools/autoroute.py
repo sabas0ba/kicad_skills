@@ -78,8 +78,9 @@ class Router:
         clearance: float = 0.25,
         margin: float = 1.0,
         via_size: float = 0.8,
-        via_pitch: float = 1.2,
+        via_pitch: float = 0.9,
         via_cost: float = 25.0,
+        pad_gap: float = 0.15,
         back_cost: float = 0.4,
         crowd_cost: float = 8.0,
         crowd_radius: float = 0.9,
@@ -89,8 +90,19 @@ class Router:
         self.clearance = clearance
         self.margin = margin
         self.via_size = via_size
+        # Hole to hole, centre to centre. At the shipped 0.8/0.4 via that
+        # leaves half a millimetre of laminate between two barrels, which is
+        # the ordinary fab minimum; the 1.2 this began with was a guess, and
+        # in a 1 mm-pitch escape comb it is the difference between a lane and
+        # no lane.
         self.via_pitch = via_pitch
         self.via_cost = via_cost
+        # What a via keeps off a land it is not allowed to sit in
+        # (`via.in_pad`): its own radius plus a solder-mask dam. The dam, not
+        # the track clearance - the copper either side of it may well be the
+        # same net, and what has to be true is that the mask can separate the
+        # barrel from the land so solder cannot wick down it.
+        self.pad_gap = pad_gap
         self.back_cost = back_cost
         self.crowd_cost = crowd_cost
         self.crowd_radius = crowd_radius
@@ -271,7 +283,7 @@ class Router:
         # via's own radius plus clearance away from it, and the escape becomes
         # a short stub of copper out of the land to a via that stands beside
         # it - which is what a hand layout draws anyway.
-        pad_keep = self.via_size / 2 + self.clearance
+        pad_keep = self.via_size / 2 + self.pad_gap
         pad_cells = {
             cell
             for obstacle in self.obstacles
