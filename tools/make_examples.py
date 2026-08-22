@@ -169,6 +169,25 @@ class Via:
 
 
 @dataclass
+class Mounting:
+    """What the board asks for in the way of screw holes.
+
+    ``grounded`` is the decision the enclosure makes, not the board: a hole
+    whose pad carries ground bonds the chassis to the circuit's reference,
+    which is what you want when the enclosure is metal and part of the shield,
+    and a ground loop you did not ask for when it is not. Plain holes by
+    default, and a design that wants the bond says so.
+    """
+
+    count: int = 4
+    grounded: bool = False
+    # M3 clearance: a 3.2 mm drill, and a screw head that wants this much room
+    # around it before it sits on a part.
+    drill: float = 3.2
+    keep: float = 3.4
+
+
+@dataclass
 class Design:
     name: str
     title: str
@@ -223,6 +242,16 @@ class Design:
     # do it. Saying the strip is not for routing is how a layout states which
     # side a connector is approached from.
     keepouts: tuple[tuple[float, float, float, float], ...] = ()
+    # Holes for the screws that hold the board in whatever it goes into. The
+    # value is what the design asks for: how many, and whether their pads carry
+    # ground. `mount_holes` materialises them into parts near the corners,
+    # because where they can go is a question about the finished layout rather
+    # than something worth typing four coordinates for.
+    mounting: Mounting | None = None
+    # Where the first hole's symbol goes on the sheet; the rest follow it in a
+    # row. They carry no net unless the holes are grounded, so anywhere the
+    # drawing has room will do.
+    mounting_sheet: tuple[float, float] | None = None
     # The grid `snapped` puts footprints on. A board whose placement is set by a
     # module's own 2.54 mm pad pitch cannot also sit on 0.5 mm, and pretending
     # otherwise moves the pads off the pins they have to land on.
@@ -2304,11 +2333,11 @@ def _move_reference_off_pads(
     atoms = [a for a in at.atoms() if isinstance(a, (int, float))]
     if len(atoms) < 2:
         return
+    bx, by, angle = part.board
     pads = [pad_box(design, part, pad) for pad in node.children("pad")]
     if not pads:
         return
     obstacles = list(all_pads if all_pads is not None else pads) + list(printed or [])
-    bx, by, angle = part.board
     # the same arithmetic `_silk_bbox` uses, rounded up rather than down
     half_x = len(part.ref) * 0.75 / 2 + 0.2
     half_y = 1.15 / 2 + 0.1
@@ -2327,6 +2356,15 @@ def _move_reference_off_pads(
     ):
         rx, ry = _rotate(cx, cy, angle)
         box = (bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y)
+        # Inside the board, too. A part at the edge - a connector, a mounting
+        # hole - has its footprint's own label position pointing outward as
+        # often as not, and ink that runs off the edge is `silk_edge_clearance`
+        # and a designator the assembler cannot read.
+        width, height = design.board_size
+        if not (
+            box[0] >= 0.2 and box[2] <= width - 0.2 and box[1] >= 0.2 and box[3] <= height - 0.2
+        ):
+            continue
         if not any(
             box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3] for b in obstacles
         ):
@@ -3311,10 +3349,12 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
     )
     if not order:
         return _stitched(
-            _chamfer_tracks(
-                _spread_hairpins(
-                    _doglegged(
-                        _unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(design)))))
+            _teardrops(
+                _chamfer_tracks(
+                    _spread_hairpins(
+                        _doglegged(
+                            _unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(design)))))
+                        )
                     )
                 )
             )
@@ -3326,10 +3366,12 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
             print(f"{design.name}: routing unchanged, reusing {digest[:8]}", file=sys.stderr)
             done = replace(design, tracks=cached[0], vias=cached[1])
             return _stitched(
-                _chamfer_tracks(
-                    _spread_hairpins(
-                        _doglegged(
-                            _unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done)))))
+                _teardrops(
+                    _chamfer_tracks(
+                        _spread_hairpins(
+                            _doglegged(
+                                _unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done)))))
+                            )
                         )
                     )
                 )
@@ -3406,9 +3448,13 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         if use_cache:
             _cache_write(design, digest, done, order)
         return _stitched(
-            _chamfer_tracks(
-                _spread_hairpins(
-                    _doglegged(_unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done))))))
+            _teardrops(
+                _chamfer_tracks(
+                    _spread_hairpins(
+                        _doglegged(
+                            _unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done)))))
+                        )
+                    )
                 )
             )
         )
@@ -4209,6 +4255,94 @@ def _spread_hairpins(design: Design) -> Design:
         else:
             tracks.append(track)
     return replace(design, tracks=tracks)
+
+
+def _teardrops(design: Design) -> Design:
+    """Fillet the joint where a track meets a land it is much narrower than.
+
+    A track entering a pad is a step change in width, and a step change is
+    where the copper tears: the drill wanders a little, the annulus is a
+    little thin, the connector gets levered on and off, and the crack starts
+    at the corner where the two meet. A teardrop is the fix every fab asks
+    for - copper that widens into the land instead of butting against it -
+    and it costs nothing but a few segments.
+
+    Drawn as tracks rather than as KiCad's own teardrop zones: the shapes are
+    the same copper either way, and a track is something every version of the
+    file format and every gerber writer already understands. Each one is
+    checked against its neighbours before it is kept, so a fillet never eats
+    the clearance a fine-pitch escape needs - which is also why the pads that
+    get one are the roomy ones, headers and through-holes and discretes,
+    rather than the 0.5 mm rows where there is nothing to widen into.
+    """
+    _others, clear, _pinned, _update = _copper_oracle(design)
+    # Keyed by position, not by pad name: by the time this runs the router has
+    # replaced every named endpoint with the coordinate it resolved to, and a
+    # pass that asks for names finds none and quietly does nothing.
+    lands: dict[tuple[float, float], tuple[tuple[float, float], float, bool]] = {}
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            box = pad_box(design, part, pad)
+            centre = pad_position_of(design, part, pad)
+            lands[(round(centre[0], 3), round(centre[1], 3))] = (
+                centre,
+                min(box[2] - box[0], box[3] - box[1]),
+                pad.child("drill") is not None,
+            )
+
+    grown: list[Track] = []
+    kept: list[Track] = []
+    for index, track in enumerate(design.tracks):
+        points = [resolve(design, point) for point in track.points]
+        trimmed = list(points)
+        for at, inward in ((0, 1), (-1, -1)):
+            end = trimmed[at]
+            land = lands.get((round(end[0], 3), round(end[1], 3)))
+            if land is None or len(trimmed) < 2:
+                continue
+            centre, short, drilled = land
+            widest = min(short * 0.9, track.width * 3)
+            if widest < track.width * 1.6:
+                continue  # nothing to widen into: the land is the track's size
+            run = trimmed[1] if inward == 1 else trimmed[-2]
+            length = math.dist(centre, run)
+            reach = min(TEARDROP_MAX_MM if drilled else TEARDROP_MAX_MM * 0.8, length * 0.6, short)
+            if reach < 0.3:
+                continue
+            heading = ((run[0] - centre[0]) / length, (run[1] - centre[1]) / length)
+            steps = 3
+            fillet: list[Track] = []
+            for step in range(steps):
+                a = (
+                    round(centre[0] + heading[0] * reach * step / steps, 4),
+                    round(centre[1] + heading[1] * reach * step / steps, 4),
+                )
+                b = (
+                    round(centre[0] + heading[0] * reach * (step + 1) / steps, 4),
+                    round(centre[1] + heading[1] * reach * (step + 1) / steps, 4),
+                )
+                width = round(widest + (track.width - widest) * (step + 0.5) / steps, 3)
+                probe = replace(track, width=width, points=[a, b], auto=False)
+                if not clear(probe, index, a, b):
+                    fillet = []
+                    break
+                fillet.append(probe)
+            if not fillet:
+                continue
+            # The taper *replaces* the first stretch of the run rather than
+            # lying on top of it. Copper drawn twice is copper drawn twice
+            # whatever it is for - `route.acute_angle` reports the nought
+            # degree pair, and it is right to.
+            trimmed[at] = fillet[-1].points[-1]
+            grown.extend(fillet)
+        if trimmed != points:
+            kept.append(replace(track, points=trimmed))
+        else:
+            kept.append(track)
+    if not grown:
+        return design
+    return replace(design, tracks=[*kept, *grown])
 
 
 def _stitched(design: Design) -> Design:
@@ -5436,6 +5570,10 @@ ZONE_SLIVER = 0.35  # a strip of plane thinner than this is not worth filling
 # plane meets it: a gap all round and four spokes across it, so a soldering
 # iron can bring the joint up to temperature instead of the whole plane.
 ZONE_MIN_WIDTH = 0.25
+# How far a teardrop reaches out of the land it fillets. Long enough to be a
+# fillet rather than a blob, short enough that it is still the pad's business
+# and not the net's.
+TEARDROP_MAX_MM = 1.0
 THERMAL_GAP = 0.4
 THERMAL_SPOKE = 0.5
 ZONE_WELD = 0.05  # how far neighbouring islands are grown into each other
@@ -6085,6 +6223,7 @@ def buck_5v() -> Design:
         tracks=tracks,
         vias=vias,
         pour=(1.2, 1.2, 124.8, 54.8),
+        mounting=Mounting(),
         wired_power=("+12V", "+5V"),
     )
 
@@ -6387,6 +6526,10 @@ def motor_driver() -> Design:
         tracks=[],
         vias=[],
         pour=(1.2, 1.2, 86.8, 48.8),
+        # A motor's chassis is metal and the board bolts to it: the holes carry
+        # ground so the enclosure is at the circuit's reference rather than
+        # floating beside it.
+        mounting=Mounting(grounded=True),
         label_nets=("nSLEEP", "AIN1", "AIN2", "BIN1", "BIN2", "nFAULT"),
     )
 
@@ -6772,6 +6915,7 @@ def pico_carrier() -> Design:
         tracks=[],
         vias=[],
         pour=(1.2, 1.2, 86.8, 60.8),
+        mounting=Mounting(),
         # High enough that the last line stays inside the sheet frame.
         notes_at=(20.0, 146.0),
         # The module's 2.54 mm pad pitch decides where everything goes; snapping
@@ -7221,6 +7365,7 @@ def opamp_filter() -> Design:
             Via("GND", x=44.0, y=20.0),
         ],
         pour=(1.2, 1.2, 56.8, 40.8),
+        mounting=Mounting(),
         notes_at=(18.0, 20.0),
     ).snapped()
 
@@ -7723,6 +7868,7 @@ def fpga_audio() -> Design:
         tracks=[],
         vias=[],
         pour=(1.2, 1.2, 98.8, 82.8),
+        mounting=Mounting(),
         # Four units of one symbol and twenty-odd parts do not fit on A4.
         paper="A3",
     ).snapped()
@@ -8012,6 +8158,136 @@ DESIGNS = {
 # ---------------------------------------------------------------------------
 
 
+def _free_sheet_row(design: Design, count: int) -> tuple[float, float]:
+    """Somewhere on the sheet with room for a row of ``count`` symbols.
+
+    The screw holes are not part of the circuit and belong wherever the
+    drawing has space, but "wherever" has to be found rather than typed: a
+    row parked on top of the power section is `readability.text_over_text`,
+    and the same coordinate is free on one board and taken on the next.
+    """
+    _stubs, boxes = _sheet_obstacles(design)
+    width = (count - 1) * 12.7 + 10.16
+    _sheet_w, sheet_h = {"A4": (297.0, 210.0), "A3": (420.0, 297.0)}.get(
+        design.paper, (297.0, 210.0)
+    )
+    for row in range(6):
+        y = round((sheet_h - 40.0 - row * 15.24) / GRID) * GRID
+        for column in range(24):
+            x = round((25.4 + column * 12.7) / GRID) * GRID
+            box = (x - 5.08, y - 7.62, x + width, y + 7.62)
+            if all(
+                not (box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3])
+                for b in boxes
+            ):
+                return (x, y)
+    return (25.4, round((sheet_h - 25.4) / GRID) * GRID)
+
+
+def mount_holes(design: Design) -> Design:
+    """Put the board's screw holes where the layout has left room for them.
+
+    A board with no way to bolt it down is a board somebody will bolt down
+    anyway, through whatever hole they can find. Four is the usual answer and
+    the corners are the usual place, so each corner is tried first at the
+    inset a screw head needs, then slid along the two edges it belongs to
+    until it clears every part - the corner nearest a connector often has no
+    room at the corner itself, and a hole ten millimetres along the edge holds
+    the board just as well as one that fouls the connector body.
+
+    The holes are parts, so they reach the schematic too and the board keeps
+    its parity; they are placed before routing, so the search treats them as
+    the obstacles they are.
+    """
+    spec = design.mounting
+    if spec is None or not design.pour:
+        return design
+    width, height = design.board_size
+    inset = spec.keep + 0.6
+    # A part's courtyard, not its pads: a screw terminal's body reaches well
+    # past its copper, and a hole that clears the pads can still put the screw
+    # head through the connector. Courtyard overlap is a DRC error and the
+    # first thing this got wrong.
+    taken = [_part_extent(design, part) for part in design.footprints()]
+    # Copper somebody placed by hand counts as occupied too: a hole drilled
+    # through a stated escape is a broken net, and this runs before the router
+    # so those are the only tracks there are.
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        half = track.width / 2
+        for a, b in pairwise(points):
+            taken.append(
+                (
+                    min(a[0], b[0]) - half,
+                    min(a[1], b[1]) - half,
+                    max(a[0], b[0]) + half,
+                    max(a[1], b[1]) + half,
+                )
+            )
+
+    def free(cx: float, cy: float) -> bool:
+        keep = spec.keep
+        return all(
+            not (box[0] - keep <= cx <= box[2] + keep and box[1] - keep <= cy <= box[3] + keep)
+            for box in taken
+        )
+
+    corners = [
+        (inset, inset, 1, 1),
+        (width - inset, inset, -1, 1),
+        (inset, height - inset, 1, -1),
+        (width - inset, height - inset, -1, -1),
+    ][: spec.count]
+    holes: list[tuple[float, float]] = []
+    for cx, cy, sx, sy in corners:
+        for step in range(0, 34):
+            for x, y in (
+                (cx + sx * step * 0.5, cy),
+                (cx, cy + sy * step * 0.5),
+                # and, failing both edges, a little way in along the diagonal:
+                # a hole an eighth of the board inboard still holds the corner,
+                # where no hole at all does not.
+                (cx + sx * step * 0.35, cy + sy * step * 0.35),
+            ):
+                if not (inset <= x <= width - inset and inset <= y <= height - inset):
+                    continue
+                grid = design.board_grid or 0.5
+                x = round(x / grid) * grid
+                y = round(y / grid) * grid
+                if free(x, y) and all(math.dist((x, y), h) > 2 * spec.keep for h in holes):
+                    holes.append((round(x, 3), round(y, 3)))
+                    break
+            else:
+                continue
+            break
+    if not holes:
+        return design
+    library = "MountingHole_Pad" if spec.grounded else "MountingHole"
+    footprint = f"MountingHole:MountingHole_{spec.drill}mm_M3" + ("_Pad" if spec.grounded else "")
+    parts = list(design.parts)
+    nets = {name: list(nodes) for name, nodes in design.nets.items()}
+    sheet_x, sheet_y = design.mounting_sheet or _free_sheet_row(design, len(holes))
+    for index, (x, y) in enumerate(holes, start=1):
+        ref = f"H{index}"
+        parts.append(
+            Part(
+                ref,
+                f"Mechanical:{library}",
+                f"M{int(spec.drill)}"[:2] + "3",
+                footprint,
+                sheet=(sheet_x + (index - 1) * 12.7, sheet_y),
+                board=(x, y, 0.0),
+                fields={"MPN": "n/a", "Manufacturer": "n/a"},
+            )
+        )
+        if spec.grounded:
+            nets.setdefault(POUR_NET, []).append(f"{ref}.1")
+    keepouts = tuple(design.keepouts) + tuple(
+        (x - spec.keep, y - spec.keep, x + spec.keep, y + spec.keep) for x, y in holes
+    )
+    return replace(design, parts=parts, nets=nets, keepouts=keepouts)
+
+
 def _kicad_fill(board: Path) -> None:
     """Hand the written board to KiCad's own zone filler.
 
@@ -8103,7 +8379,10 @@ def main(argv: list[str] | None = None) -> int:
         # never looked at its own output leaves behind - and is also the
         # difference between a minute and half an hour on the fine-pitch board.
         design = resolve_routes(
-            replace(builder().snapped(), provenance=stamp, date=args.generated_on),
+            # The screw holes go in before the router runs, not after: they are
+            # obstacles, and a hole placed into a board already full of copper
+            # has nowhere left to go.
+            mount_holes(replace(builder().snapped(), provenance=stamp, date=args.generated_on)),
             use_cache=not args.no_route_cache,
         )
         write_variant(design, out / name / "reviewed")

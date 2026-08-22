@@ -87,6 +87,11 @@ GEOM_TOL = 0.001
 HAIRPIN_WINDOW_MM = 1.2
 HAIRPIN_ARM_MM = 0.8
 
+# How long a segment can be and still be a teardrop rather than a run of
+# copper. A fillet is the width of the land it enters, and no land these
+# boards carry is longer than this.
+FILLET_MM = 1.2
+
 # What makes a land a thermal one rather than a signal one (via.in_pad). An
 # exposed pad under a package is the one land a via array belongs in, and
 # nothing a single signal reaches is anywhere near this big: the largest
@@ -281,6 +286,13 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "pour exists, and skipped where the pad's own layer already carries it",
         "warning",
         threshold="max_decoupling_via_mm",
+    ),
+    "layout.solid_pad_connection": RuleSpec(
+        "a filled zone that floods its own through-hole pads with solid copper "
+        "instead of relieving them thermally, so a soldering iron has to heat "
+        "the plane to melt the joint. Surface pads are not counted - they reflow "
+        "with the board - and a zone with no drilled pad of its own is not either",
+        "warning",
     ),
     "layout.no_ground_plane": RuleSpec("no ground zone anywhere on the board", "warning"),
     "layout.unfilled_zone": RuleSpec(
@@ -875,6 +887,49 @@ def rule_decoupling_placement(ctx: PcbContext) -> list[Finding]:
                         details={"distance_mm": round(distance, 2), "cap": nearest.ref},
                     )
                 )
+    return findings
+
+
+@rule
+def rule_solid_pad_connection(ctx: PcbContext) -> list[Finding]:
+    """Through-hole pads flooded solid into a plane.
+
+    A plane is a heat sink, and a joint that is part of one cannot be soldered
+    by hand: the iron pours its heat into a hundred square millimetres of
+    copper and the solder never wets. Thermal relief is the answer - a gap all
+    round the pad, bridged by a few spokes - and it is what KiCad does by
+    default, so a zone set to solid usually means somebody turned it off
+    without meaning to.
+
+    Only drilled pads count. A surface pad reflows with the whole board in an
+    oven that is heating the plane anyway, and flooding it solid is often the
+    better thermal choice; the failure this rule is about is the iron.
+    """
+    board = ctx.board
+    findings = []
+    for zone in board.zones:
+        if zone.keepout or not zone.fills or zone.pad_connection != "solid":
+            continue
+        # A drilled pad is on every copper layer by construction, so which
+        # layer the zone is poured on does not enter into it.
+        drilled = [
+            f"{fp.ref}.{pad.number}"
+            for fp in board.footprints
+            for pad in fp.pads
+            if pad.drill and pad.net == zone.net
+        ]
+        if not drilled:
+            continue
+        findings.append(
+            Finding(
+                "layout.solid_pad_connection",
+                "warning",
+                f"the {zone.net} zone on {'/'.join(zone.layers)} floods "
+                f"{len(drilled)} through-hole pad(s) with solid copper - an iron has to "
+                f"heat the whole plane to melt those joints",
+                details={"count": len(drilled), "examples": sorted(drilled)[:6]},
+            )
+        )
     return findings
 
 
@@ -2279,6 +2334,27 @@ def rule_decoupling_via(ctx: PcbContext) -> list[Finding]:
     return findings
 
 
+def _is_fillet(track: pcb.Track, board: pcb.Board) -> bool:
+    """Whether this segment is a teardrop into a land rather than a run.
+
+    Short, and lying within a fillet's reach of a pad of its own net: that is
+    the shape of a taper and nothing else on a board looks like it. Reach
+    rather than containment, because a taper is drawn in steps and only its
+    first step actually touches the land - the outer ones are what make it a
+    slope instead of a step.
+    """
+    if track.kind != "segment" or track.length > FILLET_MM:
+        return False
+    for fp in board.footprints:
+        for pad in fp.pads:
+            if pad.net != track.net:
+                continue
+            x0, y0, x1, y1 = pad.bbox(angle_offset=fp.angle, margin=FILLET_MM)
+            if any(x0 <= p[0] <= x1 and y0 <= p[1] <= y1 for p in (track.start, track.end)):
+                return True
+    return False
+
+
 @rule
 def rule_track_width_consistency(ctx: PcbContext) -> list[Finding]:
     """Nets routed at several different widths.
@@ -2286,10 +2362,16 @@ def rule_track_width_consistency(ctx: PcbContext) -> list[Finding]:
     A width change mid-net is a deliberate act - a neck-down into a fine-pitch
     pad, a fat power spine - and worth being deliberate about. Three or more
     widths on one net is usually nobody having decided.
+
+    A teardrop is not one of those decisions. The fillet that widens a track
+    into the land it enters is two or three short segments of rising width, by
+    construction; counting them makes every properly filleted board look
+    undecided, and hides the nets that really are. So a segment shorter than
+    the fillet limit with an end on a pad of its own net does not vote.
     """
     by_net: dict[str, set[float]] = defaultdict(set)
     for track in ctx.board.tracks:
-        if track.net:
+        if track.net and not _is_fillet(track, ctx.board):
             by_net[track.net].add(round(track.width, 3))
     noisy = {net: sorted(widths) for net, widths in by_net.items() if len(widths) >= 3}
     if not noisy:

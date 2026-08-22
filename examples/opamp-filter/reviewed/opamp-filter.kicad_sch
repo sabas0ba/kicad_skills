@@ -922,6 +922,89 @@
       )
       (embedded_fonts no)
     )
+    (symbol "Mechanical:MountingHole"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom no)
+      (on_board yes)
+      (property "Reference" "H"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "MountingHole"
+        (at 0 3.175 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Mounting Hole without connection"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "mounting hole"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "MountingHole*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "MountingHole_0_1"
+        (circle
+          (center 0 0)
+          (radius 1.27)
+          (stroke
+            (width 1.27)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
     (symbol "power:+5V"
       (power)
       (pin_numbers
@@ -1685,6 +1768,39 @@
     (property "Datasheet" "~" (at 168.91 168.91 0) (effects (font (size 1.27 1.27)) hide))
     (pin "1" (uuid "12ecb46a-2c7d-56f1-aa85-0574999d84bc-p1"))
     (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "TP3") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:MountingHole") (at 25.4 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "98985ff1-515e-5181-a8d6-3c83ce18c727")
+    (property "Reference" "H1" (at 24.13 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M33" (at 29.21 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 25.4 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 25.4 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 25.4 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 25.4 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "H1") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:MountingHole") (at 38.099999999999994 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "e2f942cd-1bc9-5ac3-9cb1-34446061ba70")
+    (property "Reference" "H2" (at 36.83 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M33" (at 41.91 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 38.099999999999994 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 38.099999999999994 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 38.099999999999994 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 38.099999999999994 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "H2") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:MountingHole") (at 50.8 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "403b30e2-760b-5fd3-b71e-1801e0a1685b")
+    (property "Reference" "H3" (at 49.53 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M33" (at 54.61 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 50.8 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 50.8 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 50.8 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 50.8 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "opamp-filter" (path "/efb028ab-a5b5-5d27-b654-08a8ba6b5d9d" (reference "H3") (unit 1))))
   )
   (wire (pts (xy 38.1 102.87) (xy 45.72 102.87)) (stroke (width 0) (type default)) (uuid "7c334f10-b9a6-5dc8-b00c-ea236326c071"))
   (wire (pts (xy 45.72 102.87) (xy 45.72 107.95)) (stroke (width 0) (type default)) (uuid "9847c584-5982-5a1c-9d6c-61d1af4d1100"))

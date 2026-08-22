@@ -1079,3 +1079,43 @@ def test_a_via_in_a_land_is_reported_whoever_owns_it():
         x=30, y=20, size=0.8, drill=0.4, layers=["F.Cu", "B.Cu"], net_code=1, net="GND"
     )
     assert pcb_review.rule_via_in_pad(ctx_for(board_from(footprints=package, vias=[thermal]))) == []
+
+
+def test_a_plane_that_floods_its_own_drilled_pads_is_reported():
+    """A joint that is part of a heat sink cannot be soldered by hand."""
+    zone = pcb.Zone(
+        net="GND",
+        layers=["B.Cu"],
+        filled=True,
+        pad_connection="solid",
+        outline=[(0, 0), (50, 0), (50, 40), (0, 40)],
+        fills=[("B.Cu", [(0, 0), (50, 0), (50, 40), (0, 40)])],
+    )
+    header = footprint(
+        "J1",
+        5,
+        5,
+        [pad("1", 5, 5, "GND", type_="thru_hole", drill=1.0), pad("2", 7.54, 5, "SIG")],
+        attrs=("through_hole",),
+    )
+    board = board_from(footprints=[header], zones=[zone])
+    findings = pcb_review.rule_solid_pad_connection(ctx_for(board))
+    assert [f.rule for f in findings] == ["layout.solid_pad_connection"]
+    assert findings[0].details["examples"] == ["J1.1"]
+
+    # thermal relief - KiCad's own default - is the answer, and says nothing
+    relieved = pcb.Zone(
+        net="GND",
+        layers=["B.Cu"],
+        filled=True,
+        pad_connection="thermal",
+        outline=zone.outline,
+        fills=zone.fills,
+    )
+    assert (
+        pcb_review.rule_solid_pad_connection(ctx_for(board_from([header], zones=[relieved]))) == []
+    )
+
+    # a plane with no drilled pad of its own has no iron to worry about
+    smd_only = footprint("C1", 20, 20, [pad("1", 20, 20, "GND"), pad("2", 21, 20, "SIG")])
+    assert pcb_review.rule_solid_pad_connection(ctx_for(board_from([smd_only], zones=[zone]))) == []

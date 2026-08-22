@@ -2463,6 +2463,89 @@
       )
       (embedded_fonts no)
     )
+    (symbol "Mechanical:MountingHole"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom no)
+      (on_board yes)
+      (property "Reference" "H"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "MountingHole"
+        (at 0 3.175 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Mounting Hole without connection"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "mounting hole"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "MountingHole*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "MountingHole_0_1"
+        (circle
+          (center 0 0)
+          (radius 1.27)
+          (stroke
+            (width 1.27)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
     (symbol "Memory_Flash:W25Q32JVSS"
       (exclude_from_sim no)
       (in_bom yes)
@@ -4166,6 +4249,39 @@
     (pin "1" (uuid "b43e868f-badc-5d7e-89b5-2f3614e8bb24-p1"))
     (pin "2" (uuid "b43e868f-badc-5d7e-89b5-2f3614e8bb24-p2"))
     (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "C15") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:MountingHole") (at 30.0 150.0 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "6a695eb1-882f-53e6-afb2-932baeaed634")
+    (property "Reference" "H1" (at 28.73 146.19 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M33" (at 33.81 152.54 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 30.0 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 30.0 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 30.0 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 30.0 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "H1") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:MountingHole") (at 42.7 150.0 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "213e5be5-7a8e-5612-a461-ca49bda13e4f")
+    (property "Reference" "H2" (at 41.43 146.19 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M33" (at 33.81 152.54 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 42.7 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 42.7 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 42.7 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 42.7 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "H2") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:MountingHole") (at 55.4 150.0 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "e2ba75ce-05be-5f11-bee1-0c253335e5d4")
+    (property "Reference" "H3" (at 46.51 147.46 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M33" (at 46.51 152.54 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 55.4 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 55.4 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 55.4 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 55.4 150.0 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "fpga-audio" (path "/434dea94-d96f-5288-b60c-67317d440f4e" (reference "H3") (unit 1))))
   )
   (wire (pts (xy 311.15 118.11) (xy 303.53 118.11)) (stroke (width 0) (type default)) (uuid "80b71fc6-50f4-5685-bd7a-922d1b8a84b3"))
   (wire (pts (xy 303.53 90.17) (xy 303.53 118.11)) (stroke (width 0) (type default)) (uuid "a5b76c07-6ea1-5f99-90be-b35d40dc7fc9"))

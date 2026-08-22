@@ -2781,6 +2781,89 @@
       )
       (embedded_fonts no)
     )
+    (symbol "Mechanical:MountingHole"
+      (pin_names
+        (offset 1.016)
+      )
+      (exclude_from_sim no)
+      (in_bom no)
+      (on_board yes)
+      (property "Reference" "H"
+        (at 0 5.08 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Value" "MountingHole"
+        (at 0 3.175 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+        )
+      )
+      (property "Footprint" ""
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Datasheet" "~"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "Description" "Mounting Hole without connection"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_keywords" "mounting hole"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (property "ki_fp_filters" "MountingHole*"
+        (at 0 0 0)
+        (effects
+          (font
+            (size 1.27 1.27)
+          )
+          (hide yes)
+        )
+      )
+      (symbol "MountingHole_0_1"
+        (circle
+          (center 0 0)
+          (radius 1.27)
+          (stroke
+            (width 1.27)
+            (type default)
+          )
+          (fill
+            (type none)
+          )
+        )
+      )
+      (embedded_fonts no)
+    )
     (symbol "power:+3V3"
       (power)
       (pin_numbers
@@ -3610,6 +3693,50 @@
     (pin "1" (uuid "634a87af-8e5f-58bb-80cb-050cf18f78ba-p1"))
     (pin "2" (uuid "634a87af-8e5f-58bb-80cb-050cf18f78ba-p2"))
     (instances (project "pico-carrier" (path "/f86b03a2-2f64-5dc5-a6a7-b575bc25ae3a" (reference "D3") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:MountingHole") (at 101.6 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "ac6f9dd7-43be-5f48-9014-928f200be8b4")
+    (property "Reference" "H1" (at 100.33 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M33" (at 105.41 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 101.6 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "pico-carrier" (path "/f86b03a2-2f64-5dc5-a6a7-b575bc25ae3a" (reference "H1") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:MountingHole") (at 114.3 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "af3bdbc3-efdf-50cd-a2b4-11edd4b45f14")
+    (property "Reference" "H2" (at 113.03 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M33" (at 118.11 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 114.3 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "pico-carrier" (path "/f86b03a2-2f64-5dc5-a6a7-b575bc25ae3a" (reference "H2") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:MountingHole") (at 127.0 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "bb5ec079-b167-5ee0-9fbf-bb8ece0db88b")
+    (property "Reference" "H3" (at 125.73 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M33" (at 130.81 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 127.0 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "pico-carrier" (path "/f86b03a2-2f64-5dc5-a6a7-b575bc25ae3a" (reference "H3") (unit 1))))
+  )
+  (symbol (lib_id "Mechanical:MountingHole") (at 139.7 170.18 0.0) (unit 1)
+    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)
+    (uuid "ef4c6c94-9333-54ef-a621-ef926bbcc237")
+    (property "Reference" "H4" (at 138.43 166.37 0) (effects (font (size 1.27 1.27)) (justify right)))
+    (property "Value" "M33" (at 143.51 172.72 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "MountingHole:MountingHole_3.2mm_M3" (at 139.7 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "~" (at 139.7 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "MPN" "n/a" (at 139.7 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Manufacturer" "n/a" (at 139.7 170.18 0) (effects (font (size 1.27 1.27)) hide))
+    (instances (project "pico-carrier" (path "/f86b03a2-2f64-5dc5-a6a7-b575bc25ae3a" (reference "H4") (unit 1))))
   )
   (wire (pts (xy 180.34 107.95) (xy 180.34 105.41)) (stroke (width 0) (type default)) (uuid "6b4e9a78-10b2-5984-bb7a-8e133614546c"))
   (wire (pts (xy 72.39 82.55) (xy 80.01 82.55)) (stroke (width 0) (type default)) (uuid "44e4a26b-823c-5ec5-a04f-9765e041fc7c"))

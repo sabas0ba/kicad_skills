@@ -175,6 +175,11 @@ class Zone:
     priority: int = 0
     keepout: bool = False
     fill_enabled: bool = True
+    # How the fill meets a pad of its own net: "thermal" (a gap all round and
+    # spokes across it), "solid", "none", or "thru_hole_only" - thermal at the
+    # drilled pads and nothing at the surface ones. KiCad writes the mode as a
+    # bare word inside `connect_pads`, and writes nothing at all for thermal.
+    pad_connection: str = "thermal"
     # The drawn outline, and the computed fill per layer. The difference between
     # the two is where the pour was asked for and is not: the clearance cuts.
     outline: list[tuple[float, float]] = field(default_factory=list)
@@ -467,9 +472,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     layers=_layer_list(pad_node.child("layers")),
                     net=net_name,
                     net_code=net_code,
-                    roundrect_rratio=float(
-                        pad_node.value("roundrect_rratio", default=0.0) or 0.0
-                    ),
+                    roundrect_rratio=float(pad_node.value("roundrect_rratio", default=0.0) or 0.0),
                 )
             )
         board.footprints.append(fp)
@@ -565,9 +568,17 @@ def parse(path: str | os.PathLike[str]) -> Board:
             points = _points(filled_poly)
             if layer and points:
                 fills.append((layer, points))
+        connect = zone.child("connect_pads")
+        modes = {"yes": "solid", "no": "none", "thru_hole_only": "thru_hole_only"}
+        connect_atoms = [a for a in (connect.atoms() if connect else []) if a is not None]
+        first = connect_atoms[0] if connect_atoms else None
+        pad_connection = modes.get(
+            "yes" if first is True else "no" if first is False else str(first), "thermal"
+        )
         board.zones.append(
             Zone(
                 net=str(zone.value("net_name", default=board.nets.get(code, ""))),
+                pad_connection=pad_connection,
                 layers=_layer_list(zone.child("layers")) or _layer_list(zone.child("layer")),
                 filled=bool(fills),
                 priority=int(zone.value("priority", default=0) or 0),
