@@ -2781,6 +2781,9 @@ WANDER_FLOOR_MM = 5.0
 # and the tracks it has promoted stay at the front - so a handful of passes
 # buys most of what an afternoon of them would.
 WANDER_ATTEMPTS = 6
+# How many times one track may be promoted to the front of the order before
+# the loop calls its lane impossible rather than merely taken.
+RIPUP_TRIES = 4
 
 
 def _bus_of(net: str) -> str | None:
@@ -3345,7 +3348,14 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         try:
             routed, vias, tours = _route_all(design, order)
         except Blocked as blocked:
-            if blocked.track in ripped:
+            # A track that blocks again has not necessarily been given the
+            # board: the rip-up before it put someone else at the front, so
+            # this one is second or fifth by the time it runs. Promoting it
+            # once more is cheap and often enough - on the fine-pitch board
+            # every net that failed routed on its own, which is congestion
+            # and an order to be found, not a floorplan with no lane. What
+            # is not cheap is doing this forever, so it is counted.
+            if ripped.count(blocked.track) >= RIPUP_TRIES:
                 if safe_order is not None:
                     print(
                         f"{design.name}: re-ordering for tidiness left {blocked.track.net} "

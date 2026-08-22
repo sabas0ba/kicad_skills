@@ -995,3 +995,42 @@ policy, because a generated board has no reason to draw a via in a land.
 The test fixture had one too - twenty-five microns of overlap into C1's
 ground land, invisible on any plot - which is the useful part of a rule
 that measures rather than looks.
+
+### What the ban cost, and what it bought
+
+Forbidding the layer change on a land is a small rule with a large
+consequence: the FPGA board stopped routing. Five runs, five different
+nets, each one out of lanes in the corridor between the FPGA's east
+escape fan and the codec's west one - and every one of those nets routed
+on its own when asked, which is congestion looking for an order, not a
+floorplan with no lane.
+
+Three things fixed it, in the order a layout would do them. The via
+spacing was guesswork and is now the fab's: hole to hole goes from
+1.2 mm to 0.9, half a millimetre of laminate between barrels at the
+shipped via, which in a 1 mm-pitch escape comb is the difference between
+a lane and no lane. Every decoupling capacitor's ground via is now
+*placed* against its own pad rather than nine of them asking the search
+for one - and where it goes is chosen, not fixed: `anchor_site` takes
+the nearest position that clears what is already there, fanning either
+side of the direction facing off the part. The first cut used a fixed
+1.2 mm offset and walled off the corridor its neighbour's supply needed;
+the via was legal, and it was in the way.
+
+Then the floorplan. Seven parts - four decoupling capacitors, the two
+1.2 V ones and the LED resistor - were sitting in the eleven millimetres
+between a twelve-lane escape and a ten-lane one. They move four
+millimetres south into the empty band below, and the corridor carries
+the bundle it was always for.
+
+That last move paid a debt three rounds old. The line-out tour - 88 mm
+of copper for a 20 mm net, `route.detour` and `route.wander` both naming
+it, reproduced across four independent cold draws and written down each
+time as floorplan rather than routing - is gone. Both rules report
+nothing. The FPGA board's gate goes from four blocking findings to two,
+and what is left is the two-layer bill it has always been: three SPI
+nets crossing cuts in the plane, and three corners.
+
+The lesson is the one the guides keep circling. A rule that forbids
+something the router was quietly relying on does not just cost that
+thing; it exposes what was propping the rest up.

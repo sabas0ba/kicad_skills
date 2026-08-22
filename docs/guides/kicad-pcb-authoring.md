@@ -65,6 +65,19 @@ pin, its capacitor, and the plane.
   The router enforces this itself: a pad, whoever owns it, is a place a layer
   change may not happen, so an escape that has to drop to the plane leaves
   the land first and turns its via beside it.
+* **Then check what that cost.** Forbidding the layer change on a land took
+  the FPGA example from routed to unroutable — five runs, five different
+  nets, all in the corridor between two escape fans, and every one of them
+  routable on its own. A rule that forbids what the router was quietly
+  relying on exposes whatever was propping the rest up. Three things bought
+  it back, and they are the general answers: hole-to-hole spacing set from
+  the fab's minimum rather than a guess (0.9 mm centre to centre at a
+  0.8/0.4 via, not 1.2); a *placed* ground via per decoupling capacitor
+  instead of nine routed stubs asking the search for one, positioned at the
+  nearest spot that clears what is already there rather than at a fixed
+  offset; and, last, moving the seven parts that were parked between a
+  twelve-lane escape and a ten-lane one out of the eleven millimetres those
+  two fans had to meet in.
 * **The distance half is package geometry.** A fine-pitch part spends the
   budget escaping the package before any capacitor can be placed; on two
   layers with parts on one side, that is a fact, not a mistake. The fix that

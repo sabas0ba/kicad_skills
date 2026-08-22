@@ -164,7 +164,7 @@ charge pump, bypass and pull-up the datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 4 findings waived | 0 / 3 / 0 | 0 / 4 / 6 |
+| `reviewed` | **PASS**, 4 findings waived | 0 / 3 / 0 | 0 / 4 / 7 |
 | `as-generated` | **FAIL**, 40 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
@@ -294,8 +294,8 @@ filter is referenced to.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 5 findings waived | 0 / 0 / 0 | 0 / 10 / 6 |
-| `as-generated` | **FAIL**, 42 blocking | — | — |
+| `reviewed` | **PASS**, 5 findings waived | 0 / 0 / 0 | 0 / 10 / 5 |
+| `as-generated` | **FAIL**, 39 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
 errors, no unconnected items, no parity findings. It also passes its own
@@ -341,8 +341,8 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **FAIL**, 4 blocking, 2 waived | 0 / 2 / 0 | 0 / 10 / 8 |
-| `as-generated` | **FAIL**, 36 blocking | — | — |
+| `reviewed` | **FAIL**, 2 blocking, 2 waived | 0 / 2 / 0 | 0 / 3 / 9 |
+| `as-generated` | **FAIL**, 29 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
 unconnected, no schematic-parity findings. On every *style* measure it now
@@ -355,12 +355,17 @@ drove into the generator) then retired `route.detour` outright. The stated
 back-side stroke under the FPGA's own die, tapped by every branch at the
 nearest point — the tee described in [REVIEW.md](REVIEW.md) is what makes
 tapping possible. The rails no longer wander, and the board is 15% lighter
-in copper for it. The fence still has a price the gate states plainly:
-four SPI/CRESET nets over cuts in the back plane (11-18 mm each), the
-line-out pair touring at 4.3x (`route.detour` and `route.wander` both name
-it - the corridor it wants is floorplan), and three corners
-(`route.acute_angle`). The engineering pass there found and
-fixed
+in copper for it. The line-out tour that stood here for three rounds — 88 mm
+of copper for a 20 mm net, `route.detour` and `route.wander` both naming it —
+is gone, and it went the way the write-ups kept saying it would: not by
+re-routing but by moving parts. Seven of them — four decoupling capacitors,
+the two 1.2 V ones and the LED resistor — were parked in the eleven
+millimetres between the FPGA's twelve-lane east escape and the codec's
+ten-lane west one. They now sit in the empty band below it, and the corridor
+carries the bundle it was always for. What the gate still states plainly is
+the two-layer bill: three SPI nets over cuts in the back plane (15-20 mm
+each) and three corners (`route.acute_angle`). The engineering pass there
+found and fixed
 four real electrical faults here: the PCM5102A's charge pump was miswired
 (flying cap to ground instead of CAPP-CAPM — the DAC had no negative rail),
 VCCPLL was tied straight to the core rail instead of RC-filtered from it, the
