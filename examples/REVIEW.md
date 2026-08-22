@@ -1182,3 +1182,24 @@ Moving parts and re-routing three boards turned up three more:
 * Landing a joint moves a track end, and a teardrop built before that points at
   where the run used to stop - a nought-degree corner. The fillets moved to the
   end of the pipeline.
+
+### What was left, and what it is
+
+Two of the FPGA board's findings survived the round and are waived with their
+measurements in `gate.toml`: three nets running 10 to 19 mm over cuts in the
+back plane, and one run that goes round at twice the straight line. They are
+the same fact twice. A 48-pin QFN on two layers has one signal layer for its
+pins to escape onto, so every pin that cannot get out on the front crosses on
+the back, and every back-layer crossing saws the plane under somebody's return
+current. The router already prices a millimetre on the plane side at thirty on
+the front, and that number is a frontier rather than a preference: at forty the
+crossings stop and the tours start, and `route.wander` fires instead of
+`route.return_path`. Thirty is where the pair is smallest. What is left at
+thirty is what a second signal layer would buy.
+
+`_surfaced` was written for exactly this and asks the question once more at the
+end - a short back-layer hop is offered the front against the *finished* board,
+because the router priced it before the rest of the board existed. On these
+five it lifts nothing: where the plane is cut, the front above it is full. It
+stays in the pipeline because it costs nothing when it finds nothing, and the
+next board may not be so tight.

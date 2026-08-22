@@ -32,3 +32,28 @@ externally supplied rail is driven. A flag is an assertion, not a driver, so \
 any IO tied to a flagged rail produces this pair. The alternative is a pull-up \
 resistor on each pin, which buys the ability to drive them from a fabric this \
 design does not wire to them."""
+
+[[waivers]]
+rule = "route.return_path"
+reason = """Three nets - SPI_SO at 19.3 mm, SPI_SS at 11.3 and CRESET at 10.2 \
+- run that far over cuts in the back layer's ground fill, and on two layers \
+that is what a 48-pin QFN costs. Every pin that cannot escape on the front \
+crosses on the back, and every back-layer crossing saws the plane under \
+somebody's return current. The router already prices a millimetre on the plane \
+side at thirty on the front; forty was tried and is a prohibition rather than a \
+preference - at forty one millimetre of crossing buys a forty millimetre tour \
+and `route.wander` fires instead. Thirty is where the pair is smallest, and \
+this is what is left at thirty. The fix is a four-layer stackup with a \
+dedicated plane, which this example deliberately is not: it exists to show \
+what two layers can and cannot do."""
+
+[[waivers]]
+rule = "route.wander"
+reason = """SPI_SCK runs 49 mm of copper between two points 24.2 mm apart on \
+its way past the codec's I2S group. The straight line is not on the 45 grid \
+and neither dogleg between those ends clears the copper that is there by the \
+end - both are tried, against the finished board, by `_straighten` and \
+`_doglegged`. What is left is the way round, and the way round is 2.0 times \
+the way through. The rip-up loop already routes this net first when it comes \
+out worst; on a board with one signal layer and a plane, some net has to be \
+the one that goes round."""

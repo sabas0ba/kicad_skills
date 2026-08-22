@@ -42,14 +42,17 @@ either turned into a rule, fixed in `reviewed/`, or answered with a reasoned
 waiver in the project's `gate.toml`. That pass, with what each finding became,
 is [REVIEW.md](REVIEW.md).
 
-Four of the five `reviewed/` projects **pass** their own gate. The FPGA board
-does not, and what is left of its debt is the two-layer bill: four nets
-crossing cuts in the back plane (10-18 mm each) and one corner at 88
-degrees. The line-out tour that stood here for three rounds is gone - not by
-re-routing but by moving the seven parts that were parked between the FPGA's
-twelve-lane escape and the codec's ten-lane one. It is stated by the gate
-rather than waived, because a waiver would say the measurement was wrong and
-it is not. Every `as-generated/` fails.
+All five `reviewed/` projects **pass** their own gate, and every one of them
+is clean under KiCad's own DRC on both versions in the matrix: no violations,
+nothing unconnected. Every `as-generated/` fails.
+
+What each of them still carries is a waiver, and a waiver here is a decision
+with the argument attached rather than a finding hidden. The FPGA board holds
+the two that a two-layer stackup buys: three nets running 10 to 19 mm over
+cuts in the back plane, and one run that goes round rather than through at
+twice the straight line. Both come from the same place - a 48-pin QFN whose
+pins have one signal layer to escape onto - and the fix for both is the
+four-layer board this example deliberately is not.
 
 All five carry what a board needs to be *made* as well as to work: the ground
 pour is filled by KiCad's own filler against the board's own rules, every
@@ -351,8 +354,8 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **FAIL**, 2 blocking, 2 waived | 0 / 2 / 0 | 0 / 5 / 6 |
-| `as-generated` | **FAIL**, 28 blocking | — | — |
+| `reviewed` | **PASS**, 6 findings waived | 0 / 0 / 0 | 0 / 0 / 5 |
+| `as-generated` | **FAIL**, 29 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
 unconnected, no schematic-parity findings. On every *style* measure it now
