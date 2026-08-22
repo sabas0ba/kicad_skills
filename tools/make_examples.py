@@ -420,6 +420,22 @@ def symbol_units(lib_id: str) -> int:
     return max(units) or 1
 
 
+def in_bom(footprint: str) -> bool:
+    """Whether this part is a line on the bill of materials.
+
+    Asked of the *footprint*, because that is the side KiCad's parity check
+    reads and the side the fab agrees with: a test point, a mounting hole and
+    a fiducial are all real copper with nothing to buy, and their library
+    footprints say `exclude_from_bom`. The symbol libraries are less
+    consistent - `Connector:TestPoint` claims to be a BOM line - and following
+    them is how three test points came to disagree with their own footprints
+    on every board that has them.
+    """
+    node = footprint_definition(footprint)
+    attr = node.child("attr")
+    return attr is None or "exclude_from_bom" not in [str(a) for a in attr.atoms()]
+
+
 def symbol_pins(lib_id: str, unit: int | None = None) -> list[PinDef]:
     out: list[PinDef] = []
     for sub in symbol_definition(lib_id).children("symbol"):
@@ -2191,7 +2207,8 @@ def _symbol_instance(
         value_prop = _property("Value", part.value, vx, vy, False, written(vjust), text_angle)
     lines = [
         f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}){mirror} (unit {part.unit})',
-        "    (exclude_from_sim no) (in_bom yes) (on_board yes) (dnp no)",
+        f"    (exclude_from_sim no) (in_bom {'yes' if in_bom(part.footprint) else 'no'}) "
+        "(on_board yes) (dnp no)",
         f'    (uuid "{uid}")',
         _property("Reference", part.ref, *ref_at, False, written(ref_justify), text_angle),
         value_prop,
@@ -8305,15 +8322,29 @@ def _free_sheet_row(design: Design, count: int) -> tuple[float, float]:
     and the same coordinate is free on one board and taken on the next.
     """
     _stubs, boxes = _sheet_obstacles(design)
+    # A symbol with no pins draws no stub and so leaves no box behind it: the
+    # screw holes were invisible to this, and the fiducials were placed on top
+    # of them.
+    boxes = list(boxes) + [
+        (part.sheet[0] - 5.08, part.sheet[1] - 7.62, part.sheet[0] + 5.08, part.sheet[1] + 7.62)
+        for part in design.parts
+        if not symbol_pins(part.lib_id, part.unit)
+    ]
     width = (count - 1) * 12.7 + 10.16
-    _sheet_w, sheet_h = {"A4": (297.0, 210.0), "A3": (420.0, 297.0)}.get(
+    sheet_w, sheet_h = {"A4": (297.0, 210.0), "A3": (420.0, 297.0)}.get(
         design.paper, (297.0, 210.0)
     )
-    for row in range(6):
-        y = round((sheet_h - 40.0 - row * 15.24) / GRID) * GRID
+    # Well clear of the bottom of the page: the frame strip and the title
+    # block live there, and a symbol prints its value below itself - the first
+    # row tried was inside the frame and every fiducial reported
+    # `readability.margin_intrusion`.
+    for row in range(8):
+        y = round((sheet_h - 60.0 - row * 15.24) / GRID) * GRID
         for column in range(24):
             x = round((25.4 + column * 12.7) / GRID) * GRID
-            box = (x - 5.08, y - 7.62, x + width, y + 7.62)
+            if x + width > sheet_w - 15.0:
+                break  # the row has run off the page
+            box = (x - 5.08, y - 10.16, x + width, y + 11.43)
             if all(
                 not (box[0] < b[2] and b[0] < box[2] and box[1] < b[3] and b[1] < box[3])
                 for b in boxes

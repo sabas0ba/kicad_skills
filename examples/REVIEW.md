@@ -1034,3 +1034,67 @@ nets crossing cuts in the plane, and three corners.
 The lesson is the one the guides keep circling. A rule that forbids
 something the router was quietly relying on does not just cost that
 thing; it exposes what was propping the rest up.
+
+## 22. The reviewer's pass, round seventeen: making it, not just routing it
+
+> "ベタのクリアランスは考慮足りてないように思います。R/Cのあいだにまではいってしまっていて、クラアランス無視しているか狭すぎる。こらはDRCでも検出できると思っていましたが、未実施でしょうか"
+> — the pour's clearance looks wrong; it reaches in between an 0603's pads.
+> I thought DRC would catch that. Was it not run?
+
+It was run. It was green. Both of those were true, and so was the
+reviewer, because the check and the drawing were looking at different
+polygons.
+
+The fill in the file was ours - a sweep of the pour outline with
+everything of another net subtracted - written years of rounds ago
+because a comment here said KiCad's own filler needs a display the
+container has not got. That was never checked again. `pcbnew`'s
+`ZONE_FILLER` runs headless in both images and fills a board in a
+second. Meanwhile `pcb drc` was passing `--refill-zones`, so KiCad
+replaced our polygons with its own before checking and reported on a
+board nobody had. Turn the refill off and the shipped fill has 199
+pieces of copper KiCad calls isolated and reaches 0.075 mm from a
+foreign pad where the rule says 0.25.
+
+So the zone is declared and left empty, KiCad fills it, and `drc()`
+stops refilling a board whose zones are already filled - that fill is
+what goes to the fab and what the plots draw. Everything the sweep had
+been approximating is now the board's own rules: the clearance, the
+minimum web width, and the thermal relief the zone had been asking for
+all along and our filler had been ignoring.
+
+That last one was the reviewer's next point, and it arrived for free:
+every through-hole ground pad now sits in a gap bridged by four spokes,
+so an iron can bring the joint up without heating a hundred square
+millimetres of plane. `layout.solid_pad_connection` reports a board that
+turns it off.
+
+The rest of the round is the same kind of work - the part of a layout
+that has nothing to do with whether the circuit is right:
+
+* **Teardrops.** The step from a 0.2 mm track to a 1.7 mm land is where
+  copper cracks when a connector is levered on and off. Each run now
+  ends in a three-step taper into the land. It *replaces* the end of the
+  run rather than lying on top of it: the first cut drew the same copper
+  twice and `route.acute_angle` reported all thirty of the nought-degree
+  pairs, correctly. `route.mixed_track_widths` learned what a fillet
+  looks like, so a filleted board no longer reads as one nobody decided.
+* **Mounting holes.** Four M3 holes near the corners, placed *before*
+  routing because they are obstacles - the first attempt placed them
+  afterwards and found room for two. A corner with a connector body in
+  it takes its hole a few millimetres along the edge; the motor board
+  and the op-amp end up with three, which is what those floorplans have.
+  Grounded on the motor driver, whose chassis is metal and part of the
+  shield; plain elsewhere, because bonding the enclosure to the
+  reference is the enclosure's decision and a ground loop is what the
+  bond adds when the answer is no.
+* **Fiducials.** Three copper dots in bare mask windows, near three
+  different corners, so a pick-and-place gets rotation as well as
+  offset. `fab.no_fiducials` reports a fine-pitch board without them.
+
+Two bugs surfaced by placing parts at the edge, both older than this
+round: a designator was kept off the pads but not inside the board, so
+every edge part had its reference clipped; and `_courtyard_box` read
+lines and rectangles only, while a mounting hole draws its courtyard as
+a single circle - so the holes measured as taking up no room, and the
+first three fiducials landed on top of three of them.
