@@ -120,6 +120,11 @@ class Part:
     # their net names automatically; this is for parts whose purpose the
     # reference alone does not state.
     silk_label: str = ""
+    # Whether to print the symbol's value on the sheet. A fiducial's value is
+    # the word "Fiducial" and a screw hole's is its thread: nothing a reader
+    # needs, and one more string to collide with a wire. The libraries leave
+    # both visible, so this is the design's call rather than theirs.
+    show_value: bool = True
     # Which unit of a multi-unit symbol this is. A design lists the same
     # reference once per unit, each with its own place on the sheet; the board
     # only ever sees the first of them, because there is one footprint.
@@ -420,6 +425,25 @@ def symbol_units(lib_id: str) -> int:
     return max(units) or 1
 
 
+def hides_value(part: Part) -> bool:
+    """Whether the library draws this symbol's value hidden.
+
+    A fiducial's value is the word "Fiducial" and a mounting hole's is its
+    thread: nothing a reader of the sheet needs, which is why the libraries
+    hide both. Printing them anyway is one more string to collide with a wire,
+    and that is what it did.
+    """
+    node = symbol_definition(part.lib_id)
+    for prop in node.children("property"):
+        if str(prop.atom(0, "")) != "Value":
+            continue
+        if prop.child("hide") is not None:
+            return True
+        effects = prop.child("effects")
+        return effects is not None and effects.child("hide") is not None
+    return False
+
+
 def in_bom(footprint: str) -> bool:
     """Whether this part is a line on the bill of materials.
 
@@ -676,6 +700,19 @@ def _sheet_obstacles(
             xs = [e[0] for e in ends]
             ys = [e[1] for e in ends]
             boxes.append((min(xs) - 1.27, min(ys) - 1.27, max(xs) + 1.27, max(ys) + 1.27))
+        else:
+            # A symbol with no pins - a screw hole, a fiducial - draws no stub,
+            # so a planner that builds its obstacles from stubs cannot see it
+            # and runs its wires straight through the drawing. It occupies
+            # board the same as anything else.
+            boxes.append(
+                (
+                    part.sheet[0] - 3.81,
+                    part.sheet[1] - 6.35,
+                    part.sheet[0] + 3.81,
+                    part.sheet[1] + 10.16,
+                )
+            )
     # The upright power symbols, their jog wires, and the PWR_FLAGs beside
     # their sources - one shared computation, so the planner avoids exactly
     # what the emitter draws.
@@ -2178,7 +2215,14 @@ def _symbol_instance(
     ref_at: tuple[float, float] = (rx, ry)
 
     if side_value:
-        value_prop = _property("Value", part.value, *row_at(0), False, written(justify), text_angle)
+        value_prop = _property(
+            "Value",
+            part.value,
+            *row_at(0),
+            hides_value(part) or not part.show_value,
+            written(justify),
+            text_angle,
+        )
     else:
         # Same argument as the designator: below the part is where the wire
         # leaving its bottom pin runs.
@@ -2204,7 +2248,15 @@ def _symbol_instance(
             texts,
             [block, own, _text_box(part.ref, rx, ry, ref_justify)],
         )
-        value_prop = _property("Value", part.value, vx, vy, False, written(vjust), text_angle)
+        value_prop = _property(
+            "Value",
+            part.value,
+            vx,
+            vy,
+            hides_value(part) or not part.show_value,
+            written(vjust),
+            text_angle,
+        )
     lines = [
         f'  (symbol (lib_id "{part.lib_id}") (at {x} {y} {part.angle}){mirror} (unit {part.unit})',
         f"    (exclude_from_sim no) (in_bom {'yes' if in_bom(part.footprint) else 'no'}) "
@@ -3369,34 +3421,14 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         key=lambda t: math.dist(*(resolve(design, point) for point in t.points)),
     )
     if not order:
-        return _stitched(
-            _teardrops(
-                _chamfer_tracks(
-                    _spread_hairpins(
-                        _doglegged(
-                            _unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(design)))))
-                        )
-                    )
-                )
-            )
-        )
+        return _pipeline(design)
     digest = _routing_digest(design) if use_cache else ""
     if use_cache:
         cached = _cache_read(design.name, digest)
         if cached:
             print(f"{design.name}: routing unchanged, reusing {digest[:8]}", file=sys.stderr)
             done = replace(design, tracks=cached[0], vias=cached[1])
-            return _stitched(
-                _teardrops(
-                    _chamfer_tracks(
-                        _spread_hairpins(
-                            _doglegged(
-                                _unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done)))))
-                            )
-                        )
-                    )
-                )
-            )
+            return _pipeline(done)
         order = _learned_order(design, order)
     ripped: list[Track] = []
     relaid: list[Track] = []
@@ -3468,17 +3500,7 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         )
         if use_cache:
             _cache_write(design, digest, done, order)
-        return _stitched(
-            _teardrops(
-                _chamfer_tracks(
-                    _spread_hairpins(
-                        _doglegged(
-                            _unfold_tracks(_join_runs(_unlooped(_untraced(_snap_to_45(done)))))
-                        )
-                    )
-                )
-            )
-        )
+        return _pipeline(done)
 
 
 def _on_45_grid(a, b) -> bool:
@@ -3742,16 +3764,22 @@ def _unlooped(design: Design) -> Design:
             removed.update(max(chains, key=chain_len))
 
     kept_segs = [seg for i, seg in enumerate(segs) if i not in removed]
-    # vias left with no copper on any layer at their node go with the loop
-    alive_nodes: dict[str, set] = defaultdict(set)
-    for seg in kept_segs:
-        alive_nodes[seg["net"]].add(key(seg["a"]))
-        alive_nodes[seg["net"]].add(key(seg["b"]))
-    vias = [
-        via
-        for via in design.vias
-        if via.net in keep_nets or key(via_position(design, via)) in alive_nodes[via.net]
-    ]
+
+    # A via lives if copper still *touches* it, which is not the same question
+    # as whether a track ends exactly on it. `_snap_to_45` runs before this and
+    # moves ends by a fraction of a millimetre; keying the two together exactly
+    # threw away vias whose track had shifted a quarter of a millimetre, and
+    # took the layer change with them - two unconnected items on the FPGA
+    # board, and a stub at each end of the hole where the via had been.
+    def touched(via: Via) -> bool:
+        centre = via_position(design, via)
+        reach = via.size / 2 + GEOM_EPS
+        return any(
+            seg["net"] == via.net and _segment_distance(centre, centre, seg["a"], seg["b"]) <= reach
+            for seg in kept_segs
+        )
+
+    vias = [via for via in design.vias if via.net in keep_nets or touched(via)]
     tracks = passthrough + [
         Track(seg["net"], seg["layer"], seg["width"], [seg["a"], seg["b"]]) for seg in kept_segs
     ]
@@ -4364,6 +4392,69 @@ def _teardrops(design: Design) -> Design:
     if not grown:
         return design
     return replace(design, tracks=[*kept, *grown])
+
+
+def _pipeline(design: Design) -> Design:
+    """Everything that happens to the copper after the search has found it.
+
+    One list, called from all three exits of `resolve_routes` - the board with
+    nothing to route, the cache hit and the fresh route - because three copies
+    of a nine-deep nest is how a pass comes to run on two of them.
+    """
+    design = _snap_to_45(design)
+    design = _untraced(design)
+    design = _unlooped(design)
+    design = _join_runs(design)
+    design = _unfold_tracks(design)
+    design = _doglegged(design)
+    design = _spread_hairpins(design)
+    design = _chamfer_tracks(design)
+    design = _teardrops(design)
+    design = _joined(design)
+    return _stitched(design)
+
+
+def _joined(design: Design) -> Design:
+    """Put a via back wherever a net changes layer without one.
+
+    The router spends a via at every layer change and hands back where it put
+    it. Then half a dozen passes reshape the copper - snapping to 45s,
+    chamfering corners, spreading folds - and every one of them moves track
+    ends without moving the holes underneath them. A joint that slides a
+    millimetre away from its via is two dangling track ends and one
+    unconnected net, which is exactly what the FPGA board came back with.
+
+    So the joints are re-derived from the copper that actually got written:
+    anywhere copper of one net ends on two layers at the same point and no
+    via of that net reaches it, one goes back in. Cheaper than teaching six
+    passes to carry the vias with them, and it cannot drift, because it reads
+    the finished geometry rather than remembering the routed one.
+    """
+    ends: dict[tuple[str, tuple[float, float]], set[str]] = defaultdict(set)
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        for end in (points[0], points[-1]):
+            ends[(track.net, (round(end[0], 3), round(end[1], 3)))].add(track.layer)
+    holes = [(via.net, via_position(design, via), via.size) for via in design.vias]
+    added: list[Via] = []
+    for (net, point), layers in sorted(ends.items()):
+        if len(layers) < 2:
+            continue
+        if any(
+            hole_net == net and math.dist(point, centre) <= size / 2 + GEOM_EPS
+            for hole_net, centre, size in holes
+        ):
+            continue
+        added.append(Via(net, x=point[0], y=point[1], size=VIA_SIZE))
+        holes.append((net, point, VIA_SIZE))
+    if not added:
+        return design
+    print(
+        f"{design.name}: {len(added)} layer change(s) had lost their via to the "
+        "reshaping passes, put back",
+        file=sys.stderr,
+    )
+    return replace(design, vias=[*design.vias, *added])
 
 
 def _stitched(design: Design) -> Design:
@@ -8304,6 +8395,7 @@ def place_fiducials(design: Design) -> Design:
                 "Fiducial:Fiducial_1mm_Mask2mm",
                 sheet=(sheet_x + (index - 1) * 12.7, sheet_y),
                 board=(x, y, 0.0),
+                show_value=False,
                 fields={"MPN": "n/a", "Manufacturer": "n/a"},
             )
         )
@@ -8386,6 +8478,7 @@ def mount_holes(design: Design) -> Design:
                 footprint,
                 sheet=(sheet_x + (index - 1) * 12.7, sheet_y),
                 board=(x, y, 0.0),
+                show_value=False,
                 fields={"MPN": "n/a", "Manufacturer": "n/a"},
             )
         )

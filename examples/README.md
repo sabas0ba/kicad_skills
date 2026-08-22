@@ -43,15 +43,20 @@ waiver in the project's `gate.toml`. That pass, with what each finding became,
 is [REVIEW.md](REVIEW.md).
 
 Four of the five `reviewed/` projects **pass** their own gate. The FPGA board
-does not: fencing foreign copper out from under the flash and the DAC still
-costs it four nets over cuts in the back plane (11-18 mm each), one tour on
-the line-out pair and three corners. The 1.2 V core rail rides a stated
-spine under the FPGA's own die and no longer wanders; the 3.3 V rail and a
-corridor for the line-out pair are the floorplan work that remains, and
-[REVIEW.md](REVIEW.md) names both as the next round's. What remains is
-floorplan on a 48-pin QFN with two layers, stated by the gate rather than
-waived, because a waiver would say the measurement was wrong and it is not.
-Every `as-generated/` fails.
+does not, and what is left of its debt is the two-layer bill: four nets
+crossing cuts in the back plane (10-18 mm each) and one corner at 88
+degrees. The line-out tour that stood here for three rounds is gone - not by
+re-routing but by moving the seven parts that were parked between the FPGA's
+twelve-lane escape and the codec's ten-lane one. It is stated by the gate
+rather than waived, because a waiver would say the measurement was wrong and
+it is not. Every `as-generated/` fails.
+
+All five carry what a board needs to be *made* as well as to work: the ground
+pour is filled by KiCad's own filler against the board's own rules, every
+through-hole land is relieved thermally, every track fillets into the land it
+enters, and each board has its M3 mounting holes and three fiducials for the
+assembly machine to align to. Round seventeen in [REVIEW.md](REVIEW.md) is
+where that came from, and what it cost.
 
 ## When these were made, and by what
 
@@ -295,7 +300,7 @@ filter is referenced to.
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 5 findings waived | 0 / 0 / 0 | 0 / 8 / 4 |
-| `as-generated` | **FAIL**, 36 blocking | — | — |
+| `as-generated` | **FAIL**, 37 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
 errors, no unconnected items, no parity findings. It also passes its own
@@ -341,8 +346,8 @@ a 1.2 V regulator for the core — on two layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **FAIL**, 2 blocking, 2 waived | 0 / 2 / 0 | 0 / 3 / 9 |
-| `as-generated` | **FAIL**, 29 blocking | — | — |
+| `reviewed` | **FAIL**, 2 blocking, 2 waived | 0 / 2 / 0 | 0 / 5 / 6 |
+| `as-generated` | **FAIL**, 28 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
 unconnected, no schematic-parity findings. On every *style* measure it now
@@ -363,9 +368,9 @@ the two 1.2 V ones and the LED resistor — were parked in the eleven
 millimetres between the FPGA's twelve-lane east escape and the codec's
 ten-lane west one. They now sit in the empty band below it, and the corridor
 carries the bundle it was always for. What the gate still states plainly is
-the two-layer bill: three SPI nets over cuts in the back plane (15-20 mm
-each) and three corners (`route.acute_angle`). The engineering pass there
-found and fixed
+the two-layer bill: four nets over cuts in the back plane (10-18 mm each)
+and one corner at 88 degrees (`route.acute_angle`). The engineering pass
+there found and fixed
 four real electrical faults here: the PCM5102A's charge pump was miswired
 (flying cap to ground instead of CAPP-CAPM — the DAC had no negative rail),
 VCCPLL was tied straight to the core rail instead of RC-filtered from it, the

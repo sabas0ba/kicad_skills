@@ -1211,7 +1211,13 @@ def rule_track_width_steps(ctx: PcbContext) -> list[Finding]:
             if len(nxt) != 1:
                 return None
             candidate = board.tracks[nxt[0]]
-            if candidate.net != track.net or abs(candidate.width - track.width) >= 0.02:
+            if candidate.net != track.net:
+                return None
+            if _is_fillet(candidate, board):
+                # The neck has reached its land: what it runs into is the
+                # teardrop widening into the pad, which only exists at one.
+                return total
+            if abs(candidate.width - track.width) >= 0.02:
                 return None
             key, current = _key_of(far, track.layer), nxt[0]
             seen.add(current)
@@ -1229,6 +1235,8 @@ def rule_track_width_steps(ctx: PcbContext) -> list[Finding]:
         point = (key[0] / 1000, key[1] / 1000)
         if any(math.dist(point, pad) <= free for pad in pads):
             continue  # at a pad, which is where a neck is allowed to end
+        if _is_fillet(first, board) or _is_fillet(second, board):
+            continue  # a teardrop rises in steps into its land; that is its job
         narrow = indices[0] if first.width < second.width else indices[1]
         if neck_length(key, narrow) is not None:
             continue  # the narrow side is the pin field's own escape
@@ -2274,7 +2282,11 @@ def rule_track_stubs(ctx: PcbContext) -> list[Finding]:
     if not board.tracks:
         return []
     zone_layers = {(z.net, layer) for z in board.zones if not z.keepout for layer in z.layers}
-    via_points = {(round(v.x * 1000), round(v.y * 1000)) for v in board.vias}
+    # A via is a disc of copper, not a coordinate. Matching the track's end to
+    # the via's centre exactly called a joint a stub whenever a reshaping pass
+    # had moved the track a quarter of a millimetre - still well inside the
+    # barrel's own pad, still connected, and KiCad's DRC agreed it was.
+    vias = [(v.x, v.y, v.size / 2 + GEOM_TOL, set(v.layers)) for v in board.vias]
     pad_boxes = [
         (pad.bbox(angle_offset=fp.angle), _pad_layers(pad, board))
         for fp in board.footprints
@@ -2293,7 +2305,12 @@ def rule_track_stubs(ctx: PcbContext) -> list[Finding]:
             continue  # a track that ends inside a pour of its own net is connected
         for point in (track.start, track.end):
             key = (round(point[0] * 1000), round(point[1] * 1000), track.layer)
-            if len(endpoints.get(key, ())) > 1 or (key[0], key[1]) in via_points:
+            if len(endpoints.get(key, ())) > 1:
+                continue
+            if any(
+                math.dist(point, (vx, vy)) <= reach and (not layers or track.layer in layers)
+                for vx, vy, reach, layers in vias
+            ):
                 continue
             if any(
                 track.layer in layers
