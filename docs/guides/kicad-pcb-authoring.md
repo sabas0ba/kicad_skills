@@ -241,9 +241,24 @@ netlist.
   that is part of one cannot be soldered by hand, because the iron's heat
   goes into the copper instead of the joint. Thermal relief - a gap all
   round, bridged by spokes - is KiCad's default and worth keeping
-  (`layout.solid_pad_connection`). Surface pads are the other way round:
-  they reflow in an oven that is heating the plane anyway, and solid is
-  often the better thermal answer.
+  (`layout.solid_pad_connection`).
+* **And the heavy surface pads too.** A chip capacitor's land is the other
+  way round: it reflows in an oven that is heating the plane anyway, and
+  solid is the better electrical answer. A regulator's tab is not that case.
+  A hundred square millimetres tied straight into the pour reaches solder
+  temperature after the part's own leads do, and the part lifts on the leads
+  that got there first - a tombstone, or a joint that looks made and is not.
+  Set the relief on the pad rather than the zone (`zone_connect`), so the
+  chip lands keep their solid tie. The exception is a pad with a via array
+  in it: there the copper *is* the heat path and was chosen, which is what a
+  QFN's exposed pad is for.
+* **Size the spokes for the current, not just for the iron.** A relief is a
+  deliberate bottleneck, and on a power pad it is also the conductor: every
+  ampere the track brings in leaves through the spokes. KiCad draws four and
+  offers no way to ask for more, so the answer is width - half the track
+  that feeds the pad puts twice the track's copper across the four
+  (`thermal_bridge_width`, per pad). A tab with no track at all, whose whole
+  return leaves through the plane, takes the widest the relief survives.
 * **Fillet the entry into a land** (a teardrop). The step from a 0.2 mm
   track to a 1.7 mm pad is where copper cracks - the connector gets levered
   on and off, the drill wanders a few tenths, and the corner is the stress
