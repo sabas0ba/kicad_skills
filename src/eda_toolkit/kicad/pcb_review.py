@@ -308,10 +308,13 @@ RULE_SPEC: dict[str, RuleSpec] = {
         threshold="max_decoupling_via_mm",
     ),
     "layout.solid_pad_connection": RuleSpec(
-        "a filled zone that floods its own through-hole pads with solid copper "
-        "instead of relieving them thermally, so a soldering iron has to heat "
-        "the plane to melt the joint. Surface pads are not counted - they reflow "
-        "with the board - and a zone with no drilled pad of its own is not either",
+        "a filled zone that floods its own pads with solid copper instead of "
+        "relieving them thermally. Every drilled pad counts, because an iron "
+        "cannot heat a plane; a surface pad counts only from 4 mm2 and 2 mm "
+        "across, where the plane takes the heat the reflow profile meant for "
+        "the joint and the part lifts on the leads that got there first. A "
+        "chip land is below that and reflows with the board, and a pad with a "
+        "via array in it is exempt - there the copper is the heat path, chosen",
         "warning",
     ),
     "layout.no_ground_plane": RuleSpec("no ground zone anywhere on the board", "warning"),
@@ -994,45 +997,94 @@ def rule_decoupling_placement(ctx: PcbContext) -> list[Finding]:
 
 @rule
 def rule_solid_pad_connection(ctx: PcbContext) -> list[Finding]:
-    """Through-hole pads flooded solid into a plane.
+    """Pads flooded solid into a plane, by an iron or by an oven.
 
-    A plane is a heat sink, and a joint that is part of one cannot be soldered
-    by hand: the iron pours its heat into a hundred square millimetres of
-    copper and the solder never wets. Thermal relief is the answer - a gap all
-    round the pad, bridged by a few spokes - and it is what KiCad does by
-    default, so a zone set to solid usually means somebody turned it off
-    without meaning to.
+    A plane is a heat sink. A drilled joint that is part of one cannot be
+    soldered by hand at all: the iron pours its heat into a hundred square
+    millimetres of copper and the solder never wets. Thermal relief is the
+    answer - a gap all round the pad, bridged by a few spokes - and it is what
+    KiCad does by default, so a zone set to solid usually means somebody turned
+    it off without meaning to.
 
-    Only drilled pads count. A surface pad reflows with the whole board in an
-    oven that is heating the plane anyway, and flooding it solid is often the
-    better thermal choice; the failure this rule is about is the iron.
+    A *surface* pad is the interesting case, and the answer depends on its
+    size. A chip capacitor's land reflows with the whole board in an oven that
+    is heating the plane anyway, and solid is the better electrical answer. The
+    tab of a regulator is not that: a hundred square millimetres tied straight
+    into the pour reaches solder temperature after the part's own leads do, and
+    the part lifts on the leads that got there first - a tombstone, or a joint
+    that looks made and is not. Relief on the tab is what a fab asks for, and a
+    board that wants the copper for cooling says so with a via array in the pad
+    (`zone_connect` set solid on the pad itself, which is how KiCad spells
+    "I meant this"), because that is where the heat is actually going.
     """
     board = ctx.board
+    # The same two numbers `via.in_pad` uses to tell a thermal pad from a land:
+    # nothing a signal reaches is 4 mm2, and nothing 2 mm across is a chip part.
+    area, side = THERMAL_PAD_AREA_MM2, THERMAL_PAD_MIN_SIDE_MM
     findings = []
     for zone in board.zones:
-        if zone.keepout or not zone.fills or zone.pad_connection != "solid":
+        if zone.keepout or not zone.fills:
             continue
-        # A drilled pad is on every copper layer by construction, so which
-        # layer the zone is poured on does not enter into it.
-        drilled = [
-            f"{fp.ref}.{pad.number}"
-            for fp in board.footprints
-            for pad in fp.pads
-            if pad.drill and pad.net == zone.net
-        ]
-        if not drilled:
+        if zone.pad_connection == "solid":
+            drilled = [
+                f"{fp.ref}.{pad.number}"
+                for fp in board.footprints
+                for pad in fp.pads
+                # a drilled pad is on every copper layer by construction, so
+                # which layer the zone is poured on does not enter into it
+                if pad.drill and pad.net == zone.net and pad.zone_connect not in (0, 1)
+            ]
+            if drilled:
+                findings.append(
+                    Finding(
+                        "layout.solid_pad_connection",
+                        "warning",
+                        f"the {zone.net} zone on {'/'.join(zone.layers)} floods "
+                        f"{len(drilled)} through-hole pad(s) with solid copper - an iron "
+                        "has to heat the whole plane to melt those joints",
+                        details={"count": len(drilled), "examples": sorted(drilled)[:6]},
+                    )
+                )
+        if zone.pad_connection not in ("solid", "thru_hole_only"):
             continue
+        heavy = []
+        for fp in board.footprints:
+            for pad in fp.pads:
+                if pad.drill or pad.net != zone.net or pad.zone_connect in (0, 1):
+                    continue
+                if not any(layer in zone.layers for layer in _pad_layers(pad, board)):
+                    continue
+                width, height = pad.size
+                if width * height < area or min(width, height) < side:
+                    continue
+                if _vias_in_pad(board, pad):
+                    continue  # the copper is the heat path, and it was chosen
+                heavy.append((f"{fp.ref}.{pad.number}", round(width * height, 1)))
+        if not heavy:
+            continue
+        heavy.sort(key=lambda entry: -entry[1])
         findings.append(
             Finding(
                 "layout.solid_pad_connection",
                 "warning",
                 f"the {zone.net} zone on {'/'.join(zone.layers)} floods "
-                f"{len(drilled)} through-hole pad(s) with solid copper - an iron has to "
-                f"heat the whole plane to melt those joints",
-                details={"count": len(drilled), "examples": sorted(drilled)[:6]},
+                f"{len(heavy)} surface pad(s) of {heavy[0][1]} mm2 and under with solid "
+                "copper - the plane takes the heat the reflow profile meant for the joint",
+                details={
+                    "count": len(heavy),
+                    "examples": [f"{ref} ({size} mm2)" for ref, size in heavy[:6]],
+                },
             )
         )
     return findings
+
+
+def _vias_in_pad(board: pcb.Board, pad: pcb.Pad) -> int:
+    """How many vias are drilled inside a pad's own copper."""
+    half_w, half_h = pad.size[0] / 2, pad.size[1] / 2
+    return sum(
+        1 for via in board.vias if abs(via.x - pad.x) <= half_w and abs(via.y - pad.y) <= half_h
+    )
 
 
 @rule

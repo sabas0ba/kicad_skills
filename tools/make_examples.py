@@ -191,6 +191,11 @@ SILK_CLEARANCE = 0.2
 SILK_EDGE_ROOM = 1.0
 SILK_EDGE_MARGIN = 0.5
 
+# When a surface pad is a heat sink rather than a land: the same two numbers
+# the review rules use to tell a thermal pad from a chip part.
+RELIEF_PAD_AREA_MM2 = 4.0
+RELIEF_PAD_SIDE_MM = 2.0
+
 FASTENER_HEAD = 7.0
 FASTENER_GAP = 0.5
 CONNECTOR_ACCESS = 2.0
@@ -2712,6 +2717,68 @@ def anchor_site(
                 continue
             return (vx, vy)
     return None
+
+
+def _spoke_width(design: Design, part: Part, pad: SNode, net: str, heavy: bool = False) -> float:
+    """How wide each of a relieved pad's four spokes has to be.
+
+    A thermal relief is a deliberate bottleneck, and on a signal pad that is
+    all it has to be. On a power pad it is also the conductor: every ampere
+    the track brings in leaves through the spokes, so a relief sized for
+    solderability alone puts a 0.5 mm neck in a 3 A return path - a hot spot
+    where the copper is thinnest and nobody drew it.
+
+    KiCad always draws four spokes and offers no way to ask for more, so the
+    answer is width. Each spoke is sized at half the widest track that reaches
+    the pad, which puts twice the track's own copper across the four of them,
+    and never below the default: a relief that is wider than the track feeding
+    it has stopped being a relief.
+
+    ``heavy`` is the pad with no track at all - a regulator's tab, whose whole
+    return current leaves through the spokes and the plane. Nothing about the
+    copper says how much that is, and the part it belongs to is the reason the
+    board exists, so it takes the widest spoke the relief still survives.
+    """
+    if heavy:
+        return THERMAL_SPOKE_MAX
+    box = pad_box(design, part, pad)
+    widest = 0.0
+    for track in design.tracks:
+        if track.net != net:
+            continue
+        points = [resolve(design, point) for point in track.points]
+        if any(box[0] <= x <= box[2] and box[1] <= y <= box[3] for x, y in points):
+            widest = max(widest, track.width)
+    return round(min(max(THERMAL_SPOKE, widest / 2), THERMAL_SPOKE_MAX), 3)
+
+
+def _wants_relief(design: Design, part: Part, pad: SNode) -> bool:
+    """Whether a pad is heavy enough that the plane must not drink its heat.
+
+    A chip capacitor's land reflows with the whole board in an oven that is
+    heating the plane anyway, and a solid tie is the better electrical answer.
+    A regulator's tab is not that: a hundred square millimetres tied straight
+    into the pour reaches solder temperature after the part's own leads do, and
+    the part lifts on the leads that got there first.
+
+    Unless the copper is the heat path on purpose, which is what a via array in
+    the pad says. A QFN's exposed pad with nine vias under it is cooling the
+    die through them, and relieving it would be undoing the design.
+    """
+    if str(pad.atom(1, "")) != "smd" or pad.child("drill") is not None:
+        return False
+    if pad.child("zone_connect") is not None:
+        return False  # the footprint or the design has already decided
+    size = [a for a in pad.child("size").atoms() if isinstance(a, (int, float))]
+    width = float(size[0])
+    height = float(size[1] if len(size) > 1 else size[0])
+    if width * height < RELIEF_PAD_AREA_MM2 or min(width, height) < RELIEF_PAD_SIDE_MM:
+        return False
+    box = pad_box(design, part, pad)
+    return not any(
+        box[0] <= point[0] <= box[2] and box[1] <= point[1] <= box[3]
+        for point in (via_position(design, via) for via in design.vias)
+    )
 
 
 def pad_box(design: Design, part: Part, pad: SNode) -> tuple[float, float, float, float]:
@@ -5729,6 +5796,18 @@ def emit_board(design: Design, path: Path) -> None:
             name = net_of.get((part.ref, number))
             if name:
                 pad.args.append(SNode("net", [codes[name], labels[name]]))
+                heavy = name == POUR_NET and _wants_relief(design, part, pad)
+                if heavy:
+                    # 1 is KiCad's "thermal relief" for this pad alone. The
+                    # zone stays as it is: a chip land still floods solid,
+                    # which is the better electrical answer and reflows fine.
+                    pad.args.append(SNode("zone_connect", [1]))
+                spoke = _spoke_width(design, part, pad, name, heavy=heavy)
+                if spoke > THERMAL_SPOKE and pad.child("thermal_bridge_width") is None:
+                    # Every relieved pad, drilled or not: the zone's own spoke
+                    # width is a floor, and a power pad wants more than the
+                    # floor (see `_spoke_width`).
+                    pad.args.append(SNode("thermal_bridge_width", [spoke]))
             elif number and (spare := spares.get((part.ref, number))):
                 # A pad the schematic marked no-connect still has a net there -
                 # KiCad invents one per pin - and a board that leaves the pad
@@ -6270,6 +6349,9 @@ ZONE_MIN_WIDTH = 0.25
 TEARDROP_MAX_MM = 1.0
 THERMAL_GAP = 0.4
 THERMAL_SPOKE = 0.5
+# How wide a spoke may grow before the relief stops relieving. Four of these
+# is 4 mm of copper into the pad, which is more than any track on these boards.
+THERMAL_SPOKE_MAX = 1.0
 ZONE_WELD = 0.05  # how far neighbouring islands are grown into each other
 # Every hole is rounded outward onto this grid. Without it a diagonal track puts
 # an x edge every fraction of a millimetre, the sweep below never sees two

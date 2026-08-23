@@ -42,6 +42,25 @@ either turned into a rule, fixed in `reviewed/`, or answered with a reasoned
 waiver in the project's `gate.toml`. That pass, with what each finding became,
 is [REVIEW.md](REVIEW.md).
 
+### Three columns, not two
+
+Each comparison below has three, and the leftmost is the honest one.
+
+| column | what it is |
+| --- | --- |
+| **first edition** | the board as it came out of the generator the day it was written, before any finding had been read. Recovered from this repository's own history — one `git show` per file, no editing — and rendered with today's renderer so the only difference is the design |
+| **as-generated** | what the generator produces *now* when told to skip the review. It is much better than the first edition, because eighteen rounds of findings were built into the generator itself rather than patched into the output |
+| **reviewed** | the same design with the review applied: what passes `eda gate` |
+
+The middle column is the part that is easy to miss. A tool that only fixed its
+own output would leave the first column and the second identical; the distance
+between them is the review turned into code, and it arrives before anyone runs
+the gate. The distance between the second and the third is what the gate still
+had to catch on the day.
+
+The first editions are `ea93330` (buck-5v), `e7ad2d7` (motor-driver),
+`b4d66f2` (pico-carrier), `3f796a7` (opamp-filter) and `aee7401` (fpga-audio).
+
 All five `reviewed/` projects **pass** their own gate, and every one of them
 is clean under KiCad's own DRC on both versions in the matrix: no violations,
 nothing unconnected. Every `as-generated/` fails.
@@ -97,29 +116,31 @@ Under KiCad's own ERC and DRC, and the `ai-generated` policy:
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 1 finding waived | 0 / 0 / 0 | 0 / 0 / 5 |
 | `as-generated` | **FAIL**, 28 blocking | — | — |
+| first edition | **FAIL**, 45 blocking | — | — |
 
-### The two, side by side
+### The three, side by side
 
 Everything below is this repository's own output — `eda sch render` and
-`eda pcb render`, run on the two variants and cropped. Nothing is drawn by hand.
+`eda pcb render`, run on the three variants and cropped. Nothing is drawn by hand.
 
-**The schematic.** Left is what a generator leaves; right is after the loop. The
+**The schematic.** Left is the first edition; middle is what the generator
+leaves today; right is after the loop. The
 empty title block, the parts stacked on each other at the bottom right, and the
 absence of any note explaining a single value are all visible before reading one
 finding:
 
-| as-generated | reviewed |
-| --- | --- |
-| ![schematic, as generated](buck-5v/images/schematic-as-generated.jpg) | ![schematic, reviewed](buck-5v/images/schematic-reviewed.jpg) |
+| first edition | as-generated | reviewed |
+| --- | --- | --- |
+| ![schematic, first edition](buck-5v/images/schematic-first.jpg) | ![schematic, as generated](buck-5v/images/schematic-as-generated.jpg) | ![schematic, reviewed](buck-5v/images/schematic-reviewed.jpg) |
 
 **The board, front copper.** The same circuit, the same nets. On the left the
 power rails are routed at signal width, J1 and D1 sit at 37°, and several tracks
 simply stop in mid-air. On the right the power copper is 1.0 mm, every part is
 square to the grid, and each ground stub ends in a via:
 
-| as-generated | reviewed |
-| --- | --- |
-| ![board front, as generated](buck-5v/images/board-front-as-generated.jpg) | ![board front, reviewed](buck-5v/images/board-front-reviewed.jpg) |
+| first edition | as-generated | reviewed |
+| --- | --- | --- |
+| ![board front, first edition](buck-5v/images/board-front-first.jpg) | ![board front, as generated](buck-5v/images/board-front-as-generated.jpg) | ![board front, reviewed](buck-5v/images/board-front-reviewed.jpg) |
 
 **The board, back copper.** This is the ground plane, and the reason the
 floorplan is what it is. Only the two screw terminals are through-hole, and both
@@ -129,9 +150,9 @@ through-hole only, so no thermal spoke is hostage to a crowded pad — and a rin
 of stitching vias around the rim ties the two planes together where edge noise
 wants a short way home. The generated variant has no pour at all:
 
-| as-generated | reviewed |
-| --- | --- |
-| ![board back, as generated](buck-5v/images/board-back-as-generated.jpg) | ![board back, reviewed](buck-5v/images/board-back-reviewed.jpg) |
+| first edition | as-generated | reviewed |
+| --- | --- | --- |
+| ![board back, first edition](buck-5v/images/board-back-first.jpg) | ![board back, as generated](buck-5v/images/board-back-as-generated.jpg) | ![board back, reviewed](buck-5v/images/board-back-reviewed.jpg) |
 
 Both variants also produce a complete fabrication package —
 `eda pcb fab examples/buck-5v/reviewed -o fab/` writes the gerbers, the Excellon
@@ -179,6 +200,7 @@ charge pump, bypass and pull-up the datasheet asks for.
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 6 findings waived | 0 / 0 / 0 | 0 / 0 / 5 |
 | `as-generated` | **FAIL**, 37 blocking | — | — |
+| first edition | **FAIL**, 43 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
 unconnected items, zero parity findings, on 9.0.9 and 10.0.4. What the gate
@@ -188,11 +210,11 @@ each carrying the engineering argument — the charge pump wired the way the
 datasheet asks, the escape geometry of a 0.65 mm package, a 2 mA LED branch on
 a 1 A track. [REVIEW.md](REVIEW.md) is the pass that decided them.
 
-| as-generated | reviewed |
-| --- | --- |
-| ![schematic, as generated](motor-driver/images/schematic-as-generated.jpg) | ![schematic, reviewed](motor-driver/images/schematic-reviewed.jpg) |
-| ![board front, as generated](motor-driver/images/board-front-as-generated.jpg) | ![board front, reviewed](motor-driver/images/board-front-reviewed.jpg) |
-| ![board back, as generated](motor-driver/images/board-back-as-generated.jpg) | ![board back, reviewed](motor-driver/images/board-back-reviewed.jpg) |
+| first edition | as-generated | reviewed |
+| --- | --- | --- |
+| ![schematic, first edition](motor-driver/images/schematic-first.jpg) | ![schematic, as generated](motor-driver/images/schematic-as-generated.jpg) | ![schematic, reviewed](motor-driver/images/schematic-reviewed.jpg) |
+| ![board front, first edition](motor-driver/images/board-front-first.jpg) | ![board front, as generated](motor-driver/images/board-front-as-generated.jpg) | ![board front, reviewed](motor-driver/images/board-front-reviewed.jpg) |
+| ![board back, first edition](motor-driver/images/board-back-first.jpg) | ![board back, as generated](motor-driver/images/board-back-as-generated.jpg) | ![board back, reviewed](motor-driver/images/board-back-reviewed.jpg) |
 
 The back layer is worth looking at on its own. It is a ground pour with the
 clearance around every foreign track and pad cut out of it, computed rather
@@ -249,6 +271,7 @@ that reaches VSYS the way the Pico datasheet asks for.
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 9 findings waived | 0 / 0 / 0 | 0 / 0 / 4 |
 | `as-generated` | **FAIL**, 33 blocking | — | — |
+| first edition | **FAIL**, 50 blocking | — | — |
 
 Under KiCad's own checks `reviewed` has no errors and no unconnected items, on
 9.0.9 and 10.0.4 — one `lib_footprint_mismatch` on the module and two silkscreen
@@ -257,11 +280,11 @@ warnings are all that is left. The gate findings are answered in
 the schematic-side decoupling rule now reads pin electrical types, so VBUS —
 a rail the *module* drives — is no longer asked for a capacitor at all.
 
-| as-generated | reviewed |
-| --- | --- |
-| ![schematic, as generated](pico-carrier/images/schematic-as-generated.jpg) | ![schematic, reviewed](pico-carrier/images/schematic-reviewed.jpg) |
-| ![board front, as generated](pico-carrier/images/board-front-as-generated.jpg) | ![board front, reviewed](pico-carrier/images/board-front-reviewed.jpg) |
-| ![board back, as generated](pico-carrier/images/board-back-as-generated.jpg) | ![board back, reviewed](pico-carrier/images/board-back-reviewed.jpg) |
+| first edition | as-generated | reviewed |
+| --- | --- | --- |
+| ![schematic, first edition](pico-carrier/images/schematic-first.jpg) | ![schematic, as generated](pico-carrier/images/schematic-as-generated.jpg) | ![schematic, reviewed](pico-carrier/images/schematic-reviewed.jpg) |
+| ![board front, first edition](pico-carrier/images/board-front-first.jpg) | ![board front, as generated](pico-carrier/images/board-front-as-generated.jpg) | ![board front, reviewed](pico-carrier/images/board-front-reviewed.jpg) |
+| ![board back, first edition](pico-carrier/images/board-back-first.jpg) | ![board back, as generated](pico-carrier/images/board-back-as-generated.jpg) | ![board back, reviewed](pico-carrier/images/board-back-reviewed.jpg) |
 
 ### What this one is honest about
 
@@ -309,6 +332,7 @@ filter is referenced to.
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 5 findings waived | 0 / 0 / 0 | 0 / 0 / 4 |
 | `as-generated` | **FAIL**, 32 blocking | — | — |
+| first edition | **FAIL**, 33 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
 errors, no unconnected items, no parity findings. It also passes its own
@@ -317,11 +341,11 @@ wrap: thirteen millimetres from one side of the op-amp to the other, routed
 last, taking fifty-six millimetres round the board because everything nearer
 was already spoken for. Routing it first costs nothing and removes it.
 
-| as-generated | reviewed |
-| --- | --- |
-| ![schematic, as generated](opamp-filter/images/schematic-as-generated.jpg) | ![schematic, reviewed](opamp-filter/images/schematic-reviewed.jpg) |
-| ![board front, as generated](opamp-filter/images/board-front-as-generated.jpg) | ![board front, reviewed](opamp-filter/images/board-front-reviewed.jpg) |
-| ![board back, as generated](opamp-filter/images/board-back-as-generated.jpg) | ![board back, reviewed](opamp-filter/images/board-back-reviewed.jpg) |
+| first edition | as-generated | reviewed |
+| --- | --- | --- |
+| ![schematic, first edition](opamp-filter/images/schematic-first.jpg) | ![schematic, as generated](opamp-filter/images/schematic-as-generated.jpg) | ![schematic, reviewed](opamp-filter/images/schematic-reviewed.jpg) |
+| ![board front, first edition](opamp-filter/images/board-front-first.jpg) | ![board front, as generated](opamp-filter/images/board-front-as-generated.jpg) | ![board front, reviewed](opamp-filter/images/board-front-reviewed.jpg) |
+| ![board back, first edition](opamp-filter/images/board-back-first.jpg) | ![board back, as generated](opamp-filter/images/board-back-as-generated.jpg) | ![board back, reviewed](opamp-filter/images/board-back-reviewed.jpg) |
 
 ### What this one is honest about
 
@@ -356,6 +380,7 @@ a 1.2 V regulator for the core — on two layers.
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 6 findings waived | 0 / 0 / 0 | 0 / 0 / 5 |
 | `as-generated` | **FAIL**, 29 blocking | — | — |
+| first edition | **FAIL**, 34 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
 unconnected, no schematic-parity findings. On every *style* measure it now
@@ -386,11 +411,11 @@ boot flash had no chip-select pull-up, and the LDO reservoir was undersized.
 The first of these is the humbling one: `analog.missing_decoupling` had been
 firing on VNEG all along, and the earlier write-up called it a false positive.
 
-| as-generated | reviewed |
-| --- | --- |
-| ![schematic, as generated](fpga-audio/images/schematic-as-generated.jpg) | ![schematic, reviewed](fpga-audio/images/schematic-reviewed.jpg) |
-| ![board front, as generated](fpga-audio/images/board-front-as-generated.jpg) | ![board front, reviewed](fpga-audio/images/board-front-reviewed.jpg) |
-| ![board back, as generated](fpga-audio/images/board-back-as-generated.jpg) | ![board back, reviewed](fpga-audio/images/board-back-reviewed.jpg) |
+| first edition | as-generated | reviewed |
+| --- | --- | --- |
+| ![schematic, first edition](fpga-audio/images/schematic-first.jpg) | ![schematic, as generated](fpga-audio/images/schematic-as-generated.jpg) | ![schematic, reviewed](fpga-audio/images/schematic-reviewed.jpg) |
+| ![board front, first edition](fpga-audio/images/board-front-first.jpg) | ![board front, as generated](fpga-audio/images/board-front-as-generated.jpg) | ![board front, reviewed](fpga-audio/images/board-front-reviewed.jpg) |
+| ![board back, first edition](fpga-audio/images/board-back-first.jpg) | ![board back, as generated](fpga-audio/images/board-back-as-generated.jpg) | ![board back, reviewed](fpga-audio/images/board-back-reviewed.jpg) |
 
 ### What this one is honest about
 

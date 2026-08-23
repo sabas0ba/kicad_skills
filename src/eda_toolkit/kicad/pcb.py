@@ -28,6 +28,10 @@ class Pad:
     net: str = ""
     net_code: int = 0
     roundrect_rratio: float = 0.0
+    # The pad's own override of how a zone connects to it, when it carries one:
+    # 0 none, 1 thermal relief, 2 solid. ``None`` means it inherits the zone's
+    # setting, which is what most pads do.
+    zone_connect: int | None = None
 
     @property
     def annular_ring(self) -> float | None:
@@ -473,6 +477,12 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     net=net_name,
                     net_code=net_code,
                     roundrect_rratio=float(pad_node.value("roundrect_rratio", default=0.0) or 0.0),
+                    zone_connect=(
+                        int(zone_connect)
+                        if (zone_connect := pad_node.value("zone_connect", default=None))
+                        is not None
+                        else None
+                    ),
                 )
             )
         board.footprints.append(fp)
