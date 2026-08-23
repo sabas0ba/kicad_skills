@@ -23,6 +23,7 @@ your assistant expects.
 
 ```bash
 ./bin/eda.sh doctor                                   # builds the image on first use
+./bin/eda.sh gate        hardware/ --policy ai-generated --text   # pass or fail, and why
 ./bin/eda.sh report      hardware/ -o build/report    # everything, on one page
 ./bin/eda.sh sch review  hardware/ --text
 ./bin/eda.sh pcb review  hardware/ --text
@@ -98,7 +99,9 @@ flowchart LR
     DS -->|part values| SIM[eda sim]
     SIM -->|verified circuit| SCH[eda sch review]
     SCH -->|netlist + ERC| PCB[eda pcb review]
-    PCB -->|DRC clean| FAB[eda pcb fab]
+    SCH --> GATE[eda gate]
+    PCB --> GATE
+    GATE -->|pass| FAB[eda pcb fab]
     SCH --> REP[eda report]
     PCB --> REP
     SIM --> REP
@@ -109,8 +112,9 @@ flowchart LR
 | --- | --- | --- | --- |
 | Datasheets | Text, parameter tables, embedded figures and rendered page images from a PDF | `eda datasheet parse lm321.pdf -o out/` | [guide](docs/guides/datasheet-analysis.md) |
 | Simulation | ngspice op/dc/ac/tran/noise, THD, Monte Carlo tolerance analysis, temperature sweeps — with measurements and plots | `eda sim run filter.cir -o out/` | [guide](docs/guides/spice-simulation.md) |
-| Schematic review | Components, nets and hierarchy from `.kicad_sch`; ERC plus decoupling / floating-input / annotation / pull-up checks | `eda sch review hardware/ --text` | [guide](docs/guides/kicad-schematic-review.md) |
-| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen; current capacity, resistance and impedance from the stackup; layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](docs/guides/kicad-pcb-review.md) |
+| Schematic review | Components, nets and hierarchy from `.kicad_sch`; ERC plus decoupling / floating-input / annotation / pull-up checks, drawing readability (grid, junctions, overlap, page) and part specification (ratings, derating, part numbers) | `eda sch review hardware/ --text` | [guide](docs/guides/kicad-schematic-review.md) |
+| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen over pads, placement grid and rotation, track stubs and acute corners, decoupling vias; current capacity, resistance and impedance from the stackup; layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](docs/guides/kicad-pcb-review.md) |
+| Design gate | One pass/fail verdict over ERC, DRC and both reviews against a stated policy; readability, layout-practice and part-specification rules; waivers that must carry a reason | `eda gate hardware/ --policy ai-generated` | [guide](docs/guides/kicad-design-gate.md) |
 | Fabrication | Gerbers, Excellon drill, pick-and-place, BOM, STEP/IPC-2581, zipped with a manifest | `eda pcb fab hardware/ -o fab/` | [guide](docs/guides/kicad-fabrication-output.md) |
 | The container | Build, pin, verify and troubleshoot the toolchain | `eda doctor` | [guide](docs/guides/eda-environment.md) |
 
@@ -132,6 +136,39 @@ $ ./bin/eda.sh pcb review hardware/ --text
 
 Exit code is `2` when a review found errors, so `eda pcb review hardware/` is
 also a CI gate; `-o report.json` keeps the structured version.
+
+**Hold a generated design to a standard** — a review lists what is wrong; a
+gate says whether that is acceptable, against a policy the project committed to.
+
+```console
+$ ./bin/eda.sh gate hardware/ --policy ai-generated --text
+# gate FAIL: hardware/ against policy 'ai-generated'
+
+## after the policy: error=11, warning=0, info=2
+  over the limit: 11 error(s), 0 allowed
+
+## blocking
+  ERROR   schematic/readability.off_grid_pin: 12 pin(s) are off the 1.27 mm grid -
+          wires that meet them look connected and are not (reported as warning)
+  ERROR   schematic/spec.voltage_derating [/:C7]: C7 is rated 6.3 V and sits on a 12 V rail
+  ERROR   board/silk.over_pad: 4 silkscreen item(s) print across a pad (reported as warning)
+
+## waived
+  drc.lib_footprint_mismatch: our footprints are project-local copies
+```
+
+None of that is something ERC or DRC has an opinion about, which is exactly why
+a design can be ERC-clean, DRC-clean and still be one no engineer would sign.
+`(reported as warning)` is the policy at work — and a waiver without a stated
+reason is refused, so nothing is passed over quietly.
+
+`eda gate --list-rules` prints the whole contract: every rule, the exact
+condition that makes it fire, the threshold that tunes it and its default, and
+the policies under which it blocks. It is assembled from the rule modules, and
+`tests/test_rule_spec.py` reads their source, so a rule the catalogue does not
+describe — or an entry no rule produces — fails the build. See the
+[design gate guide](docs/guides/kicad-design-gate.md) for the evaluation rules
+and the exit codes.
 
 **Simulate before committing to a part value** — the −3 dB corner, the phase
 margin and the tolerance spread come back as numbers, not a picture to squint at.
@@ -167,6 +204,61 @@ below.
 ./bin/eda.sh report hardware/ -o build/report --glb
 open build/report/report.html
 ```
+
+## What the gate is worth, in pictures
+
+Five complete designs are generated by [`tools/make_examples.py`](https://github.com/sabas0ba/kicad_skills/blob/main/tools/make_examples.py)
+and shipped twice: once as the generator first left them, and once after
+`eda gate` had been run and every finding answered. Same circuit, same nets,
+same parts — the difference is entirely what the gate had an opinion about.
+
+**A schematic.** The Pico carrier. On the left: an empty title block, not one
+note, and eighteen power symbols pointing in four different directions. On the
+right: a title that says what the board is, fifteen notes recording why the
+values are what they are, and every power symbol upright:
+
+| as generated | after the gate |
+| --- | --- |
+| ![Pico carrier schematic, as generated](examples/pico-carrier/images/schematic-first.jpg) | ![Pico carrier schematic, gated](examples/pico-carrier/images/schematic-reviewed.jpg) |
+
+**A board.** The 12 V → 5 V buck. On the left: no ground pour, not one via,
+every track 0.25 mm whatever it carries, and nothing on the silkscreen at all.
+On the right: the plane poured on both faces and stitched with 79 vias, power
+copper at 1.0 mm and tapered into every land, screw holes that clear an M3
+washer, and a regulator tab relieved so a reflow oven can still solder it:
+
+| as generated | after the gate |
+| --- | --- |
+| ![buck-5v front copper, as generated](examples/buck-5v/images/board-front-first.jpg) | ![buck-5v front copper, gated](examples/buck-5v/images/board-front-reviewed.jpg) |
+
+**And the motor driver**, which went from one track width for the whole board
+to fifteen — motor outputs, logic and the charge pump each sized for what they
+carry — and gained the plane its H-bridge returns through:
+
+| as generated | after the gate |
+| --- | --- |
+| ![motor driver front copper, as generated](examples/motor-driver/images/board-front-first.jpg) | ![motor driver front copper, gated](examples/motor-driver/images/board-front-reviewed.jpg) |
+
+The scoreboard, under each project's own policy:
+
+| design | as generated | after the gate |
+| --- | --- | --- |
+| buck-5v | **FAIL** — 45 blocking | **PASS** |
+| motor-driver | **FAIL** — 43 blocking | **PASS** |
+| pico-carrier | **FAIL** — 50 blocking | **PASS** |
+| opamp-filter | **FAIL** — 33 blocking | **PASS** |
+| fpga-audio | **FAIL** — 34 blocking | **PASS** |
+
+All five gated boards are clean under KiCad's own DRC on both versions in the
+matrix, with nothing unconnected, and every finding that remains is a waiver
+carrying the sentence that excuses it.
+
+**[examples/](examples/README.md) is the long version**: all five designs, both
+faces of every board, a third column showing what the generator produces *today*
+(the reviews went into the generator, not into patches on its output), and
+[REVIEW.md](examples/REVIEW.md) — nineteen rounds of a reviewer reading the
+boards, and what each finding became: a rule, a fix, or a waiver with its
+argument.
 
 ## Pinning the KiCad version
 
@@ -278,6 +370,9 @@ Provenance and licensing of these images: [`docs/examples/README.md`](docs/examp
 
 ```
 eda doctor                                    tool versions in the environment
+eda gate         TARGET [--policy NAME|FILE] [--text] [--threshold KEY=VALUE]
+                        [--collapse N] [-o verdict.json]
+eda gate         --list-policies | --list-rules [--text]
 eda diff         OLD NEW -o DIR [--dpi 150] [--no-images]
 eda report       TARGET -o DIR [--dpi 200] [--glb] [--simulation NETLIST]
                               [--no-3d] [--no-per-layer] [--no-bom] [--title T]
@@ -299,7 +394,7 @@ eda sim plot     RAW -o DIR [--signals ...]
 eda sim netlist  SCHEMATIC -o FILE           export a SPICE deck from KiCad
 
 eda sch info     TARGET [--no-cli]
-eda sch review   TARGET [--text] [--collapse N] [-o report.json] [--no-cli]
+eda sch review   TARGET [--text] [--collapse N] [--threshold KEY=VALUE] [-o report.json] [--no-cli]
 eda sch bom      TARGET -o bom.csv [--group-by ...] [--fields ...]
 eda sch erc      TARGET                      raw KiCad ERC JSON
 eda sch netlist  TARGET [--format json|kicadxml|spice|...] [-o FILE]
@@ -342,7 +437,10 @@ code is. In a project that added this as a submodule:
 ```yaml
 # .github/workflows/hardware.yml
 - uses: actions/checkout@... # with: submodules: true
+- name: Gate the design
+  run: ./bin/eda.sh gate hardware/ --policy hardware/gate.toml --text
 - name: Review the board
+  if: always()
   run: |
     ./bin/eda.sh sch review hardware/ --text
     ./bin/eda.sh pcb review hardware/ --text
@@ -418,6 +516,12 @@ for you.
 Contributor and agent instructions for this repository itself live in
 [`AGENTS.md`](AGENTS.md) (`CLAUDE.md` is a pointer to it, not a second copy).
 
+`eda gate` is the other half of that story. An assistant that generates a
+design will read a page of warnings and move on unless something says which of
+them were allowed to survive; the gate is that statement, and its exit code is
+the loop condition. The [design gate guide](docs/guides/kicad-design-gate.md)
+describes the generate → gate → fix loop.
+
 `eda report` exists largely for this use case: an assistant working headlessly
 can produce one page — renders, findings, BOM, simulation plots — that a human
 can check at a glance instead of taking a summary on trust.
@@ -430,6 +534,7 @@ bin/install-skills.sh CLI shim + renders docs/guides/ into an assistant's layout
 docker/Dockerfile     kicad/kicad:<version> + ngspice + an isolated virtualenv
 src/eda_toolkit/
 ├── cli.py                 the `eda` command
+├── gate.py                policies, waivers, and the one pass/fail verdict
 ├── report.py              the one-command report: collect, then render md/html
 ├── datasheet/             PDF text, table, image and page extraction
 ├── spice/                 ngspice runner, raw-file parser, measurements, plots

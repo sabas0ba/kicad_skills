@@ -18,6 +18,20 @@ BACKGROUND_CHOICES = ("white", "black", "transparent")
 # ---------------------------------------------------------------- rendering
 
 
+def _thresholds(items: list[str] | None) -> dict[str, float]:
+    """Parse repeated ``--threshold key=value`` arguments."""
+    out: dict[str, float] = {}
+    for item in items or []:
+        key, _, value = item.partition("=")
+        if not value:
+            raise EdaError(f"--threshold expects key=value, got {item!r}")
+        try:
+            out[key.strip()] = float(value)
+        except ValueError as exc:
+            raise EdaError(f"--threshold expects a number, got {value!r}") from exc
+    return out
+
+
 def _render_findings(payload: dict[str, Any]) -> None:
     target = payload.get("schematic") or payload.get("board") or "?"
     print(f"# review of {target}")
@@ -34,6 +48,89 @@ def _render_findings(payload: dict[str, Any]) -> None:
         print(
             f"  {finding['severity'].upper():7s} {finding['rule']}{location}: {finding['message']}"
         )
+
+
+def _render_gate(payload: dict[str, Any]) -> None:
+    verdict = "PASS" if payload["pass"] else "FAIL"
+    policy = payload["policy"]
+    print(f"# gate {verdict}: {payload['target']} against policy '{policy['name']}'")
+    print(f"  {policy['description']}")
+    for stage in ("schematic", "board"):
+        section = payload[stage]
+        if "skipped" in section:
+            print(f"\n## {stage}: skipped - {section['skipped']}")
+        else:
+            counts = ", ".join(f"{k}={v}" for k, v in section["summary"].items())
+            print(f"\n## {stage}: {section.get(stage, '')} ({counts} as reported)")
+    print("\n## after the policy: " + ", ".join(f"{k}={v}" for k, v in payload["counts"].items()))
+    for severity, state in payload["exceeded"].items():
+        print(f"  over the limit: {state['count']} {severity}(s), {state['limit']} allowed")
+    if payload["blocking"]:
+        print("\n## blocking")
+        for finding in payload["blocking"]:
+            location = f" [{finding['location']}]" if finding.get("location") else ""
+            promoted = (
+                f" (reported as {finding['reported_severity']})"
+                if finding["reported_severity"] != finding["severity"]
+                else ""
+            )
+            print(
+                f"  {finding['severity'].upper():7s} {finding['origin']}/{finding['rule']}"
+                f"{location}: {finding['message']}{promoted}"
+            )
+    if payload["waived"]:
+        print("\n## waived")
+        for finding in payload["waived"]:
+            print(f"  {finding['rule']}: {finding['waiver']['reason']}")
+
+
+def _render_rules(catalogue: dict[str, Any]) -> None:
+    print("# every rule the reviews can produce\n")
+    for origin in ("schematic", "board", "schematic + board"):
+        entries = {k: v for k, v in catalogue.items() if v["origin"] == origin}
+        if not entries:
+            continue
+        print(f"## {origin}")
+        for rule_id, entry in sorted(entries.items()):
+            blocks = ", ".join(entry["blocks_under"]) or "nothing"
+            tune = (
+                f" [--threshold {entry['threshold']}={entry.get('threshold_default')}]"
+                if entry.get("threshold")
+                else ""
+            )
+            context = " (context only: never promoted)" if entry["context_only"] else ""
+            print(f"  {rule_id}  -  {entry['severity']}{tune}{context}")
+            print(f"      checks: {entry['checks']}")
+            print(f"      blocks under: {blocks}")
+        print()
+
+
+def cmd_gate(args: argparse.Namespace) -> int:
+    from . import gate as gate_mod
+
+    if args.list_policies:
+        emit(
+            {name: p.description for name, p in sorted(gate_mod.BUILTIN_POLICIES.items())},
+            as_json=True,
+        )
+        return 0
+    if args.list_rules:
+        emit(gate_mod.catalogue(), as_json=args.json, text_renderer=_render_rules)
+        return 0
+    if not args.target:
+        raise EdaError("gate needs a target (or --list-policies)")
+    policy = gate_mod.load_policy(args.policy)
+    payload = gate_mod.run(
+        args.target,
+        policy=policy,
+        use_cli=not args.no_cli,
+        collapse=args.collapse,
+        thresholds=_thresholds(args.threshold),
+    )
+    emit(payload, as_json=args.json, text_renderer=_render_gate)
+    if args.output:
+        write_json(args.output, payload)
+    return 0 if payload["pass"] else 2
 
 
 # ---------------------------------------------------------------- doctor
@@ -216,7 +313,12 @@ def cmd_sch_info(args: argparse.Namespace) -> int:
 def cmd_sch_review(args: argparse.Namespace) -> int:
     from .kicad import sch_review
 
-    payload = sch_review.review(args.target, use_cli=not args.no_cli, collapse=args.collapse)
+    payload = sch_review.review(
+        args.target,
+        use_cli=not args.no_cli,
+        thresholds=_thresholds(args.threshold),
+        collapse=args.collapse,
+    )
     emit(payload, as_json=args.json, text_renderer=_render_findings)
     if args.output:
         write_json(args.output, payload)
@@ -271,15 +373,17 @@ def cmd_pcb_info(args: argparse.Namespace) -> int:
 def cmd_pcb_review(args: argparse.Namespace) -> int:
     from .kicad import pcb_review
 
-    thresholds = {}
-    for item in args.threshold or []:
-        key, _, value = item.partition("=")
-        if not value:
-            raise EdaError(f"--threshold expects key=value, got {item!r}")
-        thresholds[key.strip()] = float(value)
     payload = pcb_review.review(
-        args.target, use_cli=not args.no_cli, thresholds=thresholds, collapse=args.collapse
+        args.target,
+        use_cli=not args.no_cli,
+        thresholds=_thresholds(args.threshold),
+        collapse=args.collapse,
     )
+    if args.map:
+        from .kicad import pcb, review_map
+
+        board = pcb.parse(pcb.find_board(args.target))
+        payload["map"] = review_map.render_review_map(board, payload.get("findings", []), args.map)
     emit(payload, as_json=args.json, text_renderer=_render_findings)
     if args.output:
         write_json(args.output, payload)
@@ -473,6 +577,48 @@ def build_parser() -> argparse.ArgumentParser:
         "doctor", help="report the tool versions available in this environment"
     ).set_defaults(func=cmd_doctor)
 
+    # ------------------------------------------------------------ gate
+    p = sub.add_parser(
+        "gate",
+        help="one pass/fail verdict for the whole design, against a stated policy",
+        description=(
+            "Reviews the schematic and the board, applies a policy that says which "
+            "findings block and which are waived (with a reason), and exits 2 when "
+            "the design does not pass."
+        ),
+    )
+    p.add_argument("target", nargs="?", help=".kicad_pro or project directory")
+    p.add_argument(
+        "--policy",
+        help="a built-in policy name or a path to a JSON/TOML policy file "
+        "(default: 'default'; --list-policies shows the built-in ones)",
+    )
+    p.add_argument(
+        "--list-policies", action="store_true", help="print the built-in policies and exit"
+    )
+    p.add_argument(
+        "--list-rules",
+        action="store_true",
+        help="print every rule, what it checks, what tunes it and which policies "
+        "block on it, then exit",
+    )
+    p.add_argument("--no-cli", action="store_true")
+    p.add_argument(
+        "--collapse",
+        type=int,
+        default=COLLAPSE_LIMIT,
+        metavar="N",
+        help="fold a rule that fires more than N times into one finding "
+        "(0 disables, default: %(default)s)",
+    )
+    p.add_argument(
+        "--threshold", action="append", metavar="KEY=VALUE", help="override a review threshold"
+    )
+    p.add_argument("-o", "--output", help="also write the JSON verdict here")
+    p.add_argument("--json", action="store_true", default=True)
+    p.add_argument("--text", dest="json", action="store_false")
+    p.set_defaults(func=cmd_gate)
+
     # ------------------------------------------------------------ diff
     p = sub.add_parser("diff", help="what changed between two revisions of a design")
     p.add_argument("old", help="the earlier project (directory, .kicad_pro, or file)")
@@ -638,6 +784,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="fold a rule that fires more than N times into one finding "
         "(0 disables, default: %(default)s)",
     )
+    p.add_argument(
+        "--threshold",
+        action="append",
+        metavar="KEY=VALUE",
+        help="override a review threshold, e.g. grid_mm=2.54",
+    )
     p.add_argument("-o", "--output", help="also write the JSON report here")
     p.add_argument("--json", action="store_true", default=True)
     p.add_argument("--text", dest="json", action="store_false")
@@ -703,6 +855,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         metavar="KEY=VALUE",
         help="override a review threshold, e.g. min_track_mm=0.2",
+    )
+    p.add_argument(
+        "--map",
+        metavar="PNG",
+        help="draw the board with every located finding marked on it",
     )
     p.add_argument("-o", "--output")
     p.add_argument("--json", action="store_true", default=True)

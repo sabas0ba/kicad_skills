@@ -124,7 +124,7 @@ def test_every_subcommand_is_reachable():
         return action.choices
 
     top = subcommands(cli.build_parser())
-    assert {"doctor", "report", "datasheet", "sim", "sch", "pcb"} <= set(top)
+    assert {"doctor", "report", "gate", "diff", "datasheet", "sim", "sch", "pcb"} <= set(top)
     assert set(subcommands(top["pcb"])) >= {"render", "glb", "fab", "review"}
     assert set(subcommands(top["sch"])) >= {"render", "pdf", "review", "bom"}
 
@@ -156,3 +156,76 @@ def test_report_defaults_are_the_useful_ones():
     args = cli.build_parser().parse_args(["report", "board.kicad_pcb", "-o", "out"])
     assert args.func is cli.cmd_report
     assert (args.no_3d, args.no_per_layer, args.no_bom, args.glb) == (False, False, False, False)
+
+
+def test_gate_passes_the_example_project(capsys, example_project):
+    code, out, _ = run(["gate", str(example_project), "--no-cli"], capsys)
+    payload = json.loads(out)
+    assert code == 0
+    assert payload["pass"] is True
+    assert payload["policy"]["name"] == "default"
+
+
+def test_gate_exits_two_when_the_policy_is_not_met(capsys, example_project, tmp_path):
+    policy = tmp_path / "policy.json"
+    policy.write_text(json.dumps({"name": "zero", "limits": {"info": 0}}), encoding="utf-8")
+    code, out, _ = run(
+        ["gate", str(example_project), "--no-cli", "--policy", str(policy), "--text"], capsys
+    )
+    assert code == 2
+    assert "gate FAIL" in out
+    assert "## blocking" in out
+
+
+def test_gate_lists_its_builtin_policies(capsys):
+    code, out, _ = run(["gate", "--list-policies"], capsys)
+    assert code == 0
+    assert set(json.loads(out)) == {"default", "ai-generated", "fabrication"}
+
+
+def test_gate_needs_a_target(capsys):
+    code, _out, err = run(["gate"], capsys)
+    assert code == 1
+    assert "needs a target" in err
+
+
+def test_gate_writes_its_verdict(capsys, example_project, tmp_path):
+    dest = tmp_path / "gate.json"
+    code, _out, _ = run(
+        ["gate", str(example_project), "--no-cli", "--policy", "ai-generated", "-o", str(dest)],
+        capsys,
+    )
+    assert code == 0
+    assert json.loads(dest.read_text())["policy"]["name"] == "ai-generated"
+
+
+def test_sch_review_threshold_override(capsys, example_project):
+    code, out, _ = run(
+        ["sch", "review", str(example_project), "--no-cli", "--threshold", "grid_mm=2.54"], capsys
+    )
+    assert code == 0
+    assert json.loads(out)["thresholds"]["grid_mm"] == 2.54
+
+
+def test_a_threshold_that_is_not_a_number_is_a_usage_error(capsys):
+    for spec in ("min_track_mm=wide", "min_track_mm"):
+        code, _out, err = run(["pcb", "review", "x", "--threshold", spec], capsys)
+        assert code == 1
+        assert "--threshold" in err
+
+
+def test_gate_lists_every_rule_with_what_it_checks(capsys):
+    code, out, _ = run(["gate", "--list-rules"], capsys)
+    assert code == 0
+    catalogue = json.loads(out)
+    entry = catalogue["readability.missing_junction"]
+    assert entry["origin"] == "schematic"
+    assert "junction" in entry["checks"]
+    assert entry["blocks_under"] == ["ai-generated"]
+
+
+def test_gate_list_rules_has_a_readable_form(capsys):
+    code, out, _ = run(["gate", "--list-rules", "--text"], capsys)
+    assert code == 0
+    assert "## schematic" in out and "## board" in out
+    assert "--threshold grid_mm=1.27" in out

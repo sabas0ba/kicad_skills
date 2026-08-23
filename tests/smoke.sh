@@ -40,6 +40,17 @@ step "board review (DRC + heuristics)"
 eda pcb review "$PROJECT" -o "$OUT/pcb-review.json" > /dev/null
 have "$OUT/pcb-review.json" "d['summary']['error'] == 0 and d['drc_available']"
 
+step "design gate (one verdict against a policy)"
+eda gate "$PROJECT" --policy ai-generated -o "$OUT/gate.json" > /dev/null
+have "$OUT/gate.json" "d['pass'] and d['counts']['error'] == 0"
+# ... and a policy the project cannot meet has to fail, with the reason named.
+printf '{"name": "zero-tolerance", "limits": {"info": 0}}\n' > "$OUT/strict.json"
+if eda gate "$PROJECT" --policy "$OUT/strict.json" > "$OUT/gate-fail.json"; then
+    echo "the gate passed a policy that allows no findings at all" >&2
+    exit 1
+fi
+have "$OUT/gate-fail.json" "not d['pass'] and d['blocking'] and d['exceeded']['info']['limit'] == 0"
+
 step "board render (layers + 3D + contact sheet)"
 eda pcb render "$PROJECT" -o "$OUT/art" --dpi 120 --views front copper-front > "$OUT/art.json"
 have "$OUT/art.json" "len(d['images']) >= 5 and not d['errors'] and 'contact_sheet' in d"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -100,11 +101,43 @@ GROUND_NET_RE = r"^(GND|GNDA|AGND|DGND|PGND|VSS|VSSA|EARTH|0)$"
 
 
 def classify_net(name: str) -> str:
-    import re
-
     upper = name.upper().lstrip("/")
     if re.match(GROUND_NET_RE, upper):
         return "ground"
     if re.match(POWER_NET_RE, upper):
         return "power"
     return "signal"
+
+
+# Both spellings KiCad users write: "3V3" (the decimal point becomes the V) and
+# "3.3V". The sign matters - a -12V rail derates a capacitor exactly as a +12V
+# one does, but knowing it is negative keeps the message truthful.
+_RAIL_V_DECIMAL = re.compile(r"([+-]?)(\d+)V(\d+)$")
+_RAIL_V_SUFFIX = re.compile(r"([+-]?)(\d+(?:\.\d+)?)V$")
+
+# Rails whose name states no number but whose voltage is fixed by a standard.
+NAMED_RAIL_VOLTAGES = {"VBUS": 5.0, "USB_VBUS": 5.0}
+
+
+def rail_voltage(name: str) -> float | None:
+    """Nominal voltage of a supply net, inferred from its name.
+
+    ``+3V3`` -> 3.3, ``-12V`` -> -12.0, ``VDD_1V8`` -> 1.8, ``VBUS`` -> 5.0.
+    Returns ``None`` for a rail whose name does not state a voltage (``VCC``,
+    ``VBAT``), because guessing one would derate parts against a number nobody
+    wrote down.
+    """
+    token = name.upper().lstrip("/").split("/")[-1].strip().rstrip("_")
+    if token in NAMED_RAIL_VOLTAGES:
+        return NAMED_RAIL_VOLTAGES[token]
+    for pattern, join in ((_RAIL_V_DECIMAL, True), (_RAIL_V_SUFFIX, False)):
+        m = pattern.search(token)
+        if not m:
+            continue
+        digits = f"{m.group(2)}.{m.group(3)}" if join else m.group(2)
+        try:
+            value = float(digits)
+        except ValueError:  # pragma: no cover - the regex already constrains this
+            return None
+        return -value if m.group(1) == "-" else value
+    return None

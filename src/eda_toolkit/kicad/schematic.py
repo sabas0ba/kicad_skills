@@ -48,7 +48,20 @@ class Symbol:
     on_board: bool = True
     exclude_from_sim: bool = False
     properties: dict[str, str] = field(default_factory=dict)
+    # Where each visible property prints, as (x, y, justify). A field is text
+    # on the page like any other, and a reader loses it just as surely under a
+    # wire as under a symbol - so the geometry has to be readable, not only the
+    # value.
+    property_at: dict[str, tuple[float, float, str]] = field(default_factory=dict)
+    # The angle each visible property is written at, as the file states it.
+    # KiCad adds the symbol's own rotation to it, so a field written at 90 on
+    # a symbol placed at 90 prints horizontally - backwards, which KiCad
+    # renders by flipping the justification rather than the glyphs.
+    property_angle: dict[str, float] = field(default_factory=dict)
     pins: list[Pin] = field(default_factory=list)
+    # The corners of the shape the library draws, already in sheet
+    # coordinates. Empty for a symbol whose library entry is graphics-free.
+    outline: list[tuple[float, float]] = field(default_factory=list)
     sheet: str = ""
 
     @property
@@ -87,6 +100,46 @@ class Symbol:
     def unannotated(self) -> bool:
         return self.reference.endswith("?") or not self.reference
 
+    def bbox(self, margin: float = 0.0) -> tuple[float, float, float, float] | None:
+        """Sheet-space extent of the symbol, taken from its pin endpoints.
+
+        The library body outline is not carried in the instance, so this is the
+        smallest box the symbol certainly occupies rather than the box KiCad
+        draws. It understates a part with few pins, which is the safe direction:
+        a rule built on it reports overlap only where copper-level pins really
+        do collide. ``None`` when there are fewer than two pins to span.
+        """
+        if len(self.pins) < 2:
+            return None
+        xs = [p.x for p in self.pins]
+        ys = [p.y for p in self.pins]
+        return (min(xs) - margin, min(ys) - margin, max(xs) + margin, max(ys) + margin)
+
+    def body_bbox(self, margin: float = 0.0) -> tuple[float, float, float, float] | None:
+        """Sheet-space extent of the shape KiCad draws, pins included.
+
+        Unlike :meth:`bbox` this is the box on the paper, not the box the pins
+        certainly occupy, so it is what a readability rule has to measure
+        against: the reader loses a value printed over the diode's arrows just
+        as surely as one printed over its pins. ``None`` when the library
+        entry carried neither graphics nor two pins to span.
+        """
+        xs = [p.x for p in self.pins] + [x for x, _ in self.outline]
+        ys = [p.y for p in self.pins] + [y for _, y in self.outline]
+        if not xs or (not self.outline and len(self.pins) < 2):
+            return None
+        box = (min(xs), min(ys), max(xs), max(ys))
+        if not self.outline:
+            # No graphics to go on - a library entry that carries none, or a
+            # symbol built in memory - so the pins are all there is, and they
+            # understate: an upright two-pin part measures zero wide and a
+            # name printed down its middle would read as clear of it. Nothing
+            # KiCad draws is narrower than about a pin pitch.
+            pad_x = max(0.0, 1.27 - (box[2] - box[0]) / 2)
+            pad_y = max(0.0, 1.27 - (box[3] - box[1]) / 2)
+            box = (box[0] - pad_x, box[1] - pad_y, box[2] + pad_x, box[3] + pad_y)
+        return (box[0] - margin, box[1] - margin, box[2] + margin, box[3] + margin)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "reference": self.reference,
@@ -114,6 +167,12 @@ class Label:
     kind: str  # local | global | hierarchical | netclass
     x: float
     y: float
+    # A label reads away from the pin it names, which means its box hangs off
+    # the anchor in a direction only these two say. Without them a rule can
+    # only guess, and guessing about text placement is how a label printed
+    # across a symbol reads as clean.
+    angle: float = 0.0
+    justify: str = ""
     sheet: str = ""
 
 
@@ -125,11 +184,42 @@ class Wire:
 
 
 @dataclass
+class Text:
+    """A free text note, with the anchor and justification it is drawn from."""
+
+    text: str
+    x: float
+    y: float
+    justify: str = ""  # "left top", "right", "" = centred both ways
+
+
+@dataclass
 class Sheet:
     name: str
     filename: str
     uuid: str
     parent: str = ""
+    pins: list[tuple[float, float]] = field(default_factory=list)
+
+
+# KiCad's page presets, landscape (width, height) in mm. A `(paper "A4"
+# portrait)` swaps them; `(paper "User" w h)` states its own.
+PAPER_SIZES_MM: dict[str, tuple[float, float]] = {
+    "A0": (1189.0, 841.0),
+    "A1": (841.0, 594.0),
+    "A2": (594.0, 420.0),
+    "A3": (420.0, 297.0),
+    "A4": (297.0, 210.0),
+    "A5": (210.0, 148.0),
+    "A": (279.4, 215.9),
+    "B": (431.8, 279.4),
+    "C": (558.8, 431.8),
+    "D": (863.6, 558.8),
+    "E": (1117.6, 863.6),
+    "USLetter": (279.4, 215.9),
+    "USLegal": (355.6, 215.9),
+    "USLedger": (431.8, 279.4),
+}
 
 
 @dataclass
@@ -137,13 +227,17 @@ class SchematicDoc:
     path: Path
     version: int
     generator: str
+    paper: str = ""
+    paper_size: tuple[float, float] | None = None
     symbols: list[Symbol] = field(default_factory=list)
     labels: list[Label] = field(default_factory=list)
     wires: list[Wire] = field(default_factory=list)
     junctions: list[tuple[float, float]] = field(default_factory=list)
     no_connects: list[tuple[float, float]] = field(default_factory=list)
+    bus_entries: list[tuple[tuple[float, float], tuple[float, float]]] = field(default_factory=list)
     sheets: list[Sheet] = field(default_factory=list)
     texts: list[str] = field(default_factory=list)
+    text_items: list[Text] = field(default_factory=list)
     title_block: dict[str, str] = field(default_factory=dict)
 
     def symbol_by_ref(self, ref: str) -> Symbol | None:
@@ -212,6 +306,50 @@ def _lib_symbol_pins(lib_node: SNode) -> dict[int, list[Pin]]:
     return per_unit
 
 
+def _lib_symbol_body(lib_node: SNode) -> dict[int, list[tuple[float, float]]]:
+    """Collect the drawn outline per unit from a ``lib_symbols`` entry.
+
+    A schematic carries the full library definition of every symbol it uses,
+    graphics included, so the shape KiCad actually draws is knowable from the
+    file alone. Pins are a poor stand-in for it: an LED's two pins span
+    2.54 mm and its arrows reach 4.6 mm the other way, so a value printed
+    "clear of the pins" prints straight through the part.
+
+    Corners are enough - every primitive here is convex or is being reduced to
+    its extent anyway, and nothing downstream asks for more than a box.
+    """
+    per_unit: dict[int, list[tuple[float, float]]] = {}
+    for sub in lib_node.children("symbol"):
+        sub_name = str(sub.atom(0, ""))
+        m = re.search(r"_(\d+)_(\d+)$", sub_name)
+        unit = int(m.group(1)) if m else 0
+        corners: list[tuple[float, float]] = []
+        for poly in sub.children("polyline"):
+            corners.extend(_points(poly))
+        for rect in sub.children("rectangle"):
+            start, end = rect.child("start"), rect.child("end")
+            if start is None or end is None:
+                continue
+            sx, sy = (float(a) for a in start.atoms()[:2])
+            ex, ey = (float(a) for a in end.atoms()[:2])
+            corners.extend([(sx, sy), (ex, sy), (ex, ey), (sx, ey)])
+        for circle in sub.children("circle"):
+            centre, radius = circle.child("center"), circle.value("radius", default=0.0)
+            if centre is None:
+                continue
+            cx, cy = (float(a) for a in centre.atoms()[:2])
+            r = float(radius or 0.0)
+            corners.extend([(cx - r, cy - r), (cx + r, cy + r)])
+        for arc in sub.children("arc"):
+            for tag in ("start", "mid", "end"):
+                node = arc.child(tag)
+                if node is not None:
+                    corners.append(tuple(float(a) for a in node.atoms()[:2]))  # type: ignore[arg-type]
+        if corners:
+            per_unit.setdefault(unit, []).extend(corners)
+    return per_unit
+
+
 def _points(node: SNode) -> list[tuple[float, float]]:
     pts = node.child("pts")
     if pts is None:
@@ -239,6 +377,19 @@ def parse(path: str | Path) -> SchematicDoc:
         generator=str(root.value("generator", default="")),
     )
 
+    paper = root.child("paper")
+    if paper:
+        atoms = paper.atoms()
+        doc.paper = str(atoms[0]) if atoms else ""
+        numeric = [a for a in atoms[1:] if isinstance(a, (int, float))]
+        if len(numeric) >= 2:
+            doc.paper_size = (float(numeric[0]), float(numeric[1]))
+        else:
+            preset = PAPER_SIZES_MM.get(doc.paper)
+            if preset:
+                portrait = any(str(a).lower() == "portrait" for a in atoms[1:])
+                doc.paper_size = (preset[1], preset[0]) if portrait else preset
+
     tb = root.child("title_block")
     if tb:
         for key in ("title", "date", "rev", "company"):
@@ -251,10 +402,13 @@ def parse(path: str | Path) -> SchematicDoc:
                 doc.title_block[f"comment{atoms[0]}"] = str(atoms[1])
 
     lib_pins: dict[str, dict[int, list[Pin]]] = {}
+    lib_bodies: dict[str, dict[int, list[tuple[float, float]]]] = {}
     lib_symbols = root.child("lib_symbols")
     if lib_symbols:
         for lib in lib_symbols.children("symbol"):
-            lib_pins[str(lib.atom(0, ""))] = _lib_symbol_pins(lib)
+            name = str(lib.atom(0, ""))
+            lib_pins[name] = _lib_symbol_pins(lib)
+            lib_bodies[name] = _lib_symbol_body(lib)
 
     for node in root.children("symbol"):
         lib_id = str(node.value("lib_id", default=""))
@@ -282,12 +436,46 @@ def parse(path: str | Path) -> SchematicDoc:
             properties=props,
             sheet=p.name,
         )
+        for prop in node.children("property"):
+            atoms = prop.atoms()
+            if len(atoms) < 2:
+                continue
+            effects = prop.child("effects")
+            if effects is not None:
+                # KiCad 7 writes a bare `hide` atom, 8 and later `(hide yes)`.
+                # The bare form is an atom of `effects`, not a child of it, so
+                # `flag` alone misses exactly the files this repository writes.
+                hidden = effects.flag("hide") or any(
+                    str(atom) == "hide" for atom in effects.atoms()
+                )
+                if hidden:
+                    continue
+            prop_at = prop.child("at")
+            values = [
+                a for a in (prop_at.atoms() if prop_at else []) if isinstance(a, (int, float))
+            ]
+            if len(values) < 2:
+                continue
+            justify_node = effects.child("justify") if effects else None
+            justify = " ".join(str(a) for a in justify_node.atoms()) if justify_node else ""
+            sym.property_at[str(atoms[0])] = (float(values[0]), float(values[1]), justify)
+            if len(values) > 2:
+                sym.property_angle[str(atoms[0])] = float(values[2])
         units = lib_pins.get(lib_id, {})
         for source_unit in (0, unit):
             for pin in units.get(source_unit, []):
                 ax, ay = transform_pin(pin.x, pin.y, sym.x, sym.y, sym.angle, sym.mirror)
                 sym.pins.append(Pin(pin.number, pin.name, pin.electrical_type, ax, ay, unit))
+        shapes = lib_bodies.get(lib_id, {})
+        for source_unit in (0, unit):
+            for cx, cy in shapes.get(source_unit, []):
+                sym.outline.append(transform_pin(cx, cy, sym.x, sym.y, sym.angle, sym.mirror))
         doc.symbols.append(sym)
+
+    def _justify_of(node) -> str:
+        effects = node.child("effects")
+        found = effects.child("justify") if effects else None
+        return " ".join(str(a) for a in found.atoms()) if found else ""
 
     kinds = {
         "label": "local",
@@ -305,6 +493,8 @@ def parse(path: str | Path) -> SchematicDoc:
                     kind=kind,
                     x=float(coords[0]),
                     y=float(coords[1]),
+                    angle=float(coords[2]) if len(coords) > 2 else 0.0,
+                    justify=_justify_of(node),
                     sheet=p.name,
                 )
             )
@@ -327,14 +517,28 @@ def parse(path: str | Path) -> SchematicDoc:
             atoms = at.atoms()
             doc.no_connects.append((float(atoms[0]), float(atoms[1])))
 
+    for node in root.children("bus_entry"):
+        at = node.child("at")
+        size = node.child("size")
+        if at and size:
+            ax, ay = float(at.atom(0, 0)), float(at.atom(1, 0))
+            dx, dy = float(size.atom(0, 0)), float(size.atom(1, 0))
+            doc.bus_entries.append(((ax, ay), (ax + dx, ay + dy)))
+
     for node in root.children("sheet"):
         props = _prop_map(node)
+        pins: list[tuple[float, float]] = []
+        for pin_node in node.children("pin"):
+            at = pin_node.child("at")
+            if at:
+                pins.append((float(at.atom(0, 0)), float(at.atom(1, 0))))
         doc.sheets.append(
             Sheet(
                 name=props.get("Sheetname", props.get("Sheet name", "")),
                 filename=props.get("Sheetfile", props.get("Sheet file", "")),
                 uuid=str(node.value("uuid", default="")),
                 parent=p.name,
+                pins=pins,
             )
         )
 
@@ -342,6 +546,16 @@ def parse(path: str | Path) -> SchematicDoc:
         value = node.atom(0, "")
         if value:
             doc.texts.append(str(value))
+            at = node.child("at")
+            atoms = at.atoms() if at else []
+            if len(atoms) >= 2:
+                justify = ""
+                effects = node.child("effects")
+                if effects:
+                    j = effects.child("justify")
+                    if j:
+                        justify = " ".join(str(a) for a in j.atoms())
+                doc.text_items.append(Text(str(value), float(atoms[0]), float(atoms[1]), justify))
 
     return doc
 

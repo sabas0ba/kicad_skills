@@ -1,0 +1,41 @@
+# The policy this example is held to, and what it is allowed to fail - each
+# with the engineering argument, so a reviewer can disagree with something.
+name = "opamp-filter"
+extends = "ai-generated"
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+location = "U1.2"
+reason = """A SOT-23-5 puts its supply pin in the middle of a 0.95 mm row; the \
+escape has to clear the package before C5 can sit against it, and 7.3 mm is \
+what that geometry leaves on two layers."""
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+location = "U2.2"
+reason = """Same package, same escape: C7 is as close to U2's supply as the \
+row allows."""
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+location = "U2.1"
+reason = """VREF is U2's output - the buffered half-rail - not a supply. A \
+capacitor placed against it would sit inside the buffer's control loop. The \
+schematic-side rule reads pin types and no longer asks; the board file \
+carries no pin types, so the board-side rule cannot know."""
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+location = "U2.4"
+reason = """U2.4 is the inverting input tied back to the output - the same \
+VREF node, judged above."""
+
+[[waivers]]
+rule = "track.thin_power"
+reason = """VREF is U2's buffered half-rail, not a supply: its load is the \
+filter's bias network, microamps against the ampere that 0.3 mm of 1 oz \
+copper carries at a 10 C rise (IPC-2221). It runs at 0.3 mm end to end on \
+purpose - the SOT-23-5's escape is 0.3 mm whatever the rest of the run \
+says, and a run that steps to 0.5 at the first corner past the escape is a \
+width change nobody chose, which the reviewer circled. The rule reads the \
+net's name and cannot read its current; this design states it here."""

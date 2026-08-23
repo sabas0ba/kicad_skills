@@ -24,3 +24,11 @@ unity gain buffer, with a local decoupling capacitor (C2) and a 3-pin connector.
 The board is DRC clean apart from those library mismatches, so a new error in
 `eda pcb review tests/fixtures/example_project` means the toolkit changed
 behaviour, not that the board is broken.
+
+The schematic is also **fully specified**, and deliberately so: R1 carries a
+tolerance and a power rating, both capacitors carry a voltage rating and a
+tolerance, J1 and U1 carry manufacturer part numbers, and a text note records
+why the values are what they are. That is what makes
+`eda gate tests/fixtures/example_project --policy ai-generated` pass, and it is
+the reference for what the `spec.*` rules ask of a design. Stripping any of it
+turns the fixture into an example of the thing those rules exist to catch.

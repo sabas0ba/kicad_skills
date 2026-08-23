@@ -1,12 +1,12 @@
 ---
 name: kicad-schematic-review
-description: Read a KiCad schematic (.kicad_sch) to extract components, nets and hierarchy, and review it - ERC plus design checks for decoupling, floating inputs, single-pin nets, annotation, missing footprints, I2C pull-ups and LED series resistors. Use when asked to review, check, understand or summarise a schematic or circuit design in a KiCad project.
+description: Read a KiCad schematic (.kicad_sch) to extract components, nets and hierarchy, and review it - ERC plus design checks for decoupling, floating inputs, single-pin nets, annotation, missing footprints, I2C pull-ups, LED series resistors, drawing readability (off-grid geometry, missing junctions, dangling wires, overlapping symbols) and part specification (voltage/tolerance/power ratings, capacitor derating, part numbers). Use when asked to review, check, understand or summarise a schematic or circuit design in a KiCad project.
 ---
 
 # KiCad schematic review
 
 > One of the [kicad_skills](https://github.com/sabas0ba/kicad_skills) usage guides for the
-> `eda` CLI — [all six](README.md). Plain Markdown: read it directly, or hand it to
+> `eda` CLI — [all of them](README.md). Plain Markdown: read it directly, or hand it to
 > whatever assistant you use.
 
 Reads `.kicad_sch` files and reviews them. Runs in the container
@@ -17,6 +17,7 @@ Reads `.kicad_sch` files and reviews them. Runs in the container
 ```bash
 ./bin/eda.sh sch info    hardware/               # structure: components, nets, hierarchy
 ./bin/eda.sh sch review  hardware/ --text        # ERC + design heuristics
+./bin/eda.sh gate        hardware/ --policy ai-generated --text  # one pass/fail verdict
 ./bin/eda.sh sch render  hardware/ -o /tmp/sch   # PDF + a PNG per sheet + contact sheet
 ./bin/eda.sh sch pdf     hardware/ -o /tmp/sch.pdf
 ./bin/eda.sh report      hardware/ -o /tmp/report  # review + images + BOM on one page
@@ -77,13 +78,56 @@ references, library symbol mismatches, off-grid endpoints, bus errors.
 | --- | --- |
 | `net.single_pin` | net reaches exactly one pin — usually a wiring mistake |
 | `net.no_driver` | a net with only input pins, nothing drives it |
-| `analog.missing_decoupling` | an IC supply net with no capacitor to ground |
+| `analog.missing_decoupling` | an IC supply net with no capacitor to ground — judged from pin electrical types when the netlist has them, and never asked of a net an output pin drives |
+| `analog.no_dc_path` | a net whose every pin is a capacitor or connector: nothing sets its DC level |
 | `analog.i2c_pullup` | a net named SDA/SCL with no resistor on it |
 | `analog.led_no_series_resistor` | LED with no current limiting on either terminal |
 | `power.no_ground` / `power.no_supply` / `power.many_supplies` | rail sanity |
 | `schematic.duplicate_reference` / `schematic.unannotated` | annotation problems |
 | `schematic.missing_footprint` / `missing_value` / `missing_datasheet` | field completeness |
 | `schematic.dnp` | DNP parts, listed so they are not forgotten in a BOM |
+
+**Drawing readability** — none of these change the netlist, which is why ERC has
+nothing to say about them, and why a generated sheet fails them so reliably:
+
+| Rule | Meaning |
+| --- | --- |
+| `readability.off_grid_pin` / `_wire` / `_junction` / `_label` | geometry off the 1.27 mm grid; KiCad connects on exact coordinates, so this draws as a connection that is not one |
+| `readability.missing_junction` | a wire ending on another wire with no junction dot — KiCad treats that as crossing |
+| `readability.power_symbol_orientation` | a rotated power symbol — rails point up, grounds hang down |
+| `readability.wire_through_junction` | a junction in a wire's middle instead of at a break — KiCad 9 connects only one side of the wire |
+| `readability.overlapping_wires` | two wires drawn along the same stretch of line — plots as one, edits as two |
+| `readability.dangling_wire` | a wire end reaching no pin, label, junction or other wire |
+| `readability.facing_away` | a single-row symbol whose connected pins point away from their signals — the symbol wants mirroring |
+| `readability.margin_intrusion` | pins or notes on the page frame strip or the title block. A note is measured by the box it covers, not by its anchor — the sentence that ran into the Pico carrier's title block started 12 mm clear of it and was 67 mm long |
+| `readability.text_over_symbol` | a design note whose estimated extent prints over a symbol — over the shape the library draws, which is read out of the schematic's own `lib_symbols`, not over the box the part's pins span |
+| `readability.text_over_text` | two printed strings whose estimated extents overlap — a designator, a value, a rating, a design note or a net label drawn through another one, or through a symbol body. The body is the shape KiCad draws: an LED's two pins span 2.54 mm and its emission arrows reach 4.6 mm the other way, so a value cleared of the pins still prints through the part. A field's box also follows the rotation KiCad gives it — a symbol's own angle is added to the field's, and at half a turn KiCad keeps the glyphs upright by swapping the justification, so a value written `justify left` on a part standing at 90° prints to the *left* of its anchor. Graded **info**: it fires on 15 of KiCad's 18 demo sheets, so on human work it is measuring the character-count estimate as much as the drawing. `ai-generated` promotes it to an error |
+| `readability.text_over_wire` | a symbol's own designator, value or rating printed across a net — a value with a wire drawn through it is a value nobody can read off the plot. **Info**, for the same reason and with the same promotion |
+| `readability.overlapping_symbols` | symbols drawn on top of each other |
+| `readability.outside_page` | items past the page border, missing from the plot and the PDF |
+| `readability.diagonal_wire` | wires that do not run orthogonally |
+| `readability.unnamed_nets` | most multi-pin nets still carry generated names |
+| `readability.sheet_density` | one sheet holding more than a reader can follow |
+| `readability.title_block` | no title, revision, date or company |
+| `readability.label_only` | most connections are a stub ending in a label, not a drawn wire — a valid netlist that reads as a name table |
+
+**Part specification** — a value is not a specification. `C3 = 100n` is the same
+line for the 16 V part that fails on a 24 V rail and the 50 V part that does not:
+
+| Rule | Meaning |
+| --- | --- |
+| `spec.missing_rating` | R without tolerance/power, C without voltage/tolerance, L without current |
+| `spec.voltage_derating` | capacitor rating against the rail it sits on: below the rail is an error, under 1.5x headroom a warning |
+| `spec.missing_part_number` | an active part with no MPN or manufacturer |
+| `spec.no_design_notes` | nothing on any sheet records why the design is the way it is |
+
+`spec.voltage_derating` only judges rails whose name states a voltage (`+3V3`,
+`-12V`, `VDD_1V8`, `VBUS`); derating against a number nobody wrote down would be
+inventing the requirement.
+
+Thresholds are adjustable with `--threshold key=value` — `grid_mm`,
+`symbol_margin_mm`, `max_symbols_per_sheet`, `min_named_net_ratio`,
+`capacitor_derating_factor`.
 
 `net.single_pin` is graded: an auto-named net (`unconnected-(U1-Pad3)`) is a
 dangling wire and warns, a net the designer named is reported as `info` because
@@ -92,6 +136,10 @@ folded into one finding with the count and the first examples; `--collapse N`
 changes the limit, `--collapse 0` prints every occurrence.
 
 Exit code is `2` when there is at least one error, `0` otherwise — usable in CI.
+
+`eda gate` turns all of this into a single verdict against a policy, which is
+what to use when the schematic is being generated rather than drawn: see the
+`kicad-design-gate` guide.
 
 ## Things the tool cannot check (do these by hand)
 

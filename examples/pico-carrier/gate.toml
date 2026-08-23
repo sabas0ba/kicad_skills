@@ -1,0 +1,42 @@
+# The policy this example is held to, and what it is allowed to fail - each
+# with the engineering argument, so a reviewer can disagree with something.
+name = "pico-carrier"
+extends = "ai-generated"
+
+[[waivers]]
+rule = "analog.missing_decoupling"
+location = "ADC_VREF"
+reason = """ADC_VREF is the module's own internally filtered reference, brought \
+to the header so the user can decide whether to commit it to a capacitor or \
+drive it. Deciding for them is exactly what a carrier should not do."""
+
+[[waivers]]
+rule = "layout.no_decoupling"
+reason = """VBUS is made by the module's USB connector and merely exposed \
+here. The board-side rule reads net names and cannot see that no pin of this \
+board's making drives it; the schematic-side rule reads pin types and no \
+longer asks."""
+
+[[waivers]]
+rule = "layout.decoupling_distance"
+reason = """The header sits between the module pin and any possible capacitor \
+- that is what a breakout is. C1 and C2 sit as close outboard of the pins they \
+serve as the pin legend allows: the strip beside the header carries the net \
+name of every one of its twenty pins, and a capacitor in it would be printed \
+over. So the 9-17 mm the rule measures is the header's own width plus that \
+legend, and the alternatives are a board that cannot be wired up by eye or a \
+capacitor with silk across its pads."""
+
+[[waivers]]
+rule = "layout.off_grid_placement"
+reason = """The module's pads are on a 2.54 mm pitch, so its origin cannot \
+also sit on the 0.5 mm placement grid, and the headers have to line up with \
+the module's pads rather than with the grid. Two footprints, both correct."""
+
+[[waivers]]
+rule = "readability.label_only"
+reason = """A carrier is one job done forty times: module pad to the header pad \
+beside it. Drawn as wires the forty pairs weave across each other; drawn as the \
+pair of labels at each pin they read as the pinout table they are - which is \
+the convention the reviewer set for miscellaneous connections, applied to a \
+board that is nothing else. The power path stays drawn copper."""

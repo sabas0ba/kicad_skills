@@ -47,7 +47,44 @@ Add the rule, then add a test in `tests/test_sch_review.py` /
 `PcbContext.from_board` constructors — no filesystem needed.
 
 Keep severities honest: `error` = the design is broken, `warning` = a human must
-judge it, `info` = context.
+judge it, `info` = context. A rule that reads the *drawing* rather than the
+netlist (grid, overlap, page) belongs in the `readability.*` family; one about
+what a part has to state to be orderable belongs in `spec.*`. Anything tunable
+goes in the module's `THRESHOLDS` dict rather than as a literal in the rule, so
+`--threshold key=value` reaches it.
+
+Every rule id also needs an entry in the module's `RULE_SPEC`, saying what
+condition produces it, the severity it reports and the threshold that tunes it.
+That table is what `eda gate --list-rules` prints, and `tests/test_rule_spec.py`
+parses the rule sources to enforce it in both directions — an id with no entry,
+an entry no rule emits, a threshold no rule names, or a policy pattern matching
+no rule, all fail. It also checks that the guides only name rules that exist.
+
+Then decide what the rule does to `eda gate`. A rule that *describes* the design
+rather than faulting it (`board.size`, `layout.ground_plane`) must be added to
+`CONTEXT_RULES` in `src/eda_toolkit/gate.py`, or a policy could promote it into
+an error no correct design can clear. A rule a generated design has to get right
+belongs in `_AI_BLOCKING` in the same file. `tests/test_gate.py` covers both.
+
+## Regenerating the worked examples
+
+`tools/make_examples.py` builds both variants of every design in `examples/`.
+Routing is what it spends its time on: the FPGA board is a 48-pin QFN on two
+layers and takes the better part of an hour, and a net that finds no room sends
+the whole set round again.
+
+So the routed copper is cached under `.cache/routes/` (git-ignored), keyed by
+everything the router reads — the outline, the parts and their pads, every
+stated track and via, and the source of `tools/autoroute.py` and `_route_all`
+themselves. Editing where a designator prints or how a legend picks its side
+does not move copper, so those runs reuse the answer and finish in seconds;
+editing the router invalidates every answer it ever gave. `--no-route-cache`
+routes from scratch.
+
+The rip-up order is kept separately, in `<design>.order.json`, and survives a
+change that does invalidate the cache: it is what an afternoon of rip-up
+attempts learned, and starting from it is usually the difference between
+seventeen attempts and none.
 
 ## Tuning a rule
 
@@ -79,7 +116,11 @@ are folded into one entry by `util.collapse_findings`, so prefer grading a rule
 ## Test fixtures
 
 `tests/fixtures/example_project` is a small, DRC-clean KiCad project (RC filter
-+ LM321 buffer). Its symbols come from the real KiCad libraries; its footprints
++ LM321 buffer) that also passes every built-in gate policy. It states what it
+expects of a design: ratings and tolerances on the passives, manufacturer part
+numbers on the actives, and a sheet note explaining the values. Keep it that way
+— a new `spec.*` or `readability.*` finding there means either the rule or the
+fixture drifted. Its symbols come from the real KiCad libraries; its footprints
 are simplified, which is why DRC reports `lib_footprint_mismatch` for each of
 them. Keep the project clean: a new error there means the toolkit changed
 behaviour. Its own README documents the two constraints that are easy to break
@@ -91,7 +132,8 @@ by accident — no KiCad 10 only tokens, and the ground pour stays filled.
 * **`docs/guides/`** — one usage guide per area, and the source of truth for how
   to *use* the toolkit well. Read the one that matches the task before doing it:
   `datasheet-analysis`, `spice-simulation`, `kicad-schematic-review`,
-  `kicad-pcb-review`, `kicad-fabrication-output`, `eda-environment`.
+  `kicad-schematic-authoring`, `kicad-pcb-review`, `kicad-pcb-authoring`,
+  `kicad-design-gate`, `kicad-fabrication-output`, `eda-environment`.
 * `docs/examples/` — committed sample output, regenerable with the commands
   documented there.
 
