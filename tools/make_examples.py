@@ -4778,6 +4778,20 @@ def _surfaced(design: Design) -> Design:
         return design
     foreign_vias, foreign_pads, around = _route_obstacles(design)
     tracks = list(design.tracks)
+
+    def key(point: tuple[float, float]) -> tuple[float, float]:
+        return (round(point[0], 3), round(point[1], 3))
+
+    # What the run meets at each end, so a hop lifted between two 0.4 mm runs
+    # does not arrive as 0.2 mm and leave two width steps where the via used
+    # to be. A width change at a layer change is a change nobody reads; the
+    # same change mid-run on one face is `route.width_step`.
+    neighbours: dict[tuple[float, float], list[tuple[int, float]]] = defaultdict(list)
+    for other_index, other in enumerate(tracks):
+        points = [resolve(design, point) for point in other.points]
+        for end in (points[0], points[-1]):
+            neighbours[key(end)].append((other_index, other.width))
+
     lifted = 0
     for index, track in enumerate(tracks):
         if track.layer != "B.Cu" or track.net == POUR_NET:
@@ -4785,13 +4799,28 @@ def _surfaced(design: Design) -> Design:
         points = [resolve(design, point) for point in track.points]
         if sum(math.dist(a, b) for a, b in pairwise(points)) > SURFACE_MAX_MM:
             continue
-        front = replace(track, layer="F.Cu")
-        if all(
-            _clear_of(front, a, b, foreign_vias, foreign_pads, around(a))
-            for a, b in pairwise(points)
-        ):
-            tracks[index] = front
-            lifted += 1
+        abutting = {
+            round(width, 3)
+            for end in (points[0], points[-1])
+            for other_index, width in neighbours[key(end)]
+            if other_index != index
+        }
+        # A hop between two runs of the *same* width can be lifted and widened
+        # to match them. A hop between runs of two different widths cannot: the
+        # step has to happen somewhere, and the tidiest somewhere is the layer
+        # change it already had - a width change at a via is a change nobody
+        # reads, and the same change mid-run on one face is `route.width_step`.
+        if len(abutting) > 1:
+            continue
+        for width in [next(iter(abutting))] if abutting else [track.width]:
+            front = replace(track, layer="F.Cu", width=width)
+            if all(
+                _clear_of(front, a, b, foreign_vias, foreign_pads, around(a))
+                for a, b in pairwise(points)
+            ):
+                tracks[index] = front
+                lifted += 1
+                break
     if not lifted:
         return design
     # A via joins two faces, and a face with nothing left on it needs no join.

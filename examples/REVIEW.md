@@ -1203,3 +1203,77 @@ because the router priced it before the rest of the board existed. On these
 five it lifts nothing: where the plane is cut, the front above it is full. It
 stays in the pipeline because it costs nothing when it finds nothing, and the
 next board may not be so tight.
+
+## 24. The reviewer's pass, round nineteen: the tab, and the first edition
+
+Two things, and the first is a manufacturing defect the review round before had
+introduced without noticing.
+
+### The plane drank U1's heat
+
+Moving the fill to KiCad's own filler changed what `connect_pads thru_hole_only`
+means. The generator had used it to mean "the plane ties on at the through-holes
+and the surface pads keep the track they were routed with" - which is what its
+*own* filler did. KiCad reads the same token as *Reliefs for PTH*: through-hole
+pads get spokes and surface pads get **solid** copper. Nothing said so, because
+the fill was correct by every rule the toolkit had.
+
+U1 on the buck board is an LM2596 in TO-263, and its tab is 101.5 mm² on GND.
+Tied straight into the pour, it reaches solder temperature after the part's own
+five leads do, and the part lifts on the leads that got there first. The
+reviewer saw it on the plot: a pad with no relief ring, merging into the plane.
+
+The answer is not the zone. A chip capacitor's land reflows with the whole board
+and a solid tie is the better electrical answer; the tab is a different object
+that happens to be drawn the same way. So the decision is per pad, and the pad
+carries it (`zone_connect`):
+
+| pad | area | vias in it | connection |
+| --- | --- | --- | --- |
+| a 0805 land | 1.45 mm² | — | solid, as before |
+| C1.2, C3.2 (electrolytic grounds) | 11.0 mm² | 0 | relief |
+| U1.3 (TO-263 tab) | 101.5 mm² | 0 | relief |
+| fpga U1.49 (QFN exposed pad) | 12.2 mm² | 9 | solid, and it already said so |
+
+The last row is the whole reason the rule needs a second clause. A via array in
+the pad is the board saying the copper *is* the heat path, and relieving it
+would be undoing the thermal design. `layout.solid_pad_connection` now reports
+the reflow case as well as the iron, with the same exemption.
+
+Then the reviewer asked for the spokes to carry the current, not just release
+the heat - "パスを少し多くするか太くしたい". KiCad draws four spokes and offers
+no way to ask for more, so the answer is width. Each relieved pad now sets its
+own `thermal_bridge_width`: half the widest track that reaches it, which puts
+twice the track's own copper across the four, and for a tab with no track at all
+- whose whole return current leaves through the plane - the widest the relief
+still survives. Both KiCad versions in the matrix read the override back.
+
+Lifting a back-layer hop to the front then produced two width steps where the
+via used to be: a 0.2 mm hop between 0.4 mm runs, and a width change at a layer
+change is a change nobody reads while the same change mid-run is
+`route.width_step`. `_surfaced` widens a hop to match its neighbours when they
+agree, and leaves it on the back when they do not.
+
+### The middle column
+
+The examples compared two variants, and the left one had quietly stopped being
+a fair "before". Eighteen rounds of findings went into the *generator*, not into
+patches on its output, so `as-generated` improved every round without anyone
+reviewing it. The comparison understated what the review had been worth.
+
+So each comparison has three columns now, and the leftmost is each design as it
+came out of the generator the day it was written - recovered from this
+repository's own history, one `git show` per file, rendered with today's
+renderer so the only difference is the design:
+
+| design | first edition | as-generated | reviewed |
+| --- | --- | --- | --- |
+| buck-5v | 45 blocking | 28 blocking | PASS |
+| motor-driver | 43 | 37 | PASS |
+| pico-carrier | 50 | 33 | PASS |
+| opamp-filter | 33 | 32 | PASS |
+| fpga-audio | 34 | 29 | PASS |
+
+The distance between the first two columns is the review turned into code,
+which arrives before anyone runs the gate. The distance between the second and
+the third is what the gate still had to catch on the day.
