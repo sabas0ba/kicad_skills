@@ -22,6 +22,7 @@ looked at. Runs in the container (see the `eda-environment` guide).
 ./bin/eda.sh pcb render hardware/ -o /tmp/art --dpi 300
 ./bin/eda.sh pcb glb    hardware/ -o /tmp/board.glb    # 3D model for a browser
 ./bin/eda.sh pcb electrical hardware/                  # current, resistance, impedance
+./bin/eda.sh pcb thermal hardware/ --power U1=1.2      # where those watts end up
 ./bin/eda.sh report     hardware/ -o /tmp/report       # all of the above, one page
 ```
 
@@ -113,6 +114,41 @@ The solver is importable on its own for geometries the table does not pose —
 two raw grid answers and the snap correction, so an answer can always be argued
 with. It is quasi-static: no dispersion, loss or surface roughness, so above a
 few GHz on thick laminates the fab's full-wave numbers pull ahead.
+
+`pcb thermal` answers the question the current table only rates: where do the
+watts actually go on *this* copper. The board becomes a grid — copper where the
+artwork put copper, laminate where it did not — heat enters under the parts you
+name, leaves every cell by convection from both faces, and the steady-state
+temperature map comes back with the hottest point marked:
+
+```console
+$ ./bin/eda.sh pcb thermal hardware/ --power U1=1.5 --power D1=0.4 -o build/thermal
+{
+  "max_temperature_c": 56.5,
+  "hotspot_mm": [159.75, 70.25],
+  "parts": [{"ref": "U1", "power_w": 1.5, "temperature_c": 56.5, ...}],
+  "balance": {"power_in_w": 1.9, "power_convected_w": 1.8996, "residual": 0.0002},
+  "image": "build/thermal/thermal.png"
+}
+```
+
+How to read it, and what to trust:
+
+* **The powers are your statement.** The board does not know what U1
+  dissipates; compute it (input power minus output power for a regulator,
+  I²R for a shunt) and pass it with `--power`. The output carries the figures
+  back so the assumption is visible in the record.
+* **`balance.residual` is the solver's honesty metric** — dissipated and
+  convected watts must be the same number at steady state, and the tests hold
+  the solver to it. If it is not near zero, distrust the map.
+* **The comparisons are the trustworthy part.** Absolute temperatures lean on
+  the film coefficient (`--htc`, default 10 W/m²K per face, still air), which
+  an enclosure or a fan moves by a factor of two either way. Whether the tab's
+  pour actually spreads, which part is the hot one, whether a copper area is a
+  heat path or a picture of one — those survive any reasonable coefficient.
+* It is a 2.5D thin-plate model: in-plane conduction, no vertical gradient, no
+  modelled via barrels. Good below a few watts per square centimetre; a power
+  module deserves a real conjugate solver.
 
 `eda diff OLD NEW -o DIR` compares two revisions: which footprints moved and how
 far, what the board statistics did, and a rendered diff of the plots - red for
