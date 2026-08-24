@@ -17,7 +17,7 @@ requires-python = ">=3.11"
 # container and CI install.
 dependencies = [
     "pdfplumber>=0.11",
-    "pypdfium2>=4.30",
+    "pypdfium2>=5.13.0",
     "pytesseract>=0.3.10",
     "Pillow>=10.0",
     "numpy>=1.24",
@@ -29,7 +29,7 @@ test = [
     "pytest>=8.0",
     "pytest-cov>=5.0",
     "reportlab>=4.0",
-    "ruff>=0.14",
+    "ruff>=0.16.3",
 ]
 
 [project.scripts]
