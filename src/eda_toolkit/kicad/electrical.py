@@ -88,9 +88,33 @@ def width_for_current(
 
 # -- controlled impedance --------------------------------------------------
 #
-# IPC-2141 closed forms. Both are logarithmic fits with a stated validity band;
-# outside it they drift, so `impedance_estimate` reports whether the geometry is
-# inside the band rather than quietly extrapolating.
+# Two models, and the difference between them is not academic.
+#
+# IPC-2141 is the pair of logarithmic fits most PCB documentation quotes. They
+# are quick, they are quoted for W/h between 0.1 and 3, and outside that band
+# they do not merely drift: the microstrip fit's logarithm passes through 1 and
+# the formula returns a *negative* impedance. A 5 mm power trace on a 0.51 mm
+# dielectric - W/h of 10, an ordinary thing to ask about - comes back as -10.9
+# ohms.
+#
+# Hammerstad-Jensen is the accurate one, and it is what this module uses to
+# answer questions. It carries a thickness correction, it stays physical out to
+# W/h of 50 and beyond, and its effective permittivity climbs toward the bulk
+# value the way the physics says it must. `tests/test_electrical.py` holds both
+# to the one answer that needs no model at all: as the trace grows wide the
+# structure becomes a parallel-plate capacitor, whose impedance is
+# eta0*h/(W*sqrt(er)) exactly.
+#
+#      W/h      plate      IPC-2141        Hammerstad-Jensen
+#        2      90.84         46.47                   48.13
+#       10      18.17        -10.91                   14.83
+#       50       3.63        -69.26                    3.44
+#
+# IPC-2141 stays, because a board file that states IPC-2141 as its model should
+# be able to be checked against it, and because the fits are what a lot of house
+# rules were written from.
+
+ETA0_OHM = 376.730313668  # the impedance of free space, mu0*c
 
 
 def microstrip_impedance(width_mm: float, thickness_mm: float, height_mm: float, epsilon_r: float):
@@ -114,11 +138,59 @@ def stripline_impedance(width_mm: float, thickness_mm: float, height_mm: float, 
     )
 
 
+def hammerstad_jensen_microstrip(
+    width_mm: float, thickness_mm: float, height_mm: float, epsilon_r: float
+) -> tuple[float, float]:
+    """Microstrip impedance and effective permittivity, the accurate way.
+
+    Hammerstad and Jensen's synthesis of the quasi-static microstrip problem,
+    with their correction for a trace that has thickness. Returns both numbers
+    because the second one is what a delay or a wavelength is calculated from,
+    and a model that gives an impedance without saying what dielectric the wave
+    thinks it is in has answered half the question.
+    """
+    if min(width_mm, height_mm) <= 0 or thickness_mm < 0 or epsilon_r <= 0:
+        raise ValueError("geometry and epsilon_r must be positive")
+    u = width_mm / height_mm
+    t_h = thickness_mm / height_mm
+    if t_h > 0:
+        # a trace with thickness behaves as a wider trace with none; the two
+        # corrections differ because the dielectric fills only one side
+        coth = 1.0 / math.tanh(math.sqrt(6.517 * u))
+        wide = (t_h / math.pi) * math.log(1.0 + 4.0 * math.e / (t_h * coth * coth))
+        u = u + 0.5 * (1.0 + 1.0 / math.cosh(math.sqrt(epsilon_r - 1.0))) * wide
+
+    a = (
+        1.0
+        + math.log((u**4 + (u / 52.0) ** 2) / (u**4 + 0.432)) / 49.0
+        + math.log(1.0 + (u / 18.1) ** 3) / 18.7
+    )
+    b = 0.564 * ((epsilon_r - 0.9) / (epsilon_r + 3.0)) ** 0.053
+    eps_eff = (epsilon_r + 1.0) / 2.0 + (epsilon_r - 1.0) / 2.0 * (1.0 + 10.0 / u) ** (-a * b)
+
+    f = 6.0 + (2.0 * math.pi - 6.0) * math.exp(-((30.666 / u) ** 0.7528))
+    z_air = (ETA0_OHM / (2.0 * math.pi)) * math.log(f / u + math.sqrt(1.0 + (2.0 / u) ** 2))
+    return z_air / math.sqrt(eps_eff), eps_eff
+
+
 def differential_impedance(single_ended: float, gap_mm: float, height_mm: float, *, kind: str):
     """Coupled pair, from the single-ended value and how close the two traces run."""
     if kind == "microstrip":
         return 2.0 * single_ended * (1.0 - 0.48 * math.exp(-0.96 * gap_mm / height_mm))
     return 2.0 * single_ended * (1.0 - 0.347 * math.exp(-2.9 * gap_mm / height_mm))
+
+
+def _model_for(kind: str):
+    """The impedance model the toolkit answers with.
+
+    Microstrip goes to Hammerstad-Jensen, which is well behaved everywhere a
+    board can be built. Stripline keeps the IPC-2141 fit: it is symmetric, so
+    its logarithm has no zero crossing to fall through, and there is no second
+    model here to check it against yet.
+    """
+    if kind == "microstrip":
+        return lambda w, t, h, er: hammerstad_jensen_microstrip(w, t, h, er)[0]
+    return stripline_impedance
 
 
 def _solve_width(target_ohm: float, evaluate, *, low: float = 0.02, high: float = 10.0):
@@ -142,7 +214,7 @@ def width_for_impedance(
     target_ohm: float, thickness_mm: float, height_mm: float, epsilon_r: float, *, kind: str
 ) -> float | None:
     """Trace width that gives ``target_ohm`` single-ended on this stackup."""
-    model = microstrip_impedance if kind == "microstrip" else stripline_impedance
+    model = _model_for(kind)
     return _solve_width(target_ohm, lambda w: model(w, thickness_mm, height_mm, epsilon_r))
 
 
@@ -155,7 +227,7 @@ def width_for_differential_impedance(
     Equal gap and width is the usual starting point and keeps the answer a single
     number; adjust from there once the router has an opinion.
     """
-    model = microstrip_impedance if kind == "microstrip" else stripline_impedance
+    model = _model_for(kind)
 
     def evaluate(width: float) -> float:
         single = model(width, thickness_mm, height_mm, epsilon_r)
@@ -331,7 +403,9 @@ def analyse(board: Any, *, temperature_rise_c: float = 10.0) -> dict[str, Any]:
             "current_a is IPC-2221 for the net's narrowest segment in still air.",
             "resistance_mohm sums every segment: an upper bound on the resistance "
             "between any two points on the net, since parallel paths only lower it.",
-            "Impedance widths are IPC-2141 closed forms, worth about +-10%, with the "
-            "differential gap taken equal to the width. Confirm with your fab.",
+            "Microstrip widths are Hammerstad-Jensen with its thickness correction, "
+            "worth about +-2% against a field solve; stripline is the IPC-2141 fit at "
+            "about +-10%. The differential gap is taken equal to the width. Neither "
+            "model knows your laminate's real permittivity: confirm with your fab.",
         ],
     }
