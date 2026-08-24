@@ -105,7 +105,20 @@ the point of writing them down is to say which:
 * **Thermals, open**: nothing yet judges copper area under a TO-263 tab or a
   QFN's exposed pad against the watts the part dissipates (the buck and the
   motor driver both care); stitching-via count under the iCE40's pad is
-  eyeballed, not checked.
+  eyeballed, not checked. `eda pcb thermal` can now *answer* the question —
+  state the watts and it solves where they go — but answering is not judging:
+  the review still has no rule that fails a board for it.
+* **Crosstalk channels** — now the **rule** `emc.parallel_run`: the 3W rule
+  measured as accumulated same-layer run closer than three trace widths,
+  differential pairs exempt by name. Quiet on all five boards — the router's
+  habit of spreading nets across free space turns out to be an EMC feature.
+* **Rim stitching pitch** — now the **rule** `emc.stitching_pitch`, and
+  **open** on all five boards: the stitcher aims a 10 mm rim ring, but a
+  candidate that collides with a pad, a track or a hole is dropped rather than
+  slid along the rim, so congested stretches keep gaps of 20–40 mm against
+  the rule's 18 mm — measured along the perimeter, the way edge noise
+  travels. Real, understood, and the fix is the stitcher learning to slide
+  its candidates, which is a regeneration round, not a waiver.
 
 ## 3. Schematic readability and semantics
 

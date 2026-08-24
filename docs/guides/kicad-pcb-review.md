@@ -247,6 +247,8 @@ mismatches).
 | `route.self_crossing` | — | a net whose own copper crosses itself on one layer. The same potential, so DRC has nothing to say — but two branches of one net crossing means the copper carries a redundant loop, and a person never draws one: the plot reads as tracks driven through each other. KiCad's demo boards carry at most one to three, at dense escapes |
 | `route.wander` | 2.0x | one run of copper — pad or junction at each end — against the shortest way between those two ends that clears the packages in between. `route.detour` weighs a whole net and a net hides things; this is the track that leaves its pad, goes three sides of a rectangle and arrives 4 mm away |
 | `route.return_path` | 10 mm | on a two-layer board, signal track running over cuts in the other layer's ground fill: the return current detours and the loop grows |
+| `emc.parallel_run` | 10 mm | the 3W rule, measured: two different signal nets accumulating more than the threshold of same-layer run closer than 3 trace widths centre to centre. A router finds a clear channel and every net that wants to go that way piles in; the coupled length is what makes it crosstalk. Differential pairs are exempt by their name's suffix — a pair is parallel on purpose — and a bus deliberately is not: eight lines sharing a channel are eight aggressors for the ninth net threaded between them |
+| `emc.stitching_pitch` | 18 mm | on a two-layer board with ground poured on both faces, the widest gap between ground vias in the rim band — measured along the board's perimeter, the way edge noise travels, not across the corner. Two pours facing each other are a capacitor until the vias make them a conductor, and the rim is where fields leave the sandwich. The classic pitch is lambda/20 of the highest frequency aboard; the file does not state that frequency, which is why this is a warning with a threshold and not a claim |
 
 Override any threshold: `--threshold min_track_mm=0.2 --threshold max_decoupling_distance_mm=3`.
 The full set: `min_track_mm`, `min_via_drill_mm`, `min_annular_ring_mm`,
@@ -254,7 +256,7 @@ The full set: `min_track_mm`, `min_via_drill_mm`, `min_annular_ring_mm`,
 `min_silk_text_height_mm`, `placement_grid_mm`, `rotation_step_deg`,
 `max_decoupling_via_mm`, `min_track_angle_deg`, `min_pour_coverage`,
 `min_pour_island_fraction`, `max_connector_edge_mm`, `width_step_free_mm`,
-`wander_ratio`.
+`wander_ratio`, `crosstalk_run_mm`, `stitch_pitch_mm`.
 Use the fab's real capability, not the defaults, when the fab is known.
 
 Exit code is `2` when there is at least one error.

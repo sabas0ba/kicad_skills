@@ -1222,3 +1222,65 @@ def test_a_designator_printed_off_the_board_is_reported():
 
     on = dict(off, y=3)
     assert pcb_review.rule_silk_off_board(ctx_for(board_from(silk=[on]))) == []
+
+
+def _gnd_via(x, y):
+    return pcb.Via(x=x, y=y, size=0.6, drill=0.3, layers=["F.Cu", "B.Cu"], net_code=2, net="GND")
+
+
+def test_two_nets_that_share_a_channel_are_reported_and_a_pair_is_not():
+    """The 3W rule: length times proximity, with the deliberate pair exempt."""
+    tight = [
+        track(0, 10, 30, 10, width=0.25, net="CLK"),
+        track(0, 10.5, 30, 10.5, width=0.25, net="DATA"),  # 2W away for 30 mm
+    ]
+    findings = pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=tight)))
+    assert [f.rule for f in findings] == ["emc.parallel_run"]
+    assert abs(findings[0].details["pairs"][0]["coupled_mm"] - 30) <= 1
+
+    # the same geometry as a named differential pair is the intended layout
+    pair = [
+        track(0, 10, 30, 10, width=0.25, net="/USB_P"),
+        track(0, 10.5, 30, 10.5, width=0.25, net="/USB_N"),
+    ]
+    assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=pair))) == []
+
+    # three widths apart, or crossing at an angle, is not a shared channel
+    spaced = [
+        track(0, 10, 30, 10, width=0.25, net="CLK"),
+        track(0, 11.5, 30, 11.5, width=0.25, net="DATA"),
+    ]
+    assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=spaced))) == []
+    crossing = [
+        track(0, 10, 30, 10, width=0.25, net="CLK"),
+        track(15, 0, 15.2, 20, width=0.25, net="DATA"),
+    ]
+    assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=crossing))) == []
+
+
+def test_a_double_sided_pour_wants_its_rim_stitched():
+    """Two facing pours are a capacitor until the vias make them a conductor."""
+    pours = [
+        pcb.Zone(
+            net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", [(0, 0), (50, 0), (50, 40)])]
+        ),
+        pcb.Zone(
+            net="GND", layers=["B.Cu"], filled=True, fills=[("B.Cu", [(0, 0), (50, 0), (50, 40)])]
+        ),
+    ]
+    # a ring of rim vias 10 mm apart on a 50x40 board: nothing to report
+    ring = [_gnd_via(x, y) for x in (5, 15, 25, 35, 45) for y in (2, 38)] + [
+        _gnd_via(x, y) for x in (2, 48) for y in (12, 22, 30)
+    ]
+    quiet = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=pours, vias=ring)))
+    assert quiet == []
+
+    # only two vias, both in one corner: one enormous gap round the rim
+    sparse = [_gnd_via(2, 2), _gnd_via(6, 2)]
+    findings = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=pours, vias=sparse)))
+    assert [f.rule for f in findings] == ["emc.stitching_pitch"]
+    assert findings[0].details["widest_gap_mm"] > 18
+
+    # a single-sided pour has no sandwich to stitch
+    single = [pours[0]]
+    assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=single, vias=sparse))) == []
