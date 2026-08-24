@@ -308,8 +308,15 @@ def layer_geometry(board: Any, layer: str) -> dict[str, Any] | None:
     }
 
 
-def analyse(board: Any, *, temperature_rise_c: float = 10.0) -> dict[str, Any]:
-    """Per-net copper properties, plus what this stackup needs for 50/90/100 ohm."""
+def analyse(board: Any, *, temperature_rise_c: float = 10.0, solve: bool = False) -> dict[str, Any]:
+    """Per-net copper properties, plus what this stackup needs for 50/90/100 ohm.
+
+    ``solve`` re-measures the closed forms' answers with the 2D field solver in
+    `field2d`: the 50 ohm width is solved as the cross-section it actually is,
+    and the 100 ohm differential pair as two coupled traces rather than an
+    exponential correction factor. It costs a few seconds per layer, which is
+    why it is a flag and not the default.
+    """
     thickness_cache: dict[str, tuple[float, str]] = {}
 
     def thickness_of(layer: str) -> tuple[float, str]:
@@ -393,6 +400,22 @@ def analyse(board: Any, *, temperature_rise_c: float = 10.0) -> dict[str, Any]:
             row[key] = round(width, 4) if width else None
         if row.get("width_50r_mm") and kind == "microstrip":
             row["in_model_band"] = microstrip_is_in_band(row["width_50r_mm"], height, epsilon)
+        if solve and kind == "microstrip":
+            from . import field2d
+
+            if row.get("width_50r_mm"):
+                solved = field2d.microstrip(row["width_50r_mm"], thickness, height, epsilon)
+                row["width_50r_solved_ohm"] = solved["z0_ohm"]
+                row["solved_eps_eff"] = solved["eps_eff"]
+            if row.get("width_100r_diff_mm"):
+                pair = field2d.differential_microstrip(
+                    row["width_100r_diff_mm"],
+                    thickness,
+                    height,
+                    epsilon,
+                    row["width_100r_diff_mm"],
+                )
+                row["width_100r_diff_solved_ohm"] = pair["zdiff_ohm"]
         impedance.append(row)
 
     return {
@@ -407,5 +430,13 @@ def analyse(board: Any, *, temperature_rise_c: float = 10.0) -> dict[str, Any]:
             "worth about +-2% against a field solve; stripline is the IPC-2141 fit at "
             "about +-10%. The differential gap is taken equal to the width. Neither "
             "model knows your laminate's real permittivity: confirm with your fab.",
-        ],
+        ]
+        + (
+            [
+                "width_*_solved_ohm re-measures those widths with the 2D field "
+                "solver: the closed form proposed the width, the solve checked it."
+            ]
+            if solve
+            else []
+        ),
     }

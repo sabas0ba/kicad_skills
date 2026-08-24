@@ -76,9 +76,43 @@ board's own stackup:
 
 Copper thickness comes from the stackup when the board has one and falls back to
 1 oz otherwise — the output says which, so a number resting on an assumption is
-visible as one. The formulas are the IPC-2221 and IPC-2141 closed forms: good for
-sizing and for catching mistakes, worth about ±10 % on impedance, and not a
-substitute for your fab's own stackup calculator.
+visible as one. Current capacity is IPC-2221. Microstrip impedance is
+Hammerstad–Jensen with its thickness correction, good to a couple of percent;
+stripline is the IPC-2141 fit, worth about ±10 % inside its band. Neither model
+knows your laminate's real permittivity, so the last word stays with the fab.
+
+**`--solve` re-measures those widths with a 2D field solver.** The closed form
+proposes a width; the solver takes the cross-section as a grid — trace, laminate,
+air, planes — solves the electrostatic field on it at two resolutions, and
+extrapolates to zero cell size. It answers with no fitted validity band, which
+is what makes it worth the few seconds per layer it costs:
+
+```console
+$ ./bin/eda.sh pcb electrical hardware/ --solve
+...
+  "impedance": [{
+    "layer": "F.Cu", "kind": "microstrip",
+    "width_50r_mm": 2.797,               the width Hammerstad-Jensen proposes
+    "width_50r_solved_ohm": 50.67,       what that width solves to as a field
+    "width_100r_diff_mm": 2.2602,        the differential pair, gap = width
+    "width_100r_diff_solved_ohm": 100.72,  solved as two coupled traces
+    ...
+```
+
+When the two columns agree, the geometry is comfortably inside the models and
+either number can be trusted. When they drift apart, believe the solve — it is
+the same physics your fab's calculator runs — and treat the disagreement itself
+as the finding: the geometry has left the band the fit was made in. The
+differential figure is the one that earns the flag most often, because the
+closed form treats the gap as an exponential correction factor while the solver
+treats it as copper.
+
+The solver is importable on its own for geometries the table does not pose —
+`eda_toolkit.kicad.field2d` has `microstrip`, `differential_microstrip` and
+`stripline`, each returning the impedance plus a `meta` block that shows the
+two raw grid answers and the snap correction, so an answer can always be argued
+with. It is quasi-static: no dispersion, loss or surface roughness, so above a
+few GHz on thick laminates the fab's full-wave numbers pull ahead.
 
 `eda diff OLD NEW -o DIR` compares two revisions: which footprints moved and how
 far, what the board statistics did, and a rendered diff of the plots - red for

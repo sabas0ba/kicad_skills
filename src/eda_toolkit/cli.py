@@ -539,7 +539,9 @@ def cmd_pcb_electrical(args: argparse.Namespace) -> int:
     from .kicad import electrical, pcb
 
     board_path = pcb.find_board(args.target)
-    payload = electrical.analyse(pcb.parse(board_path), temperature_rise_c=args.temperature_rise)
+    payload = electrical.analyse(
+        pcb.parse(board_path), temperature_rise_c=args.temperature_rise, solve=args.solve
+    )
     payload["board"] = str(board_path)
     if args.top:
         payload["nets"] = payload["nets"][: args.top]
@@ -928,6 +930,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="temperature rise the current rating is quoted at (default: 10)",
     )
     p.add_argument("--top", type=int, metavar="N", help="only the N most current-limited nets")
+    p.add_argument(
+        "--solve",
+        action="store_true",
+        help="re-measure the impedance widths with the 2D field solver (a few s per layer)",
+    )
     p.set_defaults(func=cmd_pcb_electrical)
 
     p = pcb_p.add_parser("stats", help="board statistics")

@@ -342,3 +342,21 @@ def test_width_for_impedance_lands_on_the_target():
         assert width, f"no width reaches {target} ohm on this stackup"
         z0, _ = electrical.hammerstad_jensen_microstrip(width, 0.035, 0.51, 4.3)
         assert abs(z0 - target) < 0.5, f"{width} mm gives {z0} ohm, not {target}"
+
+
+def test_solve_re_measures_the_proposed_widths():
+    """The closed form proposes a width; the field solver checks the proposal.
+
+    This is the loop closing: two independent methods, one geometry, and the
+    answer has to come back at the target from both. It also pins the output
+    contract - the solved figures appear only when asked for, because they cost
+    seconds where the fits cost microseconds.
+    """
+    board = _Board(TWO_LAYER)
+    plain = electrical.analyse(board)["impedance"][0]
+    assert "width_50r_solved_ohm" not in plain
+
+    solved = electrical.analyse(board, solve=True)["impedance"][0]
+    assert abs(solved["width_50r_solved_ohm"] - 50.0) < 2.5
+    assert abs(solved["width_100r_diff_solved_ohm"] - 100.0) < 5.0
+    assert 1.0 < solved["solved_eps_eff"] < solved["epsilon_r"]
