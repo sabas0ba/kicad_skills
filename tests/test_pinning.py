@@ -89,6 +89,20 @@ def test_uv_is_pinned_by_version_and_hash():
     assert requirement.count("--hash=sha256:") >= 1, "uv must be pinned by wheel hash"
     # it is a bootstrap pin, not a dependency list
     assert requirement.count("==") == 1
+    # ...and a pin for *this* image, which is linux on two architectures. The
+    # file says so in its own header and its own regeneration command selects
+    # exactly those two wheels. A bot that pastes every platform PyPI publishes
+    # - macOS, Windows, musl, riscv64, and the sdist along with them - leaves a
+    # file that still builds and no longer means what it says: with the sdist
+    # listed, `pip --require-hashes` will accept building uv from source, which
+    # is a wider thing to accept than a hash pin is for. Four is two wheels and
+    # room for an architecture, not room for a platform sweep.
+    hashes = requirement.count("--hash=sha256:")
+    assert hashes <= 4, (
+        f"uv-bootstrap.txt lists {hashes} hashes; it pins linux x86_64 and aarch64. "
+        "Regenerate it with the command in its own header rather than taking a bot's "
+        "whole-platform list, and keep the header true."
+    )
 
 
 def _build_requires() -> list[str]:
