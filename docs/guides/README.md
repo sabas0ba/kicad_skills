@@ -28,9 +28,10 @@ and it is what lets a tool decide which guide is relevant without reading all of
 Nothing needs installing: point your tool at this directory, or let it read
 [`AGENTS.md`](../../AGENTS.md), which names the guides.
 
-Claude Code is the one tool that wants a specific layout — it discovers skills at
-`.claude/skills/<name>/SKILL.md`. `bin/install-skills.sh` produces that layout
-from these files, as symlinks, so there is never a second copy to keep in step:
+Codex and other Agent Skills-compatible assistants discover skills at
+`.agents/skills/<name>/SKILL.md`; Claude Code discovers them at
+`.claude/skills/<name>/SKILL.md`. `bin/install-skills.sh` produces both layouts
+from these files as symlinks, so there is never a second copy to keep in step:
 
 ```bash
 ./bin/install-skills.sh                              # this checkout
@@ -38,8 +39,28 @@ from these files, as symlinks, so there is never a second copy to keep in step:
 ./bin/install-skills.sh --dest .cursor/rules --copy  # some other tool's directory
 ```
 
-The generated `.claude/skills/` is git-ignored on purpose: it is an adapter, not
-content. Delete it and re-run the script whenever you like.
+This checkout git-ignores the generated `.agents/skills/` and `.claude/skills/`
+because they are adapters, not content. A project using this repository as a
+submodule must add those paths to its own `.gitignore` or choose to track them.
+Delete generated adapters and re-run the script whenever you like. Supplying
+`--dest` creates only the requested custom layout below the target. Repeated
+`/` separators and `.` components are normalized before the adapter links are
+constructed; absolute paths, `..` components, and symlinked layout directories
+are rejected. Destination paths use `/`; backslashes are rejected so the same
+containment rules apply under Git Bash on Windows.
+
+Re-running the installer also migrates symlinks created by an older release:
+when an unmarked `SKILL.md` still points to the matching guide in this toolkit,
+the installer marks it as owned so a later `--uninstall` can remove it safely.
+An existing ownership marker is never overwritten by a normal install. With
+`--force`, existing adapter, marker, and shim files or symlinks are unlinked
+before replacement; directories are rejected during a preflight check. The
+marker records the adapter type and SHA-256 signature, so the uninstaller keeps
+a copied file or symlink that was modified or replaced after installation.
+One-line markers from older releases are upgraded only while their adapter
+still matches the source guide. The uninstaller also trusts only generated shim
+headers, and `--no-guides` and `--no-shim` select the same components for
+removal as for installation.
 
 And if you use no assistant at all, the guides still stand on their own — they
 are how a careful engineer would use these commands.
