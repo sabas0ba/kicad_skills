@@ -457,7 +457,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
             attributes=[str(a) for a in attrs_node.atoms()] if attrs_node else [],
             uuid=str(fp_node.value("uuid", default="")),
         )
-        for shape in ("fp_line", "fp_rect", "fp_poly"):
+        for shape in ("fp_line", "fp_rect", "fp_poly", "fp_circle", "fp_arc"):
             for node in fp_node.children(shape):
                 if not str(node.value("layer", default="")).endswith(".CrtYd"):
                     continue
@@ -470,6 +470,25 @@ def parse(path: str | os.PathLike[str]) -> Board:
                         sx0, sy0, _ = _xy(start_node)
                         ex0, ey0, _ = _xy(end_node)
                         raw += [(sx0, sy0), (ex0, sy0), (ex0, ey0), (sx0, ey0)]
+                elif shape == "fp_circle":
+                    # the rim as points, not centre-plus-one-point: a round
+                    # courtyard is an area, and two points bound nothing
+                    centre_node, end_node = node.child("center"), node.child("end")
+                    if centre_node and end_node:
+                        ccx, ccy, _ = _xy(centre_node)
+                        cex, cey, _ = _xy(end_node)
+                        raw += outline_geom.circle_points(
+                            (ccx, ccy), math.dist((ccx, ccy), (cex, cey)), steps=16
+                        )
+                elif shape == "fp_arc":
+                    start_node = node.child("start")
+                    mid_node = node.child("mid")
+                    end_node = node.child("end")
+                    if start_node and mid_node and end_node:
+                        asx, asy, _ = _xy(start_node)
+                        amx, amy, _ = _xy(mid_node)
+                        aex, aey, _ = _xy(end_node)
+                        raw += outline_geom.arc_points((asx, asy), (amx, amy), (aex, aey), 8)
                 else:
                     for key in ("start", "end", "center"):
                         child = node.child(key)

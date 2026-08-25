@@ -215,3 +215,18 @@ def test_footprint_rects_and_circles_on_copper_are_copper(tmp_path):
     shapes = pcb.parse(path).copper_shapes
     assert len(shapes) == 2  # the hollow rect is its stroke, not its area
     assert all(layer == "F.Cu" for layer, _ in shapes)
+
+
+def test_a_circular_courtyard_is_kept_as_its_rim(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:led" (layer "F.Cu") (at 20 20 0)'
+        '    (fp_circle (center 0 0) (end 3 0) (layer "F.CrtYd"))))'
+    )
+    path = tmp_path / "r.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    fp = pcb.parse(path).footprints[0]
+    assert len(fp.courtyard) >= 8
+    box = fp.courtyard_box()
+    assert box[2] - box[0] == pytest.approx(6.0, abs=0.2)
+    assert box[3] - box[1] == pytest.approx(6.0, abs=0.2)

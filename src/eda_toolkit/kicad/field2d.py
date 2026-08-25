@@ -173,6 +173,10 @@ class _Counts:
             # either plane, and the thinner gap is the feature to resolve
             above_mm = height_mm - thickness_mm - below_mm
             feature = min(width_mm, below_mm, above_mm)
+        if gap_mm is not None:
+            # a tightly coupled pair's gap is where the odd-mode field lives;
+            # a mesh that cannot resolve it solves a different pair
+            feature = min(feature, gap_mm)
         self.cell_mm = feature / coarse
         self.height = max(2, round(height_mm / self.cell_mm))
         self.width = max(1, round(width_mm / self.cell_mm))

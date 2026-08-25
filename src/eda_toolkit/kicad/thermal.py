@@ -141,9 +141,13 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
         disc = radial <= half * half
         drill = getattr(via, "drill", 0) or 0
         if drill:
-            # the annulus is copper; the drilled middle is air, same as a pad
+            # the annulus is copper; the drilled middle is air, same as a pad.
+            # Only a through via removes the whole stack's material - a blind
+            # or buried barrel leaves laminate above or below it, and the
+            # collapsed sheet keeps that rather than punch a full hole
             disc &= radial > (drill / 2) ** 2
-            holes[iy0:iy1, ix0:ix1] |= radial <= (drill / 2) ** 2
+            if getattr(via, "type", "through") == "through":
+                holes[iy0:iy1, ix0:ix1] |= radial <= (drill / 2) ** 2
         indices = [order[layer] for layer in getattr(via, "layers", []) if layer in order]
         if len(indices) >= 2:
             reached = set(board.copper_layers[min(indices) : max(indices) + 1])
@@ -205,10 +209,30 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
             local_y = -dx * sin_a + dy * cos_a
             half_w, half_h = pad.size[0] / 2, pad.size[1] / 2
             shape = getattr(pad, "shape", "rect")
-            if shape in ("circle", "oval"):
-                inside = (local_x / max(half_w, 1e-9)) ** 2 + (
-                    local_y / max(half_h, 1e-9)
-                ) ** 2 <= 1.0
+            if shape == "circle" or (shape == "oval" and abs(half_w - half_h) < 1e-9):
+                radius = min(half_w, half_h)
+                inside = local_x**2 + local_y**2 <= radius * radius
+            elif shape == "oval":
+                # KiCad's oval is a capsule - a rectangle with semicircular
+                # ends - not an ellipse
+                radius = min(half_w, half_h)
+                if half_w >= half_h:
+                    t = np.clip(local_x, -(half_w - radius), half_w - radius)
+                    inside = (local_x - t) ** 2 + local_y**2 <= radius * radius
+                else:
+                    t = np.clip(local_y, -(half_h - radius), half_h - radius)
+                    inside = local_x**2 + (local_y - t) ** 2 <= radius * radius
+            elif shape == "roundrect":
+                # the stated corner radius comes off each corner; the copper
+                # between the radii stays square
+                radius = min(half_w, half_h) * 2 * (getattr(pad, "roundrect_rratio", 0.0) or 0.0)
+                dx_r = np.clip(np.abs(local_x) - (half_w - radius), 0.0, None)
+                dy_r = np.clip(np.abs(local_y) - (half_h - radius), 0.0, None)
+                inside = (
+                    (np.abs(local_x) <= half_w)
+                    & (np.abs(local_y) <= half_h)
+                    & (dx_r * dx_r + dy_r * dy_r <= radius * radius)
+                )
             else:
                 inside = (np.abs(local_x) <= half_w) & (np.abs(local_y) <= half_h)
             for kind, *geom in primitives:
