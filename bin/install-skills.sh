@@ -172,9 +172,8 @@ fi
 if [ "$SELF_INSTALL" = 1 ]; then
     cat <<EOF
 
-Done - the assistant skill layouts now mirror docs/guides/ for this checkout.
-They are git-ignored:
-docs/guides/ is the source of truth, this is only the adapter.
+Done - the skill layouts now mirror docs/guides/ for this checkout. They are
+git-ignored: docs/guides/ is the source of truth, these are only adapters.
 EOF
 else
     cat <<EOF
