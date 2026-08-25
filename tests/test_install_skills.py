@@ -235,6 +235,35 @@ def test_one_line_ownership_markers_gain_adapter_metadata(project, adapter_type)
     assert not skill_dir.exists()
 
 
+@pytest.mark.parametrize("replacement", ["file", "symlink"])
+def test_one_line_markers_do_not_claim_replaced_adapters(project, replacement):
+    target, submodule = project
+    destination = ".claude/skills"
+    name = GUIDES[0]
+    skill_dir = target / destination / name
+    skill_dir.mkdir(parents=True)
+    skill = skill_dir / "SKILL.md"
+    if replacement == "file":
+        skill.write_text(USER_SKILL_CONTENT)
+    else:
+        user_skill = target / "user-skill.md"
+        user_skill.write_text(USER_SKILL_CONTENT)
+        skill.symlink_to(Path(os.path.relpath(user_skill, skill_dir)))
+    marker = skill_dir / ".eda-toolkit-installed"
+    marker.write_text(INSTALL_MARKER_CONTENT)
+
+    install_result = install(submodule, target, "--dest", destination, "--no-shim")
+    uninstall_result = install(submodule, target, "--dest", destination, "--no-shim", "--uninstall")
+
+    assert f"skip {destination}/{name} (already exists" in install_result.stdout
+    assert f"skip {destination}/{name} (adapter changed since installation)" in (
+        uninstall_result.stdout
+    )
+    assert skill.read_text() == USER_SKILL_CONTENT
+    assert skill.is_symlink() is (replacement == "symlink")
+    assert marker.read_text() == INSTALL_MARKER_CONTENT
+
+
 def test_migrating_a_marker_hardlink_does_not_modify_its_other_name(project):
     target, submodule = project
     destination = ".claude/skills"
