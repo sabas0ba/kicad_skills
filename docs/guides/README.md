@@ -45,5 +45,9 @@ submodule must add those paths to its own `.gitignore` or choose to track them.
 Delete generated adapters and re-run the script whenever you like. Supplying
 `--dest` creates only the requested custom layout.
 
+Re-running the installer also migrates symlinks created by an older release:
+when an unmarked `SKILL.md` still points to the matching guide in this toolkit,
+the installer marks it as owned so a later `--uninstall` can remove it safely.
+
 And if you use no assistant at all, the guides still stand on their own — they
 are how a careful engineer would use these commands.

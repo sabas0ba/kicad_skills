@@ -125,6 +125,44 @@ def test_existing_entries_are_kept_unless_forced(project):
     assert (existing_skill / "SKILL.md").is_symlink()
 
 
+@pytest.mark.parametrize("absolute", [False, True])
+def test_legacy_symlinks_gain_ownership_markers(project, absolute):
+    target, submodule = project
+    name = GUIDES[0]
+    skill_dir = target / ".claude" / "skills" / name
+    skill_dir.mkdir(parents=True)
+    guide = submodule / "docs" / "guides" / f"{name}.md"
+    link_target = guide if absolute else Path(os.path.relpath(guide, skill_dir))
+    (skill_dir / "SKILL.md").symlink_to(link_target)
+
+    result = install(submodule, target)
+
+    marker = skill_dir / ".eda-toolkit-installed"
+    assert f"migrated .claude/skills/{name} (legacy symlink)" in result.stdout
+    assert marker.read_text().strip() == "created by kicad_skills/bin/install-skills.sh"
+
+    install(submodule, target, "--uninstall")
+    assert not skill_dir.exists()
+
+
+def test_an_unrelated_symlink_is_not_adopted_or_uninstalled(project):
+    target, submodule = project
+    name = GUIDES[0]
+    skill_dir = target / ".claude" / "skills" / name
+    skill_dir.mkdir(parents=True)
+    user_skill = target / "user-skill.md"
+    user_skill.write_text(USER_SKILL_CONTENT)
+    skill = skill_dir / "SKILL.md"
+    skill.symlink_to(Path(os.path.relpath(user_skill, skill_dir)))
+
+    install(submodule, target)
+    assert not (skill_dir / ".eda-toolkit-installed").exists()
+
+    install(submodule, target, "--uninstall")
+    assert skill.is_symlink()
+    assert skill.read_text() == USER_SKILL_CONTENT
+
+
 def test_copy_mode_vendors_the_guides(project):
     target, submodule = project
     install(submodule, target, "--copy")

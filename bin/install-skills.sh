@@ -136,15 +136,23 @@ if [ "$GUIDES" = 1 ]; then
         up="../"
         for _ in "${dest_parts[@]}"; do up="../$up"; done
         for name in $(guide_names); do
-            dst="$guide_dst/$name/SKILL.md"
+            skill_dir="$guide_dst/$name"
+            dst="$skill_dir/SKILL.md"
+            marker="$skill_dir/$INSTALL_MARKER"
             if [ -e "$dst" ] || [ -L "$dst" ]; then
                 if [ "$FORCE" != 1 ]; then
-                    echo "skip $dest/$name (already exists; --force to replace)"
+                    if [ ! -e "$marker" ] && [ ! -L "$marker" ] &&
+                        [ -L "$dst" ] && [ "$dst" -ef "$GUIDE_SRC/$name.md" ]; then
+                        printf '%s\n' "$INSTALL_MARKER_CONTENT" > "$marker"
+                        echo "migrated $dest/$name (legacy symlink)"
+                    else
+                        echo "skip $dest/$name (already exists; --force to replace)"
+                    fi
                     continue
                 fi
                 rm -f "$dst"
             fi
-            mkdir -p "$guide_dst/$name"
+            mkdir -p "$skill_dir"
             if [ "$MODE" = copy ]; then
                 cp -L "$GUIDE_SRC/$name.md" "$dst"
             elif [ -n "$SUB_REL" ]; then
@@ -152,7 +160,7 @@ if [ "$GUIDES" = 1 ]; then
             else
                 ln -s "$GUIDE_SRC/$name.md" "$dst"
             fi
-            printf '%s\n' "$INSTALL_MARKER_CONTENT" > "$guide_dst/$name/$INSTALL_MARKER"
+            printf '%s\n' "$INSTALL_MARKER_CONTENT" > "$marker"
             echo "installed $dest/$name/SKILL.md ($MODE)"
         done
     done
