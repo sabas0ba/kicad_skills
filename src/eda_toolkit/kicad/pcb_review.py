@@ -19,6 +19,7 @@ from ..util import (
 )
 from . import electrical, kicad_cli, pcb
 from . import netlist as netlist_mod
+from . import outline as outline_geom
 
 RULES: list[Callable[[PcbContext], list[Finding]]] = []
 
@@ -1467,14 +1468,17 @@ def _pair_stem(net: str) -> str | None:
 
     A pair runs parallel *on purpose* - that is what a pair is - so the
     crosstalk rule has to know one when it sees one. The conventions are
-    suffix pairs: P/N, +/-, _P/_N, H/L on CAN.
+    suffix pairs: P/N, +/-, _P/_N, H/L on CAN. The hierarchical path stays in
+    the stem: ``/channel_a/USB_P`` and ``/channel_b/USB_N`` share a leaf but
+    live on different sheets, and two unrelated nets are not a pair.
     """
-    name = net.rsplit("/", 1)[-1].upper()
+    name = net.upper()
+    prefix, _, leaf = name.rpartition("/")
     for a, b in (("_P", "_N"), ("P", "N"), ("+", "-"), ("_H", "_L"), ("H", "L")):
-        if name.endswith(a):
-            return name[: -len(a)]
-        if name.endswith(b):
-            return name[: -len(b)]
+        if leaf.endswith(a):
+            return f"{prefix}/{leaf[: -len(a)]}"
+        if leaf.endswith(b):
+            return f"{prefix}/{leaf[: -len(b)]}"
     return None
 
 
@@ -1509,10 +1513,14 @@ def rule_parallel_runs(ctx: PcbContext) -> list[Finding]:
     cell = 4.0
     cells: dict[tuple[int, int], list[int]] = defaultdict(list)
     for index, track in enumerate(segments):
-        x0 = min(track.start[0], track.end[0])
-        x1 = max(track.start[0], track.end[0])
-        y0 = min(track.start[1], track.end[1])
-        y1 = max(track.start[1], track.end[1])
+        # each box grows by the track's own coupling radius, so two tracks
+        # within 3W of each other overlap boxes - and hence share a cell -
+        # wherever the cell boundaries happen to fall
+        reach = spacing_w * track.width
+        x0 = min(track.start[0], track.end[0]) - reach
+        x1 = max(track.start[0], track.end[0]) + reach
+        y0 = min(track.start[1], track.end[1]) - reach
+        y1 = max(track.start[1], track.end[1]) + reach
         for cx in range(math.floor(x0 / cell), math.floor(x1 / cell) + 1):
             for cy in range(math.floor(y0 / cell), math.floor(y1 / cell) + 1):
                 cells[(cx, cy)].append(index)
@@ -1562,9 +1570,11 @@ def _parallel_overlap(a0, a1, b0, b1, near: float) -> float:
     """How much of two segments runs side by side within ``near``, in mm.
 
     Parallel means what a plot means by it: headings within ~15 degrees.
-    The overlap is measured by projecting one segment onto the other and
-    clipping; the lateral distance is taken at the projection's midpoint, so
-    a pair that converges only at a crossing does not count as a run.
+    The overlap is one segment projected onto the other and clipped; within
+    it, the lateral offset varies linearly, so the portion actually closer
+    than ``near`` is an interval the two endpoint offsets pin down exactly.
+    A pair that merely converges at a crossing therefore counts only the few
+    millimetres around the crossing, not the whole shared span.
     """
     va = (a1[0] - a0[0], a1[1] - a0[1])
     vb = (b1[0] - b0[0], b1[1] - b0[1])
@@ -1575,16 +1585,34 @@ def _parallel_overlap(a0, a1, b0, b1, near: float) -> float:
     if cos < 0.966:  # more than ~15 degrees apart in heading
         return 0.0
     ua = (va[0] / la, va[1] / la)
+    normal = (-ua[1], ua[0])
     t0 = (b0[0] - a0[0]) * ua[0] + (b0[1] - a0[1]) * ua[1]
     t1 = (b1[0] - a0[0]) * ua[0] + (b1[1] - a0[1]) * ua[1]
     lo, hi = max(0.0, min(t0, t1)), min(la, max(t0, t1))
     if hi <= lo:
         return 0.0
-    mid = (lo + hi) / 2
+    # signed lateral offset of b's line from a's, at b's two ends
+    d0 = (b0[0] - a0[0]) * normal[0] + (b0[1] - a0[1]) * normal[1]
+    d1 = (b1[0] - a0[0]) * normal[0] + (b1[1] - a0[1]) * normal[1]
+    if abs(t1 - t0) <= GEOM_TOL:
+        return (hi - lo) if max(abs(d0), abs(d1)) <= near else 0.0
+    slope = (d1 - d0) / (t1 - t0)
+
+    def offset(t: float) -> float:
+        return d0 + slope * (t - t0)
+
+    if abs(slope) <= 1e-9:
+        return (hi - lo) if abs(d0) <= near else 0.0
+    # |offset| <= near between the two crossings of +near and -near
+    t_at = sorted(((near - d0) / slope + t0, (-near - d0) / slope + t0))
+    close_lo, close_hi = max(lo, t_at[0]), min(hi, t_at[1])
+    if close_hi <= close_lo:
+        return 0.0
+    mid = (close_lo + close_hi) / 2
     point = (a0[0] + ua[0] * mid, a0[1] + ua[1] * mid)
     if _point_to_segment(point, b0, b1) > near:
         return 0.0
-    return hi - lo
+    return close_hi - close_lo
 
 
 @rule
@@ -1599,28 +1627,36 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
     so the threshold is a number a policy can tune, not a claim.
 
     Judged only when both faces carry a filled ground pour - a single-sided
-    pour has no sandwich to stitch.
+    pour has no sandwich to stitch. A board whose outline does not chain into
+    one loop (a cutout, an open outline) is not judged either: "along the rim"
+    is ambiguous there, and saying nothing beats measuring the wrong loop.
     """
     board = ctx.board
     if len(board.copper_layers) != 2:
         return []
     pour_layers = set()
     for zone in board.zones:
-        if zone.keepout or not zone.fills or not netlist_helpers_is_ground(zone.net):
+        if zone.keepout or not netlist_helpers_is_ground(zone.net):
             continue
-        pour_layers.update(layer for layer in zone.layers if layer.endswith(".Cu"))
+        # the layers the fill actually reached, not the ones the zone asked
+        # for: a two-layer zone whose fill succeeded on one face is no sandwich
+        pour_layers.update(
+            layer for layer, points in zone.fills if layer.endswith(".Cu") and len(points) >= 3
+        )
     if len(pour_layers) < 2:
         return []
     bbox = board.outline_bbox()
     if bbox is None:
         return []
     x0, y0, x1, y1 = bbox
+    loop = outline_geom.chain_loop(board.edge_segments())
+    if loop is None:
+        return []
     band = max(4.0, 0.08 * max(x1 - x0, y1 - y0))
     rim = [
         (via.x, via.y)
         for via in board.vias
-        if netlist_helpers_is_ground(via.net)
-        and min(via.x - x0, x1 - via.x, via.y - y0, y1 - via.y) <= band
+        if netlist_helpers_is_ground(via.net) and board.edge_clearance_at(via.x, via.y) <= band
     ]
     limit = ctx.thresholds["stitch_pitch_mm"]
     if len(rim) < 2:
@@ -1637,21 +1673,10 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
     # Measured along the rim, not across it. Two vias sharing a corner are
     # four millimetres apart as the crow flies and half the perimeter apart as
     # the edge noise travels, and the second number is the one that matters.
-    width, height = x1 - x0, y1 - y0
-    perimeter = 2 * (width + height)
-
-    def rim_position(px: float, py: float) -> float:
-        # arc length of the nearest point on the bbox rectangle's perimeter,
-        # walking bottom, right, top, left from (x0, y0)
-        candidates = [
-            (py - y0, min(max(px, x0), x1) - x0),  # bottom edge
-            (x1 - px, width + (min(max(py, y0), y1) - y0)),  # right edge
-            (y1 - py, width + height + (x1 - min(max(px, x0), x1))),  # top edge
-            (px - x0, 2 * width + height + (y1 - min(max(py, y0), y1))),  # left edge
-        ]
-        return min(candidates)[1]
-
-    ordered = sorted(rim_position(px, py) for px, py in rim)
+    # The rim is the real outline chained into a loop, so a circular or
+    # chamfered board is measured along its own edge, not a bounding box's.
+    perimeter = sum(math.dist(a, b) for a, b in loop)
+    ordered = sorted(outline_geom.loop_position((px, py), loop) for px, py in rim)
     gaps = [b - a for a, b in itertools.pairwise(ordered)]
     gaps.append(perimeter - ordered[-1] + ordered[0])
     widest = max(gaps)

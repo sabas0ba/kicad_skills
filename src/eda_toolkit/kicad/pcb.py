@@ -149,6 +149,9 @@ class Track:
     net_code: int
     net: str = ""
     kind: str = "segment"  # segment | arc
+    # the arc's mid point, so a consumer can reconstruct the curve instead of
+    # mistaking the chord for copper
+    mid: tuple[float, float] | None = None
 
     @property
     def length(self) -> float:
@@ -512,6 +515,8 @@ def parse(path: str | os.PathLike[str]) -> Board:
     for arc in root.children("arc"):
         sx, sy, _ = _xy(arc.child("start"))
         ex, ey, _ = _xy(arc.child("end"))
+        mid_node = arc.child("mid")
+        mx, my, _ = _xy(mid_node) if mid_node else (None, None, None)
         code, _ = _net_of(arc, board.nets)
         board.tracks.append(
             Track(
@@ -522,6 +527,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
                 code,
                 board.nets.get(code, ""),
                 kind="arc",
+                mid=(mx, my) if mid_node else None,
             )
         )
 

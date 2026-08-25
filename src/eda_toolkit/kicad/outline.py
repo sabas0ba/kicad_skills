@@ -139,6 +139,62 @@ def is_closed(segments: Sequence[Segment], tol: float = 1e-3) -> bool:
     return all(count % 2 == 0 for count in degree.values())
 
 
+def chain_loop(segments: Sequence[Segment], tol: float = 1e-3) -> list[Segment] | None:
+    """The segments reordered into one closed walk, or None if they will not chain.
+
+    An outline is drawn as unordered pieces; measuring *along* it needs them
+    end to end. Greedy endpoint matching is enough because a valid outline
+    meets itself only at endpoints. A board with more than one loop (a cutout)
+    returns None - "along the rim" is ambiguous there and the caller should
+    say nothing rather than measure the wrong loop.
+    """
+    if len(segments) < 3:
+        return None
+    digits = max(0, -round(math.log10(tol)))
+
+    def key(point: Point) -> Point:
+        return (round(point[0], digits), round(point[1], digits))
+
+    remaining = list(segments)
+    walk = [remaining.pop(0)]
+    while remaining:
+        tail = key(walk[-1][1])
+        for i, (a, b) in enumerate(remaining):
+            if key(a) == tail:
+                walk.append(remaining.pop(i))
+                break
+            if key(b) == tail:
+                walk.append((b, a))
+                remaining.pop(i)
+                break
+        else:
+            return None  # a second loop, or a break in this one
+    if key(walk[-1][1]) != key(walk[0][0]):
+        return None
+    return walk
+
+
+def loop_position(point: Point, loop: Sequence[Segment]) -> float:
+    """Arc length along ``loop`` of the point on it nearest to ``point``."""
+    px, py = point
+    best = math.inf
+    position = 0.0
+    walked = 0.0
+    for (x1, y1), (x2, y2) in loop:
+        dx, dy = x2 - x1, y2 - y1
+        length = math.hypot(dx, dy)
+        if length < _EPS:
+            continue
+        t = ((px - x1) * dx + (py - y1) * dy) / (length * length)
+        t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+        d = math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+        if d < best:
+            best = d
+            position = walked + t * length
+        walked += length
+    return position
+
+
 def _segment_distance(px: float, py: float, seg: Segment) -> float:
     (x1, y1), (x2, y2) = seg
     dx, dy = x2 - x1, y2 - y1

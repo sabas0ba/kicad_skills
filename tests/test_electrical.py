@@ -360,3 +360,22 @@ def test_solve_re_measures_the_proposed_widths():
     assert abs(solved["width_50r_solved_ohm"] - 50.0) < 2.5
     assert abs(solved["width_100r_diff_solved_ohm"] - 100.0) < 5.0
     assert 1.0 < solved["solved_eps_eff"] < solved["epsilon_r"]
+
+
+def test_solve_reaches_the_inner_layers_too():
+    """--solve must not silently skip the stripline rows of a four-layer board."""
+    four = [
+        {"name": "F.Cu", "type": "copper", "thickness": 0.035, "epsilon_r": None},
+        {"name": "dielectric 1", "type": "prepreg", "thickness": 0.2, "epsilon_r": 4.4},
+        {"name": "In1.Cu", "type": "copper", "thickness": 0.0175, "epsilon_r": None},
+        {"name": "dielectric 2", "type": "core", "thickness": 1.065, "epsilon_r": 4.5},
+        {"name": "In2.Cu", "type": "copper", "thickness": 0.0175, "epsilon_r": None},
+        {"name": "dielectric 3", "type": "prepreg", "thickness": 0.2, "epsilon_r": 4.4},
+        {"name": "B.Cu", "type": "copper", "thickness": 0.035, "epsilon_r": None},
+    ]
+    board = _Board(four, copper_layers=("F.Cu", "In1.Cu", "In2.Cu", "B.Cu"))
+    rows = {row["layer"]: row for row in electrical.analyse(board, solve=True)["impedance"]}
+    inner = rows["In1.Cu"]
+    assert inner["kind"] == "stripline"
+    # the solver referees the fit: same geometry, an answer near the target
+    assert abs(inner["width_50r_solved_ohm"] - 50.0) < 5.0

@@ -106,7 +106,9 @@ the same physics your fab's calculator runs — and treat the disagreement itsel
 as the finding: the geometry has left the band the fit was made in. The
 differential figure is the one that earns the flag most often, because the
 closed form treats the gap as an exponential correction factor while the solver
-treats it as copper.
+treats it as copper. Inner layers are re-measured too — the stripline solve
+referees the IPC fit — with one gap: the coupled stripline pair has no solver
+yet, so that differential column stays a fit.
 
 The solver is importable on its own for geometries the table does not pose —
 `eda_toolkit.kicad.field2d` has `microstrip`, `differential_microstrip` and
@@ -248,7 +250,7 @@ mismatches).
 | `route.wander` | 2.0x | one run of copper — pad or junction at each end — against the shortest way between those two ends that clears the packages in between. `route.detour` weighs a whole net and a net hides things; this is the track that leaves its pad, goes three sides of a rectangle and arrives 4 mm away |
 | `route.return_path` | 10 mm | on a two-layer board, signal track running over cuts in the other layer's ground fill: the return current detours and the loop grows |
 | `emc.parallel_run` | 10 mm | the 3W rule, measured: two different signal nets accumulating more than the threshold of same-layer run closer than 3 trace widths centre to centre. A router finds a clear channel and every net that wants to go that way piles in; the coupled length is what makes it crosstalk. Differential pairs are exempt by their name's suffix — a pair is parallel on purpose — and a bus deliberately is not: eight lines sharing a channel are eight aggressors for the ninth net threaded between them. Fires once per board on 9 of KiCad's 18 demo projects, and what it names is the memory buses and the I2C pair — whether 96 mm of coupled SCL/SDA matters at 100 kHz is exactly the judgment the warning hands to a human |
-| `emc.stitching_pitch` | 18 mm | on a two-layer board with ground poured on both faces, the widest gap between ground vias in the rim band — measured along the board's perimeter, the way edge noise travels, not across the corner. Two pours facing each other are a capacitor until the vias make them a conductor, and the rim is where fields leave the sandwich. The classic pitch is lambda/20 of the highest frequency aboard; the file does not state that frequency, which is why this is a warning with a threshold and not a claim. One demo project in 18 fires it — the precondition keeps it off every board without the sandwich |
+| `emc.stitching_pitch` | 18 mm | on a two-layer board with ground poured on both faces, the widest gap between ground vias in the rim band — measured along the board's real outline (arcs and chamfers included), the way edge noise travels, not across the corner. A board whose outline does not chain into one loop — a cutout, an open edge — is not judged: "along the rim" is ambiguous there. Two pours facing each other are a capacitor until the vias make them a conductor, and the rim is where fields leave the sandwich. The classic pitch is lambda/20 of the highest frequency aboard; the file does not state that frequency, which is why this is a warning with a threshold and not a claim. One demo project in 18 fires it — the precondition keeps it off every board without the sandwich |
 
 Override any threshold: `--threshold min_track_mm=0.2 --threshold max_decoupling_distance_mm=3`.
 The full set: `min_track_mm`, `min_via_drill_mm`, `min_annular_ring_mm`,

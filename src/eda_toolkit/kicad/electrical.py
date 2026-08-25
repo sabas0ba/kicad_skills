@@ -398,24 +398,29 @@ def analyse(board: Any, *, temperature_rise_c: float = 10.0, solve: bool = False
         for target, key in ((90.0, "width_90r_diff_mm"), (100.0, "width_100r_diff_mm")):
             width = width_for_differential_impedance(target, thickness, height, epsilon, kind=kind)
             row[key] = round(width, 4) if width else None
-        if row.get("width_50r_mm") and kind == "microstrip":
-            row["in_model_band"] = microstrip_is_in_band(row["width_50r_mm"], height, epsilon)
-        if solve and kind == "microstrip":
+        if solve:
             from . import field2d
 
-            if row.get("width_50r_mm"):
-                solved = field2d.microstrip(row["width_50r_mm"], thickness, height, epsilon)
+            if kind == "microstrip":
+                if row.get("width_50r_mm"):
+                    solved = field2d.microstrip(row["width_50r_mm"], thickness, height, epsilon)
+                    row["width_50r_solved_ohm"] = solved["z0_ohm"]
+                    row["solved_eps_eff"] = solved["eps_eff"]
+                if row.get("width_100r_diff_mm"):
+                    pair = field2d.differential_microstrip(
+                        row["width_100r_diff_mm"],
+                        thickness,
+                        height,
+                        epsilon,
+                        row["width_100r_diff_mm"],
+                    )
+                    row["width_100r_diff_solved_ohm"] = pair["zdiff_ohm"]
+            elif row.get("width_50r_mm"):
+                # the inner layers get the referee too: the IPC stripline fit
+                # proposed the width, the solve re-measures it (the coupled
+                # stripline pair has no solver yet, so that column stays a fit)
+                solved = field2d.stripline(row["width_50r_mm"], thickness, height, epsilon)
                 row["width_50r_solved_ohm"] = solved["z0_ohm"]
-                row["solved_eps_eff"] = solved["eps_eff"]
-            if row.get("width_100r_diff_mm"):
-                pair = field2d.differential_microstrip(
-                    row["width_100r_diff_mm"],
-                    thickness,
-                    height,
-                    epsilon,
-                    row["width_100r_diff_mm"],
-                )
-                row["width_100r_diff_solved_ohm"] = pair["zdiff_ohm"]
         impedance.append(row)
 
     return {

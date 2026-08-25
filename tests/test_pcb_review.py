@@ -1258,6 +1258,36 @@ def test_two_nets_that_share_a_channel_are_reported_and_a_pair_is_not():
     assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=crossing))) == []
 
 
+def test_the_pair_exemption_does_not_cross_sheets():
+    """Two nets from different sheets sharing a leaf name are not a pair."""
+    impostors = [
+        track(0, 10, 30, 10, width=0.25, net="/channel_a/USB_P"),
+        track(0, 10.5, 30, 10.5, width=0.25, net="/channel_b/USB_N"),
+    ]
+    findings = pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=impostors)))
+    assert [f.rule for f in findings] == ["emc.parallel_run"]
+
+
+def test_only_the_close_part_of_a_converging_run_is_counted():
+    """Heading within 15 degrees but mostly far apart: count the close metres."""
+    converging = [
+        track(0, 12, 40, 12, width=0.25, net="CLK"),
+        track(0, 16, 40, 8, width=0.25, net="DATA"),  # crosses at x=20, 11 deg
+    ]
+    assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=converging))) == []
+
+
+def test_a_cell_boundary_does_not_hide_a_shared_channel():
+    """The 4 mm bucket edge at y=12 must not separate y=11.8 from y=12.2."""
+    straddling = [
+        track(0, 11.8, 30, 11.8, width=0.25, net="CLK"),
+        track(0, 12.2, 30, 12.2, width=0.25, net="DATA"),
+    ]
+    findings = pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=straddling)))
+    assert [f.rule for f in findings] == ["emc.parallel_run"]
+    assert abs(findings[0].details["pairs"][0]["coupled_mm"] - 30) <= 1
+
+
 def test_a_double_sided_pour_wants_its_rim_stitched():
     """Two facing pours are a capacitor until the vias make them a conductor."""
     pours = [

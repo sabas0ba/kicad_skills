@@ -36,10 +36,13 @@ is the hot one, is this fill a heat path or a picture of one.
 
 from __future__ import annotations
 
+import itertools
 import math
 from typing import Any
 
 import numpy as np
+
+from . import outline as outline_geom
 
 # Conductivities, W/(m K). Copper is copper; the laminate figure is the
 # *in-plane* one, which the glass weave roughly doubles over the through-plane
@@ -81,16 +84,13 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
         iy1 = min(ny, int((by1 - y0) / step) + 2)
         return ix0, iy0, ix1, iy1
 
-    for track in board.tracks:
-        if track.layer not in masks:
-            continue
-        (ax, ay), (bx, by) = track.start, track.end
-        half = track.width / 2
+    def capsule(layer: str, a, b, half: float) -> None:
+        (ax, ay), (bx, by) = a, b
         ix0, iy0, ix1, iy1 = cells(
             min(ax, bx) - half, min(ay, by) - half, max(ax, bx) + half, max(ay, by) + half
         )
         if ix1 <= ix0 or iy1 <= iy0:
-            continue
+            return
         cx, cy = gx[iy0:iy1, ix0:ix1], gy[iy0:iy1, ix0:ix1]
         dx, dy = bx - ax, by - ay
         span = dx * dx + dy * dy
@@ -99,8 +99,23 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
         else:
             t = np.clip(((cx - ax) * dx + (cy - ay) * dy) / span, 0.0, 1.0)
         near = (cx - (ax + t * dx)) ** 2 + (cy - (ay + t * dy)) ** 2 <= half * half
-        masks[track.layer][iy0:iy1, ix0:ix1] |= near
+        masks[layer][iy0:iy1, ix0:ix1] |= near
 
+    for track in board.tracks:
+        if track.layer not in masks:
+            continue
+        half = track.width / 2
+        if track.kind == "arc" and getattr(track, "mid", None):
+            # the copper follows the curve, not the chord
+            points = outline_geom.arc_points(track.start, track.mid, track.end)
+            for a, b in itertools.pairwise(points):
+                capsule(track.layer, a, b, half)
+        else:
+            capsule(track.layer, track.start, track.end, half)
+
+    # a via reaches only the layers of its span: a blind via warms nothing on
+    # the face it never touches
+    order = {layer: i for i, layer in enumerate(board.copper_layers)}
     for via in board.vias:
         half = via.size / 2
         ix0, iy0, ix1, iy1 = cells(via.x - half, via.y - half, via.x + half, via.y + half)
@@ -108,8 +123,14 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
             continue
         cx, cy = gx[iy0:iy1, ix0:ix1], gy[iy0:iy1, ix0:ix1]
         disc = (cx - via.x) ** 2 + (cy - via.y) ** 2 <= half * half
-        for mask in masks.values():
-            mask[iy0:iy1, ix0:ix1] |= disc
+        indices = [order[layer] for layer in getattr(via, "layers", []) if layer in order]
+        if len(indices) >= 2:
+            reached = set(board.copper_layers[min(indices) : max(indices) + 1])
+        else:
+            reached = set(board.copper_layers)
+        for layer, mask in masks.items():
+            if layer in reached:
+                mask[iy0:iy1, ix0:ix1] |= disc
 
     for fp in board.footprints:
         for pad in fp.pads:
@@ -118,7 +139,21 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
             if ix1 <= ix0 or iy1 <= iy0:
                 continue
             cx, cy = gx[iy0:iy1, ix0:ix1], gy[iy0:iy1, ix0:ix1]
-            inside = (cx >= box[0]) & (cx <= box[2]) & (cy >= box[1]) & (cy <= box[3])
+            # test against the pad's own rotated shape, not its bounding box -
+            # a long pad at 45 degrees must not gain triangles of copper
+            angle = math.radians((getattr(pad, "angle", 0.0) or 0.0) + (fp.angle or 0.0))
+            cos_a, sin_a = math.cos(angle), math.sin(angle)
+            dx, dy = cx - pad.x, cy - pad.y
+            local_x = dx * cos_a + dy * sin_a
+            local_y = -dx * sin_a + dy * cos_a
+            half_w, half_h = pad.size[0] / 2, pad.size[1] / 2
+            shape = getattr(pad, "shape", "rect")
+            if shape in ("circle", "oval"):
+                inside = (local_x / max(half_w, 1e-9)) ** 2 + (
+                    local_y / max(half_h, 1e-9)
+                ) ** 2 <= 1.0
+            else:
+                inside = (np.abs(local_x) <= half_w) & (np.abs(local_y) <= half_h)
             for layer, mask in masks.items():
                 suffix = layer.split(".")[-1]
                 if any(pl == layer or pl == f"*.{suffix}" for pl in pad.layers):
@@ -154,6 +189,10 @@ def _source_cells(board: Any, ref: str, x0: float, y0: float, nx: int, ny: int, 
     box = fp.courtyard_box()
     if box is None:
         box = (fp.x - step, fp.y - step, fp.x + step, fp.y + step)
+    # a courtyard wholly off the grid gets no fictitious edge cell - the
+    # caller's outline check must see zero cells and refuse it
+    if box[2] <= x0 or box[0] >= x0 + nx * step or box[3] <= y0 or box[1] >= y0 + ny * step:
+        return 0, 0, 0, 0
     ix0 = max(0, int((box[0] - x0) / step))
     iy0 = max(0, int((box[1] - y0) / step))
     ix1 = min(nx, max(ix0 + 1, int((box[2] - x0) / step) + 1))
@@ -230,8 +269,15 @@ def analyse(
     if not powers:
         raise ValueError("state at least one dissipation, e.g. {'U1': 1.2}")
     for ref, watts in powers.items():
-        if watts <= 0:
+        if not math.isfinite(watts) or watts <= 0:
             raise ValueError(f"{ref}: power must be positive, got {watts}")
+    if not math.isfinite(step_mm) or step_mm <= 0:
+        raise ValueError(f"the grid step must be positive, got {step_mm}")
+    if not math.isfinite(htc_w_m2k) or htc_w_m2k <= 0:
+        raise ValueError(
+            f"the film coefficient must be positive, got {htc_w_m2k} - "
+            "with no convection there is no steady state to solve for"
+        )
     bbox = board.outline_bbox()
     if bbox is None:
         raise ValueError("the board has no outline to solve on")
@@ -247,15 +293,20 @@ def analyse(
 
     # sheet conductance per cell, W/K per square: laminate plus every copper
     # layer that actually has copper in the cell
+    # KiCad names its dielectrics "core" and "prepreg"; the sum that matters
+    # is everything between the outer copper faces, which also keeps solder
+    # mask and silkscreen entries out of the board's structural thickness
     board_thickness = DEFAULT_BOARD_THICKNESS_MM
-    for entry in getattr(board, "stackup", []) or []:
-        if entry.get("type") == "dielectric" and entry.get("thickness"):
-            board_thickness = sum(
-                float(e["thickness"])
-                for e in board.stackup
-                if e.get("type") == "dielectric" and e.get("thickness")
-            )
-            break
+    stackup = getattr(board, "stackup", []) or []
+    coppers = [i for i, entry in enumerate(stackup) if entry.get("type") == "copper"]
+    if len(coppers) >= 2:
+        between = [
+            float(entry["thickness"])
+            for entry in stackup[coppers[0] : coppers[-1] + 1]
+            if entry.get("type") != "copper" and entry.get("thickness")
+        ]
+        if between:
+            board_thickness = sum(between)
     sheet = np.where(inside, K_LAMINATE_IN_PLANE * board_thickness * 1e-3, 0.0)
     copper_share = np.zeros((ny, nx))
     for layer, mask in masks.items():

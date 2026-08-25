@@ -226,6 +226,7 @@ def _solve(
     epsilon_r: float,
     reference: Callable[[dict[str, float]], float] | None,
     asked: dict[str, float],
+    eps_reference: Callable[[dict[str, float]], float] | None = None,
 ) -> dict[str, Any]:
     """Coarse seeds fine, Richardson to zero cell size, closed-form snap delta.
 
@@ -264,9 +265,15 @@ def _solve(
     delta = 0.0
     if reference is not None:
         delta = reference(asked) - reference(snapped)
+    # the grids solved the snapped copper, so eps_eff needs the same slope
+    # correction the impedance gets - without it the number describes the
+    # snapped trace, which the default mesh can thicken appreciably
+    eps_delta = 0.0
+    if eps_reference is not None:
+        eps_delta = eps_reference(asked) - eps_reference(snapped)
     return {
         "z0_ohm": round(z_star + delta, 2),
-        "eps_eff": round(eps_star, 3),
+        "eps_eff": round(eps_star + eps_delta, 3),
         "meta": {
             "method": "2D quasi-static, red-black SOR, Richardson-extrapolated",
             "z0_coarse_ohm": round(z_coarse, 2),
@@ -304,7 +311,12 @@ def microstrip(
             g["width_mm"], g["thickness_mm"], g["height_mm"], epsilon_r
         )[0]
 
-    return _solve(counts, epsilon_r, reference, asked)
+    def eps_reference(g: dict[str, float]) -> float:
+        return electrical.hammerstad_jensen_microstrip(
+            g["width_mm"], g["thickness_mm"], g["height_mm"], epsilon_r
+        )[1]
+
+    return _solve(counts, epsilon_r, reference, asked, eps_reference)
 
 
 def differential_microstrip(
@@ -324,8 +336,8 @@ def differential_microstrip(
     fit in `electrical.differential_impedance`, the gap here is real geometry,
     not a correction factor - which is the reason to reach for this function.
     """
-    if gap_mm <= 0:
-        raise ValueError("the gap must be positive")
+    if min(width_mm, thickness_mm, height_mm, gap_mm) <= 0 or epsilon_r < 1:
+        raise ValueError("geometry must be positive and epsilon_r at least 1")
     counts = _Counts(
         width_mm=width_mm,
         thickness_mm=thickness_mm,

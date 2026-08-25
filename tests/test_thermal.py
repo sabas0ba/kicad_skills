@@ -133,3 +133,26 @@ def test_nonsense_is_refused_with_its_reason():
         thermal.analyse(board, {"U9": 1.0})
     with pytest.raises(ValueError, match="positive"):
         thermal.analyse(board, {"U1": -1.0})
+    with pytest.raises(ValueError, match="positive"):
+        thermal.analyse(board, {"U1": 1.0}, step_mm=0.0)
+    with pytest.raises(ValueError, match="positive"):
+        thermal.analyse(board, {"U1": 1.0}, htc_w_m2k=0.0)
+
+
+def test_a_part_wholly_off_the_board_is_refused_not_smeared_onto_the_edge():
+    board = _Board(footprints=[_Part("U1", -30.0, -30.0)])
+    with pytest.raises(ValueError, match="outside"):
+        thermal.analyse(board, {"U1": 1.0}, step_mm=1.0)
+
+
+def test_the_board_thickness_comes_from_the_real_stackup_vocabulary():
+    """KiCad says core and prepreg, not 'dielectric' - both must be summed."""
+    board = _Board(footprints=[_Part("U1", 10, 10)])
+    board.stackup = [
+        {"name": "F.Cu", "type": "copper", "thickness": 0.035},
+        {"name": "dielectric 1", "type": "prepreg", "thickness": 0.2},
+        {"name": "dielectric 2", "type": "core", "thickness": 0.71},
+        {"name": "B.Cu", "type": "copper", "thickness": 0.035},
+    ]
+    result = thermal.analyse(board, {"U1": 1.0}, step_mm=1.0)
+    assert result["board_thickness_mm"] == pytest.approx(0.91)

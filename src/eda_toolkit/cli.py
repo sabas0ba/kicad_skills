@@ -562,13 +562,18 @@ def cmd_pcb_thermal(args: argparse.Namespace) -> int:
             powers[ref] = float(watts)
         except ValueError:
             raise SystemExit(f"--power {spec!r}: {watts!r} is not a number") from None
-    payload = thermal.analyse(
-        pcb.parse(board_path),
-        powers,
-        ambient_c=args.ambient,
-        htc_w_m2k=args.htc,
-        step_mm=args.step,
-    )
+    try:
+        payload = thermal.analyse(
+            pcb.parse(board_path),
+            powers,
+            ambient_c=args.ambient,
+            htc_w_m2k=args.htc,
+            step_mm=args.step,
+        )
+    except ValueError as exc:
+        # a mistyped reference or a nonsense parameter is a user error, not
+        # a traceback
+        raise EdaError(str(exc)) from exc
     payload["board"] = str(board_path)
     if args.out:
         out_dir = ensure_dir(args.out)
