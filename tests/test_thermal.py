@@ -231,3 +231,23 @@ def test_the_board_thickness_comes_from_the_real_stackup_vocabulary():
     ]
     result = thermal.analyse(board, {"U1": 1.0}, step_mm=1.0)
     assert result["board_thickness_mm"] == pytest.approx(0.91)
+
+
+def test_an_offset_drill_removes_copper_where_the_hole_is():
+    """One hole, in its own place: not a second, fictitious, centred one."""
+    pad = _Pad(20, 15, w=10.0, h=10.0)
+    pad.drill = 2.0
+    pad.drill_size = (2.0, 2.0)
+    pad.drill_offset = (3.0, 0.0)
+    board = _Board(footprints=[_Part("H1", 20, 15, half=5.0, pads=[pad]), _Part("U1", 8, 8)])
+    masks, holes = thermal._copper_masks(board, 0.0, 0.0, 80, 60, 0.5)
+    front = masks["F.Cu"]
+
+    def cell(x, y):
+        return int(y / 0.5), int(x / 0.5)
+
+    # the pad's own copper stays whole; only `holes` takes the drill out
+    assert front[cell(20, 15)]  # the pad centre is copper, no hole there
+    assert front[cell(23, 15)]  # ...and so is the annulus around the real hole
+    assert holes[cell(23, 15)]  # the hole itself is where the file put it
+    assert not holes[cell(20, 15)]

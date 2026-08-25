@@ -545,7 +545,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
 
         # shapes a footprint draws on copper are copper too - the same rules
         # the board-level graphics get, turned and placed with the part
-        for shape in ("fp_poly", "fp_rect", "fp_circle", "fp_line", "fp_arc"):
+        for shape in ("fp_poly", "fp_rect", "fp_circle", "fp_line", "fp_arc", "fp_curve"):
             for node in fp_node.children(shape):
                 layer_name = str(node.value("layer", default=""))
                 if not layer_name.endswith(".Cu"):
@@ -579,6 +579,16 @@ def parse(path: str | os.PathLike[str]) -> Board:
                         sx0, sy0, _ = _xy(start_node)
                         ex0, ey0, _ = _xy(end_node)
                         local = [(sx0, sy0), (ex0, ey0)]
+                elif shape == "fp_curve":
+                    pts_node = node.child("pts")
+                    controls: list[tuple[float, float]] = []
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(vals) >= 2:
+                                controls.append((float(vals[0]), float(vals[1])))
+                    if len(controls) >= 2:
+                        local = outline_geom.bezier_points(controls)
                 else:
                     start_node = node.child("start")
                     mid_node = node.child("mid")
@@ -673,6 +683,34 @@ def parse(path: str | os.PathLike[str]) -> Board:
                         lsx, lsy, _ = _xy(start)
                         lex, ley, _ = _xy(end)
                         primitives.append(("polyline", [(lsx, lsy), (lex, ley)], stroke))
+                # curved land features: an arc or a Bezier drawn inside the pad
+                for arc in prim_node.children("gr_arc"):
+                    start, mid, end = arc.child("start"), arc.child("mid"), arc.child("end")
+                    stroke = _stroke_width(arc)
+                    if start and mid and end and stroke > 0:
+                        asx0, asy0, _ = _xy(start)
+                        amx0, amy0, _ = _xy(mid)
+                        aex0, aey0, _ = _xy(end)
+                        primitives.append(
+                            (
+                                "polyline",
+                                outline_geom.arc_points((asx0, asy0), (amx0, amy0), (aex0, aey0)),
+                                stroke,
+                            )
+                        )
+                for curve in prim_node.children("gr_curve"):
+                    pts_node = curve.child("pts")
+                    stroke = _stroke_width(curve)
+                    controls: list[tuple[float, float]] = []
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(vals) >= 2:
+                                controls.append((float(vals[0]), float(vals[1])))
+                    if len(controls) >= 2 and stroke > 0:
+                        primitives.append(
+                            ("polyline", outline_geom.bezier_points(controls), stroke)
+                        )
             # Pad coordinates are relative to the footprint origin and rotated by
             # the footprint orientation. KiCad's RotatePoint works on a Y-down
             # canvas, hence the sign pattern below.

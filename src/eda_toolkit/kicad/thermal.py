@@ -274,11 +274,11 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
                         inside |= (local_x - (sx + t * vx)) ** 2 + (
                             local_y - (sy + t * vy)
                         ) ** 2 <= half_stroke * half_stroke
-            drill = getattr(pad, "drill", None)
-            if drill:
-                # the drilled hole is air, not copper - a large plated
-                # mounting hole must not read as a solid conductive disc
-                inside &= local_x**2 + local_y**2 > (drill / 2) ** 2
+            # the drilled hole is not subtracted here: it went into `holes`
+            # above as the shape it actually is - slot, offset and rotation -
+            # and every consumer takes `mask & inside` with the holes already
+            # out of `inside`. Subtracting a centred circle a second time
+            # would erase real annular copper somewhere the hole is not.
             for layer, mask in masks.items():
                 suffix = layer.split(".")[-1]
                 if any(pl == layer or pl == f"*.{suffix}" for pl in pad.layers):

@@ -303,3 +303,24 @@ def test_a_bezier_on_copper_is_collected_as_its_curve(tmp_path):
     assert (layer, round(width, 2)) == ("F.Cu", 0.4)
     # the curve, not the control cage: the cubic's apex is 7.5, not 10
     assert max(p[1] for p in pts) < 8.0
+
+
+def test_footprint_curves_and_pad_arcs_are_copper_too(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:ant" (layer "F.Cu") (at 0 0 0)'
+        "    (fp_curve (pts (xy 0 0) (xy 0 10) (xy 10 10) (xy 10 0))"
+        '      (layer "F.Cu") (stroke (width 0.3) (type solid)))'
+        '    (pad "1" smd custom (at 0 0) (size 1 1) (layers "F.Cu")'
+        "      (primitives"
+        "        (gr_arc (start 0 0) (mid 1 1) (end 2 0)"
+        "          (stroke (width 0.2) (type solid)))))))"
+    )
+    path = tmp_path / "fc.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    board = pcb.parse(path)
+    curves = [s for s in board.copper_strokes if round(s[2], 2) == 0.3]
+    assert len(curves) == 1
+    assert max(p[1] for p in curves[0][1]) < 8.0  # the curve, not its cage
+    kinds = [p[0] for p in board.footprints[0].pads[0].primitives]
+    assert kinds == ["polyline"]  # the arc survived as its stroked path
