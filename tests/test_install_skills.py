@@ -195,6 +195,19 @@ def test_a_destination_with_whitespace_is_not_split(project):
     assert not (target / destination).exists()
 
 
+def test_redundant_destination_separators_are_normalized(project):
+    target, submodule = project
+    result = install(submodule, target, "--dest", "a//b")
+
+    skill = target / "a" / "b" / GUIDES[0] / "SKILL.md"
+    assert f"installed a/b/{GUIDES[0]}/SKILL.md" in result.stdout
+    assert skill.is_symlink()
+    assert skill.read_text().startswith("---\n")
+
+    install(submodule, target, "--dest", "a//b", "--uninstall")
+    assert not (target / "a").exists()
+
+
 def test_a_nested_destination_still_gets_relative_symlinks(project):
     target, submodule = project
     install(submodule, target, "--dest", "a/b/c")

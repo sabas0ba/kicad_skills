@@ -66,6 +66,7 @@ SELF_INSTALL=0
 [ "$TARGET" = "$SOURCE_ROOT" ] && SELF_INSTALL=1
 
 GUIDE_SRC="$SOURCE_ROOT/docs/guides"
+DEST="$(printf '%s\n' "$DEST" | sed 's://*:/:g')"
 DEST="${DEST#/}"; DEST="${DEST%/}"
 [ -d "$GUIDE_SRC" ] || { echo "error: no guides in $GUIDE_SRC" >&2; exit 1; }
 

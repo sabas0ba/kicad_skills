@@ -43,7 +43,8 @@ This checkout git-ignores the generated `.agents/skills/` and `.claude/skills/`
 because they are adapters, not content. A project using this repository as a
 submodule must add those paths to its own `.gitignore` or choose to track them.
 Delete generated adapters and re-run the script whenever you like. Supplying
-`--dest` creates only the requested custom layout.
+`--dest` creates only the requested custom layout. Repeated `/` separators in
+that destination are normalized before the adapter links are constructed.
 
 Re-running the installer also migrates symlinks created by an older release:
 when an unmarked `SKILL.md` still points to the matching guide in this toolkit,
