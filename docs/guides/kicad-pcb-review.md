@@ -115,7 +115,12 @@ The solver is importable on its own for geometries the table does not pose —
 `stripline`, each returning the impedance plus a `meta` block that shows the
 two raw grid answers and the snap correction, so an answer can always be argued
 with. It is quasi-static: no dispersion, loss or surface roughness, so above a
-few GHz on thick laminates the fab's full-wave numbers pull ahead.
+few GHz on thick laminates the fab's full-wave numbers pull ahead. Its mesh is
+uniform, so a cross-section whose smallest feature is orders below its
+substrate — a coupled pair at a hundredth of the dielectric height — is refused
+with the cell count rather than solved coarsely or attempted at tens of
+gigabytes. That geometry wants a locally refined solver, and the message says
+so.
 
 `pcb thermal` answers the question the current table only rates: where do the
 watts actually go on *this* copper. The board becomes a grid — copper where the

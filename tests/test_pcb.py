@@ -287,3 +287,19 @@ def test_a_hollow_custom_pad_primitive_keeps_its_ring(tmp_path):
     assert "ring" in kinds  # the stroke survived
     assert "circle" not in kinds  # ...and the unfilled disc did not
     assert "poly" in kinds
+
+
+def test_a_bezier_on_copper_is_collected_as_its_curve(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        "  (gr_curve (pts (xy 0 0) (xy 0 10) (xy 10 10) (xy 10 0))"
+        '    (layer "F.Cu") (stroke (width 0.4) (type solid))))'
+    )
+    path = tmp_path / "b.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    strokes = pcb.parse(path).copper_strokes
+    assert len(strokes) == 1
+    layer, pts, width = strokes[0]
+    assert (layer, round(width, 2)) == ("F.Cu", 0.4)
+    # the curve, not the control cage: the cubic's apex is 7.5, not 10
+    assert max(p[1] for p in pts) < 8.0

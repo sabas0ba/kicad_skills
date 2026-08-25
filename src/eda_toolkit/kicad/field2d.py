@@ -64,6 +64,11 @@ STRIPLINE_MARGIN_SPACINGS = 2.5
 # stripline from being solved three cells wide.
 CELLS_PER_FEATURE = 8
 
+# The fine grid's ceiling. `_solve` holds several float64 arrays of this size
+# at once, so ten million cells is already most of a gigabyte - past that the
+# answer arrives slower than a fab's calculator and possibly not at all.
+MAX_GRID_CELLS = 10_000_000
+
 
 def _relax(
     phi: np.ndarray,
@@ -188,6 +193,37 @@ class _Counts:
         margin_mm = (STRIPLINE_MARGIN_SPACINGS if stripline else BOX_MARGIN_HEIGHTS) * height_mm
         self.margin = max(4, round(margin_mm / self.cell_mm))
         self.stripline = stripline
+
+        # The mesh is uniform, so the smallest feature sets the cell size for
+        # the whole box - including the margin the fringing field needs. A gap
+        # a hundred times finer than the substrate therefore costs a hundred
+        # times the cells in each direction, and the solve would ask for tens
+        # of gigabytes rather than the few seconds the guide promises. Refuse
+        # with the numbers rather than allocate. There is no knob that rescues
+        # a ratio this wide - even one cell per feature leaves the margin
+        # enormous - so the message says what would have to change instead of
+        # promising a setting that cannot reach.
+        fine = self.grid_cells(scale=2)
+        if fine > MAX_GRID_CELLS:
+            raise ValueError(
+                f"this cross-section needs {fine / 1e6:.1f} M cells at {self.cell_mm / 2:.5f} mm "
+                f"(the limit is {MAX_GRID_CELLS / 1e6:.0f} M): its smallest feature is "
+                f"{feature:.4f} mm and the box around it is {margin_mm:.2f} mm, a ratio a "
+                "uniform mesh cannot afford. A locally refined solver answers this one; "
+                "this module does not."
+            )
+
+    def grid_cells(self, scale: int) -> int:
+        """How many cells ``grids(scale)`` will allocate, without allocating."""
+        kh = self.height * scale
+        n_w = self.width * scale
+        n_t = self.thickness * scale
+        n_m = self.margin * scale
+        n_g = self.gap * scale if self.gap is not None else 0
+        traces = 1 if self.gap is None else 2
+        nx = 2 * n_m + traces * n_w + n_g
+        ny = kh + 1 if self.stripline else kh + n_t + n_m
+        return nx * ny
 
     def snapped(self) -> dict[str, float]:
         h = self.cell_mm

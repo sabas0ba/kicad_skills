@@ -99,3 +99,32 @@ def test_impossible_geometry_is_refused():
         field2d.stripline(0.5, T, 1.0, epsilon_r=0.5)
     with pytest.raises(ValueError):
         field2d.stripline(0.5, thickness_mm=1.0, plane_spacing_mm=0.8, epsilon_r=ER)
+
+
+def test_an_unaffordable_mesh_is_refused_with_its_numbers():
+    """A gap a hundredth of the substrate would ask for tens of gigabytes.
+
+    The mesh is uniform, so the finest feature sets the cell size for the
+    whole box including its margin. Refusing beats allocating - and beats
+    quietly solving a gap the mesh cannot see.
+    """
+    with pytest.raises(ValueError, match="M cells"):
+        field2d.differential_microstrip(1.0, 0.035, 1.0, 4.0, gap_mm=0.01)
+
+
+def test_the_gaps_a_real_pair_uses_are_still_affordable():
+    """The guard must not price out the geometry the tool exists to answer.
+
+    The mesh, not the solve: what is under test is that these gaps build a
+    grid at all, and the solved answers already have their own tests.
+    """
+    for gap in (0.1, 0.15, 0.2):
+        counts = field2d._Counts(
+            width_mm=0.5,
+            thickness_mm=0.035,
+            height_mm=0.51,
+            gap_mm=gap,
+            stripline=False,
+            cells=field2d.CELLS_PER_FEATURE,
+        )
+        assert counts.grid_cells(scale=2) < field2d.MAX_GRID_CELLS

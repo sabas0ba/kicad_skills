@@ -827,7 +827,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
     # Graphics on a copper layer are copper. A filled shape contributes its
     # area; an unfilled one still contributes its drawn stroke, and a line or
     # arc IS its stroke - the ink is the copper either way.
-    for tag in ("gr_rect", "gr_circle", "gr_poly", "gr_line", "gr_arc"):
+    for tag in ("gr_rect", "gr_circle", "gr_poly", "gr_line", "gr_arc", "gr_curve"):
         for node in root.children(tag):
             layer_name = str(node.value("layer", default=""))
             if not layer_name.endswith(".Cu"):
@@ -858,6 +858,16 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     sx, sy, _ = _xy(start)
                     ex, ey, _ = _xy(end)
                     poly = [(sx, sy), (ex, ey)]
+            elif tag == "gr_curve":
+                # the Bezier as copper follows the curve, like the outline
+                pts = node.child("pts")
+                controls: list[tuple[float, float]] = []
+                if pts is not None:
+                    for xy in pts.children("xy"):
+                        atoms = xy.atoms()
+                        controls.append((float(atoms[0]), float(atoms[1])))
+                if len(controls) >= 2:
+                    poly = outline_geom.bezier_points(controls)
             else:
                 start = node.child("start")
                 mid = node.child("mid")
