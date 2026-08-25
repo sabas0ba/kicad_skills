@@ -165,6 +165,8 @@ def test_nonsense_is_refused_with_its_reason():
         thermal.analyse(board, {"U1": 1.0}, step_mm=0.0)
     with pytest.raises(ValueError, match="positive"):
         thermal.analyse(board, {"U1": 1.0}, htc_w_m2k=0.0)
+    with pytest.raises(ValueError, match="finite"):
+        thermal.analyse(board, {"U1": 1.0}, ambient_c=float("nan"))
 
 
 def test_an_open_outline_is_refused_rather_than_filled_in():

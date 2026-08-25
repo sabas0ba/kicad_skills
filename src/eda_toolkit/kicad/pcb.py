@@ -462,11 +462,20 @@ def parse(path: str | os.PathLike[str]) -> Board:
                 if not str(node.value("layer", default="")).endswith(".CrtYd"):
                     continue
                 raw: list[tuple[float, float]] = []
-                for key in ("start", "end", "center"):
-                    child = node.child(key)
-                    if child:
-                        cx, cy, _ = _xy(child)
-                        raw.append((cx, cy))
+                if shape == "fp_rect":
+                    # all four corners, not the two diagonal ones the file
+                    # states: a rotated diagonal does not bound a rectangle
+                    start_node, end_node = node.child("start"), node.child("end")
+                    if start_node and end_node:
+                        sx0, sy0, _ = _xy(start_node)
+                        ex0, ey0, _ = _xy(end_node)
+                        raw += [(sx0, sy0), (ex0, sy0), (ex0, ey0), (sx0, ey0)]
+                else:
+                    for key in ("start", "end", "center"):
+                        child = node.child(key)
+                        if child:
+                            cx, cy, _ = _xy(child)
+                            raw.append((cx, cy))
                 pts_node = node.child("pts")
                 if pts_node:
                     for xy in pts_node.children("xy"):
@@ -477,23 +486,43 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     gx, gy = _rotate(cx, cy, angle)
                     fp.courtyard.append((gx + fp.x, gy + fp.y))
 
-        # a filled polygon a footprint draws on copper is copper too
-        for node in fp_node.children("fp_poly"):
-            layer_name = str(node.value("layer", default=""))
-            if not layer_name.endswith(".Cu"):
-                continue
-            if not _graphic_is_filled(node):
-                continue
-            pts_node = node.child("pts")
-            poly: list[tuple[float, float]] = []
-            if pts_node:
-                for xy in pts_node.children("xy"):
-                    vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
-                    if len(vals) >= 2:
-                        gx, gy = _rotate(float(vals[0]), float(vals[1]), angle)
-                        poly.append((gx + fp.x, gy + fp.y))
-            if len(poly) >= 3:
-                board.copper_shapes.append((layer_name, poly))
+        # filled shapes a footprint draws on copper are copper too - the same
+        # set the board-level graphics get, turned and placed with the part
+        for shape in ("fp_poly", "fp_rect", "fp_circle"):
+            for node in fp_node.children(shape):
+                layer_name = str(node.value("layer", default=""))
+                if not layer_name.endswith(".Cu"):
+                    continue
+                if not _graphic_is_filled(node):
+                    continue
+                local: list[tuple[float, float]] = []
+                if shape == "fp_poly":
+                    pts_node = node.child("pts")
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(vals) >= 2:
+                                local.append((float(vals[0]), float(vals[1])))
+                elif shape == "fp_rect":
+                    start_node, end_node = node.child("start"), node.child("end")
+                    if start_node and end_node:
+                        sx0, sy0, _ = _xy(start_node)
+                        ex0, ey0, _ = _xy(end_node)
+                        local = [(sx0, sy0), (ex0, sy0), (ex0, ey0), (sx0, ey0)]
+                else:
+                    centre_node, end_node = node.child("center"), node.child("end")
+                    if centre_node and end_node:
+                        ccx, ccy, _ = _xy(centre_node)
+                        cex, cey, _ = _xy(end_node)
+                        local = outline_geom.circle_points(
+                            (ccx, ccy), math.dist((ccx, ccy), (cex, cey))
+                        )
+                poly = []
+                for lx, ly in local:
+                    gx, gy = _rotate(lx, ly, angle)
+                    poly.append((gx + fp.x, gy + fp.y))
+                if len(poly) >= 3:
+                    board.copper_shapes.append((layer_name, poly))
 
         for pad_node in fp_node.children("pad"):
             atoms = pad_node.atoms()

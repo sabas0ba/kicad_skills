@@ -183,3 +183,35 @@ def test_a_slot_drill_keeps_its_shape_and_offset(tmp_path):
     assert pad.drill == 1.0
     assert pad.drill_size == (1.0, 2.0)
     assert pad.drill_offset == (0.5, 0.0)
+
+
+def test_a_rectangular_courtyard_survives_rotation_with_all_four_corners(tmp_path):
+    """The file states two diagonal corners; the polygon needs all four."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:sq" (layer "F.Cu") (at 20 20 45)'
+        '    (fp_rect (start -2 -2) (end 2 2) (layer "F.CrtYd"))))'
+    )
+    path = tmp_path / "c.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    fp = pcb.parse(path).footprints[0]
+    assert len(fp.courtyard) == 4
+    box = fp.courtyard_box()
+    # a 4x4 square turned 45 degrees spans its diagonal both ways
+    assert box[2] - box[0] == pytest.approx(4 * math.sqrt(2), abs=1e-6)
+    assert box[3] - box[1] == pytest.approx(4 * math.sqrt(2), abs=1e-6)
+
+
+def test_footprint_rects_and_circles_on_copper_are_copper(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:ant" (layer "F.Cu") (at 10 10 0)'
+        '    (fp_rect (start 0 0) (end 4 2) (layer "F.Cu") (fill yes))'
+        '    (fp_circle (center 8 0) (end 9 0) (layer "F.Cu") (fill yes))'
+        '    (fp_rect (start -5 -5) (end -1 -1) (layer "F.Cu") (fill none))))'
+    )
+    path = tmp_path / "a.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    shapes = pcb.parse(path).copper_shapes
+    assert len(shapes) == 2  # the hollow rect is its stroke, not its area
+    assert all(layer == "F.Cu" for layer, _ in shapes)

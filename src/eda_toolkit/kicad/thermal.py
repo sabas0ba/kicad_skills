@@ -388,6 +388,8 @@ def analyse(
             f"the film coefficient must be positive, got {htc_w_m2k} - "
             "with no convection there is no steady state to solve for"
         )
+    if not math.isfinite(ambient_c):
+        raise ValueError(f"the ambient temperature must be finite, got {ambient_c}")
     bbox = board.outline_bbox()
     if bbox is None:
         raise ValueError("the board has no outline to solve on")
