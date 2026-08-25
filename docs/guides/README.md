@@ -43,12 +43,21 @@ This checkout git-ignores the generated `.agents/skills/` and `.claude/skills/`
 because they are adapters, not content. A project using this repository as a
 submodule must add those paths to its own `.gitignore` or choose to track them.
 Delete generated adapters and re-run the script whenever you like. Supplying
-`--dest` creates only the requested custom layout. Repeated `/` separators in
-that destination are normalized before the adapter links are constructed.
+`--dest` creates only the requested custom layout below the target. Repeated
+`/` separators and `.` components are normalized before the adapter links are
+constructed; absolute paths, `..` components, and symlinked layout directories
+are rejected. Destination paths use `/`; backslashes are rejected so the same
+containment rules apply under Git Bash on Windows.
 
 Re-running the installer also migrates symlinks created by an older release:
 when an unmarked `SKILL.md` still points to the matching guide in this toolkit,
 the installer marks it as owned so a later `--uninstall` can remove it safely.
+An existing ownership marker is never overwritten by a normal install. With
+`--force`, existing adapter, marker, and shim files or symlinks are unlinked
+before replacement; directories are rejected during a preflight check. The
+uninstaller trusts only regular marker files and generated shim headers, and
+`--no-guides` and `--no-shim` select the same components for removal as for
+installation.
 
 And if you use no assistant at all, the guides still stand on their own — they
 are how a careful engineer would use these commands.
