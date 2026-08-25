@@ -134,7 +134,12 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
         if ix1 <= ix0 or iy1 <= iy0:
             continue
         cx, cy = gx[iy0:iy1, ix0:ix1], gy[iy0:iy1, ix0:ix1]
-        disc = (cx - via.x) ** 2 + (cy - via.y) ** 2 <= half * half
+        radial = (cx - via.x) ** 2 + (cy - via.y) ** 2
+        disc = radial <= half * half
+        drill = getattr(via, "drill", 0) or 0
+        if drill:
+            # the annulus is copper; the drilled middle is air, same as a pad
+            disc &= radial > (drill / 2) ** 2
         indices = [order[layer] for layer in getattr(via, "layers", []) if layer in order]
         if len(indices) >= 2:
             reached = set(board.copper_layers[min(indices) : max(indices) + 1])
@@ -204,6 +209,13 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
             path = Path(points)
             hit = path.contains_points(centres).reshape(ny, nx)
             masks[layer] |= hit
+
+    # copper drawn as filled graphics - a heatsink patch, an antenna - is
+    # copper the same way a pour is
+    for layer, points in getattr(board, "copper_shapes", ()) or ():
+        if layer not in masks or len(points) < 3:
+            continue
+        masks[layer] |= Path(points).contains_points(centres).reshape(ny, nx)
     return masks
 
 

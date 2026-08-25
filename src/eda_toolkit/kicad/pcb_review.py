@@ -1661,7 +1661,9 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
     loop = outline_geom.chain_loop(board.edge_segments())
     if loop is None:
         return []
-    band = max(4.0, 0.08 * max(x1 - x0, y1 - y0))
+    # rim-local: scaled by the board's SHORT side, so a long narrow board
+    # does not declare its whole midline to be rim
+    band = max(4.0, 0.08 * min(x1 - x0, y1 - y0))
     rim = [
         (via.x, via.y)
         for via in board.vias

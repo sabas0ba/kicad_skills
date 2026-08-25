@@ -210,6 +210,9 @@ class Board:
     vias: list[Via] = field(default_factory=list)
     zones: list[Zone] = field(default_factory=list)
     edges: list[dict[str, Any]] = field(default_factory=list)
+    # Filled copper drawn as graphics - a heatsink patch, an antenna - as
+    # (layer, closed polygon). Stroked copper lines are not collected.
+    copper_shapes: list[tuple[str, list[tuple[float, float]]]] = field(default_factory=list)
     silk_texts: list[dict[str, Any]] = field(default_factory=list)
     stackup: list[dict[str, Any]] = field(default_factory=list)
     _segments: list[tuple[tuple[float, float], tuple[float, float]]] | None = field(
@@ -449,6 +452,22 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     gx, gy = _rotate(cx, cy, angle)
                     fp.courtyard.append((gx + fp.x, gy + fp.y))
 
+        # a filled polygon a footprint draws on copper is copper too
+        for node in fp_node.children("fp_poly"):
+            layer_name = str(node.value("layer", default=""))
+            if not layer_name.endswith(".Cu"):
+                continue
+            pts_node = node.child("pts")
+            poly: list[tuple[float, float]] = []
+            if pts_node:
+                for xy in pts_node.children("xy"):
+                    vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                    if len(vals) >= 2:
+                        gx, gy = _rotate(float(vals[0]), float(vals[1]), angle)
+                        poly.append((gx + fp.x, gy + fp.y))
+            if len(poly) >= 3:
+                board.copper_shapes.append((layer_name, poly))
+
         for pad_node in fp_node.children("pad"):
             atoms = pad_node.atoms()
             px, py, pangle = _xy(pad_node.child("at"))
@@ -636,6 +655,35 @@ def parse(path: str | os.PathLike[str]) -> Board:
                 fills=fills,
             )
         )
+
+    # Filled graphics on a copper layer are copper - an antenna or a heatsink
+    # patch drawn as a polygon rather than poured as a zone.
+    for tag in ("gr_rect", "gr_circle", "gr_poly"):
+        for node in root.children(tag):
+            layer_name = str(node.value("layer", default=""))
+            if not layer_name.endswith(".Cu"):
+                continue
+            poly: list[tuple[float, float]] = []
+            if tag == "gr_poly":
+                pts = node.child("pts")
+                if pts is not None:
+                    for xy in pts.children("xy"):
+                        atoms = xy.atoms()
+                        poly.append((float(atoms[0]), float(atoms[1])))
+            elif tag == "gr_rect":
+                start, end = node.child("start"), node.child("end")
+                if start is not None and end is not None:
+                    sx, sy, _ = _xy(start)
+                    ex, ey, _ = _xy(end)
+                    poly = [(sx, sy), (ex, sy), (ex, ey), (sx, ey)]
+            else:
+                centre, end = node.child("center"), node.child("end")
+                if centre is not None and end is not None:
+                    ccx, ccy, _ = _xy(centre)
+                    cex, cey, _ = _xy(end)
+                    poly = outline_geom.circle_points((ccx, ccy), math.dist((ccx, ccy), (cex, cey)))
+            if len(poly) >= 3:
+                board.copper_shapes.append((layer_name, poly))
 
     for tag in ("gr_line", "gr_arc", "gr_rect", "gr_circle", "gr_poly", "gr_curve"):
         for node in root.children(tag):

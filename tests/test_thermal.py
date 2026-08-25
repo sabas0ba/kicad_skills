@@ -118,6 +118,17 @@ def test_a_pour_spreads_the_heat_the_bare_laminate_cannot():
     assert bare["copper_coverage"] < 0.1
 
 
+def test_copper_drawn_as_graphics_spreads_like_a_pour():
+    """A heatsink patch drawn with gr_poly is copper, not a hole in the map."""
+    part = _Part("U1", 8, 8)
+    board = _Board(footprints=[part])
+    board.copper_shapes = [("F.Cu", [(0, 0), (40, 0), (40, 30), (0, 30)])]
+    bare = thermal.analyse(_Board(footprints=[part]), {"U1": 1.0}, step_mm=1.0)
+    drawn = thermal.analyse(board, {"U1": 1.0}, step_mm=1.0)
+    assert drawn["copper_coverage"] > 0.9
+    assert drawn["max_rise_c"] < bare["max_rise_c"] * 0.5
+
+
 def test_the_hot_spot_is_under_the_part_that_burns():
     board = _Board(footprints=[_Part("U1", 10, 10), _Part("R5", 30, 20)])
     result = thermal.analyse(board, {"U1": 2.0, "R5": 0.25}, step_mm=1.0)
