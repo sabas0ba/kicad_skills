@@ -434,10 +434,13 @@ def analyse(board: Any, *, temperature_rise_c: float = 10.0, solve: bool = False
                 # stackup states and the symmetric fit cannot pose (the
                 # coupled stripline pair has no solver yet, so that
                 # differential column stays a fit)
+                # the stackup's height is the sum of the two dielectric
+                # clearances; the planes themselves sit a trace-thickness
+                # further apart, and the solver wants the real spacing
                 solved = field2d.stripline(
                     row["width_50r_mm"],
                     thickness,
-                    height,
+                    height + thickness,
                     epsilon,
                     trace_below_mm=row.get("height_below_mm"),
                 )
