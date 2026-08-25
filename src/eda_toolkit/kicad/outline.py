@@ -111,7 +111,17 @@ def bezier_points(controls: Sequence[Point], steps: int = ARC_STEPS) -> list[Poi
             ]
         return points[0]
 
-    return [at(i / steps) for i in range(steps + 1)]
+    # subdivide until the curve at each interval's midpoint sits within the
+    # chord tolerance of the chord - the same promise the arcs keep
+    while True:
+        pts = [at(i / steps) for i in range(steps + 1)]
+        worst = 0.0
+        for i in range(steps):
+            probe = at((i + 0.5) / steps)
+            worst = max(worst, _segment_distance(probe[0], probe[1], (pts[i], pts[i + 1])))
+        if worst <= CHORD_TOLERANCE_MM or steps >= _MAX_CURVE_STEPS:
+            return pts
+        steps = min(_MAX_CURVE_STEPS, steps * 2)
 
 
 def _chain(points: Sequence[Point], closed: bool = False) -> list[Segment]:

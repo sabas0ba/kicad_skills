@@ -251,3 +251,20 @@ def test_courtyard_lines_are_chained_into_perimeter_order(tmp_path):
     for a, b in itertools.pairwise(ring):
         # each edge of a chained rectangle changes exactly one coordinate
         assert (a[0] == b[0]) != (a[1] == b[1])
+
+
+def test_a_hollow_copper_frame_keeps_its_stroke(tmp_path):
+    """fill none discards the area, never the drawn ink."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (gr_rect (start 0 0) (end 10 10) (layer "F.Cu")'
+        "    (stroke (width 0.5) (type solid)) (fill none))"
+        '  (gr_line (start 20 0) (end 30 0) (layer "F.Cu") (width 0.3)))'
+    )
+    path = tmp_path / "h.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    board = pcb.parse(path)
+    assert board.copper_shapes == []  # no filled area anywhere
+    strokes = {round(w, 2): pts for _, pts, w in board.copper_strokes}
+    assert set(strokes) == {0.5, 0.3}
+    assert strokes[0.5][0] == strokes[0.5][-1]  # the frame closes on itself

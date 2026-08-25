@@ -270,6 +270,14 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
         if layer not in masks or len(points) < 3:
             continue
         masks[layer] |= Path(points).contains_points(centres).reshape(ny, nx)
+
+    # and a stroked graphic's ink is copper too: a hollow frame keeps its
+    # outline, a line drawn as artwork conducts like the trace it is
+    for layer, points, width in getattr(board, "copper_strokes", ()) or ():
+        if layer not in masks or width <= 0:
+            continue
+        for a, b in itertools.pairwise(points):
+            capsule(layer, a, b, width / 2)
     return masks, holes
 
 

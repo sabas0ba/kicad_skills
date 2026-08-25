@@ -14,6 +14,17 @@ from . import s_expression as sexp
 from .s_expression import SNode
 
 
+def _stroke_width(node: SNode) -> float:
+    """The drawn line width of a graphic shape, new or old vocabulary."""
+    stroke = node.child("stroke")
+    if stroke is not None:
+        width = stroke.value("width")
+        if width is not None:
+            return float(width)
+    width = node.value("width")
+    return float(width) if width is not None else 0.0
+
+
 def _graphic_is_filled(node: SNode) -> bool:
     """Whether a graphic shape's area is filled copper, per its own fill node.
 
@@ -236,8 +247,11 @@ class Board:
     zones: list[Zone] = field(default_factory=list)
     edges: list[dict[str, Any]] = field(default_factory=list)
     # Filled copper drawn as graphics - a heatsink patch, an antenna - as
-    # (layer, closed polygon). Stroked copper lines are not collected.
+    # (layer, closed polygon).
     copper_shapes: list[tuple[str, list[tuple[float, float]]]] = field(default_factory=list)
+    # Stroked copper drawn as graphics - a hollow frame, a line drawn as
+    # artwork - as (layer, polyline, stroke width). The ink is the copper.
+    copper_strokes: list[tuple[str, list[tuple[float, float]], float]] = field(default_factory=list)
     silk_texts: list[dict[str, Any]] = field(default_factory=list)
     stackup: list[dict[str, Any]] = field(default_factory=list)
     _segments: list[tuple[tuple[float, float], tuple[float, float]]] | None = field(
@@ -529,16 +543,15 @@ def parse(path: str | os.PathLike[str]) -> Board:
             else:
                 fp.courtyard = [pt for seg in courtyard_segs for pt in seg]
 
-        # filled shapes a footprint draws on copper are copper too - the same
-        # set the board-level graphics get, turned and placed with the part
-        for shape in ("fp_poly", "fp_rect", "fp_circle"):
+        # shapes a footprint draws on copper are copper too - the same rules
+        # the board-level graphics get, turned and placed with the part
+        for shape in ("fp_poly", "fp_rect", "fp_circle", "fp_line", "fp_arc"):
             for node in fp_node.children(shape):
                 layer_name = str(node.value("layer", default=""))
                 if not layer_name.endswith(".Cu"):
                     continue
-                if not _graphic_is_filled(node):
-                    continue
                 local: list[tuple[float, float]] = []
+                fp_closed = shape in ("fp_poly", "fp_rect", "fp_circle")
                 if shape == "fp_poly":
                     pts_node = node.child("pts")
                     if pts_node:
@@ -552,7 +565,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
                         sx0, sy0, _ = _xy(start_node)
                         ex0, ey0, _ = _xy(end_node)
                         local = [(sx0, sy0), (ex0, sy0), (ex0, ey0), (sx0, ey0)]
-                else:
+                elif shape == "fp_circle":
                     centre_node, end_node = node.child("center"), node.child("end")
                     if centre_node and end_node:
                         ccx, ccy, _ = _xy(centre_node)
@@ -560,12 +573,33 @@ def parse(path: str | os.PathLike[str]) -> Board:
                         local = outline_geom.circle_points(
                             (ccx, ccy), math.dist((ccx, ccy), (cex, cey))
                         )
+                elif shape == "fp_line":
+                    start_node, end_node = node.child("start"), node.child("end")
+                    if start_node and end_node:
+                        sx0, sy0, _ = _xy(start_node)
+                        ex0, ey0, _ = _xy(end_node)
+                        local = [(sx0, sy0), (ex0, ey0)]
+                else:
+                    start_node = node.child("start")
+                    mid_node = node.child("mid")
+                    end_node = node.child("end")
+                    if start_node and mid_node and end_node:
+                        asx, asy, _ = _xy(start_node)
+                        amx, amy, _ = _xy(mid_node)
+                        aex, aey, _ = _xy(end_node)
+                        local = outline_geom.arc_points((asx, asy), (amx, amy), (aex, aey))
                 poly = []
                 for lx, ly in local:
                     gx, gy = _rotate(lx, ly, angle)
                     poly.append((gx + fp.x, gy + fp.y))
-                if len(poly) >= 3:
+                if len(poly) < 2:
+                    continue
+                if fp_closed and len(poly) >= 3 and _graphic_is_filled(node):
                     board.copper_shapes.append((layer_name, poly))
+                stroke = _stroke_width(node)
+                if stroke > 0:
+                    outline_pts = [*poly, poly[0]] if fp_closed and poly[-1] != poly[0] else poly
+                    board.copper_strokes.append((layer_name, outline_pts, stroke))
 
         for pad_node in fp_node.children("pad"):
             atoms = pad_node.atoms()
@@ -769,17 +803,16 @@ def parse(path: str | os.PathLike[str]) -> Board:
             )
         )
 
-    # Filled graphics on a copper layer are copper - an antenna or a heatsink
-    # patch drawn as a polygon rather than poured as a zone. Only *filled*
-    # shapes: a hollow rectangle is its stroke, not the area it circles.
-    for tag in ("gr_rect", "gr_circle", "gr_poly"):
+    # Graphics on a copper layer are copper. A filled shape contributes its
+    # area; an unfilled one still contributes its drawn stroke, and a line or
+    # arc IS its stroke - the ink is the copper either way.
+    for tag in ("gr_rect", "gr_circle", "gr_poly", "gr_line", "gr_arc"):
         for node in root.children(tag):
             layer_name = str(node.value("layer", default=""))
             if not layer_name.endswith(".Cu"):
                 continue
-            if not _graphic_is_filled(node):
-                continue
             poly: list[tuple[float, float]] = []
+            closed = tag in ("gr_rect", "gr_circle", "gr_poly")
             if tag == "gr_poly":
                 pts = node.child("pts")
                 if pts is not None:
@@ -792,14 +825,35 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     sx, sy, _ = _xy(start)
                     ex, ey, _ = _xy(end)
                     poly = [(sx, sy), (ex, sy), (ex, ey), (sx, ey)]
-            else:
+            elif tag == "gr_circle":
                 centre, end = node.child("center"), node.child("end")
                 if centre is not None and end is not None:
                     ccx, ccy, _ = _xy(centre)
                     cex, cey, _ = _xy(end)
                     poly = outline_geom.circle_points((ccx, ccy), math.dist((ccx, ccy), (cex, cey)))
-            if len(poly) >= 3:
+            elif tag == "gr_line":
+                start, end = node.child("start"), node.child("end")
+                if start is not None and end is not None:
+                    sx, sy, _ = _xy(start)
+                    ex, ey, _ = _xy(end)
+                    poly = [(sx, sy), (ex, ey)]
+            else:
+                start = node.child("start")
+                mid = node.child("mid")
+                end = node.child("end")
+                if start is not None and mid is not None and end is not None:
+                    asx, asy, _ = _xy(start)
+                    amx, amy, _ = _xy(mid)
+                    aex, aey, _ = _xy(end)
+                    poly = outline_geom.arc_points((asx, asy), (amx, amy), (aex, aey))
+            if len(poly) < 2:
+                continue
+            if closed and len(poly) >= 3 and _graphic_is_filled(node):
                 board.copper_shapes.append((layer_name, poly))
+            stroke = _stroke_width(node)
+            if stroke > 0:
+                outline_pts = [*poly, poly[0]] if closed and poly[-1] != poly[0] else poly
+                board.copper_strokes.append((layer_name, outline_pts, stroke))
 
     for tag in ("gr_line", "gr_arc", "gr_rect", "gr_circle", "gr_poly", "gr_curve"):
         for node in root.children(tag):
