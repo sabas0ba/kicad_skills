@@ -190,6 +190,92 @@ write_shim() {
     fi
 }
 
+sha256_available() {
+    command -v sha256sum >/dev/null 2>&1 || command -v shasum >/dev/null 2>&1
+}
+
+sha256_stream() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256
+    else
+        return 1
+    fi
+}
+
+adapter_metadata() {
+    local adapter="$1" digest
+    if [ -L "$adapter" ]; then
+        ADAPTER_TYPE=symlink
+        if ! digest="$(readlink "$adapter" | sha256_stream)"; then
+            return 1
+        fi
+    elif [ -f "$adapter" ]; then
+        ADAPTER_TYPE=copy
+        if ! digest="$(sha256_stream < "$adapter")"; then
+            return 1
+        fi
+    else
+        return 1
+    fi
+    ADAPTER_SHA256="${digest%% *}"
+    [ "${#ADAPTER_SHA256}" -eq 64 ] || return 1
+    case "$ADAPTER_SHA256" in
+        *[!0-9a-f]*) return 1 ;;
+    esac
+}
+
+write_install_marker() {
+    local marker="$1" adapter="$2" marker_dir temporary
+    if ! adapter_metadata "$adapter"; then
+        echo "error: cannot fingerprint adapter $adapter" >&2
+        return 1
+    fi
+    marker_dir="${marker%/*}"
+    temporary="$(mktemp "$marker_dir/.eda-toolkit-marker.XXXXXX")"
+    if ! printf '%s\nadapter-type=%s\nadapter-sha256=%s\n' \
+        "$INSTALL_MARKER_CONTENT" "$ADAPTER_TYPE" "$ADAPTER_SHA256" > "$temporary" ||
+        ! chmod 0644 "$temporary"; then
+        rm -f "$temporary"
+        return 1
+    fi
+    if ! rm -f "$marker" || ! mv "$temporary" "$marker"; then
+        rm -f "$temporary"
+        return 1
+    fi
+}
+
+marker_is_owned() {
+    local marker="$1"
+    [ -f "$marker" ] && [ ! -L "$marker" ] &&
+        [ "$(sed -n '1p' "$marker")" = "$INSTALL_MARKER_CONTENT" ]
+}
+
+adapter_is_owned() {
+    local adapter="$1" marker="$2" name="$3"
+    local expected_type expected_sha256
+    expected_type="$(sed -n 's/^adapter-type=//p' "$marker")"
+    expected_sha256="$(sed -n 's/^adapter-sha256=//p' "$marker")"
+    if [ -n "$expected_type" ] || [ -n "$expected_sha256" ]; then
+        [ -n "$expected_type" ] && [ -n "$expected_sha256" ] || return 1
+        adapter_metadata "$adapter" || return 1
+        [ "$ADAPTER_TYPE" = "$expected_type" ] && [ "$ADAPTER_SHA256" = "$expected_sha256" ]
+        return
+    fi
+
+    # One-line markers from earlier releases can only be trusted when the
+    # adapter still matches the current source guide.
+    [ "$(wc -l < "$marker")" -eq 1 ] || return 1
+    if [ -L "$adapter" ]; then
+        [ -e "$GUIDE_SRC/$name.md" ] && [ "$adapter" -ef "$GUIDE_SRC/$name.md" ]
+    elif [ -f "$adapter" ]; then
+        [ -f "$GUIDE_SRC/$name.md" ] && cmp -s "$adapter" "$GUIDE_SRC/$name.md"
+    else
+        return 1
+    fi
+}
+
 guide_names() {
     [ -d "$GUIDE_SRC" ] || return 0
     for guide in "$GUIDE_SRC"/*.md; do
@@ -208,6 +294,10 @@ done < <(guide_names)
 preflight_install() {
     local dest name skill_dir dst marker
     if [ "$GUIDES" = 1 ]; then
+        if ! sha256_available; then
+            echo "error: sha256sum or shasum is required to record adapter ownership" >&2
+            return 1
+        fi
         for dest in "${DESTINATIONS[@]}"; do
             for name in "${GUIDE_NAMES[@]}"; do
                 validate_directory_path "$dest/$name" || return 1
@@ -245,8 +335,7 @@ uninstall_skill() {
         echo "skip $dest/$name (skill directory is not a regular directory)"
         return
     fi
-    if [ ! -f "$marker" ] || [ -L "$marker" ] ||
-        [ "$(cat "$marker")" != "$INSTALL_MARKER_CONTENT" ]; then
+    if ! marker_is_owned "$marker"; then
         if [ -e "$dst" ] || [ -L "$dst" ]; then
             echo "skip $dest/$name (not installed by this script)"
         fi
@@ -255,6 +344,12 @@ uninstall_skill() {
     if [ -d "$dst" ] && [ ! -L "$dst" ]; then
         echo "skip $dest/$name (SKILL.md is a directory)"
         return
+    fi
+    if [ -e "$dst" ] || [ -L "$dst" ]; then
+        if ! adapter_is_owned "$dst" "$marker" "$name"; then
+            echo "skip $dest/$name (adapter changed since installation)"
+            return
+        fi
     fi
     rm -f "$dst" "$marker"
     rmdir "$skill_dir" 2>/dev/null || true
@@ -333,8 +428,13 @@ if [ "$GUIDES" = 1 ]; then
                 if [ "$FORCE" != 1 ]; then
                     if [ ! -e "$marker" ] && [ ! -L "$marker" ] &&
                         [ -L "$dst" ] && [ "$dst" -ef "$GUIDE_SRC/$name.md" ]; then
-                        printf '%s\n' "$INSTALL_MARKER_CONTENT" > "$marker"
+                        write_install_marker "$marker" "$dst"
                         echo "migrated $dest/$name (legacy symlink)"
+                    elif marker_is_owned "$marker" &&
+                        adapter_is_owned "$dst" "$marker" "$name" &&
+                        ! grep -q '^adapter-type=' "$marker"; then
+                        write_install_marker "$marker" "$dst"
+                        echo "migrated $dest/$name (ownership metadata)"
                     else
                         echo "skip $dest/$name (already exists; --force to replace)"
                     fi
@@ -350,7 +450,7 @@ if [ "$GUIDES" = 1 ]; then
             else
                 ln -s "$GUIDE_SRC/$name.md" "$dst"
             fi
-            printf '%s\n' "$INSTALL_MARKER_CONTENT" > "$marker"
+            write_install_marker "$marker" "$dst"
             echo "installed $dest/$name/SKILL.md ($MODE)"
         done
     done

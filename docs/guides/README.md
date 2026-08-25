@@ -55,9 +55,12 @@ the installer marks it as owned so a later `--uninstall` can remove it safely.
 An existing ownership marker is never overwritten by a normal install. With
 `--force`, existing adapter, marker, and shim files or symlinks are unlinked
 before replacement; directories are rejected during a preflight check. The
-uninstaller trusts only regular marker files and generated shim headers, and
-`--no-guides` and `--no-shim` select the same components for removal as for
-installation.
+marker records the adapter type and SHA-256 signature, so the uninstaller keeps
+a copied file or symlink that was modified or replaced after installation.
+One-line markers from older releases are upgraded only while their adapter
+still matches the source guide. The uninstaller also trusts only generated shim
+headers, and `--no-guides` and `--no-shim` select the same components for
+removal as for installation.
 
 And if you use no assistant at all, the guides still stand on their own — they
 are how a careful engineer would use these commands.

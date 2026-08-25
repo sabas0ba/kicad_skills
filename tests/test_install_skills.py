@@ -200,10 +200,59 @@ def test_legacy_symlinks_gain_ownership_markers(project, absolute):
 
     marker = skill_dir / ".eda-toolkit-installed"
     assert f"migrated .claude/skills/{name} (legacy symlink)" in result.stdout
-    assert marker.read_text().strip() == "created by kicad_skills/bin/install-skills.sh"
+    marker_lines = marker.read_text().splitlines()
+    assert marker_lines[0] == "created by kicad_skills/bin/install-skills.sh"
+    assert marker_lines[1] == "adapter-type=symlink"
+    assert marker_lines[2].startswith("adapter-sha256=")
 
     install(submodule, target, "--uninstall")
     assert not skill_dir.exists()
+
+
+@pytest.mark.parametrize("adapter_type", ["symlink", "copy"])
+def test_one_line_ownership_markers_gain_adapter_metadata(project, adapter_type):
+    target, submodule = project
+    name = GUIDES[0]
+    skill_dir = target / ".claude" / "skills" / name
+    skill_dir.mkdir(parents=True)
+    guide = submodule / "docs" / "guides" / f"{name}.md"
+    skill = skill_dir / "SKILL.md"
+    if adapter_type == "symlink":
+        skill.symlink_to(Path(os.path.relpath(guide, skill_dir)))
+    else:
+        shutil.copy(guide, skill)
+    marker = skill_dir / ".eda-toolkit-installed"
+    marker.write_text(INSTALL_MARKER_CONTENT)
+
+    result = install(submodule, target, "--dest", ".claude/skills", "--no-shim")
+
+    assert f"migrated .claude/skills/{name} (ownership metadata)" in result.stdout
+    marker_lines = marker.read_text().splitlines()
+    assert marker_lines[1] == f"adapter-type={adapter_type}"
+    assert marker_lines[2].startswith("adapter-sha256=")
+
+    install(submodule, target, "--dest", ".claude/skills", "--no-shim", "--uninstall")
+    assert not skill_dir.exists()
+
+
+def test_migrating_a_marker_hardlink_does_not_modify_its_other_name(project):
+    target, submodule = project
+    destination = ".claude/skills"
+    name = GUIDES[0]
+    skill_dir = target / destination / name
+    skill_dir.mkdir(parents=True)
+    guide = submodule / "docs" / "guides" / f"{name}.md"
+    (skill_dir / "SKILL.md").symlink_to(Path(os.path.relpath(guide, skill_dir)))
+    marker_target = target / "shared-marker.txt"
+    marker_target.write_text(INSTALL_MARKER_CONTENT)
+    marker = skill_dir / ".eda-toolkit-installed"
+    os.link(marker_target, marker)
+
+    install(submodule, target, "--dest", destination, "--no-shim")
+
+    assert marker_target.read_text() == INSTALL_MARKER_CONTENT
+    assert marker.read_text().splitlines()[1] == "adapter-type=symlink"
+    assert marker.stat().st_ino != marker_target.stat().st_ino
 
 
 def test_an_unrelated_symlink_is_not_adopted_or_uninstalled(project):
@@ -260,7 +309,9 @@ def test_force_unlinks_a_marker_symlink_without_touching_its_target(project):
 
     assert marker_target.read_text() == USER_MARKER_CONTENT
     assert not marker.is_symlink()
-    assert marker.read_text().strip() == "created by kicad_skills/bin/install-skills.sh"
+    marker_lines = marker.read_text().splitlines()
+    assert marker_lines[0] == "created by kicad_skills/bin/install-skills.sh"
+    assert marker_lines[1] == "adapter-type=symlink"
     assert (skill_dir / "SKILL.md").is_symlink()
 
 
@@ -529,6 +580,46 @@ def test_uninstall_preserves_a_skill_the_installer_skipped(project):
 
     assert (existing_skill / "SKILL.md").read_text() == USER_SKILL_CONTENT
     assert (existing_skill / "notes.txt").read_text() == USER_NOTES_CONTENT
+
+
+@pytest.mark.parametrize("replacement", ["file", "symlink"])
+def test_uninstall_preserves_a_replaced_installed_adapter(project, replacement):
+    target, submodule = project
+    destination = ".claude/skills"
+    name = GUIDES[0]
+    install(submodule, target, "--dest", destination, "--no-shim")
+    skill_dir = target / destination / name
+    skill = skill_dir / "SKILL.md"
+    skill.unlink()
+    if replacement == "file":
+        skill.write_text(USER_SKILL_CONTENT)
+    else:
+        user_skill = target / "user-skill.md"
+        user_skill.write_text(USER_SKILL_CONTENT)
+        skill.symlink_to(Path(os.path.relpath(user_skill, skill_dir)))
+
+    result = install(submodule, target, "--dest", destination, "--no-shim", "--uninstall")
+
+    assert f"skip {destination}/{name} (adapter changed since installation)" in result.stdout
+    assert skill.read_text() == USER_SKILL_CONTENT
+    assert skill.is_symlink() is (replacement == "symlink")
+    assert (skill_dir / ".eda-toolkit-installed").exists()
+
+
+def test_uninstall_preserves_a_modified_installed_copy(project):
+    target, submodule = project
+    destination = ".claude/skills"
+    name = GUIDES[0]
+    install(submodule, target, "--dest", destination, "--no-shim", "--copy")
+    skill_dir = target / destination / name
+    skill = skill_dir / "SKILL.md"
+    skill.write_text(USER_SKILL_CONTENT)
+
+    result = install(submodule, target, "--dest", destination, "--no-shim", "--uninstall")
+
+    assert f"skip {destination}/{name} (adapter changed since installation)" in result.stdout
+    assert skill.read_text() == USER_SKILL_CONTENT
+    assert (skill_dir / ".eda-toolkit-installed").exists()
 
 
 def test_uninstall_does_not_trust_a_marker_symlink(project):
