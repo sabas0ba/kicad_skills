@@ -31,10 +31,11 @@ class _Pad:
 
 
 class _Part:
-    def __init__(self, ref, x, y, half=2.0, pads=()):
+    def __init__(self, ref, x, y, half=2.0, pads=(), courtyard=()):
         self.ref, self.x, self.y, self.angle = ref, x, y, 0.0
         self.half = half
         self.pads = list(pads)
+        self.courtyard = list(courtyard)
 
     def courtyard_box(self):
         return (self.x - self.half, self.y - self.half, self.x + self.half, self.y + self.half)
@@ -174,6 +175,23 @@ def test_a_part_wholly_off_the_board_is_refused_not_smeared_onto_the_edge():
     board = _Board(footprints=[_Part("U1", -30.0, -30.0)])
     with pytest.raises(ValueError, match="outside"):
         thermal.analyse(board, {"U1": 1.0}, step_mm=1.0)
+
+
+def test_a_rotated_courtyard_heats_its_polygon_not_its_box():
+    """A diamond of half the box's area takes the same watts twice as densely."""
+    diamond = _Part("U1", 20, 15, half=6.0, courtyard=[(20, 9), (26, 15), (20, 21), (14, 15)])
+    boxed = _Part("U2", 20, 15, half=6.0)
+    turned = thermal.analyse(_Board(footprints=[diamond]), {"U1": 1.0}, step_mm=1.0)
+    square = thermal.analyse(_Board(footprints=[boxed]), {"U2": 1.0}, step_mm=1.0)
+    assert turned["max_rise_c"] > square["max_rise_c"] * 1.1
+
+
+def test_a_declared_thickness_beats_the_default_when_the_stackup_is_silent():
+    board = _Board(footprints=[_Part("U1", 10, 10)])
+    board.stackup = []
+    board.setup = {"thickness": 0.8}
+    result = thermal.analyse(board, {"U1": 1.0}, step_mm=1.0)
+    assert result["board_thickness_mm"] == pytest.approx(0.8)
 
 
 def test_the_board_thickness_comes_from_the_real_stackup_vocabulary():

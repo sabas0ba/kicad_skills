@@ -218,21 +218,30 @@ def _outline_mask(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
     return mask
 
 
-def _source_cells(board: Any, ref: str, x0: float, y0: float, nx: int, ny: int, step: float):
+def _source_mask(
+    board: Any, ref: str, x0: float, y0: float, nx: int, ny: int, step: float
+) -> np.ndarray:
+    """The cells this part's watts land on, as a boolean grid.
+
+    A cell belongs to the source if its *centre* is inside the courtyard: a
+    4 mm courtyard on a 1 mm grid heats 4 cells, not the 5 the outer edges
+    touch. The courtyard is the retained polygon where the footprint drew
+    one - an axis-aligned box would heat the empty corners of a rotated
+    package and report it cooler for having been turned - and its bounding
+    box only where it did not.
+    """
     fp = board.footprint_by_ref(ref)
     if fp is None:
         raise ValueError(f"no footprint {ref!r} on this board")
+    mask = np.zeros((ny, nx), dtype=bool)
     box = fp.courtyard_box()
     if box is None:
         box = (fp.x - step, fp.y - step, fp.x + step, fp.y + step)
     # a courtyard wholly off the grid gets no fictitious edge cell - the
     # caller's outline check must see zero cells and refuse it
     if box[2] <= x0 or box[0] >= x0 + nx * step or box[3] <= y0 or box[1] >= y0 + ny * step:
-        return 0, 0, 0, 0
+        return mask
 
-    # a cell belongs to the source if its *centre* is inside the courtyard: a
-    # 4 mm courtyard on a 1 mm grid heats 4 cells, not the 5 the outer edges
-    # touch, so the watts land on the area the part actually covers
     def span(low: float, high: float, origin: float, count: int) -> tuple[int, int]:
         first = math.ceil((low - origin) / step - 0.5)
         last = math.floor((high - origin) / step - 0.5)
@@ -242,7 +251,21 @@ def _source_cells(board: Any, ref: str, x0: float, y0: float, nx: int, ny: int, 
 
     ix0, ix1 = span(box[0], box[2], x0, nx)
     iy0, iy1 = span(box[1], box[3], y0, ny)
-    return iy0, iy1, ix0, ix1
+    if ix1 <= ix0 or iy1 <= iy0:
+        return mask
+    points = list(getattr(fp, "courtyard", ()) or ())
+    if len(points) >= 3:
+        from matplotlib.path import Path
+
+        xs = x0 + (np.arange(ix0, ix1) + 0.5) * step
+        ys = y0 + (np.arange(iy0, iy1) + 0.5) * step
+        cgx, cgy = np.meshgrid(xs, ys)
+        centres = np.column_stack([cgx.ravel(), cgy.ravel()])
+        inside = Path(points).contains_points(centres).reshape(iy1 - iy0, ix1 - ix0)
+        mask[iy0:iy1, ix0:ix1] = inside
+    if not mask.any():
+        mask[iy0:iy1, ix0:ix1] = True
+    return mask
 
 
 def _relax(
@@ -347,6 +370,11 @@ def analyse(
     # is everything between the outer copper faces, which also keeps solder
     # mask and silkscreen entries out of the board's structural thickness
     board_thickness = DEFAULT_BOARD_THICKNESS_MM
+    declared = (getattr(board, "setup", {}) or {}).get("thickness")
+    if declared:
+        # a board with no detailed stackup still states its overall
+        # thickness; a 0.8 mm board must not conduct like a 1.6 mm one
+        board_thickness = float(declared)
     stackup = getattr(board, "stackup", []) or []
     coppers = [i for i, entry in enumerate(stackup) if entry.get("type") == "copper"]
     if len(coppers) >= 2:
@@ -375,15 +403,14 @@ def analyse(
     sink = np.where(inside, 2.0 * htc_w_m2k * area_m2, 0.0)
 
     source = np.zeros((ny, nx))
-    placed: dict[str, tuple[int, int, int, int]] = {}
+    placed: dict[str, np.ndarray] = {}
     for ref, watts in powers.items():
-        iy0, iy1, ix0, ix1 = _source_cells(board, ref, x0, y0, nx, ny, step)
-        patch = inside[iy0:iy1, ix0:ix1]
+        patch = _source_mask(board, ref, x0, y0, nx, ny, step) & inside
         cells = int(np.sum(patch))
         if cells == 0:
             raise ValueError(f"{ref} sits outside the board outline")
-        source[iy0:iy1, ix0:ix1] += np.where(patch, watts / cells, 0.0)
-        placed[ref] = (iy0, iy1, ix0, ix1)
+        source += np.where(patch, watts / cells, 0.0)
+        placed[ref] = patch
 
     rise = _relax(np.zeros((ny, nx)), face_x, face_y, sink, source)
 
@@ -391,14 +418,14 @@ def analyse(
     total_out = float(np.sum(sink * rise))
     hot = np.unravel_index(int(np.argmax(np.where(inside, rise, -1.0))), rise.shape)
     parts = []
-    for ref, (iy0, iy1, ix0, ix1) in placed.items():
-        patch = np.where(inside[iy0:iy1, ix0:ix1], rise[iy0:iy1, ix0:ix1], 0.0)
+    for ref, patch in placed.items():
+        rise_here = np.where(patch, rise, 0.0)
         parts.append(
             {
                 "ref": ref,
                 "power_w": powers[ref],
-                "temperature_c": round(ambient_c + float(np.max(patch)), 1),
-                "rise_c": round(float(np.max(patch)), 1),
+                "temperature_c": round(ambient_c + float(np.max(rise_here)), 1),
+                "rise_c": round(float(np.max(rise_here)), 1),
             }
         )
     parts.sort(key=lambda p: -p["rise_c"])
