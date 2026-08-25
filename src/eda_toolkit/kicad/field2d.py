@@ -166,7 +166,13 @@ class _Counts:
         below_mm: float | None = None,
     ):
         coarse = max(3, cells // 2)
-        feature = min(width_mm, height_mm) if below_mm is None else min(width_mm, below_mm)
+        if below_mm is None:
+            feature = min(width_mm, height_mm)
+        else:
+            # both clearances bound the mesh: the trace can sit close to
+            # either plane, and the thinner gap is the feature to resolve
+            above_mm = height_mm - thickness_mm - below_mm
+            feature = min(width_mm, below_mm, above_mm)
         self.cell_mm = feature / coarse
         self.height = max(2, round(height_mm / self.cell_mm))
         self.width = max(1, round(width_mm / self.cell_mm))

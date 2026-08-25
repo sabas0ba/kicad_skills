@@ -68,6 +68,10 @@ def test_an_off_centre_stripline_sees_the_nearer_plane():
     assert shifted < centred
     with pytest.raises(ValueError):
         field2d.stripline(0.3, T, 1.2, ER, trace_below_mm=1.3)
+    # the mesh resolves whichever clearance is thinner: shifting the trace
+    # the same distance off centre in either direction is the same problem
+    high = field2d.stripline(0.3, T, 1.2, ER, trace_below_mm=1.2 - T - 0.2)["z0_ohm"]
+    assert abs(high - shifted) / shifted < 0.03
 
 
 def test_the_answer_says_what_it_actually_solved():

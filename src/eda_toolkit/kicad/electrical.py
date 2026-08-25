@@ -283,8 +283,7 @@ def layer_geometry(board: Any, layer: str) -> dict[str, Any] | None:
     if not dielectrics:
         return None
     height = sum(float(entry["thickness"]) for entry in dielectrics)
-    epsilons = [float(e["epsilon_r"]) for e in dielectrics if e.get("epsilon_r")]
-    if not epsilons:
+    if not any(e.get("epsilon_r") for e in dielectrics):
         return None
 
     geometry = {
@@ -292,6 +291,7 @@ def layer_geometry(board: Any, layer: str) -> dict[str, Any] | None:
         "kind": "microstrip" if outer else "stripline",
         "height_mm": round(height, 4),
     }
+    operative = dielectrics
     if not outer:
         # Between two planes: the model wants the whole gap, not half of it -
         # and the solver wants to know where in the gap the trace sits, which
@@ -304,9 +304,8 @@ def layer_geometry(board: Any, layer: str) -> dict[str, Any] | None:
             if entry.get("thickness") and entry.get("type") != "copper"
         ]
         if span:
-            height = sum(float(entry["thickness"]) for entry in span)
-            epsilons = [float(e["epsilon_r"]) for e in span if e.get("epsilon_r")] or epsilons
-            geometry["height_mm"] = round(height, 4)
+            operative = span
+            geometry["height_mm"] = round(sum(float(entry["thickness"]) for entry in span), 4)
             geometry["height_below_mm"] = round(
                 sum(
                     float(entry["thickness"])
@@ -316,7 +315,20 @@ def layer_geometry(board: Any, layer: str) -> dict[str, Any] | None:
                 4,
             )
 
-    geometry["epsilon_r"] = round(sum(epsilons) / len(epsilons), 3)
+    # weighted by thickness: a thin bondply beside a thick core moves the
+    # wave by its share of the gap, not by one vote in an average
+    rated = [e for e in operative if e.get("epsilon_r")] or [
+        e for e in dielectrics if e.get("epsilon_r")
+    ]
+    weight = sum(float(e["thickness"]) for e in rated)
+    geometry["epsilon_r"] = round(
+        sum(float(e["epsilon_r"]) * float(e["thickness"]) for e in rated) / weight, 3
+    )
+    spread = [float(e["epsilon_r"]) for e in rated]
+    if max(spread) > min(spread):
+        # more than one material in the gap: the average above feeds the
+        # fits, and the solver refuses to pretend the gap is homogeneous
+        geometry["epsilon_r_range"] = [round(min(spread), 3), round(max(spread), 3)]
     return geometry
 
 
@@ -410,7 +422,16 @@ def analyse(board: Any, *, temperature_rise_c: float = 10.0, solve: bool = False
         for target, key in ((90.0, "width_90r_diff_mm"), (100.0, "width_100r_diff_mm")):
             width = width_for_differential_impedance(target, thickness, height, epsilon, kind=kind)
             row[key] = round(width, 4) if width else None
-        if solve:
+        er_range = row.get("epsilon_r_range")
+        heterogeneous = er_range is not None and er_range[1] > 1.1 * er_range[0]
+        if solve and heterogeneous:
+            # the solver fills the gap with one permittivity; when the gap
+            # holds materials more than 10% apart, an averaged solve would
+            # dress a guess as a measurement - the fits stand, flagged
+            row["solve_skipped"] = (
+                "dielectrics differ across the gap; the solver will not average them"
+            )
+        elif solve:
             from . import field2d
 
             if kind == "microstrip":

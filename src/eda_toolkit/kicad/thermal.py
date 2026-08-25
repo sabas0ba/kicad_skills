@@ -185,6 +185,11 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
                     poly = Path(geom[0])
                     pts = np.column_stack([local_x.ravel(), local_y.ravel()])
                     inside |= poly.contains_points(pts).reshape(local_x.shape)
+            drill = getattr(pad, "drill", None)
+            if drill:
+                # the drilled hole is air, not copper - a large plated
+                # mounting hole must not read as a solid conductive disc
+                inside &= local_x**2 + local_y**2 > (drill / 2) ** 2
             for layer, mask in masks.items():
                 suffix = layer.split(".")[-1]
                 if any(pl == layer or pl == f"*.{suffix}" for pl in pad.layers):

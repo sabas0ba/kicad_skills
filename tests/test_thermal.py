@@ -157,6 +157,19 @@ def test_a_non_plated_hole_is_not_copper():
     assert result["copper_coverage"] < 0.02
 
 
+def test_a_plated_hole_keeps_its_ring_and_loses_its_hole():
+    """The annulus is copper; the drilled middle is air."""
+    plated = _Pad(20, 15, w=10.0, h=10.0)
+    plated.drill = 6.0
+    ring = _Board(footprints=[_Part("H1", 20, 15, pads=[plated]), _Part("U1", 10, 10)])
+    solid = _Board(
+        footprints=[_Part("H1", 20, 15, pads=[_Pad(20, 15, w=10.0, h=10.0)]), _Part("U1", 10, 10)]
+    )
+    with_hole = thermal.analyse(ring, {"U1": 1.0}, step_mm=1.0)["copper_coverage"]
+    without = thermal.analyse(solid, {"U1": 1.0}, step_mm=1.0)["copper_coverage"]
+    assert with_hole < without
+
+
 def test_a_part_wholly_off_the_board_is_refused_not_smeared_onto_the_edge():
     board = _Board(footprints=[_Part("U1", -30.0, -30.0)])
     with pytest.raises(ValueError, match="outside"):

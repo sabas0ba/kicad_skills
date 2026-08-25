@@ -393,3 +393,19 @@ def test_an_asymmetric_stripline_is_solved_where_the_trace_actually_sits():
     # the near plane dominates: the real cross-section sits below the value
     # the symmetric fit proposed the width for
     assert inner["width_50r_solved_ohm"] < 50.0
+
+
+def test_epsilon_is_weighted_by_thickness_and_a_mixed_gap_is_not_solved():
+    """A thin bondply beside a thick core moves the wave by its share of the gap."""
+    mixed = _four_layer(0.2, 1.0)
+    mixed[1]["epsilon_r"] = 3.0  # dielectric 1, the thin prepreg
+    mixed[3]["epsilon_r"] = 10.0  # dielectric 2, the thick core
+    board = _Board(mixed, copper_layers=("F.Cu", "In1.Cu", "In2.Cu", "B.Cu"))
+    rows = {row["layer"]: row for row in electrical.analyse(board, solve=True)["impedance"]}
+    inner = rows["In1.Cu"]
+    # (0.2*3 + 1.0*10) / 1.2, nothing like the unweighted 6.5
+    assert inner["epsilon_r"] == pytest.approx(8.833, abs=0.01)
+    assert inner["epsilon_r_range"] == [3.0, 10.0]
+    # the solver refuses to pretend the gap is homogeneous
+    assert "width_50r_solved_ohm" not in inner
+    assert "solve_skipped" in inner
