@@ -113,6 +113,19 @@ def test_an_unreachable_target_is_reported_rather_than_guessed():
     assert electrical.width_for_impedance(100.0, 0.035, 0.02, 4.3, kind="microstrip") is None
 
 
+def test_the_thickness_correction_reaches_the_effective_permittivity():
+    """Copper thickness pushes field into the air: eps_eff must fall, not rise.
+
+    The correction uses two widened widths - one for air, one for the mixed
+    line - and their impedance ratio corrects eps_eff. Skipping that ratio
+    quotes the right ohms with the wrong delay.
+    """
+    _, thin = electrical.hammerstad_jensen_microstrip(0.2, 0.0, 0.1, 4.3)
+    _, thick = electrical.hammerstad_jensen_microstrip(0.2, 0.035, 0.1, 4.3)
+    assert thick < thin
+    assert thick == pytest.approx(3.09, abs=0.03)
+
+
 def test_geometry_must_be_physical():
     with pytest.raises(ValueError):
         electrical.track_resistance(10.0, 0.0, 0.035)

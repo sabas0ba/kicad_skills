@@ -168,3 +168,18 @@ def test_copper_graphics_are_kept_only_when_filled(tmp_path):
     assert sorted(layer for layer, _ in shapes) == ["B.Cu", "F.Cu"]
     circle = next(points for layer, points in shapes if layer == "B.Cu")
     assert len(circle) > 8  # the circle arrives as a polygon, not a point pair
+
+
+def test_a_slot_drill_keeps_its_shape_and_offset(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:conn" (layer "F.Cu") (at 10 10 0)'
+        '    (pad "1" thru_hole oval (at 0 0) (size 3 5)'
+        '      (drill oval 1 2 (offset 0.5 0)) (layers "*.Cu"))))'
+    )
+    path = tmp_path / "s.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    pad = pcb.parse(path).footprints[0].pads[0]
+    assert pad.drill == 1.0
+    assert pad.drill_size == (1.0, 2.0)
+    assert pad.drill_offset == (0.5, 0.0)

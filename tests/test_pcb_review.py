@@ -1335,6 +1335,19 @@ def test_a_double_sided_pour_wants_its_rim_stitched():
     assert [f.rule for f in findings] == ["emc.stitching_pitch"]
     assert findings[0].details["rim_vias"] == 2
 
+    # two overlapping same-net fills on one face are a union, not an XOR: a
+    # via standing in the overlap stitches, and must not vanish from the rim
+    left = [(0, 0), (30, 0), (30, 40), (0, 40)]
+    right = [(20, 0), (50, 0), (50, 40), (20, 40)]
+    lapped = [
+        pcb.Zone(net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", left)]),
+        pcb.Zone(net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", right)]),
+        pours[1],
+    ]
+    overlap_ring = [*ring, _gnd_via(25, 2)]  # in the overlap band, on the rim
+    quiet = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=lapped, vias=overlap_ring)))
+    assert quiet == []
+
     # a single-sided pour has no sandwich to stitch
     single = [pours[0]]
     assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=single, vias=sparse))) == []

@@ -1663,14 +1663,20 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
         return []
 
     fill_segments = {
-        layer: [seg for points in polygons for seg in itertools.pairwise([*points, points[0]])]
+        layer: [list(itertools.pairwise([*points, points[0]])) for points in polygons]
         for layer, polygons in fills_by_layer.items()
     }
 
     def in_every_pour(px: float, py: float) -> bool:
-        # a via only stitches where it stands on filled copper on BOTH
-        # faces: one parked in a clearance cut joins nothing there
-        return all(outline_geom.contains((px, py), segments) for segments in fill_segments.values())
+        # a via only stitches where it stands on filled copper on BOTH faces:
+        # one parked in a clearance cut joins nothing there. Each polygon is
+        # tested on its own - two same-net fills overlapping must read as
+        # their union, and one even-odd pass over both would call the overlap
+        # a hole
+        return all(
+            any(outline_geom.contains((px, py), polygon) for polygon in polygons)
+            for polygons in fill_segments.values()
+        )
 
     # rim-local: scaled by the board's SHORT side, so a long narrow board
     # does not declare its whole midline to be rim

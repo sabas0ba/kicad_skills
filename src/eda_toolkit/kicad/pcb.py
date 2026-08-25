@@ -52,6 +52,11 @@ class Pad:
     # describes only the attachment shape, the primitives are the real extent.
     # Entries are ("circle", cx, cy, r) and ("poly", [(x, y), ...]).
     primitives: list[tuple] = field(default_factory=list)
+    # The hole as drawn: (width, height) - equal for a round drill, unequal
+    # for a slot - and its offset from the pad centre, both pad-local.
+    # ``drill`` above stays the scalar the ring and fab checks read.
+    drill_size: tuple[float, float] | None = None
+    drill_offset: tuple[float, float] = (0.0, 0.0)
     # The pad's own override of how a zone connects to it, when it carries one:
     # 0 none, 1 thermal relief, 2 solid. ``None`` means it inherits the zone's
     # setting, which is what most pads do.
@@ -497,10 +502,22 @@ def parse(path: str | os.PathLike[str]) -> Board:
             size_atoms = size_node.atoms() if size_node else [0, 0]
             drill_node = pad_node.child("drill")
             drill = None
+            drill_size = None
+            drill_offset = (0.0, 0.0)
             if drill_node:
                 drill_atoms = [a for a in drill_node.atoms() if isinstance(a, (int, float))]
                 if drill_atoms:
                     drill = float(drill_atoms[0])
+                    # ``(drill oval w h)`` is a slot; a lone number is round
+                    drill_size = (
+                        (float(drill_atoms[0]), float(drill_atoms[1]))
+                        if len(drill_atoms) > 1
+                        else (drill, drill)
+                    )
+                offset_node = drill_node.child("offset")
+                if offset_node:
+                    ox, oy, _ = _xy(offset_node)
+                    drill_offset = (ox, oy)
             net_code, net_name = _net_of(pad_node, board.nets)
             primitives: list[tuple] = []
             prim_node = pad_node.child("primitives")
@@ -553,6 +570,8 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     net_code=net_code,
                     roundrect_rratio=float(pad_node.value("roundrect_rratio", default=0.0) or 0.0),
                     primitives=primitives,
+                    drill_size=drill_size,
+                    drill_offset=drill_offset,
                     zone_connect=(
                         int(zone_connect)
                         if (zone_connect := pad_node.value("zone_connect", default=None))

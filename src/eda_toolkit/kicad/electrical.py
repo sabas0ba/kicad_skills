@@ -151,26 +151,38 @@ def hammerstad_jensen_microstrip(
     """
     if min(width_mm, height_mm) <= 0 or thickness_mm < 0 or epsilon_r <= 0:
         raise ValueError("geometry and epsilon_r must be positive")
+
+    def z_air(u: float) -> float:
+        f = 6.0 + (2.0 * math.pi - 6.0) * math.exp(-((30.666 / u) ** 0.7528))
+        return (ETA0_OHM / (2.0 * math.pi)) * math.log(f / u + math.sqrt(1.0 + (2.0 / u) ** 2))
+
+    def eps_homogeneous(u: float) -> float:
+        a = (
+            1.0
+            + math.log((u**4 + (u / 52.0) ** 2) / (u**4 + 0.432)) / 49.0
+            + math.log(1.0 + (u / 18.1) ** 3) / 18.7
+        )
+        b = 0.564 * ((epsilon_r - 0.9) / (epsilon_r + 3.0)) ** 0.053
+        return (epsilon_r + 1.0) / 2.0 + (epsilon_r - 1.0) / 2.0 * (1.0 + 10.0 / u) ** (-a * b)
+
     u = width_mm / height_mm
     t_h = thickness_mm / height_mm
     if t_h > 0:
-        # a trace with thickness behaves as a wider trace with none; the two
-        # corrections differ because the dielectric fills only one side
+        # A trace with thickness behaves as a wider trace with none - by one
+        # amount in air and by a half-corrected amount over the one-sided
+        # dielectric. Both corrected widths matter: the impedance comes from
+        # the air-line width over the corrected permittivity, and eps_eff
+        # carries the ratio of the two air-line impedances - drop that ratio
+        # and the model quotes the right ohms with the wrong delay.
         coth = 1.0 / math.tanh(math.sqrt(6.517 * u))
         wide = (t_h / math.pi) * math.log(1.0 + 4.0 * math.e / (t_h * coth * coth))
-        u = u + 0.5 * (1.0 + 1.0 / math.cosh(math.sqrt(epsilon_r - 1.0))) * wide
+        u_one = u + wide
+        u_mixed = u + 0.5 * (1.0 + 1.0 / math.cosh(math.sqrt(epsilon_r - 1.0))) * wide
+        eps_eff = eps_homogeneous(u_mixed) * (z_air(u_one) / z_air(u_mixed)) ** 2
+        return z_air(u_one) / math.sqrt(eps_eff), eps_eff
 
-    a = (
-        1.0
-        + math.log((u**4 + (u / 52.0) ** 2) / (u**4 + 0.432)) / 49.0
-        + math.log(1.0 + (u / 18.1) ** 3) / 18.7
-    )
-    b = 0.564 * ((epsilon_r - 0.9) / (epsilon_r + 3.0)) ** 0.053
-    eps_eff = (epsilon_r + 1.0) / 2.0 + (epsilon_r - 1.0) / 2.0 * (1.0 + 10.0 / u) ** (-a * b)
-
-    f = 6.0 + (2.0 * math.pi - 6.0) * math.exp(-((30.666 / u) ** 0.7528))
-    z_air = (ETA0_OHM / (2.0 * math.pi)) * math.log(f / u + math.sqrt(1.0 + (2.0 / u) ** 2))
-    return z_air / math.sqrt(eps_eff), eps_eff
+    eps_eff = eps_homogeneous(u)
+    return z_air(u) / math.sqrt(eps_eff), eps_eff
 
 
 def differential_impedance(single_ended: float, gap_mm: float, height_mm: float, *, kind: str):

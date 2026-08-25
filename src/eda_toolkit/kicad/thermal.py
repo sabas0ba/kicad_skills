@@ -157,11 +157,30 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
         for pad in fp.pads:
             pad_drill = getattr(pad, "drill", None)
             if pad_drill:
-                dh = pad_drill / 2
-                hx0, hy0, hx1, hy1 = cells(pad.x - dh, pad.y - dh, pad.x + dh, pad.y + dh)
+                # the hole as drawn: a slot is a capsule, not a circle, and an
+                # offset drill is not at the pad's centre
+                dw, dht = getattr(pad, "drill_size", None) or (pad_drill, pad_drill)
+                dox, doy = getattr(pad, "drill_offset", (0.0, 0.0)) or (0.0, 0.0)
+                reach = max(dw, dht) / 2 + math.hypot(dox, doy)
+                hx0, hy0, hx1, hy1 = cells(
+                    pad.x - reach, pad.y - reach, pad.x + reach, pad.y + reach
+                )
                 if hx1 > hx0 and hy1 > hy0:
                     hcx, hcy = gx[hy0:hy1, hx0:hx1], gy[hy0:hy1, hx0:hx1]
-                    holes[hy0:hy1, hx0:hx1] |= (hcx - pad.x) ** 2 + (hcy - pad.y) ** 2 <= dh * dh
+                    hangle = math.radians((getattr(pad, "angle", 0.0) or 0.0) + (fp.angle or 0.0))
+                    hcos, hsin = math.cos(hangle), math.sin(hangle)
+                    hdx, hdy = hcx - pad.x, hcy - pad.y
+                    lx = hdx * hcos + hdy * hsin - dox
+                    ly = -hdx * hsin + hdy * hcos - doy
+                    if dw >= dht:
+                        radius = dht / 2
+                        t = np.clip(lx, -(dw / 2 - radius), dw / 2 - radius)
+                        hole = (lx - t) ** 2 + ly**2 <= radius * radius
+                    else:
+                        radius = dw / 2
+                        t = np.clip(ly, -(dht / 2 - radius), dht / 2 - radius)
+                        hole = lx**2 + (ly - t) ** 2 <= radius * radius
+                    holes[hy0:hy1, hx0:hx1] |= hole
             if getattr(pad, "type", "") == "np_thru_hole":
                 # a non-plated hole is the absence of copper, not a disc of it
                 continue
