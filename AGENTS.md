@@ -178,5 +178,6 @@ is a page the site actually serves.
 
 `bin/install-skills.sh` renders `docs/guides/` into the tool-neutral Agent Skills
 layout (`.agents/skills/<name>/SKILL.md`) and Claude Code's compatibility layout
-(`.claude/skills/<name>/SKILL.md`). Both use git-ignored symlinks. Never edit
-those copies: they are generated, and `make skills` regenerates them.
+(`.claude/skills/<name>/SKILL.md`). This checkout git-ignores both generated
+layouts; a parent project using the submodule must configure its own ignore
+patterns or track them. Never edit those copies: `make skills` regenerates them.

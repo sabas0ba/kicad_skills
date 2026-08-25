@@ -39,9 +39,11 @@ from these files as symlinks, so there is never a second copy to keep in step:
 ./bin/install-skills.sh --dest .cursor/rules --copy  # some other tool's directory
 ```
 
-The generated `.agents/skills/` and `.claude/skills/` are git-ignored on purpose:
-they are adapters, not content. Delete them and re-run the script whenever you
-like. Supplying `--dest` creates only the requested custom layout.
+This checkout git-ignores the generated `.agents/skills/` and `.claude/skills/`
+because they are adapters, not content. A project using this repository as a
+submodule must add those paths to its own `.gitignore` or choose to track them.
+Delete generated adapters and re-run the script whenever you like. Supplying
+`--dest` creates only the requested custom layout.
 
 And if you use no assistant at all, the guides still stand on their own — they
 are how a careful engineer would use these commands.

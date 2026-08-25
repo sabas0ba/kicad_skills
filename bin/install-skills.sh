@@ -69,13 +69,14 @@ GUIDE_SRC="$SOURCE_ROOT/docs/guides"
 DEST="${DEST#/}"; DEST="${DEST%/}"
 [ -d "$GUIDE_SRC" ] || { echo "error: no guides in $GUIDE_SRC" >&2; exit 1; }
 
-destinations() {
-    if [ -n "$DEST" ]; then
-        printf '%s\n' "$DEST"
-    else
-        printf '%s\n' ".agents/skills" ".claude/skills"
-    fi
-}
+if [ -n "$DEST" ]; then
+    DESTINATIONS=("$DEST")
+else
+    DESTINATIONS=(".agents/skills" ".claude/skills")
+fi
+
+INSTALL_MARKER=".eda-toolkit-installed"
+INSTALL_MARKER_CONTENT="created by kicad_skills/bin/install-skills.sh"
 
 # Path of the toolkit relative to the project, for relocatable symlinks.
 if [ "$SELF_INSTALL" = 1 ]; then
@@ -97,10 +98,19 @@ guide_names() {
 
 # ---- uninstall -------------------------------------------------------------
 if [ "$ACTION" = uninstall ]; then
-    for dest in $(destinations); do
+    for dest in "${DESTINATIONS[@]}"; do
         guide_dst="$TARGET/$dest"
         for name in $(guide_names); do
-            rm -rf "${guide_dst:?}/$name"
+            skill_dir="${guide_dst:?}/$name"
+            marker="$skill_dir/$INSTALL_MARKER"
+            if [ ! -f "$marker" ] || [ "$(cat "$marker")" != "$INSTALL_MARKER_CONTENT" ]; then
+                if [ -e "$skill_dir/SKILL.md" ] || [ -L "$skill_dir/SKILL.md" ]; then
+                    echo "skip $dest/$name (not installed by this script)"
+                fi
+                continue
+            fi
+            rm -f "$skill_dir/SKILL.md" "$marker"
+            rmdir "$skill_dir" 2>/dev/null || true
             echo "removed $dest/$name"
         done
         # Remove directories we created, innermost first, only while empty.
@@ -119,10 +129,12 @@ fi
 
 # ---- install ---------------------------------------------------------------
 if [ "$GUIDES" = 1 ]; then
-    for dest in $(destinations); do
+    for dest in "${DESTINATIONS[@]}"; do
         guide_dst="$TARGET/$dest"
         # Levels up from guide_dst/<name>/ to TARGET, for relative links.
-        up="../"; for _ in $(printf '%s\n' "$dest" | tr '/' ' '); do up="../$up"; done
+        IFS=/ read -r -a dest_parts <<< "$dest"
+        up="../"
+        for _ in "${dest_parts[@]}"; do up="../$up"; done
         for name in $(guide_names); do
             dst="$guide_dst/$name/SKILL.md"
             if [ -e "$dst" ] || [ -L "$dst" ]; then
@@ -140,6 +152,7 @@ if [ "$GUIDES" = 1 ]; then
             else
                 ln -s "$GUIDE_SRC/$name.md" "$dst"
             fi
+            printf '%s\n' "$INSTALL_MARKER_CONTENT" > "$guide_dst/$name/$INSTALL_MARKER"
             echo "installed $dest/$name/SKILL.md ($MODE)"
         done
     done

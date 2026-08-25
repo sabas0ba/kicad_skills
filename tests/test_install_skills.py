@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "bin" / "install-skills.sh"
 GUIDE_DIR = ROOT / "docs" / "guides"
 GUIDES = sorted(p.stem for p in GUIDE_DIR.glob("*.md") if p.stem != "README")
+USER_SKILL_CONTENT = "Pre-existing skill content owned by the target project.\n"
+USER_NOTES_CONTENT = "Unrelated notes owned by the target project.\n"
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
 
@@ -112,15 +114,15 @@ def test_the_shim_still_works_from_another_directory(project):
 
 def test_existing_entries_are_kept_unless_forced(project):
     target, submodule = project
-    mine = target / ".claude" / "skills" / GUIDES[0]
-    mine.mkdir(parents=True)
-    (mine / "SKILL.md").write_text("mine")
+    existing_skill = target / ".claude" / "skills" / GUIDES[0]
+    existing_skill.mkdir(parents=True)
+    (existing_skill / "SKILL.md").write_text(USER_SKILL_CONTENT)
 
     install(submodule, target)
-    assert (mine / "SKILL.md").read_text() == "mine"
+    assert (existing_skill / "SKILL.md").read_text() == USER_SKILL_CONTENT
 
     install(submodule, target, "--force")
-    assert (mine / "SKILL.md").is_symlink()
+    assert (existing_skill / "SKILL.md").is_symlink()
 
 
 def test_copy_mode_vendors_the_guides(project):
@@ -138,6 +140,21 @@ def test_guides_can_be_installed_anywhere(project):
     assert (target / "docs" / "circuit-design" / GUIDES[0] / "SKILL.md").exists()
     assert not (target / ".agents").exists()
     assert not (target / ".claude").exists()
+
+
+def test_a_destination_with_whitespace_is_not_split(project):
+    target, submodule = project
+    destination = "agent skills"
+    install(submodule, target, "--dest", destination)
+
+    skill = target / destination / GUIDES[0] / "SKILL.md"
+    assert skill.is_symlink()
+    assert skill.read_text().startswith("---\n")
+    assert not (target / "agent").exists()
+    assert not (target / "skills").exists()
+
+    install(submodule, target, "--dest", destination, "--uninstall")
+    assert not (target / destination).exists()
 
 
 def test_a_nested_destination_still_gets_relative_symlinks(project):
@@ -163,7 +180,7 @@ def test_uninstall_removes_what_it_installed(project):
     target, submodule = project
     install(submodule, target)
     keep = target / "hardware.txt"
-    keep.write_text("mine")
+    keep.write_text("Target project content.\n")
 
     install(submodule, target, "--uninstall")
     assert not (target / ".agents").exists()
@@ -172,6 +189,34 @@ def test_uninstall_removes_what_it_installed(project):
     assert keep.exists()
     # the guides themselves are untouched - they are the source, not a copy
     assert (submodule / "docs" / "guides" / f"{GUIDES[0]}.md").exists()
+
+
+def test_uninstall_preserves_a_skill_the_installer_skipped(project):
+    target, submodule = project
+    existing_skill = target / ".agents" / "skills" / GUIDES[0]
+    existing_skill.mkdir(parents=True)
+    (existing_skill / "SKILL.md").write_text(USER_SKILL_CONTENT)
+    (existing_skill / "notes.txt").write_text(USER_NOTES_CONTENT)
+
+    install(submodule, target)
+    install(submodule, target, "--uninstall")
+
+    assert (existing_skill / "SKILL.md").read_text() == USER_SKILL_CONTENT
+    assert (existing_skill / "notes.txt").read_text() == USER_NOTES_CONTENT
+
+
+def test_uninstall_keeps_unrelated_files_added_to_an_installed_skill(project):
+    target, submodule = project
+    install(submodule, target)
+    skill_dir = target / ".agents" / "skills" / GUIDES[0]
+    notes = skill_dir / "notes.txt"
+    notes.write_text(USER_NOTES_CONTENT)
+
+    install(submodule, target, "--uninstall")
+
+    assert notes.read_text() == USER_NOTES_CONTENT
+    assert not (skill_dir / "SKILL.md").exists()
+    assert not (skill_dir / ".eda-toolkit-installed").exists()
 
 
 def test_installing_into_this_checkout_renders_the_adapter_but_no_shim(tmp_path):

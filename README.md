@@ -57,6 +57,9 @@ my-board/
 
 Commit `bin/eda.sh` so everyone who clones the project gets it. Upgrading is
 `git submodule update --remote` — the symlinks follow, with no re-install.
+The generated skill layouts are outside the submodule, so add `.agents/skills/`
+and `.claude/skills/` to the parent project's `.gitignore` unless the project
+chooses to track those adapters.
 
 | Flag | Effect |
 | --- | --- |
@@ -511,8 +514,8 @@ for you.
   `.agents/skills/<name>/SKILL.md`.
 * **Claude Code** discovers `.claude/skills/<name>/SKILL.md`.
 * `bin/install-skills.sh` creates both layouts as symlinks by default. Run it in
-  this checkout or in a project that uses the submodule. The results are
-  git-ignored adapters, not second copies.
+  this checkout or in a project that uses the submodule. This checkout ignores
+  the generated adapters; a parent project must ignore or track its own copies.
 * **A tool with another layout** — use
   `./bin/install-skills.sh --dest .cursor/rules --copy`; specifying `--dest`
   installs only that layout.
