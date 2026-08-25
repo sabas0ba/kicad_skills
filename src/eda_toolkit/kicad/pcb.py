@@ -628,12 +628,19 @@ def parse(path: str | os.PathLike[str]) -> Board:
             primitives: list[tuple] = []
             prim_node = pad_node.child("primitives")
             if prim_node:
+                # each primitive keeps its own fill and stroke: a hollow
+                # circle is its ring of ink, not the disc it circles
                 for circle in prim_node.children("gr_circle"):
                     centre, end = circle.child("center"), circle.child("end")
                     if centre and end:
                         ccx, ccy, _ = _xy(centre)
                         cex, cey, _ = _xy(end)
-                        primitives.append(("circle", ccx, ccy, math.dist((ccx, ccy), (cex, cey))))
+                        radius = math.dist((ccx, ccy), (cex, cey))
+                        if _graphic_is_filled(circle):
+                            primitives.append(("circle", ccx, ccy, radius))
+                        stroke = _stroke_width(circle)
+                        if stroke > 0:
+                            primitives.append(("ring", ccx, ccy, radius, stroke))
                 for poly in prim_node.children("gr_poly"):
                     pts_node = poly.child("pts")
                     pts: list[tuple[float, float]] = []
@@ -643,15 +650,29 @@ def parse(path: str | os.PathLike[str]) -> Board:
                             if len(vals) >= 2:
                                 pts.append((float(vals[0]), float(vals[1])))
                     if len(pts) >= 3:
-                        primitives.append(("poly", pts))
+                        if _graphic_is_filled(poly):
+                            primitives.append(("poly", pts))
+                        stroke = _stroke_width(poly)
+                        if stroke > 0:
+                            primitives.append(("polyline", [*pts, pts[0]], stroke))
                 for rect in prim_node.children("gr_rect"):
                     start, end = rect.child("start"), rect.child("end")
                     if start and end:
                         rsx, rsy, _ = _xy(start)
                         rex, rey, _ = _xy(end)
-                        primitives.append(
-                            ("poly", [(rsx, rsy), (rex, rsy), (rex, rey), (rsx, rey)])
-                        )
+                        corners = [(rsx, rsy), (rex, rsy), (rex, rey), (rsx, rey)]
+                        if _graphic_is_filled(rect):
+                            primitives.append(("poly", corners))
+                        stroke = _stroke_width(rect)
+                        if stroke > 0:
+                            primitives.append(("polyline", [*corners, corners[0]], stroke))
+                for line in prim_node.children("gr_line"):
+                    start, end = line.child("start"), line.child("end")
+                    stroke = _stroke_width(line)
+                    if start and end and stroke > 0:
+                        lsx, lsy, _ = _xy(start)
+                        lex, ley, _ = _xy(end)
+                        primitives.append(("polyline", [(lsx, lsy), (lex, ley)], stroke))
             # Pad coordinates are relative to the footprint origin and rotated by
             # the footprint orientation. KiCad's RotatePoint works on a Y-down
             # canvas, hence the sign pattern below.

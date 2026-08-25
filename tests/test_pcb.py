@@ -268,3 +268,22 @@ def test_a_hollow_copper_frame_keeps_its_stroke(tmp_path):
     strokes = {round(w, 2): pts for _, pts, w in board.copper_strokes}
     assert set(strokes) == {0.5, 0.3}
     assert strokes[0.5][0] == strokes[0.5][-1]  # the frame closes on itself
+
+
+def test_a_hollow_custom_pad_primitive_keeps_its_ring(tmp_path):
+    """A stroked gr_circle inside a pad is a ring of ink, not a solid disc."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:c" (layer "F.Cu") (at 0 0 0)'
+        '    (pad "1" smd custom (at 0 0) (size 1 1) (layers "F.Cu")'
+        "      (primitives"
+        "        (gr_circle (center 0 0) (end 3 0)"
+        "          (stroke (width 0.4) (type solid)) (fill none))"
+        "        (gr_poly (pts (xy 0 0) (xy 1 0) (xy 1 1)) (fill yes))))))"
+    )
+    path = tmp_path / "p.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    kinds = [p[0] for p in pcb.parse(path).footprints[0].pads[0].primitives]
+    assert "ring" in kinds  # the stroke survived
+    assert "circle" not in kinds  # ...and the unfilled disc did not
+    assert "poly" in kinds

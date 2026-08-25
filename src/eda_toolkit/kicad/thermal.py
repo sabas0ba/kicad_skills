@@ -67,8 +67,17 @@ def _primitive_points(primitives) -> list[tuple[float, float]]:
         if kind == "circle":
             pcx, pcy, radius = geom
             points += [(pcx - radius, pcy - radius), (pcx + radius, pcy + radius)]
+        elif kind == "ring":
+            pcx, pcy, radius, width = geom
+            span = radius + width / 2
+            points += [(pcx - span, pcy - span), (pcx + span, pcy + span)]
         elif kind == "poly":
             points += list(geom[0])
+        elif kind == "polyline":
+            pts, width = geom
+            half = width / 2
+            points += [(px - half, py - half) for px, py in pts]
+            points += [(px + half, py + half) for px, py in pts]
     return points or [(0.0, 0.0)]
 
 
@@ -240,10 +249,31 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
                 if kind == "circle":
                     pcx, pcy, radius = geom
                     inside |= (local_x - pcx) ** 2 + (local_y - pcy) ** 2 <= radius * radius
+                elif kind == "ring":
+                    # a stroked circle is its band of ink, not the disc
+                    pcx, pcy, radius, stroke = geom
+                    distance = np.sqrt((local_x - pcx) ** 2 + (local_y - pcy) ** 2)
+                    inside |= np.abs(distance - radius) <= stroke / 2
                 elif kind == "poly" and len(geom[0]) >= 3:
                     poly = Path(geom[0])
                     pts = np.column_stack([local_x.ravel(), local_y.ravel()])
                     inside |= poly.contains_points(pts).reshape(local_x.shape)
+                elif kind == "polyline":
+                    # a stroked outline or line: the ink along its length
+                    pts, stroke = geom
+                    half_stroke = stroke / 2
+                    for (sx, sy), (ex, ey) in itertools.pairwise(pts):
+                        vx, vy = ex - sx, ey - sy
+                        span = vx * vx + vy * vy
+                        if span <= 0:
+                            t = np.zeros_like(local_x)
+                        else:
+                            t = np.clip(
+                                ((local_x - sx) * vx + (local_y - sy) * vy) / span, 0.0, 1.0
+                            )
+                        inside |= (local_x - (sx + t * vx)) ** 2 + (
+                            local_y - (sy + t * vy)
+                        ) ** 2 <= half_stroke * half_stroke
             drill = getattr(pad, "drill", None)
             if drill:
                 # the drilled hole is air, not copper - a large plated
