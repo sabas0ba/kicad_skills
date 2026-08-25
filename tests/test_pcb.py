@@ -151,3 +151,20 @@ def test_a_bad_background_is_refused_before_anything_is_written(example_project,
     with pytest.raises(EdaError):
         fab.export_package(example_project, tmp_path / "fab", background="puce")
     assert not (tmp_path / "fab").exists()
+
+
+def test_copper_graphics_are_kept_only_when_filled(tmp_path):
+    """A filled polygon on copper is copper; a hollow rectangle is its stroke."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (gr_poly (pts (xy 0 0) (xy 5 0) (xy 5 5)) (layer "F.Cu") (fill yes))'
+        '  (gr_rect (start 10 10) (end 20 20) (layer "F.Cu") (fill none))'
+        '  (gr_circle (center 30 30) (end 32 30) (layer "B.Cu") (fill yes))'
+        '  (gr_poly (pts (xy 0 0) (xy 5 0) (xy 5 5)) (layer "F.SilkS") (fill yes)))'
+    )
+    path = tmp_path / "g.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    shapes = pcb.parse(path).copper_shapes
+    assert sorted(layer for layer, _ in shapes) == ["B.Cu", "F.Cu"]
+    circle = next(points for layer, points in shapes if layer == "B.Cu")
+    assert len(circle) > 8  # the circle arrives as a polygon, not a point pair

@@ -88,6 +88,9 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
     masks: dict[str, np.ndarray] = {
         layer: np.zeros((ny, nx), dtype=bool) for layer in board.copper_layers
     }
+    # drilled regions: no copper, and no laminate either - a row of mounting
+    # holes must not conduct as if the board were solid across them
+    holes = np.zeros((ny, nx), dtype=bool)
 
     def cells(bx0, by0, bx1, by1):
         ix0 = max(0, int((bx0 - x0) / step))
@@ -140,6 +143,7 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
         if drill:
             # the annulus is copper; the drilled middle is air, same as a pad
             disc &= radial > (drill / 2) ** 2
+            holes[iy0:iy1, ix0:ix1] |= radial <= (drill / 2) ** 2
         indices = [order[layer] for layer in getattr(via, "layers", []) if layer in order]
         if len(indices) >= 2:
             reached = set(board.copper_layers[min(indices) : max(indices) + 1])
@@ -151,6 +155,13 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
 
     for fp in board.footprints:
         for pad in fp.pads:
+            pad_drill = getattr(pad, "drill", None)
+            if pad_drill:
+                dh = pad_drill / 2
+                hx0, hy0, hx1, hy1 = cells(pad.x - dh, pad.y - dh, pad.x + dh, pad.y + dh)
+                if hx1 > hx0 and hy1 > hy0:
+                    hcx, hcy = gx[hy0:hy1, hx0:hx1], gy[hy0:hy1, hx0:hx1]
+                    holes[hy0:hy1, hx0:hx1] |= (hcx - pad.x) ** 2 + (hcy - pad.y) ** 2 <= dh * dh
             if getattr(pad, "type", "") == "np_thru_hole":
                 # a non-plated hole is the absence of copper, not a disc of it
                 continue
@@ -216,7 +227,7 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
         if layer not in masks or len(points) < 3:
             continue
         masks[layer] |= Path(points).contains_points(centres).reshape(ny, nx)
-    return masks
+    return masks, holes
 
 
 def _outline_mask(board: Any, x0: float, y0: float, nx: int, ny: int, step: float) -> np.ndarray:
@@ -373,8 +384,11 @@ def analyse(
     if nx * ny > 1_200_000:
         raise ValueError(f"{nx}x{ny} cells at {step} mm - raise --step for a board this size")
 
-    inside = _outline_mask(board, x0, y0, nx, ny, step)
-    masks = _copper_masks(board, x0, y0, nx, ny, step)
+    outline = _outline_mask(board, x0, y0, nx, ny, step)
+    masks, holes = _copper_masks(board, x0, y0, nx, ny, step)
+    # what the board is actually made of: inside the outline, and not drilled
+    # away - a hole carries neither copper nor laminate nor convecting face
+    inside = outline & ~holes
 
     # sheet conductance per cell, W/K per square: laminate plus every copper
     # layer that actually has copper in the cell

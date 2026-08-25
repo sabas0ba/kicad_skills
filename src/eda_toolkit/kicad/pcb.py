@@ -14,6 +14,26 @@ from . import s_expression as sexp
 from .s_expression import SNode
 
 
+def _graphic_is_filled(node: SNode) -> bool:
+    """Whether a graphic shape's area is filled copper, per its own fill node.
+
+    KiCad writes ``(fill yes)`` / ``(fill none)`` (older: ``solid``/``no``, or
+    ``(fill (type solid))``). No fill node at all means unfilled - the shape
+    is its stroke, and a stroke is not the area it circles.
+    """
+    fill = node.child("fill")
+    if fill is None:
+        return False
+    atoms = fill.atoms()
+    # the s-expression reader turns the bare word ``yes`` into True
+    if any(a is True or str(a) in ("yes", "solid") for a in atoms):
+        return True
+    type_node = fill.child("type")
+    return bool(
+        type_node and any(a is True or str(a) in ("yes", "solid") for a in type_node.atoms())
+    )
+
+
 @dataclass
 class Pad:
     number: str
@@ -457,6 +477,8 @@ def parse(path: str | os.PathLike[str]) -> Board:
             layer_name = str(node.value("layer", default=""))
             if not layer_name.endswith(".Cu"):
                 continue
+            if not _graphic_is_filled(node):
+                continue
             pts_node = node.child("pts")
             poly: list[tuple[float, float]] = []
             if pts_node:
@@ -657,11 +679,14 @@ def parse(path: str | os.PathLike[str]) -> Board:
         )
 
     # Filled graphics on a copper layer are copper - an antenna or a heatsink
-    # patch drawn as a polygon rather than poured as a zone.
+    # patch drawn as a polygon rather than poured as a zone. Only *filled*
+    # shapes: a hollow rectangle is its stroke, not the area it circles.
     for tag in ("gr_rect", "gr_circle", "gr_poly"):
         for node in root.children(tag):
             layer_name = str(node.value("layer", default=""))
             if not layer_name.endswith(".Cu"):
+                continue
+            if not _graphic_is_filled(node):
                 continue
             poly: list[tuple[float, float]] = []
             if tag == "gr_poly":

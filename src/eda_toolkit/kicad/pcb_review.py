@@ -1643,16 +1643,16 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
     board = ctx.board
     if len(board.copper_layers) != 2:
         return []
-    pour_layers = set()
+    fills_by_layer: dict[str, list[list[tuple[float, float]]]] = defaultdict(list)
     for zone in board.zones:
         if zone.keepout or not netlist_helpers_is_ground(zone.net):
             continue
         # the layers the fill actually reached, not the ones the zone asked
         # for: a two-layer zone whose fill succeeded on one face is no sandwich
-        pour_layers.update(
-            layer for layer, points in zone.fills if layer.endswith(".Cu") and len(points) >= 3
-        )
-    if len(pour_layers) < 2:
+        for layer, points in zone.fills:
+            if layer.endswith(".Cu") and len(points) >= 3:
+                fills_by_layer[layer].append(points)
+    if len(fills_by_layer) < 2:
         return []
     bbox = board.outline_bbox()
     if bbox is None:
@@ -1661,6 +1661,17 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
     loop = outline_geom.chain_loop(board.edge_segments())
     if loop is None:
         return []
+
+    fill_segments = {
+        layer: [seg for points in polygons for seg in itertools.pairwise([*points, points[0]])]
+        for layer, polygons in fills_by_layer.items()
+    }
+
+    def in_every_pour(px: float, py: float) -> bool:
+        # a via only stitches where it stands on filled copper on BOTH
+        # faces: one parked in a clearance cut joins nothing there
+        return all(outline_geom.contains((px, py), segments) for segments in fill_segments.values())
+
     # rim-local: scaled by the board's SHORT side, so a long narrow board
     # does not declare its whole midline to be rim
     band = max(4.0, 0.08 * min(x1 - x0, y1 - y0))
@@ -1671,6 +1682,7 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
         # inside the outline and near it: a panel or tooling via parked
         # outside the board joins no pour and mends no fence
         and 0 <= board.edge_clearance_at(via.x, via.y) <= band
+        and in_every_pour(via.x, via.y)
     ]
     limit = ctx.thresholds["stitch_pitch_mm"]
     if len(rim) < 2:

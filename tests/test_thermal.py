@@ -99,6 +99,19 @@ def test_a_uniformly_heated_plate_is_the_hand_calculation():
     assert result["parts"][0]["rise_c"] == pytest.approx(result["max_rise_c"], rel=0.02)
 
 
+def test_a_drilled_hole_is_not_board_material_either():
+    """The bath again, minus the hole: rise = P/(2h(A - hole)) on a calculator."""
+    hole = _Pad(20, 15, w=10.0, h=10.0)
+    hole.type = "np_thru_hole"
+    hole.drill = 10.0
+    board = _Board(footprints=[_Part("HEAT", 20, 15, half=25.0), _Part("H1", 20, 15, pads=[hole])])
+    result = thermal.analyse(board, {"HEAT": 1.0}, htc_w_m2k=10.0, step_mm=1.0)
+    hole_m2 = math.pi * (5e-3) ** 2
+    by_hand = 1.0 / (2 * 10.0 * (40e-3 * 30e-3 - hole_m2))
+    assert result["max_rise_c"] == pytest.approx(by_hand, rel=0.03)
+    assert result["balance"]["residual"] < 0.002
+
+
 def test_a_pour_spreads_the_heat_the_bare_laminate_cannot():
     """The comparative question the tool exists for, answered both ways."""
     part = _Part("U1", 8, 8)

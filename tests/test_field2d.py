@@ -97,3 +97,5 @@ def test_impossible_geometry_is_refused():
         field2d.differential_microstrip(0.5, T, H, epsilon_r=0.5, gap_mm=0.5)
     with pytest.raises(ValueError):
         field2d.stripline(0.5, T, 1.0, epsilon_r=0.5)
+    with pytest.raises(ValueError):
+        field2d.stripline(0.5, thickness_mm=1.0, plane_spacing_mm=0.8, epsilon_r=ER)

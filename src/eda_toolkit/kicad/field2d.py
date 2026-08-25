@@ -408,6 +408,8 @@ def stripline(
     """
     if min(width_mm, thickness_mm, plane_spacing_mm) <= 0 or epsilon_r < 1:
         raise ValueError("geometry must be positive and epsilon_r at least 1")
+    if thickness_mm >= plane_spacing_mm:
+        raise ValueError("the trace is thicker than the gap between the planes")
     if trace_below_mm is not None and not (0 < trace_below_mm < plane_spacing_mm - thickness_mm):
         raise ValueError("the trace must sit between the planes")
     counts = _Counts(

@@ -1299,13 +1299,10 @@ def test_a_cell_boundary_does_not_hide_a_shared_channel():
 
 def test_a_double_sided_pour_wants_its_rim_stitched():
     """Two facing pours are a capacitor until the vias make them a conductor."""
+    full = [(0, 0), (50, 0), (50, 40), (0, 40)]
     pours = [
-        pcb.Zone(
-            net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", [(0, 0), (50, 0), (50, 40)])]
-        ),
-        pcb.Zone(
-            net="GND", layers=["B.Cu"], filled=True, fills=[("B.Cu", [(0, 0), (50, 0), (50, 40)])]
-        ),
+        pcb.Zone(net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", full)]),
+        pcb.Zone(net="GND", layers=["B.Cu"], filled=True, fills=[("B.Cu", full)]),
     ]
     # a ring of rim vias 10 mm apart on a 50x40 board: nothing to report
     ring = [_gnd_via(x, y) for x in (5, 15, 25, 35, 45) for y in (2, 38)] + [
@@ -1323,6 +1320,18 @@ def test_a_double_sided_pour_wants_its_rim_stitched():
     # a via parked outside the outline joins no pour and mends no fence
     parked = [*sparse, _gnd_via(-5, 20), _gnd_via(25, -5)]
     findings = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=pours, vias=parked)))
+    assert [f.rule for f in findings] == ["emc.stitching_pitch"]
+    assert findings[0].details["rim_vias"] == 2
+
+    # nor does one standing in a clearance cut of the front fill: the fill
+    # polygons, not the net name, say where a via actually stitches
+    notched = [(0, 0), (50, 0), (50, 40), (30, 40), (30, 30), (20, 30), (20, 40), (0, 40)]
+    cut_pours = [
+        pcb.Zone(net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", notched)]),
+        pours[1],
+    ]
+    in_cut = [*sparse, _gnd_via(25, 38)]  # inside the board, inside the notch
+    findings = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=cut_pours, vias=in_cut)))
     assert [f.rule for f in findings] == ["emc.stitching_pitch"]
     assert findings[0].details["rim_vias"] == 2
 
