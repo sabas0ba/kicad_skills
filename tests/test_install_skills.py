@@ -195,7 +195,5 @@ def test_installing_into_this_checkout_renders_the_adapter_but_no_shim(tmp_path)
 @pytest.mark.parametrize("directory", [".agents/skills", ".claude/skills"])
 def test_the_generated_directories_are_not_tracked(directory):
     """Skill layouts are adapters; docs/guides/ is what gets reviewed."""
-    ignored = subprocess.run(
-        ["git", "check-ignore", "-q", f"{directory}/x/SKILL.md"], cwd=ROOT
-    )
+    ignored = subprocess.run(["git", "check-ignore", "-q", f"{directory}/x/SKILL.md"], cwd=ROOT)
     assert ignored.returncode == 0, f"{directory}/ must stay git-ignored"
