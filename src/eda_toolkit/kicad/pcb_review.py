@@ -1505,8 +1505,17 @@ def rule_parallel_runs(ctx: PcbContext) -> list[Finding]:
     for track in board.tracks:
         if not track.net or ctx.net_class_of(track.net) != "signal":
             continue
-        length = track.length
-        if length <= GEOM_TOL:
+        if track.kind == "arc" and getattr(track, "mid", None):
+            # the copper follows the curve; measuring its chord would call two
+            # opposite-bowed arcs coincident and miss two that really touch
+            points = outline_geom.arc_points(track.start, track.mid, track.end, steps=8)
+            for a, b in itertools.pairwise(points):
+                if math.dist(a, b) > GEOM_TOL:
+                    segments.append(
+                        pcb.Track(a, b, track.width, track.layer, track.net_code, track.net)
+                    )
+            continue
+        if track.length <= GEOM_TOL:
             continue
         segments.append(track)
 
@@ -1656,7 +1665,10 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
     rim = [
         (via.x, via.y)
         for via in board.vias
-        if netlist_helpers_is_ground(via.net) and board.edge_clearance_at(via.x, via.y) <= band
+        if netlist_helpers_is_ground(via.net)
+        # inside the outline and near it: a panel or tooling via parked
+        # outside the board joins no pour and mends no fence
+        and 0 <= board.edge_clearance_at(via.x, via.y) <= band
     ]
     limit = ctx.thresholds["stitch_pitch_mm"]
     if len(rim) < 2:

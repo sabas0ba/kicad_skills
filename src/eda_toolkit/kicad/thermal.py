@@ -60,6 +60,18 @@ DEFAULT_AMBIENT_C = 25.0
 DEFAULT_BOARD_THICKNESS_MM = 1.6
 
 
+def _primitive_points(primitives) -> list[tuple[float, float]]:
+    """Every pad-local point a custom pad's primitives reach."""
+    points: list[tuple[float, float]] = []
+    for kind, *geom in primitives:
+        if kind == "circle":
+            pcx, pcy, radius = geom
+            points += [(pcx - radius, pcy - radius), (pcx + radius, pcy + radius)]
+        elif kind == "poly":
+            points += list(geom[0])
+    return points or [(0.0, 0.0)]
+
+
 def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: float):
     """One boolean occupancy grid per copper layer, cell centres tested.
 
@@ -134,7 +146,17 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
 
     for fp in board.footprints:
         for pad in fp.pads:
+            if getattr(pad, "type", "") == "np_thru_hole":
+                # a non-plated hole is the absence of copper, not a disc of it
+                continue
             box = pad.bbox(angle_offset=fp.angle)
+            primitives = list(getattr(pad, "primitives", ()) or ())
+            if primitives:
+                # a custom pad's anchor understates it: widen the window to the
+                # farthest primitive vertex, whatever the rotation
+                reach = max(math.hypot(*p) for p in _primitive_points(primitives))
+                reach = max(reach, math.hypot(pad.size[0], pad.size[1]) / 2)
+                box = (pad.x - reach, pad.y - reach, pad.x + reach, pad.y + reach)
             ix0, iy0, ix1, iy1 = cells(*box)
             if ix1 <= ix0 or iy1 <= iy0:
                 continue
@@ -154,6 +176,15 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
                 ) ** 2 <= 1.0
             else:
                 inside = (np.abs(local_x) <= half_w) & (np.abs(local_y) <= half_h)
+            for kind, *geom in primitives:
+                # the drawn copper of a custom pad, in the same pad-local frame
+                if kind == "circle":
+                    pcx, pcy, radius = geom
+                    inside |= (local_x - pcx) ** 2 + (local_y - pcy) ** 2 <= radius * radius
+                elif kind == "poly" and len(geom[0]) >= 3:
+                    poly = Path(geom[0])
+                    pts = np.column_stack([local_x.ravel(), local_y.ravel()])
+                    inside |= poly.contains_points(pts).reshape(local_x.shape)
             for layer, mask in masks.items():
                 suffix = layer.split(".")[-1]
                 if any(pl == layer or pl == f"*.{suffix}" for pl in pad.layers):
@@ -193,10 +224,19 @@ def _source_cells(board: Any, ref: str, x0: float, y0: float, nx: int, ny: int, 
     # caller's outline check must see zero cells and refuse it
     if box[2] <= x0 or box[0] >= x0 + nx * step or box[3] <= y0 or box[1] >= y0 + ny * step:
         return 0, 0, 0, 0
-    ix0 = max(0, int((box[0] - x0) / step))
-    iy0 = max(0, int((box[1] - y0) / step))
-    ix1 = min(nx, max(ix0 + 1, int((box[2] - x0) / step) + 1))
-    iy1 = min(ny, max(iy0 + 1, int((box[3] - y0) / step) + 1))
+
+    # a cell belongs to the source if its *centre* is inside the courtyard: a
+    # 4 mm courtyard on a 1 mm grid heats 4 cells, not the 5 the outer edges
+    # touch, so the watts land on the area the part actually covers
+    def span(low: float, high: float, origin: float, count: int) -> tuple[int, int]:
+        first = math.ceil((low - origin) / step - 0.5)
+        last = math.floor((high - origin) / step - 0.5)
+        if last < first:  # smaller than a cell: the one holding its centre
+            first = last = int(((low + high) / 2 - origin) / step)
+        return max(0, first), min(count, last + 1)
+
+    ix0, ix1 = span(box[0], box[2], x0, nx)
+    iy0, iy1 = span(box[1], box[3], y0, ny)
     return iy0, iy1, ix0, ix1
 
 
@@ -281,6 +321,11 @@ def analyse(
     bbox = board.outline_bbox()
     if bbox is None:
         raise ValueError("the board has no outline to solve on")
+    if not board.outline_closed():
+        raise ValueError(
+            "the outline is not closed - inside the board is undefined, "
+            "so there is nothing sound to solve on"
+        )
     x0, y0, x1, y1 = bbox
     step = step_mm
     nx = max(4, math.ceil((x1 - x0) / step))
@@ -393,7 +438,11 @@ def render(result: dict[str, Any], out_path: Any) -> None:
     x0, y0 = result["origin_mm"]
     step = result["step_mm"]
     ny, nx = rise.shape
-    fig, ax = plt.subplots(figsize=(8, 8 * ny / nx))
+    # the longer side gets 8 inches and the shorter keeps the aspect, floored
+    # so a very long, narrow board still fits its labels instead of asking
+    # matplotlib for a hundred-thousand-pixel canvas
+    longest = max(nx, ny)
+    fig, ax = plt.subplots(figsize=(max(3.0, 8 * nx / longest), max(3.0, 8 * ny / longest)))
     image = ax.imshow(
         rise + result["ambient_c"],
         origin="lower",

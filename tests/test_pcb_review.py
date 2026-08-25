@@ -1277,6 +1277,15 @@ def test_only_the_close_part_of_a_converging_run_is_counted():
     assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=converging))) == []
 
 
+def test_arcs_are_measured_as_curves_not_chords():
+    """Two arcs sharing endpoints but bowing apart never actually run together."""
+    bowed_apart = [
+        pcb.Track((0, 10), (30, 10), 0.25, "F.Cu", 1, "CLK", kind="arc", mid=(15, 3)),
+        pcb.Track((0, 10), (30, 10), 0.25, "F.Cu", 2, "DATA", kind="arc", mid=(15, 17)),
+    ]
+    assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=bowed_apart))) == []
+
+
 def test_a_cell_boundary_does_not_hide_a_shared_channel():
     """The 4 mm bucket edge at y=12 must not separate y=11.8 from y=12.2."""
     straddling = [
@@ -1310,6 +1319,12 @@ def test_a_double_sided_pour_wants_its_rim_stitched():
     findings = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=pours, vias=sparse)))
     assert [f.rule for f in findings] == ["emc.stitching_pitch"]
     assert findings[0].details["widest_gap_mm"] > 18
+
+    # a via parked outside the outline joins no pour and mends no fence
+    parked = [*sparse, _gnd_via(-5, 20), _gnd_via(25, -5)]
+    findings = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=pours, vias=parked)))
+    assert [f.rule for f in findings] == ["emc.stitching_pitch"]
+    assert findings[0].details["rim_vias"] == 2
 
     # a single-sided pour has no sandwich to stitch
     single = [pours[0]]

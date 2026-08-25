@@ -50,7 +50,9 @@ class _Zone:
 class _Board:
     """A rectangular board the model can be hand-checked on."""
 
-    def __init__(self, width=40.0, height=30.0, footprints=(), zones=(), tracks=(), vias=()):
+    def __init__(
+        self, width=40.0, height=30.0, footprints=(), zones=(), tracks=(), vias=(), closed=True
+    ):
         self.width, self.height = width, height
         self.copper_layers = ["F.Cu", "B.Cu"]
         self.stackup = [
@@ -62,12 +64,13 @@ class _Board:
         self.zones = list(zones)
         self.tracks = list(tracks)
         self.vias = list(vias)
+        self.closed = closed
 
     def outline_bbox(self):
         return (0.0, 0.0, self.width, self.height)
 
     def outline_closed(self):
-        return True
+        return self.closed
 
     def edge_clearance_at(self, x, y):
         return min(x, y, self.width - x, self.height - y)
@@ -137,6 +140,21 @@ def test_nonsense_is_refused_with_its_reason():
         thermal.analyse(board, {"U1": 1.0}, step_mm=0.0)
     with pytest.raises(ValueError, match="positive"):
         thermal.analyse(board, {"U1": 1.0}, htc_w_m2k=0.0)
+
+
+def test_an_open_outline_is_refused_rather_than_filled_in():
+    board = _Board(footprints=[_Part("U1", 10, 10)], closed=False)
+    with pytest.raises(ValueError, match="not closed"):
+        thermal.analyse(board, {"U1": 1.0}, step_mm=1.0)
+
+
+def test_a_non_plated_hole_is_not_copper():
+    """A big NPTH mounting hole must not become a fictitious conductive disc."""
+    hole = _Pad(20, 15, w=6.0, h=6.0)
+    hole.type = "np_thru_hole"
+    board = _Board(footprints=[_Part("H1", 20, 15, pads=[hole]), _Part("U1", 10, 10)])
+    result = thermal.analyse(board, {"U1": 1.0}, step_mm=1.0)
+    assert result["copper_coverage"] < 0.02
 
 
 def test_a_part_wholly_off_the_board_is_refused_not_smeared_onto_the_edge():

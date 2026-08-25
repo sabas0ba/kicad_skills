@@ -287,8 +287,15 @@ def layer_geometry(board: Any, layer: str) -> dict[str, Any] | None:
     if not epsilons:
         return None
 
+    geometry = {
+        "layer": layer,
+        "kind": "microstrip" if outer else "stripline",
+        "height_mm": round(height, 4),
+    }
     if not outer:
-        # Between two planes: the model wants the whole gap, not half of it.
+        # Between two planes: the model wants the whole gap, not half of it -
+        # and the solver wants to know where in the gap the trace sits, which
+        # the fit cannot ask.
         above = coppers[position - 1]
         below = coppers[position + 1]
         span = [
@@ -299,13 +306,18 @@ def layer_geometry(board: Any, layer: str) -> dict[str, Any] | None:
         if span:
             height = sum(float(entry["thickness"]) for entry in span)
             epsilons = [float(e["epsilon_r"]) for e in span if e.get("epsilon_r")] or epsilons
+            geometry["height_mm"] = round(height, 4)
+            geometry["height_below_mm"] = round(
+                sum(
+                    float(entry["thickness"])
+                    for entry in board.stackup[index + 1 : below]
+                    if entry.get("thickness") and entry.get("type") != "copper"
+                ),
+                4,
+            )
 
-    return {
-        "layer": layer,
-        "kind": "microstrip" if outer else "stripline",
-        "height_mm": round(height, 4),
-        "epsilon_r": round(sum(epsilons) / len(epsilons), 3),
-    }
+    geometry["epsilon_r"] = round(sum(epsilons) / len(epsilons), 3)
+    return geometry
 
 
 def analyse(board: Any, *, temperature_rise_c: float = 10.0, solve: bool = False) -> dict[str, Any]:
@@ -417,9 +429,18 @@ def analyse(board: Any, *, temperature_rise_c: float = 10.0, solve: bool = False
                     row["width_100r_diff_solved_ohm"] = pair["zdiff_ohm"]
             elif row.get("width_50r_mm"):
                 # the inner layers get the referee too: the IPC stripline fit
-                # proposed the width, the solve re-measures it (the coupled
-                # stripline pair has no solver yet, so that column stays a fit)
-                solved = field2d.stripline(row["width_50r_mm"], thickness, height, epsilon)
+                # proposed the width, the solve re-measures it - at the
+                # trace's real position in the gap, which an asymmetric
+                # stackup states and the symmetric fit cannot pose (the
+                # coupled stripline pair has no solver yet, so that
+                # differential column stays a fit)
+                solved = field2d.stripline(
+                    row["width_50r_mm"],
+                    thickness,
+                    height,
+                    epsilon,
+                    trace_below_mm=row.get("height_below_mm"),
+                )
                 row["width_50r_solved_ohm"] = solved["z0_ohm"]
         impedance.append(row)
 

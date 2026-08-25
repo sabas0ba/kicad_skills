@@ -163,13 +163,18 @@ class _Counts:
         gap_mm: float | None,
         stripline: bool,
         cells: int,
+        below_mm: float | None = None,
     ):
         coarse = max(3, cells // 2)
-        self.cell_mm = min(width_mm, height_mm) / coarse
+        feature = min(width_mm, height_mm) if below_mm is None else min(width_mm, below_mm)
+        self.cell_mm = feature / coarse
         self.height = max(2, round(height_mm / self.cell_mm))
         self.width = max(1, round(width_mm / self.cell_mm))
         self.thickness = max(1, round(thickness_mm / self.cell_mm))
         self.gap = max(1, round(gap_mm / self.cell_mm)) if gap_mm is not None else None
+        # an asymmetric stripline states where the trace sits over the bottom
+        # plane; None keeps the centred default
+        self.below = max(1, round(below_mm / self.cell_mm)) if below_mm is not None else None
         margin_mm = (STRIPLINE_MARGIN_SPACINGS if stripline else BOX_MARGIN_HEIGHTS) * height_mm
         self.margin = max(4, round(margin_mm / self.cell_mm))
         self.stripline = stripline
@@ -183,6 +188,8 @@ class _Counts:
         }
         if self.gap is not None:
             out["gap_mm"] = self.gap * h
+        if self.below is not None:
+            out["below_mm"] = self.below * h
         return out
 
     def grids(self, scale: int, epsilon_r: float, vacuum: bool):
@@ -196,7 +203,10 @@ class _Counts:
         nx = 2 * n_m + traces * n_w + n_g
         if self.stripline:
             ny = kh + 1
-            trace_bottom = max(1, (kh - n_t) // 2)
+            if self.below is not None:
+                trace_bottom = min(max(1, self.below * scale), max(1, kh - n_t - 1))
+            else:
+                trace_bottom = max(1, (kh - n_t) // 2)
         else:
             ny = kh + n_t + n_m
             trace_bottom = kh
@@ -376,9 +386,14 @@ def stripline(
     plane_spacing_mm: float,
     epsilon_r: float,
     *,
+    trace_below_mm: float | None = None,
     cells: int = CELLS_PER_FEATURE,
 ) -> dict[str, Any]:
-    """A trace centred between two planes, laminate throughout.
+    """A trace between two planes, laminate throughout.
+
+    Centred by default; ``trace_below_mm`` states the dielectric under the
+    trace when the stackup is asymmetric - a real cross-section the IPC fit
+    cannot pose at all, and a second thing only the solver answers.
 
     Here the solve doubles as a referee: the IPC-2141 stripline fit had no
     second model to be checked against, and now it has one. eps_eff is not
@@ -387,6 +402,8 @@ def stripline(
     """
     if min(width_mm, thickness_mm, plane_spacing_mm) <= 0 or epsilon_r < 1:
         raise ValueError("geometry must be positive and epsilon_r at least 1")
+    if trace_below_mm is not None and not (0 < trace_below_mm < plane_spacing_mm - thickness_mm):
+        raise ValueError("the trace must sit between the planes")
     counts = _Counts(
         width_mm=width_mm,
         thickness_mm=thickness_mm,
@@ -394,6 +411,7 @@ def stripline(
         gap_mm=None,
         stripline=True,
         cells=cells,
+        below_mm=trace_below_mm,
     )
     asked = {
         "width_mm": width_mm,

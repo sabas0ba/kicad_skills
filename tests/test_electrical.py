@@ -362,20 +362,34 @@ def test_solve_re_measures_the_proposed_widths():
     assert 1.0 < solved["solved_eps_eff"] < solved["epsilon_r"]
 
 
-def test_solve_reaches_the_inner_layers_too():
-    """--solve must not silently skip the stripline rows of a four-layer board."""
-    four = [
+def _four_layer(upper_mm: float, lower_mm: float) -> list[dict]:
+    return [
         {"name": "F.Cu", "type": "copper", "thickness": 0.035, "epsilon_r": None},
-        {"name": "dielectric 1", "type": "prepreg", "thickness": 0.2, "epsilon_r": 4.4},
+        {"name": "dielectric 1", "type": "prepreg", "thickness": upper_mm, "epsilon_r": 4.5},
         {"name": "In1.Cu", "type": "copper", "thickness": 0.0175, "epsilon_r": None},
-        {"name": "dielectric 2", "type": "core", "thickness": 1.065, "epsilon_r": 4.5},
+        {"name": "dielectric 2", "type": "core", "thickness": lower_mm, "epsilon_r": 4.5},
         {"name": "In2.Cu", "type": "copper", "thickness": 0.0175, "epsilon_r": None},
-        {"name": "dielectric 3", "type": "prepreg", "thickness": 0.2, "epsilon_r": 4.4},
+        {"name": "dielectric 3", "type": "prepreg", "thickness": upper_mm, "epsilon_r": 4.5},
         {"name": "B.Cu", "type": "copper", "thickness": 0.035, "epsilon_r": None},
     ]
-    board = _Board(four, copper_layers=("F.Cu", "In1.Cu", "In2.Cu", "B.Cu"))
+
+
+def test_solve_reaches_the_inner_layers_too():
+    """--solve must not silently skip the stripline rows of a four-layer board."""
+    board = _Board(_four_layer(0.6, 0.6), copper_layers=("F.Cu", "In1.Cu", "In2.Cu", "B.Cu"))
     rows = {row["layer"]: row for row in electrical.analyse(board, solve=True)["impedance"]}
     inner = rows["In1.Cu"]
     assert inner["kind"] == "stripline"
-    # the solver referees the fit: same geometry, an answer near the target
+    # symmetric gap: the solver referees the fit and lands near the target
     assert abs(inner["width_50r_solved_ohm"] - 50.0) < 5.0
+
+
+def test_an_asymmetric_stripline_is_solved_where_the_trace_actually_sits():
+    """A thin prepreg to one plane is the usual case, and only the solver sees it."""
+    board = _Board(_four_layer(0.2, 1.0), copper_layers=("F.Cu", "In1.Cu", "In2.Cu", "B.Cu"))
+    rows = {row["layer"]: row for row in electrical.analyse(board, solve=True)["impedance"]}
+    inner = rows["In1.Cu"]
+    assert inner["height_below_mm"] == pytest.approx(1.0)
+    # the near plane dominates: the real cross-section sits below the value
+    # the symmetric fit proposed the width for
+    assert inner["width_50r_solved_ohm"] < 50.0

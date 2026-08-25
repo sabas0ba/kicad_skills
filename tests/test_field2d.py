@@ -61,6 +61,15 @@ def test_the_stripline_solve_referees_the_ipc_fit():
         assert abs(solved - fit) / fit < 0.08, f"w={width}: solver {solved} vs fit {fit}"
 
 
+def test_an_off_centre_stripline_sees_the_nearer_plane():
+    """More capacitance to the close plane: the impedance must fall."""
+    centred = field2d.stripline(0.3, T, 1.2, ER)["z0_ohm"]
+    shifted = field2d.stripline(0.3, T, 1.2, ER, trace_below_mm=0.2)["z0_ohm"]
+    assert shifted < centred
+    with pytest.raises(ValueError):
+        field2d.stripline(0.3, T, 1.2, ER, trace_below_mm=1.3)
+
+
 def test_the_answer_says_what_it_actually_solved():
     """The snap to the grid and its correction are reported, not hidden."""
     result = field2d.microstrip(0.85, T, H, ER)

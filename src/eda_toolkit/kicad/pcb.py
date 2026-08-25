@@ -28,6 +28,10 @@ class Pad:
     net: str = ""
     net_code: int = 0
     roundrect_rratio: float = 0.0
+    # A custom pad's drawn copper, in pad-local coordinates: the anchor `size`
+    # describes only the attachment shape, the primitives are the real extent.
+    # Entries are ("circle", cx, cy, r) and ("poly", [(x, y), ...]).
+    primitives: list[tuple] = field(default_factory=list)
     # The pad's own override of how a zone connects to it, when it carries one:
     # 0 none, 1 thermal relief, 2 solid. ``None`` means it inherits the zone's
     # setting, which is what most pads do.
@@ -457,6 +461,33 @@ def parse(path: str | os.PathLike[str]) -> Board:
                 if drill_atoms:
                     drill = float(drill_atoms[0])
             net_code, net_name = _net_of(pad_node, board.nets)
+            primitives: list[tuple] = []
+            prim_node = pad_node.child("primitives")
+            if prim_node:
+                for circle in prim_node.children("gr_circle"):
+                    centre, end = circle.child("center"), circle.child("end")
+                    if centre and end:
+                        ccx, ccy, _ = _xy(centre)
+                        cex, cey, _ = _xy(end)
+                        primitives.append(("circle", ccx, ccy, math.dist((ccx, ccy), (cex, cey))))
+                for poly in prim_node.children("gr_poly"):
+                    pts_node = poly.child("pts")
+                    pts: list[tuple[float, float]] = []
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(vals) >= 2:
+                                pts.append((float(vals[0]), float(vals[1])))
+                    if len(pts) >= 3:
+                        primitives.append(("poly", pts))
+                for rect in prim_node.children("gr_rect"):
+                    start, end = rect.child("start"), rect.child("end")
+                    if start and end:
+                        rsx, rsy, _ = _xy(start)
+                        rex, rey, _ = _xy(end)
+                        primitives.append(
+                            ("poly", [(rsx, rsy), (rex, rsy), (rex, rey), (rsx, rey)])
+                        )
             # Pad coordinates are relative to the footprint origin and rotated by
             # the footprint orientation. KiCad's RotatePoint works on a Y-down
             # canvas, hence the sign pattern below.
@@ -480,6 +511,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     net=net_name,
                     net_code=net_code,
                     roundrect_rratio=float(pad_node.value("roundrect_rratio", default=0.0) or 0.0),
+                    primitives=primitives,
                     zone_connect=(
                         int(zone_connect)
                         if (zone_connect := pad_node.value("zone_connect", default=None))
