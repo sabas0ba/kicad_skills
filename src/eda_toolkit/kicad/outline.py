@@ -20,6 +20,21 @@ Segment = tuple[Point, Point]
 
 ARC_STEPS = 24
 _EPS = 1e-9
+# How far a chord may sit inside the true curve. A 100 mm-radius board edge
+# tessellated in 24 fixed steps sags 0.2 mm - twice the edge-clearance rule -
+# so the step count follows the radius instead of a constant.
+CHORD_TOLERANCE_MM = 0.02
+_MAX_CURVE_STEPS = 720
+
+
+def _steps_for(radius: float, sweep: float, floor: int) -> int:
+    """Subdivisions that keep the chord within ``CHORD_TOLERANCE_MM``."""
+    if radius <= CHORD_TOLERANCE_MM:
+        return max(2, floor)
+    per_chord = 2.0 * math.acos(max(-1.0, 1.0 - CHORD_TOLERANCE_MM / radius))
+    if per_chord <= 0:
+        return max(2, floor)
+    return max(2, floor, min(_MAX_CURVE_STEPS, math.ceil(abs(sweep) / per_chord)))
 
 
 def _arc_centre(a: Point, b: Point, c: Point) -> tuple[Point, float] | None:
@@ -52,7 +67,7 @@ def arc_points(start: Point, mid: Point, end: Point, steps: int = ARC_STEPS) -> 
         span = math.tau
     # The midpoint tells us which way round the circle the arc actually goes.
     sweep = span if turn(am) <= span else span - math.tau
-    steps = max(2, steps)
+    steps = _steps_for(radius, sweep, steps)
     return [
         (
             ux + radius * math.cos(a0 + sweep * i / steps),
@@ -63,7 +78,7 @@ def arc_points(start: Point, mid: Point, end: Point, steps: int = ARC_STEPS) -> 
 
 
 def circle_points(centre: Point, radius: float, steps: int = ARC_STEPS * 2) -> list[Point]:
-    steps = max(3, steps)
+    steps = max(3, _steps_for(radius, math.tau, steps))
     cx, cy = centre
     pts = [
         (cx + radius * math.cos(math.tau * i / steps), cy + radius * math.sin(math.tau * i / steps))
@@ -71,6 +86,32 @@ def circle_points(centre: Point, radius: float, steps: int = ARC_STEPS * 2) -> l
     ]
     pts.append(pts[0])
     return pts
+
+
+def bezier_points(controls: Sequence[Point], steps: int = ARC_STEPS) -> list[Point]:
+    """A cubic (or quadratic) Bezier evaluated, not its control cage joined.
+
+    KiCad's ``gr_curve`` stores endpoints and control points; the curve
+    passes through the ends and only *toward* the controls, so joining the
+    four as vertices detours through points no copper ever visits.
+    """
+    if len(controls) < 3:
+        return list(controls)
+    steps = max(4, steps)
+
+    def at(t: float) -> Point:
+        points = list(controls)
+        while len(points) > 1:
+            points = [
+                (
+                    points[i][0] + (points[i + 1][0] - points[i][0]) * t,
+                    points[i][1] + (points[i + 1][1] - points[i][1]) * t,
+                )
+                for i in range(len(points) - 1)
+            ]
+        return points[0]
+
+    return [at(i / steps) for i in range(steps + 1)]
 
 
 def _chain(points: Sequence[Point], closed: bool = False) -> list[Segment]:
@@ -105,6 +146,8 @@ def flatten(edges: Iterable[dict[str, Any]], *, steps: int = ARC_STEPS) -> list[
             segments += _chain(circle_points(edge["centre"], edge["radius"], steps * 2))
         elif kind == "gr_arc" and start and end and edge.get("mid"):
             segments += _chain(arc_points(start, edge["mid"], end, steps))
+        elif kind == "gr_curve" and edge.get("polyline"):
+            segments += _chain(bezier_points(edge["polyline"], steps))
         elif edge.get("polyline"):
             polyline = edge["polyline"]
             segments += _chain(polyline, closed=kind == "gr_poly")

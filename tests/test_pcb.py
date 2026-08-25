@@ -1,3 +1,4 @@
+import itertools
 import math
 
 import pytest
@@ -230,3 +231,23 @@ def test_a_circular_courtyard_is_kept_as_its_rim(tmp_path):
     box = fp.courtyard_box()
     assert box[2] - box[0] == pytest.approx(6.0, abs=0.2)
     assert box[3] - box[1] == pytest.approx(6.0, abs=0.2)
+
+
+def test_courtyard_lines_are_chained_into_perimeter_order(tmp_path):
+    """Drawing order is not perimeter order; concatenation invents diagonals."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:u" (layer "F.Cu") (at 0 0 0)'
+        '    (fp_line (start -2 -2) (end 2 -2) (layer "F.CrtYd"))'
+        '    (fp_line (start 2 2) (end -2 2) (layer "F.CrtYd"))'
+        '    (fp_line (start -2 2) (end -2 -2) (layer "F.CrtYd"))'
+        '    (fp_line (start 2 -2) (end 2 2) (layer "F.CrtYd"))))'
+    )
+    path = tmp_path / "o.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    fp = pcb.parse(path).footprints[0]
+    assert len(fp.courtyard) == 4
+    ring = [*fp.courtyard, fp.courtyard[0]]
+    for a, b in itertools.pairwise(ring):
+        # each edge of a chained rectangle changes exactly one coordinate
+        assert (a[0] == b[0]) != (a[1] == b[1])

@@ -457,6 +457,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
             attributes=[str(a) for a in attrs_node.atoms()] if attrs_node else [],
             uuid=str(fp_node.value("uuid", default="")),
         )
+        courtyard_segs: list[tuple[tuple[float, float], tuple[float, float]]] = []
         for shape in ("fp_line", "fp_rect", "fp_poly", "fp_circle", "fp_arc"):
             for node in fp_node.children(shape):
                 if not str(node.value("layer", default="")).endswith(".CrtYd"):
@@ -501,9 +502,32 @@ def parse(path: str | os.PathLike[str]) -> Board:
                         atoms = [a for a in xy.atoms() if isinstance(a, (int, float))]
                         if len(atoms) >= 2:
                             raw.append((float(atoms[0]), float(atoms[1])))
+                placed = []
                 for cx, cy in raw:
                     gx, gy = _rotate(cx, cy, angle)
-                    fp.courtyard.append((gx + fp.x, gy + fp.y))
+                    placed.append((gx + fp.x, gy + fp.y))
+                # each primitive is a chain of edges; a lone fp_line is one
+                courtyard_segs += [
+                    (placed[i], placed[i + 1])
+                    for i in range(len(placed) - 1)
+                    if placed[i] != placed[i + 1]
+                ]
+                if (
+                    shape in ("fp_rect", "fp_poly", "fp_circle")
+                    and len(placed) > 2
+                    and placed[-1] != placed[0]
+                ):
+                    courtyard_segs.append((placed[-1], placed[0]))
+
+        if courtyard_segs:
+            # the file lists the pieces in drawing order, not perimeter order:
+            # chained they are the courtyard, concatenated they are a scribble
+            # with invented diagonals
+            loop = outline_geom.chain_loop(courtyard_segs)
+            if loop is not None:
+                fp.courtyard = [seg[0] for seg in loop]
+            else:
+                fp.courtyard = [pt for seg in courtyard_segs for pt in seg]
 
         # filled shapes a footprint draws on copper are copper too - the same
         # set the board-level graphics get, turned and placed with the part

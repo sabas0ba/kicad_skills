@@ -1,3 +1,4 @@
+import itertools
 import math
 
 from eda_toolkit.kicad import outline
@@ -128,3 +129,29 @@ def test_a_shape_made_of_two_outlines_sharing_a_seam():
     assert outline.contains((10, 10), board)  # exactly on the seam
     assert not outline.contains((10, 20), board)  # past the tab
     assert not outline.contains((-1, 5), board)
+
+
+def test_a_large_arc_is_tessellated_to_its_tolerance():
+    """A 100 mm radius at 24 fixed steps sagged 0.2 mm - twice the edge rule."""
+    import math
+
+    pts = outline.circle_points((0.0, 0.0), 100.0)
+    worst = 100.0
+    for a, b in itertools.pairwise(pts):
+        mid = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)
+        worst = min(worst, math.hypot(*mid))
+    assert 100.0 - worst < outline.CHORD_TOLERANCE_MM * 1.5
+
+
+def test_a_bezier_edge_follows_the_curve_not_the_control_cage():
+    """gr_curve stores controls the copper never visits; the flatten must too."""
+    edge = {
+        "type": "gr_curve",
+        "polyline": [(0.0, 0.0), (0.0, 10.0), (10.0, 10.0), (10.0, 0.0)],
+    }
+    segments = outline.flatten([edge])
+    ys = [p[1] for seg in segments for p in seg]
+    # the cubic's apex is 7.5; joining the cage as vertices would reach 10
+    assert max(ys) < 8.0
+    assert segments[0][0] == (0.0, 0.0)
+    assert segments[-1][1] == (10.0, 0.0)
