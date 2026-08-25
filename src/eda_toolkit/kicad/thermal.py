@@ -242,6 +242,11 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
                     & (np.abs(local_y) <= half_h)
                     & (dx_r * dx_r + dy_r * dy_r <= radius * radius)
                 )
+            elif shape == "custom" and getattr(pad, "anchor", "rect") == "circle":
+                # the land the primitives sit on is round; taking it square
+                # would hand the pad four corners of copper it does not have
+                radius = min(half_w, half_h)
+                inside = local_x**2 + local_y**2 <= radius * radius
             else:
                 inside = (np.abs(local_x) <= half_w) & (np.abs(local_y) <= half_h)
             for kind, *geom in primitives:

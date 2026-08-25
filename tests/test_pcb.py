@@ -324,3 +324,17 @@ def test_footprint_curves_and_pad_arcs_are_copper_too(tmp_path):
     assert max(p[1] for p in curves[0][1]) < 8.0  # the curve, not its cage
     kinds = [p[0] for p in board.footprints[0].pads[0].primitives]
     assert kinds == ["polyline"]  # the arc survived as its stroked path
+
+
+def test_a_custom_pads_anchor_shape_is_kept(tmp_path):
+    """(options (anchor circle)) makes the land round, not a square of that size."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:d" (layer "F.Cu") (at 0 0 0)'
+        '    (pad "D2" smd custom (at 0 0) (size 1.6 1.6) (layers "F.Cu")'
+        "      (options (clearance outline) (anchor circle))"
+        "      (primitives (gr_circle (center 0 0) (end 0.8 0) (fill yes))))))"
+    )
+    path = tmp_path / "an.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    assert pcb.parse(path).footprints[0].pads[0].anchor == "circle"

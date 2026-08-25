@@ -68,6 +68,10 @@ class Pad:
     # ``drill`` above stays the scalar the ring and fab checks read.
     drill_size: tuple[float, float] | None = None
     drill_offset: tuple[float, float] = (0.0, 0.0)
+    # A custom pad's anchor shape - "rect" or "circle" - which is the land the
+    # primitives are drawn onto. ``size`` describes it either way, so without
+    # this a circular anchor reads as a square and gains its corners.
+    anchor: str = "rect"
     # The pad's own override of how a zone connects to it, when it carries one:
     # 0 none, 1 thermal relief, 2 solid. ``None`` means it inherits the zone's
     # setting, which is what most pads do.
@@ -636,6 +640,12 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     drill_offset = (ox, oy)
             net_code, net_name = _net_of(pad_node, board.nets)
             primitives: list[tuple] = []
+            options_node = pad_node.child("options")
+            anchor = "rect"
+            if options_node is not None:
+                stated = options_node.value("anchor")
+                if stated is not None:
+                    anchor = str(stated)
             prim_node = pad_node.child("primitives")
             if prim_node:
                 # each primitive keeps its own fill and stroke: a hollow
@@ -737,6 +747,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     primitives=primitives,
                     drill_size=drill_size,
                     drill_offset=drill_offset,
+                    anchor=anchor,
                     zone_connect=(
                         int(zone_connect)
                         if (zone_connect := pad_node.value("zone_connect", default=None))
