@@ -176,6 +176,7 @@ index. Every entry names both the Markdown file it points at and the URL Jekyll
 publishes it under, and the test checks that the two agree and that the target
 is a page the site actually serves.
 
-`bin/install-skills.sh` renders `docs/guides/` into Claude Code's skill layout
-(`.claude/skills/<name>/SKILL.md`, symlinks, git-ignored). Never edit that copy:
-it is generated, and `make skills` regenerates it.
+`bin/install-skills.sh` renders `docs/guides/` into the tool-neutral Agent Skills
+layout (`.agents/skills/<name>/SKILL.md`) and Claude Code's compatibility layout
+(`.claude/skills/<name>/SKILL.md`). Both use git-ignored symlinks. Never edit
+those copies: they are generated, and `make skills` regenerates them.

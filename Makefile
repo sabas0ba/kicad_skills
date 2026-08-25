@@ -53,7 +53,7 @@ site:  ## build the GitHub Pages site into _site/ (needs network on first run)
 	    $(PAGES_IMAGE) jekyll build --destination /out
 	@echo "==> open _site/index.html, or: python3 -m http.server -d _site"
 
-skills:  ## mirror docs/guides/ into .claude/skills (generated, git-ignored)
+skills:  ## mirror guides into .agents/skills and .claude/skills (generated)
 	./bin/install-skills.sh --force
 
 lint:  ## ruff (lint + format check) over the whole tree

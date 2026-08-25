@@ -28,9 +28,10 @@ and it is what lets a tool decide which guide is relevant without reading all of
 Nothing needs installing: point your tool at this directory, or let it read
 [`AGENTS.md`](../../AGENTS.md), which names the guides.
 
-Claude Code is the one tool that wants a specific layout — it discovers skills at
-`.claude/skills/<name>/SKILL.md`. `bin/install-skills.sh` produces that layout
-from these files, as symlinks, so there is never a second copy to keep in step:
+Codex and other Agent Skills-compatible assistants discover skills at
+`.agents/skills/<name>/SKILL.md`; Claude Code discovers them at
+`.claude/skills/<name>/SKILL.md`. `bin/install-skills.sh` produces both layouts
+from these files as symlinks, so there is never a second copy to keep in step:
 
 ```bash
 ./bin/install-skills.sh                              # this checkout
@@ -38,8 +39,9 @@ from these files, as symlinks, so there is never a second copy to keep in step:
 ./bin/install-skills.sh --dest .cursor/rules --copy  # some other tool's directory
 ```
 
-The generated `.claude/skills/` is git-ignored on purpose: it is an adapter, not
-content. Delete it and re-run the script whenever you like.
+The generated `.agents/skills/` and `.claude/skills/` are git-ignored on purpose:
+they are adapters, not content. Delete them and re-run the script whenever you
+like. Supplying `--dest` creates only the requested custom layout.
 
 And if you use no assistant at all, the guides still stand on their own — they
 are how a careful engineer would use these commands.

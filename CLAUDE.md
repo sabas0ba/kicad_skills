@@ -8,7 +8,8 @@ exists only so Claude Code finds it.
 The per-task usage guides live in **[`docs/guides/`](docs/guides/README.md)**:
 one each for datasheets, SPICE simulation, schematic review, board review,
 fabrication output and the container. Read the relevant one before starting that
-kind of work. `make skills` mirrors them into `.claude/skills/` so they load on
-demand; that directory is generated and git-ignored, so edit `docs/guides/`.
+kind of work. `make skills` mirrors them into `.agents/skills/` and
+`.claude/skills/` so supported assistants load them on demand; those directories
+are generated and git-ignored, so edit `docs/guides/`.
 
 @AGENTS.md

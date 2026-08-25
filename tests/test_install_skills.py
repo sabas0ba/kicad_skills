@@ -1,9 +1,9 @@
 """bin/install-skills.sh is how most people will adopt this repo - test it.
 
 The guides are plain Markdown in `docs/guides/`, which is the source of truth.
-This script renders them into a layout a particular tool wants - Claude Code's
-`.claude/skills/<name>/SKILL.md` by default, anywhere else with --dest - and
-drops the `bin/eda.sh` shim. Nothing here is required to *read* the guides.
+This script renders them into the standard Agent Skills and Claude Code layouts
+by default, or only a custom layout with --dest, and drops the `bin/eda.sh`
+shim. Nothing here is required to *read* the guides.
 """
 
 import os
@@ -67,16 +67,17 @@ def test_every_guide_carries_the_header_a_tool_selects_on():
         assert "description:" in header, name
 
 
-def test_guides_are_rendered_into_the_skill_layout(project):
+def test_guides_are_rendered_into_both_standard_skill_layouts(project):
     target, submodule = project
     install(submodule, target)
 
-    for name in GUIDES:
-        skill = target / ".claude" / "skills" / name / "SKILL.md"
-        assert skill.is_symlink(), name
-        # Relative, so the project can be moved or cloned anywhere.
-        assert not os.path.isabs(os.readlink(skill))
-        assert skill.read_text().startswith("---\n"), os.readlink(skill)
+    for root in (".agents", ".claude"):
+        for name in GUIDES:
+            skill = target / root / "skills" / name / "SKILL.md"
+            assert skill.is_symlink(), f"{root}: {name}"
+            # Relative, so the project can be moved or cloned anywhere.
+            assert not os.path.isabs(os.readlink(skill))
+            assert skill.read_text().startswith("---\n"), os.readlink(skill)
 
 
 def test_the_generated_copy_tracks_the_guide(project):
@@ -135,6 +136,7 @@ def test_guides_can_be_installed_anywhere(project):
     install(submodule, target, "--dest", "docs/circuit-design", "--copy")
 
     assert (target / "docs" / "circuit-design" / GUIDES[0] / "SKILL.md").exists()
+    assert not (target / ".agents").exists()
     assert not (target / ".claude").exists()
 
 
@@ -153,6 +155,7 @@ def test_the_cli_can_be_installed_without_any_guides(project):
     install(submodule, target, "--no-guides")
 
     assert (target / "bin" / "eda.sh").exists()
+    assert not (target / ".agents").exists()
     assert not (target / ".claude").exists()
 
 
@@ -163,6 +166,7 @@ def test_uninstall_removes_what_it_installed(project):
     keep.write_text("mine")
 
     install(submodule, target, "--uninstall")
+    assert not (target / ".agents").exists()
     assert not (target / ".claude").exists()  # including the directory it created
     assert not (target / "bin" / "eda.sh").exists()
     assert keep.exists()
@@ -183,11 +187,15 @@ def test_installing_into_this_checkout_renders_the_adapter_but_no_shim(tmp_path)
         text=True,
         check=True,
     )
+    assert (checkout / ".agents" / "skills" / GUIDES[0] / "SKILL.md").is_symlink()
     assert (checkout / ".claude" / "skills" / GUIDES[0] / "SKILL.md").is_symlink()
     assert not (checkout / "bin" / "eda.sh").exists()  # it already has the real one
 
 
-def test_the_generated_directory_is_not_tracked():
-    """`.claude/skills/` is an adapter; docs/guides/ is what gets reviewed."""
-    ignored = subprocess.run(["git", "check-ignore", "-q", ".claude/skills/x/SKILL.md"], cwd=ROOT)
-    assert ignored.returncode == 0, ".claude/skills/ must stay git-ignored"
+@pytest.mark.parametrize("directory", [".agents/skills", ".claude/skills"])
+def test_the_generated_directories_are_not_tracked(directory):
+    """Skill layouts are adapters; docs/guides/ is what gets reviewed."""
+    ignored = subprocess.run(
+        ["git", "check-ignore", "-q", f"{directory}/x/SKILL.md"], cwd=ROOT
+    )
+    assert ignored.returncode == 0, f"{directory}/ must stay git-ignored"

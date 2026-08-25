@@ -42,12 +42,14 @@ git submodule add https://github.com/sabas0ba/kicad_skills tools/kicad_skills
 ```
 
 That drops a one-line `bin/eda.sh` shim so the `./bin/eda.sh …` commands work
-verbatim from your project root, and — for Claude Code users — links the
-[usage guides](docs/guides/README.md) into the layout it discovers:
+verbatim from your project root and links the [usage guides](docs/guides/README.md)
+into the standard layouts discovered by Codex, compatible assistants, and
+Claude Code:
 
 ```
 my-board/
 ├── bin/eda.sh                                    shim -> tools/kicad_skills/bin/eda.sh
+├── .agents/skills/kicad-pcb-review/SKILL.md ->   ../../../tools/kicad_skills/docs/guides/kicad-pcb-review.md
 ├── .claude/skills/kicad-pcb-review/SKILL.md ->   ../../../tools/kicad_skills/docs/guides/kicad-pcb-review.md
 ├── hardware/my-board.kicad_pro
 └── tools/kicad_skills/                           the submodule
@@ -87,9 +89,10 @@ git clone https://github.com/sabas0ba/kicad_skills && cd kicad_skills
 at `/work`, runs as your uid/gid (no root-owned files), and gives the container
 no network. To work on the toolkit itself, see [AGENTS.md](AGENTS.md).
 
-If you drive this clone with Claude Code, `make skills` mirrors the guides into
-the layout it discovers. That directory is generated and git-ignored — the
-guides live in [`docs/guides/`](docs/guides/README.md).
+If you drive this clone with Codex, another Agent Skills-compatible assistant,
+or Claude Code, `make skills` mirrors the guides into the layouts they discover.
+Those directories are generated and git-ignored — the guides live in
+[`docs/guides/`](docs/guides/README.md).
 
 ## What it does
 
@@ -504,13 +507,17 @@ which is what [`docs/guides/`](docs/guides/README.md) is for. Those guides cover
 the review methodology, what each finding means, and what the tool cannot judge
 for you.
 
-* **Anything that reads a repository** — point it at `docs/guides/`, or let it
-  read [`AGENTS.md`](AGENTS.md), which names them.
-* **Claude Code** wants its own layout (`.claude/skills/<name>/SKILL.md`) so it
-  can load a guide on demand. `bin/install-skills.sh` generates that layout from
-  `docs/guides/` as symlinks — run it in this checkout or in a project that uses
-  the submodule. The result is git-ignored: it is an adapter, not a second copy.
-* **Some other tool** — `./bin/install-skills.sh --dest .cursor/rules --copy`.
+* **Codex and Agent Skills-compatible assistants** discover
+  `.agents/skills/<name>/SKILL.md`.
+* **Claude Code** discovers `.claude/skills/<name>/SKILL.md`.
+* `bin/install-skills.sh` creates both layouts as symlinks by default. Run it in
+  this checkout or in a project that uses the submodule. The results are
+  git-ignored adapters, not second copies.
+* **A tool with another layout** — use
+  `./bin/install-skills.sh --dest .cursor/rules --copy`; specifying `--dest`
+  installs only that layout.
+* **Anything that reads a repository** can instead read `docs/guides/` or
+  [`AGENTS.md`](AGENTS.md), which names the guides.
 * **No assistant at all** — they are ordinary Markdown, written to be read.
 
 Contributor and agent instructions for this repository itself live in
@@ -642,7 +649,7 @@ make test-coverage # the same, with a coverage report
 make test-host     # pure-python subset on the host (needs a local venv)
 make lint          # ruff
 make smoke         # end-to-end: every top-level command
-make skills        # mirror docs/guides/ into .claude/skills (generated)
+make skills        # mirror guides into .agents/skills and .claude/skills
 make site          # render the GitHub Pages site into _site/
 ```
 

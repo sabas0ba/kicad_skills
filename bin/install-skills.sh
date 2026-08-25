@@ -11,14 +11,16 @@
 #   bin/eda.sh               -> a shim that runs the toolkit's wrapper, so the
 #                               `./bin/eda.sh ...` commands in the docs work
 #                               verbatim from the project root
-#   <dest>/<name>/SKILL.md   -> each guide in Claude Code's skill layout, which
-#                               is what makes it load them on demand
+#   .agents/skills/<name>/SKILL.md -> each guide in the tool-neutral Agent
+#                                    Skills layout used by Codex and compatible
+#                                    assistants
+#   .claude/skills/<name>/SKILL.md -> the same guides for Claude Code
 #
-# <dest> defaults to .claude/skills. Point --dest somewhere else for another
-# tool, or pass --no-guides if you only want the CLI.
+# Both layouts are installed by default. Point --dest somewhere else to install
+# only that custom layout, or pass --no-guides if you only want the CLI.
 #
 # Options:
-#   --dest DIR     where to install the guides (default: .claude/skills)
+#   --dest DIR     install only into DIR (default: both standard layouts)
 #   --copy         copy the guides instead of symlinking (vendoring, Windows)
 #   --force        overwrite entries that already exist
 #   --no-shim      skip bin/eda.sh
@@ -35,7 +37,7 @@ SHIM=1
 GUIDES=1
 ACTION=install
 TARGET=""
-DEST=".claude/skills"
+DEST=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -46,7 +48,7 @@ while [ $# -gt 0 ]; do
         --dest) DEST="${2:?--dest needs a directory}"; shift ;;
         --uninstall) ACTION=uninstall ;;
         --target) TARGET="${2:?--target needs a directory}"; shift ;;
-        -h|--help) sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "error: unknown option $1" >&2; exit 2 ;;
     esac
     shift
@@ -65,10 +67,15 @@ SELF_INSTALL=0
 
 GUIDE_SRC="$SOURCE_ROOT/docs/guides"
 DEST="${DEST#/}"; DEST="${DEST%/}"
-GUIDE_DST="$TARGET/$DEST"
 [ -d "$GUIDE_SRC" ] || { echo "error: no guides in $GUIDE_SRC" >&2; exit 1; }
-# How many levels up from GUIDE_DST/<name>/ back to TARGET, for relative links.
-UP="../"; for _ in $(printf '%s\n' "$DEST" | tr '/' ' '); do UP="../$UP"; done
+
+destinations() {
+    if [ -n "$DEST" ]; then
+        printf '%s\n' "$DEST"
+    else
+        printf '%s\n' ".agents/skills" ".claude/skills"
+    fi
+}
 
 # Path of the toolkit relative to the project, for relocatable symlinks.
 if [ "$SELF_INSTALL" = 1 ]; then
@@ -90,44 +97,51 @@ guide_names() {
 
 # ---- uninstall -------------------------------------------------------------
 if [ "$ACTION" = uninstall ]; then
-    for name in $(guide_names); do
-        rm -rf "${GUIDE_DST:?}/$name"
-        echo "removed $DEST/$name"
+    for dest in $(destinations); do
+        guide_dst="$TARGET/$dest"
+        for name in $(guide_names); do
+            rm -rf "${guide_dst:?}/$name"
+            echo "removed $dest/$name"
+        done
+        # Remove directories we created, innermost first, only while empty.
+        dir="$guide_dst"
+        while [ "$dir" != "$TARGET" ] && [ -d "$dir" ]; do
+            rmdir "$dir" 2>/dev/null || break
+            dir="$(dirname "$dir")"
+        done
     done
     if [ -f "$TARGET/bin/eda.sh" ] && grep -q "install-skills.sh" "$TARGET/bin/eda.sh" 2>/dev/null; then
         rm -f "$TARGET/bin/eda.sh"
         echo "removed bin/eda.sh"
     fi
-    # Remove the directories we may have created, innermost first, but only
-    # while they are empty - never take anything else with them.
-    dir="$GUIDE_DST"
-    while [ "$dir" != "$TARGET" ] && [ -d "$dir" ]; do
-        rmdir "$dir" 2>/dev/null || break
-        dir="$(dirname "$dir")"
-    done
     exit 0
 fi
 
 # ---- install ---------------------------------------------------------------
 if [ "$GUIDES" = 1 ]; then
-    for name in $(guide_names); do
-        dst="$GUIDE_DST/$name/SKILL.md"
-        if [ -e "$dst" ] || [ -L "$dst" ]; then
-            if [ "$FORCE" != 1 ]; then
-                echo "skip $DEST/$name (already exists; --force to replace)"
-                continue
+    for dest in $(destinations); do
+        guide_dst="$TARGET/$dest"
+        # Levels up from guide_dst/<name>/ to TARGET, for relative links.
+        up="../"; for _ in $(printf '%s\n' "$dest" | tr '/' ' '); do up="../$up"; done
+        for name in $(guide_names); do
+            dst="$guide_dst/$name/SKILL.md"
+            if [ -e "$dst" ] || [ -L "$dst" ]; then
+                if [ "$FORCE" != 1 ]; then
+                    echo "skip $dest/$name (already exists; --force to replace)"
+                    continue
+                fi
+                rm -f "$dst"
             fi
-            rm -f "$dst"
-        fi
-        mkdir -p "$GUIDE_DST/$name"
-        if [ "$MODE" = copy ]; then
-            cp -L "$GUIDE_SRC/$name.md" "$dst"
-        elif [ -n "$SUB_REL" ]; then
-            ln -s "$UP$SUB_REL/docs/guides/$name.md" "$dst"
-        else
-            ln -s "$GUIDE_SRC/$name.md" "$dst"
-        fi
-        echo "installed $DEST/$name/SKILL.md ($MODE)"
+            mkdir -p "$guide_dst/$name"
+            if [ "$MODE" = copy ]; then
+                cp -L "$GUIDE_SRC/$name.md" "$dst"
+            elif [ -n "$SUB_REL" ]; then
+                ln -s "$up$SUB_REL/docs/guides/$name.md" "$dst"
+            else
+                ln -s "$GUIDE_SRC/$name.md" "$dst"
+            fi
+            echo "installed $dest/$name/SKILL.md ($MODE)"
+        done
     done
 fi
 
@@ -158,7 +172,8 @@ fi
 if [ "$SELF_INSTALL" = 1 ]; then
     cat <<EOF
 
-Done - $DEST now mirrors docs/guides/ for this checkout. It is git-ignored:
+Done - the assistant skill layouts now mirror docs/guides/ for this checkout.
+They are git-ignored:
 docs/guides/ is the source of truth, this is only the adapter.
 EOF
 else
@@ -168,6 +183,6 @@ Done. Next:
   ./bin/eda.sh doctor          builds the image on first use, then reports versions
   ./bin/eda.sh report . -o build/report
 
-Commit bin/eda.sh${GUIDES:+ and $DEST} so the rest of the team gets them too.
+Commit bin/eda.sh and any skill adapters your team chooses to track.
 EOF
 fi
