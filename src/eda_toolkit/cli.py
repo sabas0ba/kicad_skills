@@ -539,10 +539,56 @@ def cmd_pcb_electrical(args: argparse.Namespace) -> int:
     from .kicad import electrical, pcb
 
     board_path = pcb.find_board(args.target)
-    payload = electrical.analyse(pcb.parse(board_path), temperature_rise_c=args.temperature_rise)
+    try:
+        payload = electrical.analyse(
+            pcb.parse(board_path), temperature_rise_c=args.temperature_rise, solve=args.solve
+        )
+    except ValueError as exc:
+        # --solve refuses a cross-section it cannot mesh affordably; that is a
+        # property of the board, so it belongs in the error channel and not in
+        # a traceback
+        raise EdaError(str(exc)) from exc
     payload["board"] = str(board_path)
     if args.top:
         payload["nets"] = payload["nets"][: args.top]
+    emit(payload, as_json=True)
+    return 0
+
+
+def cmd_pcb_thermal(args: argparse.Namespace) -> int:
+    from .kicad import pcb, thermal
+
+    board_path = pcb.find_board(args.target)
+    powers: dict[str, float] = {}
+    for spec in args.power:
+        ref, sep, watts = spec.partition("=")
+        if not sep:
+            raise SystemExit(f"--power wants REF=WATTS, got {spec!r}")
+        try:
+            powers[ref] = float(watts)
+        except ValueError:
+            raise SystemExit(f"--power {spec!r}: {watts!r} is not a number") from None
+    try:
+        payload = thermal.analyse(
+            pcb.parse(board_path),
+            powers,
+            ambient_c=args.ambient,
+            htc_w_m2k=args.htc,
+            step_mm=args.step,
+        )
+    except ValueError as exc:
+        # a mistyped reference or a nonsense parameter is a user error, not
+        # a traceback
+        raise EdaError(str(exc)) from exc
+    payload["board"] = str(board_path)
+    if args.out:
+        out_dir = ensure_dir(args.out)
+        image = out_dir / "thermal.png"
+        thermal.render(payload, image)
+        payload["image"] = str(image)
+    # the grid is for the renderer; the JSON carries the conclusions
+    payload.pop("rise_grid", None)
+    payload.pop("origin_mm", None)
     emit(payload, as_json=True)
     return 0
 
@@ -928,7 +974,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="temperature rise the current rating is quoted at (default: 10)",
     )
     p.add_argument("--top", type=int, metavar="N", help="only the N most current-limited nets")
+    p.add_argument(
+        "--solve",
+        action="store_true",
+        help="re-measure the impedance widths with the 2D field solver (a few s per layer)",
+    )
     p.set_defaults(func=cmd_pcb_electrical)
+
+    p = pcb_p.add_parser("thermal", help="steady-state temperature map for stated dissipations")
+    p.add_argument("target")
+    p.add_argument(
+        "--power",
+        action="append",
+        required=True,
+        metavar="REF=WATTS",
+        help="a part and what it dissipates (repeatable), e.g. --power U1=1.2",
+    )
+    p.add_argument("--ambient", type=float, default=25.0, metavar="C")
+    p.add_argument(
+        "--htc",
+        type=float,
+        default=10.0,
+        metavar="W_M2K",
+        help="convection per face into still air (default: 10; an enclosure lowers it)",
+    )
+    p.add_argument("--step", type=float, default=0.5, metavar="MM", help="grid cell size")
+    p.add_argument("-o", "--out", metavar="DIR", help="also write thermal.png here")
+    p.set_defaults(func=cmd_pcb_thermal)
 
     p = pcb_p.add_parser("stats", help="board statistics")
     p.add_argument("target")

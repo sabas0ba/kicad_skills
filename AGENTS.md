@@ -105,6 +105,13 @@ are folded into one entry by `util.collapse_findings`, so prefer grading a rule
   `docker/build-backend.txt`. Change both together, and keep the requirement list
   free of transitive dependencies — `--require-hashes` needs every one of them
   pinned too, which is why `wheel` is not listed.
+* The uv bootstrap: `docker/uv-bootstrap.txt` pins uv for *this image*, which is
+  linux on two architectures, and its own header carries the command that
+  regenerates it. Use that command. A bot bumping uv will paste every platform
+  PyPI publishes — macOS, Windows, musl, riscv64 — and the sdist along with
+  them; the result still builds, and with the sdist listed `--require-hashes`
+  will accept building uv from source, which is a wider thing to accept than a
+  hash pin is for. The test caps the list at four hashes.
 * KiCad releases: add `<version> <sha256 digest>` to `docker/kicad-digests.txt`
   before building with a new `KICAD_VERSION`. Keep the Dockerfile's default
   `KICAD_VERSION`/`KICAD_DIGEST`, the `Makefile` and `bin/eda.sh` in agreement,

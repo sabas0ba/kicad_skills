@@ -229,3 +229,25 @@ def test_gate_list_rules_has_a_readable_form(capsys):
     assert code == 0
     assert "## schematic" in out and "## board" in out
     assert "--threshold grid_mm=1.27" in out
+
+
+def test_an_unaffordable_solve_is_an_error_not_a_traceback(monkeypatch, tmp_path):
+    """field2d refuses some cross-sections; the CLI must say so in its own voice."""
+    import argparse
+
+    from eda_toolkit import cli
+    from eda_toolkit.kicad import electrical, pcb
+    from eda_toolkit.util import EdaError
+
+    board = tmp_path / "b.kicad_pcb"
+    board.write_text('(kicad_pcb (version 20221018) (generator "t"))', encoding="utf-8")
+    monkeypatch.setattr(pcb, "find_board", lambda target: board)
+    monkeypatch.setattr(pcb, "parse", lambda path: object())
+
+    def refuse(*args, **kwargs):
+        raise ValueError("this cross-section needs 217.0 M cells at 0.00125 mm")
+
+    monkeypatch.setattr(electrical, "analyse", refuse)
+    args = argparse.Namespace(target=str(board), temperature_rise=10.0, solve=True, top=None)
+    with pytest.raises(EdaError, match="M cells"):
+        cli.cmd_pcb_electrical(args)

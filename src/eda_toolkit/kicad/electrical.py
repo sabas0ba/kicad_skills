@@ -88,9 +88,33 @@ def width_for_current(
 
 # -- controlled impedance --------------------------------------------------
 #
-# IPC-2141 closed forms. Both are logarithmic fits with a stated validity band;
-# outside it they drift, so `impedance_estimate` reports whether the geometry is
-# inside the band rather than quietly extrapolating.
+# Two models, and the difference between them is not academic.
+#
+# IPC-2141 is the pair of logarithmic fits most PCB documentation quotes. They
+# are quick, they are quoted for W/h between 0.1 and 3, and outside that band
+# they do not merely drift: the microstrip fit's logarithm passes through 1 and
+# the formula returns a *negative* impedance. A 5 mm power trace on a 0.51 mm
+# dielectric - W/h of 10, an ordinary thing to ask about - comes back as -10.9
+# ohms.
+#
+# Hammerstad-Jensen is the accurate one, and it is what this module uses to
+# answer questions. It carries a thickness correction, it stays physical out to
+# W/h of 50 and beyond, and its effective permittivity climbs toward the bulk
+# value the way the physics says it must. `tests/test_electrical.py` holds both
+# to the one answer that needs no model at all: as the trace grows wide the
+# structure becomes a parallel-plate capacitor, whose impedance is
+# eta0*h/(W*sqrt(er)) exactly.
+#
+#      W/h      plate      IPC-2141        Hammerstad-Jensen
+#        2      90.84         46.47                   48.13
+#       10      18.17        -10.91                   14.83
+#       50       3.63        -69.26                    3.44
+#
+# IPC-2141 stays, because a board file that states IPC-2141 as its model should
+# be able to be checked against it, and because the fits are what a lot of house
+# rules were written from.
+
+ETA0_OHM = 376.730313668  # the impedance of free space, mu0*c
 
 
 def microstrip_impedance(width_mm: float, thickness_mm: float, height_mm: float, epsilon_r: float):
@@ -114,11 +138,71 @@ def stripline_impedance(width_mm: float, thickness_mm: float, height_mm: float, 
     )
 
 
+def hammerstad_jensen_microstrip(
+    width_mm: float, thickness_mm: float, height_mm: float, epsilon_r: float
+) -> tuple[float, float]:
+    """Microstrip impedance and effective permittivity, the accurate way.
+
+    Hammerstad and Jensen's synthesis of the quasi-static microstrip problem,
+    with their correction for a trace that has thickness. Returns both numbers
+    because the second one is what a delay or a wavelength is calculated from,
+    and a model that gives an impedance without saying what dielectric the wave
+    thinks it is in has answered half the question.
+    """
+    if min(width_mm, height_mm) <= 0 or thickness_mm < 0 or epsilon_r <= 0:
+        raise ValueError("geometry and epsilon_r must be positive")
+
+    def z_air(u: float) -> float:
+        f = 6.0 + (2.0 * math.pi - 6.0) * math.exp(-((30.666 / u) ** 0.7528))
+        return (ETA0_OHM / (2.0 * math.pi)) * math.log(f / u + math.sqrt(1.0 + (2.0 / u) ** 2))
+
+    def eps_homogeneous(u: float) -> float:
+        a = (
+            1.0
+            + math.log((u**4 + (u / 52.0) ** 2) / (u**4 + 0.432)) / 49.0
+            + math.log(1.0 + (u / 18.1) ** 3) / 18.7
+        )
+        b = 0.564 * ((epsilon_r - 0.9) / (epsilon_r + 3.0)) ** 0.053
+        return (epsilon_r + 1.0) / 2.0 + (epsilon_r - 1.0) / 2.0 * (1.0 + 10.0 / u) ** (-a * b)
+
+    u = width_mm / height_mm
+    t_h = thickness_mm / height_mm
+    if t_h > 0:
+        # A trace with thickness behaves as a wider trace with none - by one
+        # amount in air and by a half-corrected amount over the one-sided
+        # dielectric. Both corrected widths matter: the impedance comes from
+        # the air-line width over the corrected permittivity, and eps_eff
+        # carries the ratio of the two air-line impedances - drop that ratio
+        # and the model quotes the right ohms with the wrong delay.
+        coth = 1.0 / math.tanh(math.sqrt(6.517 * u))
+        wide = (t_h / math.pi) * math.log(1.0 + 4.0 * math.e / (t_h * coth * coth))
+        u_one = u + wide
+        u_mixed = u + 0.5 * (1.0 + 1.0 / math.cosh(math.sqrt(epsilon_r - 1.0))) * wide
+        eps_eff = eps_homogeneous(u_mixed) * (z_air(u_one) / z_air(u_mixed)) ** 2
+        return z_air(u_one) / math.sqrt(eps_eff), eps_eff
+
+    eps_eff = eps_homogeneous(u)
+    return z_air(u) / math.sqrt(eps_eff), eps_eff
+
+
 def differential_impedance(single_ended: float, gap_mm: float, height_mm: float, *, kind: str):
     """Coupled pair, from the single-ended value and how close the two traces run."""
     if kind == "microstrip":
         return 2.0 * single_ended * (1.0 - 0.48 * math.exp(-0.96 * gap_mm / height_mm))
     return 2.0 * single_ended * (1.0 - 0.347 * math.exp(-2.9 * gap_mm / height_mm))
+
+
+def _model_for(kind: str):
+    """The impedance model the toolkit answers with.
+
+    Microstrip goes to Hammerstad-Jensen, which is well behaved everywhere a
+    board can be built. Stripline keeps the IPC-2141 fit: it is symmetric, so
+    its logarithm has no zero crossing to fall through, and there is no second
+    model here to check it against yet.
+    """
+    if kind == "microstrip":
+        return lambda w, t, h, er: hammerstad_jensen_microstrip(w, t, h, er)[0]
+    return stripline_impedance
 
 
 def _solve_width(target_ohm: float, evaluate, *, low: float = 0.02, high: float = 10.0):
@@ -142,7 +226,7 @@ def width_for_impedance(
     target_ohm: float, thickness_mm: float, height_mm: float, epsilon_r: float, *, kind: str
 ) -> float | None:
     """Trace width that gives ``target_ohm`` single-ended on this stackup."""
-    model = microstrip_impedance if kind == "microstrip" else stripline_impedance
+    model = _model_for(kind)
     return _solve_width(target_ohm, lambda w: model(w, thickness_mm, height_mm, epsilon_r))
 
 
@@ -155,7 +239,7 @@ def width_for_differential_impedance(
     Equal gap and width is the usual starting point and keeps the answer a single
     number; adjust from there once the router has an opinion.
     """
-    model = microstrip_impedance if kind == "microstrip" else stripline_impedance
+    model = _model_for(kind)
 
     def evaluate(width: float) -> float:
         single = model(width, thickness_mm, height_mm, epsilon_r)
@@ -211,12 +295,19 @@ def layer_geometry(board: Any, layer: str) -> dict[str, Any] | None:
     if not dielectrics:
         return None
     height = sum(float(entry["thickness"]) for entry in dielectrics)
-    epsilons = [float(e["epsilon_r"]) for e in dielectrics if e.get("epsilon_r")]
-    if not epsilons:
+    if not any(e.get("epsilon_r") for e in dielectrics):
         return None
 
+    geometry = {
+        "layer": layer,
+        "kind": "microstrip" if outer else "stripline",
+        "height_mm": round(height, 4),
+    }
+    operative = dielectrics
     if not outer:
-        # Between two planes: the model wants the whole gap, not half of it.
+        # Between two planes: the model wants the whole gap, not half of it -
+        # and the solver wants to know where in the gap the trace sits, which
+        # the fit cannot ask.
         above = coppers[position - 1]
         below = coppers[position + 1]
         span = [
@@ -225,19 +316,43 @@ def layer_geometry(board: Any, layer: str) -> dict[str, Any] | None:
             if entry.get("thickness") and entry.get("type") != "copper"
         ]
         if span:
-            height = sum(float(entry["thickness"]) for entry in span)
-            epsilons = [float(e["epsilon_r"]) for e in span if e.get("epsilon_r")] or epsilons
+            operative = span
+            geometry["height_mm"] = round(sum(float(entry["thickness"]) for entry in span), 4)
+            geometry["height_below_mm"] = round(
+                sum(
+                    float(entry["thickness"])
+                    for entry in board.stackup[index + 1 : below]
+                    if entry.get("thickness") and entry.get("type") != "copper"
+                ),
+                4,
+            )
 
-    return {
-        "layer": layer,
-        "kind": "microstrip" if outer else "stripline",
-        "height_mm": round(height, 4),
-        "epsilon_r": round(sum(epsilons) / len(epsilons), 3),
-    }
+    # weighted by thickness: a thin bondply beside a thick core moves the
+    # wave by its share of the gap, not by one vote in an average
+    rated = [e for e in operative if e.get("epsilon_r")] or [
+        e for e in dielectrics if e.get("epsilon_r")
+    ]
+    weight = sum(float(e["thickness"]) for e in rated)
+    geometry["epsilon_r"] = round(
+        sum(float(e["epsilon_r"]) * float(e["thickness"]) for e in rated) / weight, 3
+    )
+    spread = [float(e["epsilon_r"]) for e in rated]
+    if max(spread) > min(spread):
+        # more than one material in the gap: the average above feeds the
+        # fits, and the solver refuses to pretend the gap is homogeneous
+        geometry["epsilon_r_range"] = [round(min(spread), 3), round(max(spread), 3)]
+    return geometry
 
 
-def analyse(board: Any, *, temperature_rise_c: float = 10.0) -> dict[str, Any]:
-    """Per-net copper properties, plus what this stackup needs for 50/90/100 ohm."""
+def analyse(board: Any, *, temperature_rise_c: float = 10.0, solve: bool = False) -> dict[str, Any]:
+    """Per-net copper properties, plus what this stackup needs for 50/90/100 ohm.
+
+    ``solve`` re-measures the closed forms' answers with the 2D field solver in
+    `field2d`: the 50 ohm width is solved as the cross-section it actually is,
+    and the 100 ohm differential pair as two coupled traces rather than an
+    exponential correction factor. It costs a few seconds per layer, which is
+    why it is a flag and not the default.
+    """
     thickness_cache: dict[str, tuple[float, str]] = {}
 
     def thickness_of(layer: str) -> tuple[float, str]:
@@ -319,8 +434,50 @@ def analyse(board: Any, *, temperature_rise_c: float = 10.0) -> dict[str, Any]:
         for target, key in ((90.0, "width_90r_diff_mm"), (100.0, "width_100r_diff_mm")):
             width = width_for_differential_impedance(target, thickness, height, epsilon, kind=kind)
             row[key] = round(width, 4) if width else None
-        if row.get("width_50r_mm") and kind == "microstrip":
-            row["in_model_band"] = microstrip_is_in_band(row["width_50r_mm"], height, epsilon)
+        er_range = row.get("epsilon_r_range")
+        heterogeneous = er_range is not None and er_range[1] > 1.1 * er_range[0]
+        if solve and heterogeneous:
+            # the solver fills the gap with one permittivity; when the gap
+            # holds materials more than 10% apart, an averaged solve would
+            # dress a guess as a measurement - the fits stand, flagged
+            row["solve_skipped"] = (
+                "dielectrics differ across the gap; the solver will not average them"
+            )
+        elif solve:
+            from . import field2d
+
+            if kind == "microstrip":
+                if row.get("width_50r_mm"):
+                    solved = field2d.microstrip(row["width_50r_mm"], thickness, height, epsilon)
+                    row["width_50r_solved_ohm"] = solved["z0_ohm"]
+                    row["solved_eps_eff"] = solved["eps_eff"]
+                if row.get("width_100r_diff_mm"):
+                    pair = field2d.differential_microstrip(
+                        row["width_100r_diff_mm"],
+                        thickness,
+                        height,
+                        epsilon,
+                        row["width_100r_diff_mm"],
+                    )
+                    row["width_100r_diff_solved_ohm"] = pair["zdiff_ohm"]
+            elif row.get("width_50r_mm"):
+                # the inner layers get the referee too: the IPC stripline fit
+                # proposed the width, the solve re-measures it - at the
+                # trace's real position in the gap, which an asymmetric
+                # stackup states and the symmetric fit cannot pose (the
+                # coupled stripline pair has no solver yet, so that
+                # differential column stays a fit)
+                # the stackup's height is the sum of the two dielectric
+                # clearances; the planes themselves sit a trace-thickness
+                # further apart, and the solver wants the real spacing
+                solved = field2d.stripline(
+                    row["width_50r_mm"],
+                    thickness,
+                    height + thickness,
+                    epsilon,
+                    trace_below_mm=row.get("height_below_mm"),
+                )
+                row["width_50r_solved_ohm"] = solved["z0_ohm"]
         impedance.append(row)
 
     return {
@@ -331,7 +488,17 @@ def analyse(board: Any, *, temperature_rise_c: float = 10.0) -> dict[str, Any]:
             "current_a is IPC-2221 for the net's narrowest segment in still air.",
             "resistance_mohm sums every segment: an upper bound on the resistance "
             "between any two points on the net, since parallel paths only lower it.",
-            "Impedance widths are IPC-2141 closed forms, worth about +-10%, with the "
-            "differential gap taken equal to the width. Confirm with your fab.",
-        ],
+            "Microstrip widths are Hammerstad-Jensen with its thickness correction, "
+            "worth about +-2% against a field solve; stripline is the IPC-2141 fit at "
+            "about +-10%. The differential gap is taken equal to the width. Neither "
+            "model knows your laminate's real permittivity: confirm with your fab.",
+        ]
+        + (
+            [
+                "width_*_solved_ohm re-measures those widths with the 2D field "
+                "solver: the closed form proposed the width, the solve checked it."
+            ]
+            if solve
+            else []
+        ),
     }

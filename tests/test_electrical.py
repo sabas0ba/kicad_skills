@@ -93,7 +93,8 @@ def test_a_tightly_coupled_pair_is_less_than_twice_the_single_ended_value():
 def test_solving_for_a_width_reproduces_the_target(target):
     width = electrical.width_for_impedance(target, 0.035, 0.2, 4.3, kind="microstrip")
     assert width is not None
-    assert electrical.microstrip_impedance(width, 0.035, 0.2, 4.3) == pytest.approx(
+    # measured with the model that answered, which is Hammerstad-Jensen
+    assert electrical.hammerstad_jensen_microstrip(width, 0.035, 0.2, 4.3)[0] == pytest.approx(
         target, rel=1e-3
     )
 
@@ -101,7 +102,7 @@ def test_solving_for_a_width_reproduces_the_target(target):
 def test_solving_for_a_differential_width_reproduces_the_target():
     width = electrical.width_for_differential_impedance(90.0, 0.035, 0.2, 4.3, kind="microstrip")
     assert width is not None
-    single = electrical.microstrip_impedance(width, 0.035, 0.2, 4.3)
+    single = electrical.hammerstad_jensen_microstrip(width, 0.035, 0.2, 4.3)[0]
     assert electrical.differential_impedance(
         single, width, 0.2, kind="microstrip"
     ) == pytest.approx(90.0, rel=1e-3)
@@ -110,6 +111,19 @@ def test_solving_for_a_differential_width_reproduces_the_target():
 def test_an_unreachable_target_is_reported_rather_than_guessed():
     """A 0.02 mm dielectric cannot give 100 ohms at any sane width."""
     assert electrical.width_for_impedance(100.0, 0.035, 0.02, 4.3, kind="microstrip") is None
+
+
+def test_the_thickness_correction_reaches_the_effective_permittivity():
+    """Copper thickness pushes field into the air: eps_eff must fall, not rise.
+
+    The correction uses two widened widths - one for air, one for the mixed
+    line - and their impedance ratio corrects eps_eff. Skipping that ratio
+    quotes the right ohms with the wrong delay.
+    """
+    _, thin = electrical.hammerstad_jensen_microstrip(0.2, 0.0, 0.1, 4.3)
+    _, thick = electrical.hammerstad_jensen_microstrip(0.2, 0.035, 0.1, 4.3)
+    assert thick < thin
+    assert thick == pytest.approx(3.09, abs=0.03)
 
 
 def test_geometry_must_be_physical():
@@ -241,9 +255,9 @@ def test_the_impedance_table_answers_what_width_this_stackup_needs():
     assert front["kind"] == "microstrip"
     # a 1.51 mm core is a long way from a plane, so 50 ohms needs a wide trace
     assert front["width_50r_mm"] > front["width_75r_mm"]
-    assert electrical.microstrip_impedance(
+    assert electrical.hammerstad_jensen_microstrip(
         front["width_50r_mm"], 0.035, front["height_mm"], front["epsilon_r"]
-    ) == pytest.approx(50.0, rel=1e-3)
+    )[0] == pytest.approx(50.0, rel=1e-3)
 
 
 def test_zero_length_and_unnamed_tracks_are_skipped():
@@ -273,3 +287,138 @@ def test_analysis_uses_the_requested_temperature_rise():
 
 def test_math_import_is_used():  # keeps the module honest about its imports
     assert math.isclose(electrical.MM_PER_MIL, 0.0254)
+
+
+# -- the impedance models, against something that is not another model -------
+#
+# Both closed forms are fits. Checking one against the other only says they
+# agree, so the reference here is the one case that needs no model: as the trace
+# grows wide the cross-section becomes a parallel-plate capacitor, and its
+# impedance is eta0*h/(W*sqrt(er)) exactly. A model that is right approaches it
+# from below - the fringing field it drops is real copper-to-plane capacitance -
+# and a model that is wrong wanders off, or changes sign.
+
+
+def _plate_limit(width_mm: float, height_mm: float, epsilon_r: float) -> float:
+    return electrical.ETA0_OHM * height_mm / (width_mm * math.sqrt(epsilon_r))
+
+
+def test_hammerstad_jensen_approaches_the_parallel_plate_limit():
+    height, thickness, epsilon = 0.51, 0.035, 4.3
+    errors = []
+    for ratio in (5, 10, 20, 50):
+        width = ratio * height
+        z0, _ = electrical.hammerstad_jensen_microstrip(width, thickness, height, epsilon)
+        plate = _plate_limit(width, height, epsilon)
+        assert 0 < z0 < plate, f"W/h={ratio}: {z0} is not a physical impedance below the plate"
+        errors.append((plate - z0) / plate)
+    assert errors == sorted(errors, reverse=True), "the gap to the plate limit must close"
+    assert errors[-1] < 0.10, f"W/h=50 should be within 10% of the plate limit, is {errors[-1]:.0%}"
+
+
+def test_effective_permittivity_stays_between_air_and_the_laminate():
+    for ratio in (0.1, 0.5, 1, 2, 5, 20, 50):
+        _, eps_eff = electrical.hammerstad_jensen_microstrip(ratio * 0.51, 0.035, 0.51, 4.3)
+        assert 1.0 < eps_eff < 4.3, f"W/h={ratio}: eps_eff {eps_eff} is outside air..laminate"
+    wide = electrical.hammerstad_jensen_microstrip(50 * 0.51, 0.035, 0.51, 4.3)[1]
+    narrow = electrical.hammerstad_jensen_microstrip(0.1 * 0.51, 0.035, 0.51, 4.3)[1]
+    assert wide > narrow, "a wide trace keeps more of its field in the laminate"
+
+
+def test_the_accurate_model_falls_monotonically_as_the_trace_widens():
+    """What `_solve_width` bisects on has to be monotonic, or the answer is luck."""
+    previous = None
+    for width in (0.05, 0.1, 0.3, 0.85, 2.0, 5.0, 10.0):
+        z0, _ = electrical.hammerstad_jensen_microstrip(width, 0.035, 0.51, 4.3)
+        assert previous is None or z0 < previous, f"width {width} did not lower the impedance"
+        previous = z0
+
+
+def test_the_ipc_fit_is_only_trusted_inside_its_band():
+    """Documenting the reason the accurate model is the one that answers.
+
+    The IPC-2141 microstrip fit is a logarithm whose argument passes through 1
+    at about W/h = 8; past that it returns a negative impedance. It is kept for
+    checking a design that states IPC-2141 as its model, and it is not what
+    `width_for_impedance` bisects on.
+    """
+    assert electrical.microstrip_is_in_band(0.85, 0.51, 4.3)
+    assert not electrical.microstrip_is_in_band(5.1, 0.51, 4.3)
+    assert electrical.microstrip_impedance(5.1, 0.035, 0.51, 4.3) < 0
+    inside, _ = electrical.hammerstad_jensen_microstrip(0.85, 0.035, 0.51, 4.3)
+    assert abs(inside - electrical.microstrip_impedance(0.85, 0.035, 0.51, 4.3)) / inside < 0.05
+
+
+def test_width_for_impedance_lands_on_the_target():
+    for target in (50.0, 75.0, 90.0):
+        width = electrical.width_for_impedance(target, 0.035, 0.51, 4.3, kind="microstrip")
+        assert width, f"no width reaches {target} ohm on this stackup"
+        z0, _ = electrical.hammerstad_jensen_microstrip(width, 0.035, 0.51, 4.3)
+        assert abs(z0 - target) < 0.5, f"{width} mm gives {z0} ohm, not {target}"
+
+
+def test_solve_re_measures_the_proposed_widths():
+    """The closed form proposes a width; the field solver checks the proposal.
+
+    This is the loop closing: two independent methods, one geometry, and the
+    answer has to come back at the target from both. It also pins the output
+    contract - the solved figures appear only when asked for, because they cost
+    seconds where the fits cost microseconds.
+    """
+    board = _Board(TWO_LAYER)
+    plain = electrical.analyse(board)["impedance"][0]
+    assert "width_50r_solved_ohm" not in plain
+
+    solved = electrical.analyse(board, solve=True)["impedance"][0]
+    assert abs(solved["width_50r_solved_ohm"] - 50.0) < 2.5
+    assert abs(solved["width_100r_diff_solved_ohm"] - 100.0) < 5.0
+    assert 1.0 < solved["solved_eps_eff"] < solved["epsilon_r"]
+
+
+def _four_layer(upper_mm: float, lower_mm: float) -> list[dict]:
+    return [
+        {"name": "F.Cu", "type": "copper", "thickness": 0.035, "epsilon_r": None},
+        {"name": "dielectric 1", "type": "prepreg", "thickness": upper_mm, "epsilon_r": 4.5},
+        {"name": "In1.Cu", "type": "copper", "thickness": 0.0175, "epsilon_r": None},
+        {"name": "dielectric 2", "type": "core", "thickness": lower_mm, "epsilon_r": 4.5},
+        {"name": "In2.Cu", "type": "copper", "thickness": 0.0175, "epsilon_r": None},
+        {"name": "dielectric 3", "type": "prepreg", "thickness": upper_mm, "epsilon_r": 4.5},
+        {"name": "B.Cu", "type": "copper", "thickness": 0.035, "epsilon_r": None},
+    ]
+
+
+def test_solve_reaches_the_inner_layers_too():
+    """--solve must not silently skip the stripline rows of a four-layer board."""
+    board = _Board(_four_layer(0.6, 0.6), copper_layers=("F.Cu", "In1.Cu", "In2.Cu", "B.Cu"))
+    rows = {row["layer"]: row for row in electrical.analyse(board, solve=True)["impedance"]}
+    inner = rows["In1.Cu"]
+    assert inner["kind"] == "stripline"
+    # symmetric gap: the solver referees the fit and lands near the target
+    assert abs(inner["width_50r_solved_ohm"] - 50.0) < 5.0
+
+
+def test_an_asymmetric_stripline_is_solved_where_the_trace_actually_sits():
+    """A thin prepreg to one plane is the usual case, and only the solver sees it."""
+    board = _Board(_four_layer(0.2, 1.0), copper_layers=("F.Cu", "In1.Cu", "In2.Cu", "B.Cu"))
+    rows = {row["layer"]: row for row in electrical.analyse(board, solve=True)["impedance"]}
+    inner = rows["In1.Cu"]
+    assert inner["height_below_mm"] == pytest.approx(1.0)
+    # the near plane dominates: the real cross-section sits below the value
+    # the symmetric fit proposed the width for
+    assert inner["width_50r_solved_ohm"] < 50.0
+
+
+def test_epsilon_is_weighted_by_thickness_and_a_mixed_gap_is_not_solved():
+    """A thin bondply beside a thick core moves the wave by its share of the gap."""
+    mixed = _four_layer(0.2, 1.0)
+    mixed[1]["epsilon_r"] = 3.0  # dielectric 1, the thin prepreg
+    mixed[3]["epsilon_r"] = 10.0  # dielectric 2, the thick core
+    board = _Board(mixed, copper_layers=("F.Cu", "In1.Cu", "In2.Cu", "B.Cu"))
+    rows = {row["layer"]: row for row in electrical.analyse(board, solve=True)["impedance"]}
+    inner = rows["In1.Cu"]
+    # (0.2*3 + 1.0*10) / 1.2, nothing like the unweighted 6.5
+    assert inner["epsilon_r"] == pytest.approx(8.833, abs=0.01)
+    assert inner["epsilon_r_range"] == [3.0, 10.0]
+    # the solver refuses to pretend the gap is homogeneous
+    assert "width_50r_solved_ohm" not in inner
+    assert "solve_skipped" in inner

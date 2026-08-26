@@ -22,6 +22,7 @@ looked at. Runs in the container (see the `eda-environment` guide).
 ./bin/eda.sh pcb render hardware/ -o /tmp/art --dpi 300
 ./bin/eda.sh pcb glb    hardware/ -o /tmp/board.glb    # 3D model for a browser
 ./bin/eda.sh pcb electrical hardware/                  # current, resistance, impedance
+./bin/eda.sh pcb thermal hardware/ --power U1=1.2      # where those watts end up
 ./bin/eda.sh report     hardware/ -o /tmp/report       # all of the above, one page
 ```
 
@@ -76,9 +77,85 @@ board's own stackup:
 
 Copper thickness comes from the stackup when the board has one and falls back to
 1 oz otherwise — the output says which, so a number resting on an assumption is
-visible as one. The formulas are the IPC-2221 and IPC-2141 closed forms: good for
-sizing and for catching mistakes, worth about ±10 % on impedance, and not a
-substitute for your fab's own stackup calculator.
+visible as one. Current capacity is IPC-2221. Microstrip impedance is
+Hammerstad–Jensen with its thickness correction, good to a couple of percent;
+stripline is the IPC-2141 fit, worth about ±10 % inside its band. Neither model
+knows your laminate's real permittivity, so the last word stays with the fab.
+
+**`--solve` re-measures those widths with a 2D field solver.** The closed form
+proposes a width; the solver takes the cross-section as a grid — trace, laminate,
+air, planes — solves the electrostatic field on it at two resolutions, and
+extrapolates to zero cell size. It answers with no fitted validity band, which
+is what makes it worth the few seconds per layer it costs:
+
+```console
+$ ./bin/eda.sh pcb electrical hardware/ --solve
+...
+  "impedance": [{
+    "layer": "F.Cu", "kind": "microstrip",
+    "width_50r_mm": 2.797,               the width Hammerstad-Jensen proposes
+    "width_50r_solved_ohm": 50.67,       what that width solves to as a field
+    "width_100r_diff_mm": 2.2602,        the differential pair, gap = width
+    "width_100r_diff_solved_ohm": 100.72,  solved as two coupled traces
+    ...
+```
+
+When the two columns agree, the geometry is comfortably inside the models and
+either number can be trusted. When they drift apart, believe the solve — it is
+the same physics your fab's calculator runs — and treat the disagreement itself
+as the finding: the geometry has left the band the fit was made in. The
+differential figure is the one that earns the flag most often, because the
+closed form treats the gap as an exponential correction factor while the solver
+treats it as copper. Inner layers are re-measured too — the stripline solve
+referees the IPC fit — with one gap: the coupled stripline pair has no solver
+yet, so that differential column stays a fit.
+
+The solver is importable on its own for geometries the table does not pose —
+`eda_toolkit.kicad.field2d` has `microstrip`, `differential_microstrip` and
+`stripline`, each returning the impedance plus a `meta` block that shows the
+two raw grid answers and the snap correction, so an answer can always be argued
+with. It is quasi-static: no dispersion, loss or surface roughness, so above a
+few GHz on thick laminates the fab's full-wave numbers pull ahead. Its mesh is
+uniform, so a cross-section whose smallest feature is orders below its
+substrate — a coupled pair at a hundredth of the dielectric height — is refused
+with the cell count rather than solved coarsely or attempted at tens of
+gigabytes. That geometry wants a locally refined solver, and the message says
+so.
+
+`pcb thermal` answers the question the current table only rates: where do the
+watts actually go on *this* copper. The board becomes a grid — copper where the
+artwork put copper, laminate where it did not — heat enters under the parts you
+name, leaves every cell by convection from both faces, and the steady-state
+temperature map comes back with the hottest point marked:
+
+```console
+$ ./bin/eda.sh pcb thermal hardware/ --power U1=1.5 --power D1=0.4 -o build/thermal
+{
+  "max_temperature_c": 56.5,
+  "hotspot_mm": [159.75, 70.25],
+  "parts": [{"ref": "U1", "power_w": 1.5, "temperature_c": 56.5, ...}],
+  "balance": {"power_in_w": 1.9, "power_convected_w": 1.8996, "residual": 0.0002},
+  "image": "build/thermal/thermal.png"
+}
+```
+
+How to read it, and what to trust:
+
+* **The powers are your statement.** The board does not know what U1
+  dissipates; compute it (input power minus output power for a regulator,
+  I²R for a shunt) and pass it with `--power`. The output carries the figures
+  back so the assumption is visible in the record.
+* **`balance.residual` is the solver's honesty metric** — dissipated and
+  convected watts must be the same number at steady state, and the tests hold
+  the solver to it. If it is not near zero, distrust the map.
+* **The comparisons are the trustworthy part.** Absolute temperatures lean on
+  the film coefficient (`--htc`, default 10 W/m²K per face, still air), which
+  an enclosure or a fan moves by a factor of two either way. Whether the tab's
+  pour actually spreads, which part is the hot one, whether a copper area is a
+  heat path or a picture of one — those survive any reasonable coefficient.
+* It is a 2.5D thin-plate model: in-plane conduction, no vertical gradient, no
+  modelled via barrels. Good below a few watts per square centimetre; a power
+  module deserves a real conjugate solver.
 
 `eda diff OLD NEW -o DIR` compares two revisions: which footprints moved and how
 far, what the board statistics did, and a rendered diff of the plots - red for
@@ -177,6 +254,8 @@ mismatches).
 | `route.self_crossing` | — | a net whose own copper crosses itself on one layer. The same potential, so DRC has nothing to say — but two branches of one net crossing means the copper carries a redundant loop, and a person never draws one: the plot reads as tracks driven through each other. KiCad's demo boards carry at most one to three, at dense escapes |
 | `route.wander` | 2.0x | one run of copper — pad or junction at each end — against the shortest way between those two ends that clears the packages in between. `route.detour` weighs a whole net and a net hides things; this is the track that leaves its pad, goes three sides of a rectangle and arrives 4 mm away |
 | `route.return_path` | 10 mm | on a two-layer board, signal track running over cuts in the other layer's ground fill: the return current detours and the loop grows |
+| `emc.parallel_run` | 10 mm | the 3W rule, measured: two different signal nets accumulating more than the threshold of same-layer run closer than 3 trace widths centre to centre. A router finds a clear channel and every net that wants to go that way piles in; the coupled length is what makes it crosstalk. Differential pairs are exempt by their name's suffix — a pair is parallel on purpose — and a bus deliberately is not: eight lines sharing a channel are eight aggressors for the ninth net threaded between them. Fires once per board on 9 of KiCad's 18 demo projects, and what it names is the memory buses and the I2C pair — whether 96 mm of coupled SCL/SDA matters at 100 kHz is exactly the judgment the warning hands to a human |
+| `emc.stitching_pitch` | 18 mm | on a two-layer board with ground poured on both faces, the widest gap between ground vias in the rim band — measured along the board's real outline (arcs and chamfers included), the way edge noise travels, not across the corner. A board whose outline does not chain into one loop — a cutout, an open edge — is not judged: "along the rim" is ambiguous there. Two pours facing each other are a capacitor until the vias make them a conductor, and the rim is where fields leave the sandwich. The classic pitch is lambda/20 of the highest frequency aboard; the file does not state that frequency, which is why this is a warning with a threshold and not a claim. One demo project in 18 fires it — the precondition keeps it off every board without the sandwich |
 
 Override any threshold: `--threshold min_track_mm=0.2 --threshold max_decoupling_distance_mm=3`.
 The full set: `min_track_mm`, `min_via_drill_mm`, `min_annular_ring_mm`,
@@ -184,7 +263,7 @@ The full set: `min_track_mm`, `min_via_drill_mm`, `min_annular_ring_mm`,
 `min_silk_text_height_mm`, `placement_grid_mm`, `rotation_step_deg`,
 `max_decoupling_via_mm`, `min_track_angle_deg`, `min_pour_coverage`,
 `min_pour_island_fraction`, `max_connector_edge_mm`, `width_step_free_mm`,
-`wander_ratio`.
+`wander_ratio`, `crosstalk_run_mm`, `stitch_pitch_mm`.
 Use the fab's real capability, not the defaults, when the fab is known.
 
 Exit code is `2` when there is at least one error.

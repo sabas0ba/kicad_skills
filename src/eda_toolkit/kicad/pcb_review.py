@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import math
 import os
 from collections import Counter, defaultdict
@@ -18,6 +19,7 @@ from ..util import (
 )
 from . import electrical, kicad_cli, pcb
 from . import netlist as netlist_mod
+from . import outline as outline_geom
 
 RULES: list[Callable[[PcbContext], list[Finding]]] = []
 
@@ -80,6 +82,15 @@ THRESHOLDS = {
     # one bad connection inside a lot of good ones; this asks it of each run,
     # which is the shape a reader actually sees on the plot.
     "wander_ratio": 2.0,
+    # The coupled length that turns proximity into crosstalk: below this a
+    # tight neighbour is a routing squeeze, above it an aggressor. How close
+    # counts as tight is the 3W rule, CROSSTALK_SPACING_W below - a constant,
+    # like the hairpin window, because the two knobs tune one finding.
+    "crosstalk_run_mm": 10.0,
+    # How far apart the stitching vias along the board's rim may sit when both
+    # faces carry a ground pour. Lambda/20 at ~800 MHz in FR4 is the classic
+    # figure; a board with faster edges tightens it, a slow board can relax it.
+    "stitch_pitch_mm": 18.0,
     # What a screw actually occupies where it meets the board: an M3 pan head
     # on a DIN 125 washer is 7 mm across, and the driver that turns it wants
     # more. A design using captive standoffs or countersunk heads says so by
@@ -109,6 +120,15 @@ FILLET_MM = 1.2
 # exposed pad under a package is the one land a via array belongs in, and
 # nothing a single signal reaches is anywhere near this big: the largest
 # 0603 land is under a square millimetre, a 2.54 mm header's is under two.
+# Centre-to-centre spacing, in trace widths, below which two traces count as
+# coupled: the 3W rule of every EMC checklist, kept as its classic value.
+CROSSTALK_SPACING_W = 3.0
+
+# How much of the rim needs ground fill on both faces before the stitching
+# pitch means anything. Below this the board has facing patches, not an edge
+# plane, and a fence with no posts is not a finding.
+RIM_POUR_COVERAGE = 0.5
+
 THERMAL_PAD_AREA_MM2 = 4.0
 THERMAL_PAD_MIN_SIDE_MM = 2.0
 
@@ -427,6 +447,25 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "the fab never prints it; KiCad's own test only sees ink that crosses "
         "the edge",
         "warning",
+    ),
+    "emc.parallel_run": RuleSpec(
+        "two signal nets on one layer whose traces stay closer than three "
+        "trace widths centre-to-centre for more than crosstalk_run_mm of "
+        "accumulated length - the 3W rule, measured. "
+        "Differential pairs (P/N, +/-, H/L suffixes) are exempt; buses are "
+        "deliberately not, because eight lines in one channel are eight "
+        "aggressors",
+        "warning",
+        threshold="crosstalk_run_mm",
+    ),
+    "emc.stitching_pitch": RuleSpec(
+        "on a two-layer board with ground poured on both faces, gaps between "
+        "the rim's ground vias wider than stitch_pitch_mm - between them, "
+        "edge-coupled noise returns the long way round. Nothing in the file "
+        "states the board's fastest edge, so the pitch is a policy number, "
+        "not a claim",
+        "warning",
+        threshold="stitch_pitch_mm",
     ),
     "mechanical.no_mounting_holes": RuleSpec("no H*/MH* footprint on the board", "info"),
     "test.no_testpoints": RuleSpec("no TP* footprint on the board", "info"),
@@ -1427,6 +1466,316 @@ def _footprint_pad_box(fp) -> tuple[float, float, float, float] | None:
         max(b[2] for b in boxes),
         max(b[3] for b in boxes),
     )
+
+
+def _pair_stem(net: str) -> str | None:
+    """The name two halves of a differential pair share, or None.
+
+    A pair runs parallel *on purpose* - that is what a pair is - so the
+    crosstalk rule has to know one when it sees one. The conventions are
+    suffix pairs: P/N, +/-, _P/_N, H/L on CAN. The hierarchical path stays in
+    the stem: ``/channel_a/USB_P`` and ``/channel_b/USB_N`` share a leaf but
+    live on different sheets, and two unrelated nets are not a pair.
+    """
+    name = net.upper()
+    prefix, _, leaf = name.rpartition("/")
+    for a, b in (("_P", "_N"), ("P", "N"), ("+", "-"), ("_H", "_L"), ("H", "L")):
+        if leaf.endswith(a):
+            return f"{prefix}/{leaf[: -len(a)]}"
+        if leaf.endswith(b):
+            return f"{prefix}/{leaf[: -len(b)]}"
+    return None
+
+
+@rule
+def rule_parallel_runs(ctx: PcbContext) -> list[Finding]:
+    """Two signal traces running long and close: the 3W rule, measured.
+
+    Crosstalk needs two things - proximity and length - and a router supplies
+    both without noticing: it finds a clear channel and then every net that
+    wants to go that way piles into it. The rule accumulates, per pair of
+    nets, the length they spend closer than ``crosstalk_spacing_w`` trace
+    widths centre to centre on the same layer, and reports the pairs that
+    stay coupled longer than ``crosstalk_run_mm``.
+
+    Differential pairs are exempt by name - a pair is parallel on purpose.
+    A bus is deliberately *not* exempt: eight lines sharing a channel are
+    eight aggressors, and the victim that matters is the ninth net threaded
+    between them.
+    """
+    board = ctx.board
+    spacing_w = CROSSTALK_SPACING_W
+    run_limit = ctx.thresholds["crosstalk_run_mm"]
+    segments = []
+    for track in board.tracks:
+        if not track.net or ctx.net_class_of(track.net) != "signal":
+            continue
+        if track.kind == "arc" and getattr(track, "mid", None):
+            # the copper follows the curve; measuring its chord would call two
+            # opposite-bowed arcs coincident and miss two that really touch
+            points = outline_geom.arc_points(track.start, track.mid, track.end, steps=8)
+            for a, b in itertools.pairwise(points):
+                if math.dist(a, b) > GEOM_TOL:
+                    segments.append(
+                        pcb.Track(a, b, track.width, track.layer, track.net_code, track.net)
+                    )
+            continue
+        if track.length <= GEOM_TOL:
+            continue
+        segments.append(track)
+
+    cell = 4.0
+    cells: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for index, track in enumerate(segments):
+        # each box grows by the track's own coupling radius, so two tracks
+        # within 3W of each other overlap boxes - and hence share a cell -
+        # wherever the cell boundaries happen to fall
+        reach = spacing_w * track.width
+        x0 = min(track.start[0], track.end[0]) - reach
+        x1 = max(track.start[0], track.end[0]) + reach
+        y0 = min(track.start[1], track.end[1]) - reach
+        y1 = max(track.start[1], track.end[1]) + reach
+        for cx in range(math.floor(x0 / cell), math.floor(x1 / cell) + 1):
+            for cy in range(math.floor(y0 / cell), math.floor(y1 / cell) + 1):
+                cells[(cx, cy)].append(index)
+
+    coupled: dict[tuple[str, str], float] = defaultdict(float)
+    seen: set[tuple[int, int]] = set()
+    for bucket in cells.values():
+        for i in bucket:
+            for j in bucket:
+                if j <= i or (i, j) in seen:
+                    continue
+                seen.add((i, j))
+                a, b = segments[i], segments[j]
+                if a.net == b.net or a.layer != b.layer:
+                    continue
+                stem_a, stem_b = _pair_stem(a.net), _pair_stem(b.net)
+                if stem_a is not None and stem_a == stem_b:
+                    continue
+                overlap = _parallel_overlap(
+                    a.start, a.end, b.start, b.end, spacing_w * max(a.width, b.width)
+                )
+                if overlap > 0:
+                    coupled[tuple(sorted((a.net, b.net)))] += overlap
+
+    offenders = [
+        {"nets": list(pair), "coupled_mm": round(length, 1)}
+        for pair, length in coupled.items()
+        if length > run_limit
+    ]
+    if not offenders:
+        return []
+    offenders.sort(key=lambda entry: -entry["coupled_mm"])
+    worst = offenders[0]
+    return [
+        Finding(
+            "emc.parallel_run",
+            "warning",
+            f"{len(offenders)} net pair(s) run closer than {spacing_w:g} trace widths "
+            f"for more than {run_limit:g} mm - the longest, "
+            f"{' and '.join(worst['nets'])}, stays coupled for {worst['coupled_mm']} mm",
+            details={"count": len(offenders), "pairs": offenders[:8]},
+        )
+    ]
+
+
+def _parallel_overlap(a0, a1, b0, b1, near: float) -> float:
+    """How much of two segments runs side by side within ``near``, in mm.
+
+    Parallel means what a plot means by it: headings within ~15 degrees.
+    The overlap is one segment projected onto the other and clipped; within
+    it, the lateral offset varies linearly, so the portion actually closer
+    than ``near`` is an interval the two endpoint offsets pin down exactly.
+    A pair that merely converges at a crossing therefore counts only the few
+    millimetres around the crossing, not the whole shared span.
+    """
+    va = (a1[0] - a0[0], a1[1] - a0[1])
+    vb = (b1[0] - b0[0], b1[1] - b0[1])
+    la, lb = math.hypot(*va), math.hypot(*vb)
+    if la <= GEOM_TOL or lb <= GEOM_TOL:
+        return 0.0
+    cos = abs(va[0] * vb[0] + va[1] * vb[1]) / (la * lb)
+    if cos < 0.966:  # more than ~15 degrees apart in heading
+        return 0.0
+    ua = (va[0] / la, va[1] / la)
+    normal = (-ua[1], ua[0])
+    t0 = (b0[0] - a0[0]) * ua[0] + (b0[1] - a0[1]) * ua[1]
+    t1 = (b1[0] - a0[0]) * ua[0] + (b1[1] - a0[1]) * ua[1]
+    lo, hi = max(0.0, min(t0, t1)), min(la, max(t0, t1))
+    if hi <= lo:
+        return 0.0
+    # signed lateral offset of b's line from a's, at b's two ends
+    d0 = (b0[0] - a0[0]) * normal[0] + (b0[1] - a0[1]) * normal[1]
+    d1 = (b1[0] - a0[0]) * normal[0] + (b1[1] - a0[1]) * normal[1]
+    if abs(t1 - t0) <= GEOM_TOL:
+        return (hi - lo) if max(abs(d0), abs(d1)) <= near else 0.0
+    slope = (d1 - d0) / (t1 - t0)
+
+    def offset(t: float) -> float:
+        return d0 + slope * (t - t0)
+
+    if abs(slope) <= 1e-9:
+        return (hi - lo) if abs(d0) <= near else 0.0
+    # |offset| <= near between the two crossings of +near and -near
+    t_at = sorted(((near - d0) / slope + t0, (-near - d0) / slope + t0))
+    close_lo, close_hi = max(lo, t_at[0]), min(hi, t_at[1])
+    if close_hi <= close_lo:
+        return 0.0
+    mid = (close_lo + close_hi) / 2
+    point = (a0[0] + ua[0] * mid, a0[1] + ua[1] * mid)
+    if _point_to_segment(point, b0, b1) > near:
+        return 0.0
+    return close_hi - close_lo
+
+
+@rule
+def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
+    """Gaps in the fence: how far apart the rim's ground vias sit.
+
+    Two ground pours facing each other are a capacitor until the vias make
+    them a conductor, and the rim is where it matters most - edge-coupled
+    noise wants the shortest way home, and the board edge is where fields
+    leave the sandwich. The classic pitch is lambda/20 of the highest
+    frequency the board carries; nothing in the file states that frequency,
+    so the threshold is a number a policy can tune, not a claim.
+
+    Judged only when both faces carry a filled ground pour - a single-sided
+    pour has no sandwich to stitch. A board whose outline does not chain into
+    one loop (a cutout, an open outline) is not judged either: "along the rim"
+    is ambiguous there, and saying nothing beats measuring the wrong loop.
+    """
+    board = ctx.board
+    if len(board.copper_layers) != 2:
+        return []
+    fills_by_layer: dict[str, list[list[tuple[float, float]]]] = defaultdict(list)
+    for zone in board.zones:
+        if zone.keepout or not netlist_helpers_is_ground(zone.net):
+            continue
+        # the layers the fill actually reached, not the ones the zone asked
+        # for: a two-layer zone whose fill succeeded on one face is no sandwich
+        for layer, points in zone.fills:
+            if layer.endswith(".Cu") and len(points) >= 3:
+                fills_by_layer[layer].append(points)
+    if len(fills_by_layer) < 2:
+        return []
+    bbox = board.outline_bbox()
+    if bbox is None:
+        return []
+    x0, y0, x1, y1 = bbox
+    loop = outline_geom.chain_loop(board.edge_segments())
+    if loop is None:
+        return []
+
+    # rim-local: scaled by the board's SHORT side, so a long narrow board
+    # does not declare its whole midline to be rim
+    band = max(4.0, 0.08 * min(x1 - x0, y1 - y0))
+
+    # ...and the sandwich has to exist AT the rim, along a good part of it.
+    # Two local ground patches in the middle of a board are not an edge plane,
+    # and neither is a pair that only clips one corner: there is no
+    # edge-coupled return for a via to shorten. The rim is walked instead, and
+    # at each step the question is whether ground fill lies just inside the
+    # edge on BOTH faces; below RIM_POUR_COVERAGE of that walk the rule says
+    # nothing rather than reporting a fence with no posts.
+    walls = {
+        layer: [list(itertools.pairwise([*points, points[0]])) for points in polygons]
+        for layer, polygons in fills_by_layer.items()
+    }
+    centre_x, centre_y = (x0 + x1) / 2, (y0 + y1) / 2
+    probes: list[tuple[float, float]] = []
+    stride = max(band / 2, sum(math.dist(a, b) for a, b in loop) / 400)
+    carried = 0.0
+    for (ax, ay), (bx, by) in loop:
+        seg = math.dist((ax, ay), (bx, by))
+        if seg <= GEOM_TOL:
+            continue
+        ux, uy = (bx - ax) / seg, (by - ay) / seg
+        inx, iny = -uy, ux
+        if (centre_x - ax) * inx + (centre_y - ay) * iny < 0:
+            inx, iny = -inx, -iny
+        walked = carried
+        while walked < seg:
+            probes.append((ax + ux * walked + inx * band / 2, ay + uy * walked + iny * band / 2))
+            walked += stride
+        carried = walked - seg
+    if not probes:
+        return []
+    covered = sum(
+        1
+        for px, py in probes
+        if all(
+            any(outline_geom.contains((px, py), polygon) for polygon in polygons)
+            for polygons in walls.values()
+        )
+    )
+    if covered < len(probes) * RIM_POUR_COVERAGE:
+        return []
+
+    fill_segments = {
+        layer: [list(itertools.pairwise([*points, points[0]])) for points in polygons]
+        for layer, polygons in fills_by_layer.items()
+    }
+
+    def in_every_pour(px: float, py: float) -> bool:
+        # a via only stitches where it stands on filled copper on BOTH faces:
+        # one parked in a clearance cut joins nothing there. Each polygon is
+        # tested on its own - two same-net fills overlapping must read as
+        # their union, and one even-odd pass over both would call the overlap
+        # a hole
+        return all(
+            any(outline_geom.contains((px, py), polygon) for polygon in polygons)
+            for polygons in fill_segments.values()
+        )
+
+    rim = [
+        (via.x, via.y)
+        for via in board.vias
+        if netlist_helpers_is_ground(via.net)
+        # inside the outline and near it: a panel or tooling via parked
+        # outside the board joins no pour and mends no fence
+        and 0 <= board.edge_clearance_at(via.x, via.y) <= band
+        and in_every_pour(via.x, via.y)
+    ]
+    limit = ctx.thresholds["stitch_pitch_mm"]
+    if len(rim) < 2:
+        return [
+            Finding(
+                "emc.stitching_pitch",
+                "warning",
+                "both faces carry a ground pour and the rim has "
+                f"{len(rim)} stitching via(s) - the two planes meet only "
+                "wherever a through-hole pad happens to fall",
+                details={"rim_vias": len(rim)},
+            )
+        ]
+    # Measured along the rim, not across it. Two vias sharing a corner are
+    # four millimetres apart as the crow flies and half the perimeter apart as
+    # the edge noise travels, and the second number is the one that matters.
+    # The rim is the real outline chained into a loop, so a circular or
+    # chamfered board is measured along its own edge, not a bounding box's.
+    perimeter = sum(math.dist(a, b) for a, b in loop)
+    ordered = sorted(outline_geom.loop_position((px, py), loop) for px, py in rim)
+    gaps = [b - a for a, b in itertools.pairwise(ordered)]
+    gaps.append(perimeter - ordered[-1] + ordered[0])
+    widest = max(gaps)
+    if widest <= limit:
+        return []
+    over = sum(1 for gap in gaps if gap > limit)
+    return [
+        Finding(
+            "emc.stitching_pitch",
+            "warning",
+            f"{over} gap(s) between rim stitching vias exceed {limit:g} mm "
+            f"(widest {widest:.1f} mm) - between them, edge noise returns the "
+            "long way round",
+            details={
+                "rim_vias": len(rim),
+                "widest_gap_mm": round(widest, 1),
+                "gaps_over_limit": over,
+            },
+        )
+    ]
 
 
 @rule

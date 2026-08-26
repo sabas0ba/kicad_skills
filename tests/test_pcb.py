@@ -1,3 +1,4 @@
+import itertools
 import math
 
 import pytest
@@ -151,3 +152,205 @@ def test_a_bad_background_is_refused_before_anything_is_written(example_project,
     with pytest.raises(EdaError):
         fab.export_package(example_project, tmp_path / "fab", background="puce")
     assert not (tmp_path / "fab").exists()
+
+
+def test_copper_graphics_are_kept_only_when_filled(tmp_path):
+    """A filled polygon on copper is copper; a hollow rectangle is its stroke."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (gr_poly (pts (xy 0 0) (xy 5 0) (xy 5 5)) (layer "F.Cu") (fill yes))'
+        '  (gr_rect (start 10 10) (end 20 20) (layer "F.Cu") (fill none))'
+        '  (gr_circle (center 30 30) (end 32 30) (layer "B.Cu") (fill yes))'
+        '  (gr_poly (pts (xy 0 0) (xy 5 0) (xy 5 5)) (layer "F.SilkS") (fill yes)))'
+    )
+    path = tmp_path / "g.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    shapes = pcb.parse(path).copper_shapes
+    assert sorted(layer for layer, _ in shapes) == ["B.Cu", "F.Cu"]
+    circle = next(points for layer, points in shapes if layer == "B.Cu")
+    assert len(circle) > 8  # the circle arrives as a polygon, not a point pair
+
+
+def test_a_slot_drill_keeps_its_shape_and_offset(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:conn" (layer "F.Cu") (at 10 10 0)'
+        '    (pad "1" thru_hole oval (at 0 0) (size 3 5)'
+        '      (drill oval 1 2 (offset 0.5 0)) (layers "*.Cu"))))'
+    )
+    path = tmp_path / "s.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    pad = pcb.parse(path).footprints[0].pads[0]
+    assert pad.drill == 1.0
+    assert pad.drill_size == (1.0, 2.0)
+    assert pad.drill_offset == (0.5, 0.0)
+
+
+def test_a_rectangular_courtyard_survives_rotation_with_all_four_corners(tmp_path):
+    """The file states two diagonal corners; the polygon needs all four."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:sq" (layer "F.Cu") (at 20 20 45)'
+        '    (fp_rect (start -2 -2) (end 2 2) (layer "F.CrtYd"))))'
+    )
+    path = tmp_path / "c.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    fp = pcb.parse(path).footprints[0]
+    assert len(fp.courtyard) == 4
+    box = fp.courtyard_box()
+    # a 4x4 square turned 45 degrees spans its diagonal both ways
+    assert box[2] - box[0] == pytest.approx(4 * math.sqrt(2), abs=1e-6)
+    assert box[3] - box[1] == pytest.approx(4 * math.sqrt(2), abs=1e-6)
+
+
+def test_footprint_rects_and_circles_on_copper_are_copper(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:ant" (layer "F.Cu") (at 10 10 0)'
+        '    (fp_rect (start 0 0) (end 4 2) (layer "F.Cu") (fill yes))'
+        '    (fp_circle (center 8 0) (end 9 0) (layer "F.Cu") (fill yes))'
+        '    (fp_rect (start -5 -5) (end -1 -1) (layer "F.Cu") (fill none))))'
+    )
+    path = tmp_path / "a.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    shapes = pcb.parse(path).copper_shapes
+    assert len(shapes) == 2  # the hollow rect is its stroke, not its area
+    assert all(layer == "F.Cu" for layer, _ in shapes)
+
+
+def test_a_circular_courtyard_is_kept_as_its_rim(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:led" (layer "F.Cu") (at 20 20 0)'
+        '    (fp_circle (center 0 0) (end 3 0) (layer "F.CrtYd"))))'
+    )
+    path = tmp_path / "r.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    fp = pcb.parse(path).footprints[0]
+    assert len(fp.courtyard) >= 8
+    box = fp.courtyard_box()
+    assert box[2] - box[0] == pytest.approx(6.0, abs=0.2)
+    assert box[3] - box[1] == pytest.approx(6.0, abs=0.2)
+
+
+def test_courtyard_lines_are_chained_into_perimeter_order(tmp_path):
+    """Drawing order is not perimeter order; concatenation invents diagonals."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:u" (layer "F.Cu") (at 0 0 0)'
+        '    (fp_line (start -2 -2) (end 2 -2) (layer "F.CrtYd"))'
+        '    (fp_line (start 2 2) (end -2 2) (layer "F.CrtYd"))'
+        '    (fp_line (start -2 2) (end -2 -2) (layer "F.CrtYd"))'
+        '    (fp_line (start 2 -2) (end 2 2) (layer "F.CrtYd"))))'
+    )
+    path = tmp_path / "o.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    fp = pcb.parse(path).footprints[0]
+    assert len(fp.courtyard) == 4
+    ring = [*fp.courtyard, fp.courtyard[0]]
+    for a, b in itertools.pairwise(ring):
+        # each edge of a chained rectangle changes exactly one coordinate
+        assert (a[0] == b[0]) != (a[1] == b[1])
+
+
+def test_a_hollow_copper_frame_keeps_its_stroke(tmp_path):
+    """fill none discards the area, never the drawn ink."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (gr_rect (start 0 0) (end 10 10) (layer "F.Cu")'
+        "    (stroke (width 0.5) (type solid)) (fill none))"
+        '  (gr_line (start 20 0) (end 30 0) (layer "F.Cu") (width 0.3)))'
+    )
+    path = tmp_path / "h.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    board = pcb.parse(path)
+    assert board.copper_shapes == []  # no filled area anywhere
+    strokes = {round(w, 2): pts for _, pts, w in board.copper_strokes}
+    assert set(strokes) == {0.5, 0.3}
+    assert strokes[0.5][0] == strokes[0.5][-1]  # the frame closes on itself
+
+
+def test_a_hollow_custom_pad_primitive_keeps_its_ring(tmp_path):
+    """A stroked gr_circle inside a pad is a ring of ink, not a solid disc."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:c" (layer "F.Cu") (at 0 0 0)'
+        '    (pad "1" smd custom (at 0 0) (size 1 1) (layers "F.Cu")'
+        "      (primitives"
+        "        (gr_circle (center 0 0) (end 3 0)"
+        "          (stroke (width 0.4) (type solid)) (fill none))"
+        "        (gr_poly (pts (xy 0 0) (xy 1 0) (xy 1 1)) (fill yes))))))"
+    )
+    path = tmp_path / "p.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    kinds = [p[0] for p in pcb.parse(path).footprints[0].pads[0].primitives]
+    assert "ring" in kinds  # the stroke survived
+    assert "circle" not in kinds  # ...and the unfilled disc did not
+    assert "poly" in kinds
+
+
+def test_a_bezier_on_copper_is_collected_as_its_curve(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        "  (gr_curve (pts (xy 0 0) (xy 0 10) (xy 10 10) (xy 10 0))"
+        '    (layer "F.Cu") (stroke (width 0.4) (type solid))))'
+    )
+    path = tmp_path / "b.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    strokes = pcb.parse(path).copper_strokes
+    assert len(strokes) == 1
+    layer, pts, width = strokes[0]
+    assert (layer, round(width, 2)) == ("F.Cu", 0.4)
+    # the curve, not the control cage: the cubic's apex is 7.5, not 10
+    assert max(p[1] for p in pts) < 8.0
+
+
+def test_footprint_curves_and_pad_arcs_are_copper_too(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:ant" (layer "F.Cu") (at 0 0 0)'
+        "    (fp_curve (pts (xy 0 0) (xy 0 10) (xy 10 10) (xy 10 0))"
+        '      (layer "F.Cu") (stroke (width 0.3) (type solid)))'
+        '    (pad "1" smd custom (at 0 0) (size 1 1) (layers "F.Cu")'
+        "      (primitives"
+        "        (gr_arc (start 0 0) (mid 1 1) (end 2 0)"
+        "          (stroke (width 0.2) (type solid)))))))"
+    )
+    path = tmp_path / "fc.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    board = pcb.parse(path)
+    curves = [s for s in board.copper_strokes if round(s[2], 2) == 0.3]
+    assert len(curves) == 1
+    assert max(p[1] for p in curves[0][1]) < 8.0  # the curve, not its cage
+    kinds = [p[0] for p in board.footprints[0].pads[0].primitives]
+    assert kinds == ["polyline"]  # the arc survived as its stroked path
+
+
+def test_a_custom_pads_anchor_shape_is_kept(tmp_path):
+    """(options (anchor circle)) makes the land round, not a square of that size."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:d" (layer "F.Cu") (at 0 0 0)'
+        '    (pad "D2" smd custom (at 0 0) (size 1.6 1.6) (layers "F.Cu")'
+        "      (options (clearance outline) (anchor circle))"
+        "      (primitives (gr_circle (center 0 0) (end 0.8 0) (fill yes))))))"
+    )
+    path = tmp_path / "an.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    assert pcb.parse(path).footprints[0].pads[0].anchor == "circle"
+
+
+def test_a_curved_courtyard_follows_its_curve(tmp_path):
+    """fp_curve bounds an area too, and its control points are not on it."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:c" (layer "F.Cu") (at 0 0 0)'
+        "    (fp_curve (pts (xy 0 0) (xy 0 10) (xy 10 10) (xy 10 0))"
+        '      (layer "F.CrtYd"))))'
+    )
+    path = tmp_path / "cc.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    fp = pcb.parse(path).footprints[0]
+    assert len(fp.courtyard) > 8
+    # the cubic's apex is 7.5; the control cage would reach 10
+    assert max(y for _, y in fp.courtyard) == pytest.approx(7.5, abs=0.05)

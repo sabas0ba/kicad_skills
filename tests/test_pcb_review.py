@@ -1222,3 +1222,163 @@ def test_a_designator_printed_off_the_board_is_reported():
 
     on = dict(off, y=3)
     assert pcb_review.rule_silk_off_board(ctx_for(board_from(silk=[on]))) == []
+
+
+def _gnd_via(x, y):
+    return pcb.Via(x=x, y=y, size=0.6, drill=0.3, layers=["F.Cu", "B.Cu"], net_code=2, net="GND")
+
+
+def test_two_nets_that_share_a_channel_are_reported_and_a_pair_is_not():
+    """The 3W rule: length times proximity, with the deliberate pair exempt."""
+    tight = [
+        track(0, 10, 30, 10, width=0.25, net="CLK"),
+        track(0, 10.5, 30, 10.5, width=0.25, net="DATA"),  # 2W away for 30 mm
+    ]
+    findings = pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=tight)))
+    assert [f.rule for f in findings] == ["emc.parallel_run"]
+    assert abs(findings[0].details["pairs"][0]["coupled_mm"] - 30) <= 1
+
+    # the same geometry as a named differential pair is the intended layout
+    pair = [
+        track(0, 10, 30, 10, width=0.25, net="/USB_P"),
+        track(0, 10.5, 30, 10.5, width=0.25, net="/USB_N"),
+    ]
+    assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=pair))) == []
+
+    # three widths apart, or crossing at an angle, is not a shared channel
+    spaced = [
+        track(0, 10, 30, 10, width=0.25, net="CLK"),
+        track(0, 11.5, 30, 11.5, width=0.25, net="DATA"),
+    ]
+    assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=spaced))) == []
+    crossing = [
+        track(0, 10, 30, 10, width=0.25, net="CLK"),
+        track(15, 0, 15.2, 20, width=0.25, net="DATA"),
+    ]
+    assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=crossing))) == []
+
+
+def test_the_pair_exemption_does_not_cross_sheets():
+    """Two nets from different sheets sharing a leaf name are not a pair."""
+    impostors = [
+        track(0, 10, 30, 10, width=0.25, net="/channel_a/USB_P"),
+        track(0, 10.5, 30, 10.5, width=0.25, net="/channel_b/USB_N"),
+    ]
+    findings = pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=impostors)))
+    assert [f.rule for f in findings] == ["emc.parallel_run"]
+
+
+def test_only_the_close_part_of_a_converging_run_is_counted():
+    """Heading within 15 degrees but mostly far apart: count the close metres."""
+    converging = [
+        track(0, 12, 40, 12, width=0.25, net="CLK"),
+        track(0, 16, 40, 8, width=0.25, net="DATA"),  # crosses at x=20, 11 deg
+    ]
+    assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=converging))) == []
+
+
+def test_arcs_are_measured_as_curves_not_chords():
+    """Two arcs sharing endpoints but bowing apart never actually run together."""
+    bowed_apart = [
+        pcb.Track((0, 10), (30, 10), 0.25, "F.Cu", 1, "CLK", kind="arc", mid=(15, 3)),
+        pcb.Track((0, 10), (30, 10), 0.25, "F.Cu", 2, "DATA", kind="arc", mid=(15, 17)),
+    ]
+    assert pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=bowed_apart))) == []
+
+
+def test_a_cell_boundary_does_not_hide_a_shared_channel():
+    """The 4 mm bucket edge at y=12 must not separate y=11.8 from y=12.2."""
+    straddling = [
+        track(0, 11.8, 30, 11.8, width=0.25, net="CLK"),
+        track(0, 12.2, 30, 12.2, width=0.25, net="DATA"),
+    ]
+    findings = pcb_review.rule_parallel_runs(ctx_for(board_from(tracks=straddling)))
+    assert [f.rule for f in findings] == ["emc.parallel_run"]
+    assert abs(findings[0].details["pairs"][0]["coupled_mm"] - 30) <= 1
+
+
+def test_a_double_sided_pour_wants_its_rim_stitched():
+    """Two facing pours are a capacitor until the vias make them a conductor."""
+    full = [(0, 0), (50, 0), (50, 40), (0, 40)]
+    pours = [
+        pcb.Zone(net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", full)]),
+        pcb.Zone(net="GND", layers=["B.Cu"], filled=True, fills=[("B.Cu", full)]),
+    ]
+    # a ring of rim vias 10 mm apart on a 50x40 board: nothing to report
+    ring = [_gnd_via(x, y) for x in (5, 15, 25, 35, 45) for y in (2, 38)] + [
+        _gnd_via(x, y) for x in (2, 48) for y in (12, 22, 30)
+    ]
+    quiet = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=pours, vias=ring)))
+    assert quiet == []
+
+    # only two vias, both in one corner: one enormous gap round the rim
+    sparse = [_gnd_via(2, 2), _gnd_via(6, 2)]
+    findings = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=pours, vias=sparse)))
+    assert [f.rule for f in findings] == ["emc.stitching_pitch"]
+    assert findings[0].details["widest_gap_mm"] > 18
+
+    # a via parked outside the outline joins no pour and mends no fence
+    parked = [*sparse, _gnd_via(-5, 20), _gnd_via(25, -5)]
+    findings = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=pours, vias=parked)))
+    assert [f.rule for f in findings] == ["emc.stitching_pitch"]
+    assert findings[0].details["rim_vias"] == 2
+
+    # nor does one standing in a clearance cut of the front fill: the fill
+    # polygons, not the net name, say where a via actually stitches
+    notched = [(0, 0), (50, 0), (50, 40), (30, 40), (30, 30), (20, 30), (20, 40), (0, 40)]
+    cut_pours = [
+        pcb.Zone(net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", notched)]),
+        pours[1],
+    ]
+    in_cut = [*sparse, _gnd_via(25, 38)]  # inside the board, inside the notch
+    findings = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=cut_pours, vias=in_cut)))
+    assert [f.rule for f in findings] == ["emc.stitching_pitch"]
+    assert findings[0].details["rim_vias"] == 2
+
+    # two overlapping same-net fills on one face are a union, not an XOR: a
+    # via standing in the overlap stitches, and must not vanish from the rim
+    left = [(0, 0), (30, 0), (30, 40), (0, 40)]
+    right = [(20, 0), (50, 0), (50, 40), (20, 40)]
+    lapped = [
+        pcb.Zone(net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", left)]),
+        pcb.Zone(net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", right)]),
+        pours[1],
+    ]
+    overlap_ring = [*ring, _gnd_via(25, 2)]  # in the overlap band, on the rim
+    quiet = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=lapped, vias=overlap_ring)))
+    assert quiet == []
+
+    # two local patches facing each other in the middle of the board are not
+    # an edge plane: there is no rim sandwich, so the rule has nothing to say
+    inland = [
+        pcb.Zone(
+            net="GND",
+            layers=["F.Cu"],
+            filled=True,
+            fills=[("F.Cu", [(20, 15), (30, 15), (30, 25), (20, 25)])],
+        ),
+        pcb.Zone(
+            net="GND",
+            layers=["B.Cu"],
+            filled=True,
+            fills=[("B.Cu", [(21, 16), (29, 16), (29, 24), (21, 24)])],
+        ),
+    ]
+    assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=inland, vias=[]))) == []
+
+    # nor is a pair that only clips one corner an edge plane: the rim has to
+    # carry ground on both faces along a good part of its length
+    corner = [
+        pcb.Zone(
+            net="GND",
+            layers=[layer],
+            filled=True,
+            fills=[(layer, [(0, 0), (8, 0), (8, 8), (0, 8)])],
+        )
+        for layer in ("F.Cu", "B.Cu")
+    ]
+    assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=corner, vias=[]))) == []
+
+    # a single-sided pour has no sandwich to stitch
+    single = [pours[0]]
+    assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=single, vias=sparse))) == []

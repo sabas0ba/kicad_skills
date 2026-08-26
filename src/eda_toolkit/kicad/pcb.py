@@ -14,6 +14,37 @@ from . import s_expression as sexp
 from .s_expression import SNode
 
 
+def _stroke_width(node: SNode) -> float:
+    """The drawn line width of a graphic shape, new or old vocabulary."""
+    stroke = node.child("stroke")
+    if stroke is not None:
+        width = stroke.value("width")
+        if width is not None:
+            return float(width)
+    width = node.value("width")
+    return float(width) if width is not None else 0.0
+
+
+def _graphic_is_filled(node: SNode) -> bool:
+    """Whether a graphic shape's area is filled copper, per its own fill node.
+
+    KiCad writes ``(fill yes)`` / ``(fill none)`` (older: ``solid``/``no``, or
+    ``(fill (type solid))``). No fill node at all means unfilled - the shape
+    is its stroke, and a stroke is not the area it circles.
+    """
+    fill = node.child("fill")
+    if fill is None:
+        return False
+    atoms = fill.atoms()
+    # the s-expression reader turns the bare word ``yes`` into True
+    if any(a is True or str(a) in ("yes", "solid") for a in atoms):
+        return True
+    type_node = fill.child("type")
+    return bool(
+        type_node and any(a is True or str(a) in ("yes", "solid") for a in type_node.atoms())
+    )
+
+
 @dataclass
 class Pad:
     number: str
@@ -28,6 +59,19 @@ class Pad:
     net: str = ""
     net_code: int = 0
     roundrect_rratio: float = 0.0
+    # A custom pad's drawn copper, in pad-local coordinates: the anchor `size`
+    # describes only the attachment shape, the primitives are the real extent.
+    # Entries are ("circle", cx, cy, r) and ("poly", [(x, y), ...]).
+    primitives: list[tuple] = field(default_factory=list)
+    # The hole as drawn: (width, height) - equal for a round drill, unequal
+    # for a slot - and its offset from the pad centre, both pad-local.
+    # ``drill`` above stays the scalar the ring and fab checks read.
+    drill_size: tuple[float, float] | None = None
+    drill_offset: tuple[float, float] = (0.0, 0.0)
+    # A custom pad's anchor shape - "rect" or "circle" - which is the land the
+    # primitives are drawn onto. ``size`` describes it either way, so without
+    # this a circular anchor reads as a square and gains its corners.
+    anchor: str = "rect"
     # The pad's own override of how a zone connects to it, when it carries one:
     # 0 none, 1 thermal relief, 2 solid. ``None`` means it inherits the zone's
     # setting, which is what most pads do.
@@ -149,6 +193,9 @@ class Track:
     net_code: int
     net: str = ""
     kind: str = "segment"  # segment | arc
+    # the arc's mid point, so a consumer can reconstruct the curve instead of
+    # mistaking the chord for copper
+    mid: tuple[float, float] | None = None
 
     @property
     def length(self) -> float:
@@ -203,6 +250,12 @@ class Board:
     vias: list[Via] = field(default_factory=list)
     zones: list[Zone] = field(default_factory=list)
     edges: list[dict[str, Any]] = field(default_factory=list)
+    # Filled copper drawn as graphics - a heatsink patch, an antenna - as
+    # (layer, closed polygon).
+    copper_shapes: list[tuple[str, list[tuple[float, float]]]] = field(default_factory=list)
+    # Stroked copper drawn as graphics - a hollow frame, a line drawn as
+    # artwork - as (layer, polyline, stroke width). The ink is the copper.
+    copper_strokes: list[tuple[str, list[tuple[float, float]], float]] = field(default_factory=list)
     silk_texts: list[dict[str, Any]] = field(default_factory=list)
     stackup: list[dict[str, Any]] = field(default_factory=list)
     _segments: list[tuple[tuple[float, float], tuple[float, float]]] | None = field(
@@ -422,25 +475,161 @@ def parse(path: str | os.PathLike[str]) -> Board:
             attributes=[str(a) for a in attrs_node.atoms()] if attrs_node else [],
             uuid=str(fp_node.value("uuid", default="")),
         )
-        for shape in ("fp_line", "fp_rect", "fp_poly"):
+        courtyard_segs: list[tuple[tuple[float, float], tuple[float, float]]] = []
+        for shape in ("fp_line", "fp_rect", "fp_poly", "fp_circle", "fp_arc", "fp_curve"):
             for node in fp_node.children(shape):
                 if not str(node.value("layer", default="")).endswith(".CrtYd"):
                     continue
                 raw: list[tuple[float, float]] = []
-                for key in ("start", "end", "center"):
-                    child = node.child(key)
-                    if child:
-                        cx, cy, _ = _xy(child)
-                        raw.append((cx, cy))
-                pts_node = node.child("pts")
-                if pts_node:
-                    for xy in pts_node.children("xy"):
-                        atoms = [a for a in xy.atoms() if isinstance(a, (int, float))]
-                        if len(atoms) >= 2:
-                            raw.append((float(atoms[0]), float(atoms[1])))
+                if shape == "fp_rect":
+                    # all four corners, not the two diagonal ones the file
+                    # states: a rotated diagonal does not bound a rectangle
+                    start_node, end_node = node.child("start"), node.child("end")
+                    if start_node and end_node:
+                        sx0, sy0, _ = _xy(start_node)
+                        ex0, ey0, _ = _xy(end_node)
+                        raw += [(sx0, sy0), (ex0, sy0), (ex0, ey0), (sx0, ey0)]
+                elif shape == "fp_circle":
+                    # the rim as points, not centre-plus-one-point: a round
+                    # courtyard is an area, and two points bound nothing
+                    centre_node, end_node = node.child("center"), node.child("end")
+                    if centre_node and end_node:
+                        ccx, ccy, _ = _xy(centre_node)
+                        cex, cey, _ = _xy(end_node)
+                        raw += outline_geom.circle_points(
+                            (ccx, ccy), math.dist((ccx, ccy), (cex, cey)), steps=16
+                        )
+                elif shape == "fp_arc":
+                    start_node = node.child("start")
+                    mid_node = node.child("mid")
+                    end_node = node.child("end")
+                    if start_node and mid_node and end_node:
+                        asx, asy, _ = _xy(start_node)
+                        amx, amy, _ = _xy(mid_node)
+                        aex, aey, _ = _xy(end_node)
+                        raw += outline_geom.arc_points((asx, asy), (amx, amy), (aex, aey), 8)
+                elif shape == "fp_curve":
+                    # the Bezier as its curve: the control points are not on it,
+                    # and a courtyard is the area the part occupies
+                    pts_node = node.child("pts")
+                    controls: list[tuple[float, float]] = []
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(vals) >= 2:
+                                controls.append((float(vals[0]), float(vals[1])))
+                    if len(controls) >= 2:
+                        raw += outline_geom.bezier_points(controls)
+                else:
+                    for key in ("start", "end", "center"):
+                        child = node.child(key)
+                        if child:
+                            cx, cy, _ = _xy(child)
+                            raw.append((cx, cy))
+                if shape != "fp_curve":
+                    # a curve's pts ARE its control cage, already consumed
+                    # above: appending them here would put the points the
+                    # curve never visits back into the courtyard
+                    pts_node = node.child("pts")
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            atoms = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(atoms) >= 2:
+                                raw.append((float(atoms[0]), float(atoms[1])))
+                placed = []
                 for cx, cy in raw:
                     gx, gy = _rotate(cx, cy, angle)
-                    fp.courtyard.append((gx + fp.x, gy + fp.y))
+                    placed.append((gx + fp.x, gy + fp.y))
+                # each primitive is a chain of edges; a lone fp_line is one
+                courtyard_segs += [
+                    (placed[i], placed[i + 1])
+                    for i in range(len(placed) - 1)
+                    if placed[i] != placed[i + 1]
+                ]
+                if (
+                    shape in ("fp_rect", "fp_poly", "fp_circle")
+                    and len(placed) > 2
+                    and placed[-1] != placed[0]
+                ):
+                    courtyard_segs.append((placed[-1], placed[0]))
+
+        if courtyard_segs:
+            # the file lists the pieces in drawing order, not perimeter order:
+            # chained they are the courtyard, concatenated they are a scribble
+            # with invented diagonals
+            loop = outline_geom.chain_loop(courtyard_segs)
+            if loop is not None:
+                fp.courtyard = [seg[0] for seg in loop]
+            else:
+                fp.courtyard = [pt for seg in courtyard_segs for pt in seg]
+
+        # shapes a footprint draws on copper are copper too - the same rules
+        # the board-level graphics get, turned and placed with the part
+        for shape in ("fp_poly", "fp_rect", "fp_circle", "fp_line", "fp_arc", "fp_curve"):
+            for node in fp_node.children(shape):
+                layer_name = str(node.value("layer", default=""))
+                if not layer_name.endswith(".Cu"):
+                    continue
+                local: list[tuple[float, float]] = []
+                fp_closed = shape in ("fp_poly", "fp_rect", "fp_circle")
+                if shape == "fp_poly":
+                    pts_node = node.child("pts")
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(vals) >= 2:
+                                local.append((float(vals[0]), float(vals[1])))
+                elif shape == "fp_rect":
+                    start_node, end_node = node.child("start"), node.child("end")
+                    if start_node and end_node:
+                        sx0, sy0, _ = _xy(start_node)
+                        ex0, ey0, _ = _xy(end_node)
+                        local = [(sx0, sy0), (ex0, sy0), (ex0, ey0), (sx0, ey0)]
+                elif shape == "fp_circle":
+                    centre_node, end_node = node.child("center"), node.child("end")
+                    if centre_node and end_node:
+                        ccx, ccy, _ = _xy(centre_node)
+                        cex, cey, _ = _xy(end_node)
+                        local = outline_geom.circle_points(
+                            (ccx, ccy), math.dist((ccx, ccy), (cex, cey))
+                        )
+                elif shape == "fp_line":
+                    start_node, end_node = node.child("start"), node.child("end")
+                    if start_node and end_node:
+                        sx0, sy0, _ = _xy(start_node)
+                        ex0, ey0, _ = _xy(end_node)
+                        local = [(sx0, sy0), (ex0, ey0)]
+                elif shape == "fp_curve":
+                    pts_node = node.child("pts")
+                    controls: list[tuple[float, float]] = []
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(vals) >= 2:
+                                controls.append((float(vals[0]), float(vals[1])))
+                    if len(controls) >= 2:
+                        local = outline_geom.bezier_points(controls)
+                else:
+                    start_node = node.child("start")
+                    mid_node = node.child("mid")
+                    end_node = node.child("end")
+                    if start_node and mid_node and end_node:
+                        asx, asy, _ = _xy(start_node)
+                        amx, amy, _ = _xy(mid_node)
+                        aex, aey, _ = _xy(end_node)
+                        local = outline_geom.arc_points((asx, asy), (amx, amy), (aex, aey))
+                poly = []
+                for lx, ly in local:
+                    gx, gy = _rotate(lx, ly, angle)
+                    poly.append((gx + fp.x, gy + fp.y))
+                if len(poly) < 2:
+                    continue
+                if fp_closed and len(poly) >= 3 and _graphic_is_filled(node):
+                    board.copper_shapes.append((layer_name, poly))
+                stroke = _stroke_width(node)
+                if stroke > 0:
+                    outline_pts = [*poly, poly[0]] if fp_closed and poly[-1] != poly[0] else poly
+                    board.copper_strokes.append((layer_name, outline_pts, stroke))
 
         for pad_node in fp_node.children("pad"):
             atoms = pad_node.atoms()
@@ -449,11 +638,105 @@ def parse(path: str | os.PathLike[str]) -> Board:
             size_atoms = size_node.atoms() if size_node else [0, 0]
             drill_node = pad_node.child("drill")
             drill = None
+            drill_size = None
+            drill_offset = (0.0, 0.0)
             if drill_node:
                 drill_atoms = [a for a in drill_node.atoms() if isinstance(a, (int, float))]
                 if drill_atoms:
                     drill = float(drill_atoms[0])
+                    # ``(drill oval w h)`` is a slot; a lone number is round
+                    drill_size = (
+                        (float(drill_atoms[0]), float(drill_atoms[1]))
+                        if len(drill_atoms) > 1
+                        else (drill, drill)
+                    )
+                offset_node = drill_node.child("offset")
+                if offset_node:
+                    ox, oy, _ = _xy(offset_node)
+                    drill_offset = (ox, oy)
             net_code, net_name = _net_of(pad_node, board.nets)
+            primitives: list[tuple] = []
+            options_node = pad_node.child("options")
+            anchor = "rect"
+            if options_node is not None:
+                stated = options_node.value("anchor")
+                if stated is not None:
+                    anchor = str(stated)
+            prim_node = pad_node.child("primitives")
+            if prim_node:
+                # each primitive keeps its own fill and stroke: a hollow
+                # circle is its ring of ink, not the disc it circles
+                for circle in prim_node.children("gr_circle"):
+                    centre, end = circle.child("center"), circle.child("end")
+                    if centre and end:
+                        ccx, ccy, _ = _xy(centre)
+                        cex, cey, _ = _xy(end)
+                        radius = math.dist((ccx, ccy), (cex, cey))
+                        if _graphic_is_filled(circle):
+                            primitives.append(("circle", ccx, ccy, radius))
+                        stroke = _stroke_width(circle)
+                        if stroke > 0:
+                            primitives.append(("ring", ccx, ccy, radius, stroke))
+                for poly in prim_node.children("gr_poly"):
+                    pts_node = poly.child("pts")
+                    pts: list[tuple[float, float]] = []
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(vals) >= 2:
+                                pts.append((float(vals[0]), float(vals[1])))
+                    if len(pts) >= 3:
+                        if _graphic_is_filled(poly):
+                            primitives.append(("poly", pts))
+                        stroke = _stroke_width(poly)
+                        if stroke > 0:
+                            primitives.append(("polyline", [*pts, pts[0]], stroke))
+                for rect in prim_node.children("gr_rect"):
+                    start, end = rect.child("start"), rect.child("end")
+                    if start and end:
+                        rsx, rsy, _ = _xy(start)
+                        rex, rey, _ = _xy(end)
+                        corners = [(rsx, rsy), (rex, rsy), (rex, rey), (rsx, rey)]
+                        if _graphic_is_filled(rect):
+                            primitives.append(("poly", corners))
+                        stroke = _stroke_width(rect)
+                        if stroke > 0:
+                            primitives.append(("polyline", [*corners, corners[0]], stroke))
+                for line in prim_node.children("gr_line"):
+                    start, end = line.child("start"), line.child("end")
+                    stroke = _stroke_width(line)
+                    if start and end and stroke > 0:
+                        lsx, lsy, _ = _xy(start)
+                        lex, ley, _ = _xy(end)
+                        primitives.append(("polyline", [(lsx, lsy), (lex, ley)], stroke))
+                # curved land features: an arc or a Bezier drawn inside the pad
+                for arc in prim_node.children("gr_arc"):
+                    start, mid, end = arc.child("start"), arc.child("mid"), arc.child("end")
+                    stroke = _stroke_width(arc)
+                    if start and mid and end and stroke > 0:
+                        asx0, asy0, _ = _xy(start)
+                        amx0, amy0, _ = _xy(mid)
+                        aex0, aey0, _ = _xy(end)
+                        primitives.append(
+                            (
+                                "polyline",
+                                outline_geom.arc_points((asx0, asy0), (amx0, amy0), (aex0, aey0)),
+                                stroke,
+                            )
+                        )
+                for curve in prim_node.children("gr_curve"):
+                    pts_node = curve.child("pts")
+                    stroke = _stroke_width(curve)
+                    controls: list[tuple[float, float]] = []
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(vals) >= 2:
+                                controls.append((float(vals[0]), float(vals[1])))
+                    if len(controls) >= 2 and stroke > 0:
+                        primitives.append(
+                            ("polyline", outline_geom.bezier_points(controls), stroke)
+                        )
             # Pad coordinates are relative to the footprint origin and rotated by
             # the footprint orientation. KiCad's RotatePoint works on a Y-down
             # canvas, hence the sign pattern below.
@@ -477,6 +760,10 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     net=net_name,
                     net_code=net_code,
                     roundrect_rratio=float(pad_node.value("roundrect_rratio", default=0.0) or 0.0),
+                    primitives=primitives,
+                    drill_size=drill_size,
+                    drill_offset=drill_offset,
+                    anchor=anchor,
                     zone_connect=(
                         int(zone_connect)
                         if (zone_connect := pad_node.value("zone_connect", default=None))
@@ -512,6 +799,8 @@ def parse(path: str | os.PathLike[str]) -> Board:
     for arc in root.children("arc"):
         sx, sy, _ = _xy(arc.child("start"))
         ex, ey, _ = _xy(arc.child("end"))
+        mid_node = arc.child("mid")
+        mx, my, _ = _xy(mid_node) if mid_node else (None, None, None)
         code, _ = _net_of(arc, board.nets)
         board.tracks.append(
             Track(
@@ -522,6 +811,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
                 code,
                 board.nets.get(code, ""),
                 kind="arc",
+                mid=(mx, my) if mid_node else None,
             )
         )
 
@@ -598,6 +888,68 @@ def parse(path: str | os.PathLike[str]) -> Board:
                 fills=fills,
             )
         )
+
+    # Graphics on a copper layer are copper. A filled shape contributes its
+    # area; an unfilled one still contributes its drawn stroke, and a line or
+    # arc IS its stroke - the ink is the copper either way.
+    for tag in ("gr_rect", "gr_circle", "gr_poly", "gr_line", "gr_arc", "gr_curve"):
+        for node in root.children(tag):
+            layer_name = str(node.value("layer", default=""))
+            if not layer_name.endswith(".Cu"):
+                continue
+            poly: list[tuple[float, float]] = []
+            closed = tag in ("gr_rect", "gr_circle", "gr_poly")
+            if tag == "gr_poly":
+                pts = node.child("pts")
+                if pts is not None:
+                    for xy in pts.children("xy"):
+                        atoms = xy.atoms()
+                        poly.append((float(atoms[0]), float(atoms[1])))
+            elif tag == "gr_rect":
+                start, end = node.child("start"), node.child("end")
+                if start is not None and end is not None:
+                    sx, sy, _ = _xy(start)
+                    ex, ey, _ = _xy(end)
+                    poly = [(sx, sy), (ex, sy), (ex, ey), (sx, ey)]
+            elif tag == "gr_circle":
+                centre, end = node.child("center"), node.child("end")
+                if centre is not None and end is not None:
+                    ccx, ccy, _ = _xy(centre)
+                    cex, cey, _ = _xy(end)
+                    poly = outline_geom.circle_points((ccx, ccy), math.dist((ccx, ccy), (cex, cey)))
+            elif tag == "gr_line":
+                start, end = node.child("start"), node.child("end")
+                if start is not None and end is not None:
+                    sx, sy, _ = _xy(start)
+                    ex, ey, _ = _xy(end)
+                    poly = [(sx, sy), (ex, ey)]
+            elif tag == "gr_curve":
+                # the Bezier as copper follows the curve, like the outline
+                pts = node.child("pts")
+                controls: list[tuple[float, float]] = []
+                if pts is not None:
+                    for xy in pts.children("xy"):
+                        atoms = xy.atoms()
+                        controls.append((float(atoms[0]), float(atoms[1])))
+                if len(controls) >= 2:
+                    poly = outline_geom.bezier_points(controls)
+            else:
+                start = node.child("start")
+                mid = node.child("mid")
+                end = node.child("end")
+                if start is not None and mid is not None and end is not None:
+                    asx, asy, _ = _xy(start)
+                    amx, amy, _ = _xy(mid)
+                    aex, aey, _ = _xy(end)
+                    poly = outline_geom.arc_points((asx, asy), (amx, amy), (aex, aey))
+            if len(poly) < 2:
+                continue
+            if closed and len(poly) >= 3 and _graphic_is_filled(node):
+                board.copper_shapes.append((layer_name, poly))
+            stroke = _stroke_width(node)
+            if stroke > 0:
+                outline_pts = [*poly, poly[0]] if closed and poly[-1] != poly[0] else poly
+                board.copper_strokes.append((layer_name, outline_pts, stroke))
 
     for tag in ("gr_line", "gr_arc", "gr_rect", "gr_circle", "gr_poly", "gr_curve"):
         for node in root.children(tag):

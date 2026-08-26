@@ -20,6 +20,21 @@ Segment = tuple[Point, Point]
 
 ARC_STEPS = 24
 _EPS = 1e-9
+# How far a chord may sit inside the true curve. A 100 mm-radius board edge
+# tessellated in 24 fixed steps sags 0.2 mm - twice the edge-clearance rule -
+# so the step count follows the radius instead of a constant.
+CHORD_TOLERANCE_MM = 0.02
+_MAX_CURVE_STEPS = 720
+
+
+def _steps_for(radius: float, sweep: float, floor: int) -> int:
+    """Subdivisions that keep the chord within ``CHORD_TOLERANCE_MM``."""
+    if radius <= CHORD_TOLERANCE_MM:
+        return max(2, floor)
+    per_chord = 2.0 * math.acos(max(-1.0, 1.0 - CHORD_TOLERANCE_MM / radius))
+    if per_chord <= 0:
+        return max(2, floor)
+    return max(2, floor, min(_MAX_CURVE_STEPS, math.ceil(abs(sweep) / per_chord)))
 
 
 def _arc_centre(a: Point, b: Point, c: Point) -> tuple[Point, float] | None:
@@ -52,7 +67,7 @@ def arc_points(start: Point, mid: Point, end: Point, steps: int = ARC_STEPS) -> 
         span = math.tau
     # The midpoint tells us which way round the circle the arc actually goes.
     sweep = span if turn(am) <= span else span - math.tau
-    steps = max(2, steps)
+    steps = _steps_for(radius, sweep, steps)
     return [
         (
             ux + radius * math.cos(a0 + sweep * i / steps),
@@ -63,7 +78,7 @@ def arc_points(start: Point, mid: Point, end: Point, steps: int = ARC_STEPS) -> 
 
 
 def circle_points(centre: Point, radius: float, steps: int = ARC_STEPS * 2) -> list[Point]:
-    steps = max(3, steps)
+    steps = max(3, _steps_for(radius, math.tau, steps))
     cx, cy = centre
     pts = [
         (cx + radius * math.cos(math.tau * i / steps), cy + radius * math.sin(math.tau * i / steps))
@@ -71,6 +86,42 @@ def circle_points(centre: Point, radius: float, steps: int = ARC_STEPS * 2) -> l
     ]
     pts.append(pts[0])
     return pts
+
+
+def bezier_points(controls: Sequence[Point], steps: int = ARC_STEPS) -> list[Point]:
+    """A cubic (or quadratic) Bezier evaluated, not its control cage joined.
+
+    KiCad's ``gr_curve`` stores endpoints and control points; the curve
+    passes through the ends and only *toward* the controls, so joining the
+    four as vertices detours through points no copper ever visits.
+    """
+    if len(controls) < 3:
+        return list(controls)
+    steps = max(4, steps)
+
+    def at(t: float) -> Point:
+        points = list(controls)
+        while len(points) > 1:
+            points = [
+                (
+                    points[i][0] + (points[i + 1][0] - points[i][0]) * t,
+                    points[i][1] + (points[i + 1][1] - points[i][1]) * t,
+                )
+                for i in range(len(points) - 1)
+            ]
+        return points[0]
+
+    # subdivide until the curve at each interval's midpoint sits within the
+    # chord tolerance of the chord - the same promise the arcs keep
+    while True:
+        pts = [at(i / steps) for i in range(steps + 1)]
+        worst = 0.0
+        for i in range(steps):
+            probe = at((i + 0.5) / steps)
+            worst = max(worst, _segment_distance(probe[0], probe[1], (pts[i], pts[i + 1])))
+        if worst <= CHORD_TOLERANCE_MM or steps >= _MAX_CURVE_STEPS:
+            return pts
+        steps = min(_MAX_CURVE_STEPS, steps * 2)
 
 
 def _chain(points: Sequence[Point], closed: bool = False) -> list[Segment]:
@@ -105,6 +156,8 @@ def flatten(edges: Iterable[dict[str, Any]], *, steps: int = ARC_STEPS) -> list[
             segments += _chain(circle_points(edge["centre"], edge["radius"], steps * 2))
         elif kind == "gr_arc" and start and end and edge.get("mid"):
             segments += _chain(arc_points(start, edge["mid"], end, steps))
+        elif kind == "gr_curve" and edge.get("polyline"):
+            segments += _chain(bezier_points(edge["polyline"], steps))
         elif edge.get("polyline"):
             polyline = edge["polyline"]
             segments += _chain(polyline, closed=kind == "gr_poly")
@@ -137,6 +190,62 @@ def is_closed(segments: Sequence[Segment], tol: float = 1e-3) -> bool:
             key = (round(point[0], digits), round(point[1], digits))
             degree[key] = degree.get(key, 0) + 1
     return all(count % 2 == 0 for count in degree.values())
+
+
+def chain_loop(segments: Sequence[Segment], tol: float = 1e-3) -> list[Segment] | None:
+    """The segments reordered into one closed walk, or None if they will not chain.
+
+    An outline is drawn as unordered pieces; measuring *along* it needs them
+    end to end. Greedy endpoint matching is enough because a valid outline
+    meets itself only at endpoints. A board with more than one loop (a cutout)
+    returns None - "along the rim" is ambiguous there and the caller should
+    say nothing rather than measure the wrong loop.
+    """
+    if len(segments) < 3:
+        return None
+    digits = max(0, -round(math.log10(tol)))
+
+    def key(point: Point) -> Point:
+        return (round(point[0], digits), round(point[1], digits))
+
+    remaining = list(segments)
+    walk = [remaining.pop(0)]
+    while remaining:
+        tail = key(walk[-1][1])
+        for i, (a, b) in enumerate(remaining):
+            if key(a) == tail:
+                walk.append(remaining.pop(i))
+                break
+            if key(b) == tail:
+                walk.append((b, a))
+                remaining.pop(i)
+                break
+        else:
+            return None  # a second loop, or a break in this one
+    if key(walk[-1][1]) != key(walk[0][0]):
+        return None
+    return walk
+
+
+def loop_position(point: Point, loop: Sequence[Segment]) -> float:
+    """Arc length along ``loop`` of the point on it nearest to ``point``."""
+    px, py = point
+    best = math.inf
+    position = 0.0
+    walked = 0.0
+    for (x1, y1), (x2, y2) in loop:
+        dx, dy = x2 - x1, y2 - y1
+        length = math.hypot(dx, dy)
+        if length < _EPS:
+            continue
+        t = ((px - x1) * dx + (py - y1) * dy) / (length * length)
+        t = 0.0 if t < 0.0 else (1.0 if t > 1.0 else t)
+        d = math.hypot(px - (x1 + t * dx), py - (y1 + t * dy))
+        if d < best:
+            best = d
+            position = walked + t * length
+        walked += length
+    return position
 
 
 def _segment_distance(px: float, py: float, seg: Segment) -> float:
