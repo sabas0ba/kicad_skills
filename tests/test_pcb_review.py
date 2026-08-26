@@ -1366,6 +1366,19 @@ def test_a_double_sided_pour_wants_its_rim_stitched():
     ]
     assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=inland, vias=[]))) == []
 
+    # nor is a pair that only clips one corner an edge plane: the rim has to
+    # carry ground on both faces along a good part of its length
+    corner = [
+        pcb.Zone(
+            net="GND",
+            layers=[layer],
+            filled=True,
+            fills=[(layer, [(0, 0), (8, 0), (8, 8), (0, 8)])],
+        )
+        for layer in ("F.Cu", "B.Cu")
+    ]
+    assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=corner, vias=[]))) == []
+
     # a single-sided pour has no sandwich to stitch
     single = [pours[0]]
     assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=single, vias=sparse))) == []

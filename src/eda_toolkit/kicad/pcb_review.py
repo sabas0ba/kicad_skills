@@ -124,6 +124,11 @@ FILLET_MM = 1.2
 # coupled: the 3W rule of every EMC checklist, kept as its classic value.
 CROSSTALK_SPACING_W = 3.0
 
+# How much of the rim needs ground fill on both faces before the stitching
+# pitch means anything. Below this the board has facing patches, not an edge
+# plane, and a fence with no posts is not a finding.
+RIM_POUR_COVERAGE = 0.5
+
 THERMAL_PAD_AREA_MM2 = 4.0
 THERMAL_PAD_MIN_SIDE_MM = 2.0
 
@@ -1666,16 +1671,45 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
     # does not declare its whole midline to be rim
     band = max(4.0, 0.08 * min(x1 - x0, y1 - y0))
 
-    # ...and the sandwich has to exist AT the rim. Two local ground patches in
-    # the middle of a board are not an edge plane, however faithfully they face
-    # each other: there is no edge-coupled return for a via to shorten, so the
-    # rule says nothing rather than reporting a fence with no posts.
-    def reaches_rim(polygons) -> bool:
-        return any(
-            0 <= board.edge_clearance_at(px, py) <= band for points in polygons for px, py in points
+    # ...and the sandwich has to exist AT the rim, along a good part of it.
+    # Two local ground patches in the middle of a board are not an edge plane,
+    # and neither is a pair that only clips one corner: there is no
+    # edge-coupled return for a via to shorten. The rim is walked instead, and
+    # at each step the question is whether ground fill lies just inside the
+    # edge on BOTH faces; below RIM_POUR_COVERAGE of that walk the rule says
+    # nothing rather than reporting a fence with no posts.
+    walls = {
+        layer: [list(itertools.pairwise([*points, points[0]])) for points in polygons]
+        for layer, polygons in fills_by_layer.items()
+    }
+    centre_x, centre_y = (x0 + x1) / 2, (y0 + y1) / 2
+    probes: list[tuple[float, float]] = []
+    stride = max(band / 2, sum(math.dist(a, b) for a, b in loop) / 400)
+    carried = 0.0
+    for (ax, ay), (bx, by) in loop:
+        seg = math.dist((ax, ay), (bx, by))
+        if seg <= GEOM_TOL:
+            continue
+        ux, uy = (bx - ax) / seg, (by - ay) / seg
+        inx, iny = -uy, ux
+        if (centre_x - ax) * inx + (centre_y - ay) * iny < 0:
+            inx, iny = -inx, -iny
+        walked = carried
+        while walked < seg:
+            probes.append((ax + ux * walked + inx * band / 2, ay + uy * walked + iny * band / 2))
+            walked += stride
+        carried = walked - seg
+    if not probes:
+        return []
+    covered = sum(
+        1
+        for px, py in probes
+        if all(
+            any(outline_geom.contains((px, py), polygon) for polygon in polygons)
+            for polygons in walls.values()
         )
-
-    if not all(reaches_rim(polygons) for polygons in fills_by_layer.values()):
+    )
+    if covered < len(probes) * RIM_POUR_COVERAGE:
         return []
 
     fill_segments = {

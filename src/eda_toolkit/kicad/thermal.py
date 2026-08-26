@@ -125,6 +125,24 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
         near = (cx - (ax + t * dx)) ** 2 + (cy - (ay + t * dy)) ** 2 <= half * half
         masks[layer][iy0:iy1, ix0:ix1] |= near
 
+        # Copper narrower than a cell can pass between every centre - a 0.2 mm
+        # trace on the default half-millimetre grid vanishes entirely, and
+        # whether it does depends on where the outline's origin happens to
+        # fall. So the centreline is rasterized too: the cells it crosses are
+        # copper whatever the phase. A trace thinner than the cell is then
+        # modelled one cell wide, which overstates that run's conductance -
+        # bounded, stated in the guide, and a great deal better than a heat
+        # path that is simply absent.
+        span_mm = math.hypot(dx, dy)
+        samples = max(2, int(span_mm / (step / 2)) + 1)
+        ts = np.linspace(0.0, 1.0, samples)
+        px = ((ax + dx * ts) - x0) / step
+        py = ((ay + dy * ts) - y0) / step
+        ix = px.astype(int)
+        iy = py.astype(int)
+        keep = (ix >= 0) & (ix < nx) & (iy >= 0) & (iy < ny)
+        masks[layer][iy[keep], ix[keep]] = True
+
     for track in board.tracks:
         if track.layer not in masks:
             continue

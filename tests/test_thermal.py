@@ -11,6 +11,7 @@ import math
 
 import pytest
 
+from eda_toolkit.kicad import pcb as pcb_mod
 from eda_toolkit.kicad import thermal
 
 
@@ -278,3 +279,24 @@ def test_an_elongated_pad_lands_on_the_diagonal_kicad_drew_it_on():
     assert end_y < 0  # up-and-right on a y-down canvas
     correlation = float(np.corrcoef(cx - 20, cy - 15)[0, 1])
     assert correlation < -0.5, f"pad lies on the wrong diagonal ({correlation:+.2f})"
+
+
+def test_a_trace_thinner_than_a_cell_does_not_vanish():
+    """Copper must not disappear on where the grid's phase happens to fall.
+
+    A 0.2 mm trace on the default half-millimetre grid can pass between every
+    cell centre; sampled that way it contributes nothing at all, and whether
+    it does depends only on the outline's origin.
+    """
+    board = _Board()
+    board.tracks = [pcb_mod.Track((5.0, 10.0), (35.0, 10.0), 0.2, "F.Cu", 1, "SIG")]
+    masks, _ = thermal._copper_masks(board, 0.0, 0.0, 80, 60, 0.5)
+    on_grid = int(masks["F.Cu"].sum())
+
+    shifted = _Board()
+    shifted.tracks = [pcb_mod.Track((5.0, 10.17), (35.0, 10.17), 0.2, "F.Cu", 1, "SIG")]
+    masks2, _ = thermal._copper_masks(shifted, 0.0, 0.0, 80, 60, 0.5)
+    off_grid = int(masks2["F.Cu"].sum())
+
+    assert on_grid > 50, f"a 30 mm trace left {on_grid} cells of copper"
+    assert abs(on_grid - off_grid) <= 2, "the answer moved with the grid's phase"
