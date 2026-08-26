@@ -300,3 +300,16 @@ def test_a_trace_thinner_than_a_cell_does_not_vanish():
 
     assert on_grid > 50, f"a 30 mm trace left {on_grid} cells of copper"
     assert abs(on_grid - off_grid) <= 2, "the answer moved with the grid's phase"
+
+
+def test_a_pad_smaller_than_a_cell_does_not_vanish():
+    """The same phase trap the traces had: a fine-pitch pin must stay put."""
+    counts = []
+    for offset in (0.0, 0.25):
+        pad = _Pad(10 + offset, 10 + offset, w=0.2, h=0.2, layers=("F.Cu",))
+        pad.shape = "rect"
+        board = _Board(footprints=[_Part("U1", 10 + offset, 10 + offset, half=1.0, pads=[pad])])
+        masks, _ = thermal._copper_masks(board, 0.0, 0.0, 80, 60, 0.5)
+        counts.append(int(masks["F.Cu"].sum()))
+    assert all(c >= 1 for c in counts), f"the pad vanished at some phase: {counts}"
+    assert counts[0] == counts[1], f"the answer moved with the grid's phase: {counts}"

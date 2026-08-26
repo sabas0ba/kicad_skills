@@ -305,10 +305,19 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
             # and every consumer takes `mask & inside` with the holes already
             # out of `inside`. Subtracting a centred circle a second time
             # would erase real annular copper somewhere the hole is not.
+            # A pad smaller than a cell can sit between every centre, the way
+            # a thin trace can: the cell holding its centre is copper whatever
+            # the grid's phase, so a fine-pitch pin never disappears from the
+            # package it feeds.
+            seat_x = int((pad.x - x0) / step)
+            seat_y = int((pad.y - y0) / step)
+            seated = 0 <= seat_x < nx and 0 <= seat_y < ny
             for layer, mask in masks.items():
                 suffix = layer.split(".")[-1]
                 if any(pl == layer or pl == f"*.{suffix}" for pl in pad.layers):
                     mask[iy0:iy1, ix0:ix1] |= inside
+                    if seated:
+                        mask[seat_y, seat_x] = True
 
     for zone in board.zones:
         if zone.keepout:
