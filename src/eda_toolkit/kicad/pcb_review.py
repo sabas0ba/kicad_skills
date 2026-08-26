@@ -1662,6 +1662,22 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
     if loop is None:
         return []
 
+    # rim-local: scaled by the board's SHORT side, so a long narrow board
+    # does not declare its whole midline to be rim
+    band = max(4.0, 0.08 * min(x1 - x0, y1 - y0))
+
+    # ...and the sandwich has to exist AT the rim. Two local ground patches in
+    # the middle of a board are not an edge plane, however faithfully they face
+    # each other: there is no edge-coupled return for a via to shorten, so the
+    # rule says nothing rather than reporting a fence with no posts.
+    def reaches_rim(polygons) -> bool:
+        return any(
+            0 <= board.edge_clearance_at(px, py) <= band for points in polygons for px, py in points
+        )
+
+    if not all(reaches_rim(polygons) for polygons in fills_by_layer.values()):
+        return []
+
     fill_segments = {
         layer: [list(itertools.pairwise([*points, points[0]])) for points in polygons]
         for layer, polygons in fills_by_layer.items()
@@ -1678,9 +1694,6 @@ def rule_stitching_pitch(ctx: PcbContext) -> list[Finding]:
             for polygons in fill_segments.values()
         )
 
-    # rim-local: scaled by the board's SHORT side, so a long narrow board
-    # does not declare its whole midline to be rim
-    band = max(4.0, 0.08 * min(x1 - x0, y1 - y0))
     rim = [
         (via.x, via.y)
         for via in board.vias

@@ -1348,6 +1348,24 @@ def test_a_double_sided_pour_wants_its_rim_stitched():
     quiet = pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=lapped, vias=overlap_ring)))
     assert quiet == []
 
+    # two local patches facing each other in the middle of the board are not
+    # an edge plane: there is no rim sandwich, so the rule has nothing to say
+    inland = [
+        pcb.Zone(
+            net="GND",
+            layers=["F.Cu"],
+            filled=True,
+            fills=[("F.Cu", [(20, 15), (30, 15), (30, 25), (20, 25)])],
+        ),
+        pcb.Zone(
+            net="GND",
+            layers=["B.Cu"],
+            filled=True,
+            fills=[("B.Cu", [(21, 16), (29, 16), (29, 24), (21, 24)])],
+        ),
+    ]
+    assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=inland, vias=[]))) == []
+
     # a single-sided pour has no sandwich to stitch
     single = [pours[0]]
     assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=single, vias=sparse))) == []
