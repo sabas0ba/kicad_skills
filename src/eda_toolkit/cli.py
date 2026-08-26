@@ -539,9 +539,15 @@ def cmd_pcb_electrical(args: argparse.Namespace) -> int:
     from .kicad import electrical, pcb
 
     board_path = pcb.find_board(args.target)
-    payload = electrical.analyse(
-        pcb.parse(board_path), temperature_rise_c=args.temperature_rise, solve=args.solve
-    )
+    try:
+        payload = electrical.analyse(
+            pcb.parse(board_path), temperature_rise_c=args.temperature_rise, solve=args.solve
+        )
+    except ValueError as exc:
+        # --solve refuses a cross-section it cannot mesh affordably; that is a
+        # property of the board, so it belongs in the error channel and not in
+        # a traceback
+        raise EdaError(str(exc)) from exc
     payload["board"] = str(board_path)
     if args.top:
         payload["nets"] = payload["nets"][: args.top]

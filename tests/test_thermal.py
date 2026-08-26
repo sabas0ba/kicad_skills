@@ -251,3 +251,30 @@ def test_an_offset_drill_removes_copper_where_the_hole_is():
     assert front[cell(23, 15)]  # ...and so is the annulus around the real hole
     assert holes[cell(23, 15)]  # the hole itself is where the file put it
     assert not holes[cell(20, 15)]
+
+
+def test_an_elongated_pad_lands_on_the_diagonal_kicad_drew_it_on():
+    """Board space to pad-local is the inverse of KiCad's rotation.
+
+    Applying the forward rotation instead mirrors the pad: a 4x1 land at
+    45 degrees rasterizes along the other diagonal, which invents copper
+    beside whatever it should have missed.
+    """
+    import numpy as np
+
+    from eda_toolkit.kicad import pcb
+
+    pad = _Pad(20, 15, w=4.0, h=1.0, layers=("F.Cu",))
+    pad.shape = "rect"
+    pad.angle = 45.0
+    board = _Board(footprints=[_Part("U1", 20, 15, half=3.0, pads=[pad])])
+    masks, _ = thermal._copper_masks(board, 0.0, 0.0, 400, 300, 0.1)
+    ys, xs = np.nonzero(masks["F.Cu"])
+    assert len(xs) > 0
+    cx, cy = (xs + 0.5) * 0.1, (ys + 0.5) * 0.1
+
+    # KiCad puts the far end of the long axis here; the copper must follow
+    _, end_y = pcb._rotate(2.0, 0.0, 45.0)
+    assert end_y < 0  # up-and-right on a y-down canvas
+    correlation = float(np.corrcoef(cx - 20, cy - 15)[0, 1])
+    assert correlation < -0.5, f"pad lies on the wrong diagonal ({correlation:+.2f})"

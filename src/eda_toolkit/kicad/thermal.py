@@ -183,8 +183,9 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
                     hangle = math.radians((getattr(pad, "angle", 0.0) or 0.0) + (fp.angle or 0.0))
                     hcos, hsin = math.cos(hangle), math.sin(hangle)
                     hdx, hdy = hcx - pad.x, hcy - pad.y
-                    lx = hdx * hcos + hdy * hsin - dox
-                    ly = -hdx * hsin + hdy * hcos - doy
+                    # board space -> pad-local is the INVERSE of _rotate
+                    lx = hdx * hcos - hdy * hsin - dox
+                    ly = hdx * hsin + hdy * hcos - doy
                     if dw >= dht:
                         radius = dht / 2
                         t = np.clip(lx, -(dw / 2 - radius), dw / 2 - radius)
@@ -214,8 +215,10 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
             angle = math.radians((getattr(pad, "angle", 0.0) or 0.0) + (fp.angle or 0.0))
             cos_a, sin_a = math.cos(angle), math.sin(angle)
             dx, dy = cx - pad.x, cy - pad.y
-            local_x = dx * cos_a + dy * sin_a
-            local_y = -dx * sin_a + dy * cos_a
+            # _rotate takes pad-local to board space; going back wants its
+            # inverse, or an elongated pad lands on the opposite diagonal
+            local_x = dx * cos_a - dy * sin_a
+            local_y = dx * sin_a + dy * cos_a
             half_w, half_h = pad.size[0] / 2, pad.size[1] / 2
             shape = getattr(pad, "shape", "rect")
             if shape == "circle" or (shape == "oval" and abs(half_w - half_h) < 1e-9):
