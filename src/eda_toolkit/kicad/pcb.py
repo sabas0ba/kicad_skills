@@ -476,7 +476,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
             uuid=str(fp_node.value("uuid", default="")),
         )
         courtyard_segs: list[tuple[tuple[float, float], tuple[float, float]]] = []
-        for shape in ("fp_line", "fp_rect", "fp_poly", "fp_circle", "fp_arc"):
+        for shape in ("fp_line", "fp_rect", "fp_poly", "fp_circle", "fp_arc", "fp_curve"):
             for node in fp_node.children(shape):
                 if not str(node.value("layer", default="")).endswith(".CrtYd"):
                     continue
@@ -508,18 +508,34 @@ def parse(path: str | os.PathLike[str]) -> Board:
                         amx, amy, _ = _xy(mid_node)
                         aex, aey, _ = _xy(end_node)
                         raw += outline_geom.arc_points((asx, asy), (amx, amy), (aex, aey), 8)
+                elif shape == "fp_curve":
+                    # the Bezier as its curve: the control points are not on it,
+                    # and a courtyard is the area the part occupies
+                    pts_node = node.child("pts")
+                    controls: list[tuple[float, float]] = []
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            vals = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(vals) >= 2:
+                                controls.append((float(vals[0]), float(vals[1])))
+                    if len(controls) >= 2:
+                        raw += outline_geom.bezier_points(controls)
                 else:
                     for key in ("start", "end", "center"):
                         child = node.child(key)
                         if child:
                             cx, cy, _ = _xy(child)
                             raw.append((cx, cy))
-                pts_node = node.child("pts")
-                if pts_node:
-                    for xy in pts_node.children("xy"):
-                        atoms = [a for a in xy.atoms() if isinstance(a, (int, float))]
-                        if len(atoms) >= 2:
-                            raw.append((float(atoms[0]), float(atoms[1])))
+                if shape != "fp_curve":
+                    # a curve's pts ARE its control cage, already consumed
+                    # above: appending them here would put the points the
+                    # curve never visits back into the courtyard
+                    pts_node = node.child("pts")
+                    if pts_node:
+                        for xy in pts_node.children("xy"):
+                            atoms = [a for a in xy.atoms() if isinstance(a, (int, float))]
+                            if len(atoms) >= 2:
+                                raw.append((float(atoms[0]), float(atoms[1])))
                 placed = []
                 for cx, cy in raw:
                     gx, gy = _rotate(cx, cy, angle)

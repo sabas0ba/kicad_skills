@@ -338,3 +338,19 @@ def test_a_custom_pads_anchor_shape_is_kept(tmp_path):
     path = tmp_path / "an.kicad_pcb"
     path.write_text(body, encoding="utf-8")
     assert pcb.parse(path).footprints[0].pads[0].anchor == "circle"
+
+
+def test_a_curved_courtyard_follows_its_curve(tmp_path):
+    """fp_curve bounds an area too, and its control points are not on it."""
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:c" (layer "F.Cu") (at 0 0 0)'
+        "    (fp_curve (pts (xy 0 0) (xy 0 10) (xy 10 10) (xy 10 0))"
+        '      (layer "F.CrtYd"))))'
+    )
+    path = tmp_path / "cc.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    fp = pcb.parse(path).footprints[0]
+    assert len(fp.courtyard) > 8
+    # the cubic's apex is 7.5; the control cage would reach 10
+    assert max(y for _, y in fp.courtyard) == pytest.approx(7.5, abs=0.05)

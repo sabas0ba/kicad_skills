@@ -101,6 +101,37 @@ tight = d['nets'][0]
 print(f\"tightest net {tight['net']}: {tight['narrowest_mm']} mm -> {tight['current_a']} A\")
 "
 
+# The impedance half of this command needs a stackup that states epsilon_r,
+# and this fixture declares no stackup at all - so what smoke can prove here
+# is the wiring: the flag parses, the solve path runs, and the JSON says it
+# was asked for. Every solved number itself is covered by tests/test_field2d.py
+# and tests/test_electrical.py against references that are not other models.
+step "copper: the field solver is wired to the flag"
+eda pcb electrical "$PROJECT" --solve > "$OUT/electrical-solved.json"
+have "$OUT/electrical-solved.json" \
+  "any('field solver' in note for note in d['notes'])"
+have "$OUT/electrical-solved.json" \
+  "all('width_50r_solved_ohm' in row for row in d['impedance'] if row.get('width_50r_mm'))"
+python3 -c "
+import json
+d = json.load(open('$OUT/electrical-solved.json'))
+rows = d['impedance']
+print(f'{len(rows)} impedance row(s); solved columns present where a width was proposed')
+"
+
+step "thermal: where the stated watts end up"
+eda pcb thermal "$PROJECT" --power U1=1.2 -o "$OUT/thermal" > "$OUT/thermal.json"
+have "$OUT/thermal.json" \
+  "d['max_temperature_c'] > d['ambient_c'] and d['balance']['residual'] < 0.01"
+test -s "$OUT/thermal/thermal.png"
+python3 -c "
+import json
+d = json.load(open('$OUT/thermal.json'))
+hot = d['parts'][0]
+print(f\"{hot['ref']} at {hot['power_w']} W: {hot['temperature_c']} degC, \"
+      f\"balance residual {d['balance']['residual']}\")
+"
+
 step "bill of materials"
 eda sch bom "$PROJECT" -o "$OUT/bom.csv" > "$OUT/bom.json"
 have "$OUT/bom.json" "d['total_parts'] == 5 and d['line_items'] >= 3"
