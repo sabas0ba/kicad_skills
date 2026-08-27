@@ -5541,13 +5541,24 @@ def _stitch_vias(design: Design) -> list[Via]:
     rim: list[tuple[float, float]] = []
     step = 10.0
     left, top, right, bottom = x0 + inset, y0 + inset, x1 - inset, y1 - inset
+    # The ring carries the direction its edge runs in, because a candidate
+    # that lands on a pad is not a candidate to give up on: it is one to slide
+    # along the rim until it finds room. Dropping it instead is what left the
+    # boards with 20-40 mm gaps against `emc.stitching_pitch`'s 18 - the
+    # congested stretches, which are the ones the rule is about, were exactly
+    # the stretches where every candidate collided with something.
+    # (x, y, along, inward): the direction the edge runs in, and the direction
+    # that goes deeper into the band rather than out over the board edge.
+    ring: list[tuple[float, float, tuple[float, float], tuple[float, float]]] = []
     x = left
     while x < right + 0.01:
-        rim += [(round(x, 2), round(top, 2)), (round(x, 2), round(bottom, 2))]
+        ring.append((round(x, 2), round(top, 2), (1.0, 0.0), (0.0, 1.0)))
+        ring.append((round(x, 2), round(bottom, 2), (1.0, 0.0), (0.0, -1.0)))
         x += step
     y = top + step
     while y < bottom - 0.01:
-        rim += [(round(left, 2), round(y, 2)), (round(right, 2), round(y, 2))]
+        ring.append((round(left, 2), round(y, 2), (0.0, 1.0), (1.0, 0.0)))
+        ring.append((round(right, 2), round(y, 2), (0.0, 1.0), (-1.0, 0.0)))
         y += step
     # The interior: purpose first, mesh second. A hand-stitched board puts
     # its vias where the plane needs them - beside every place a signal
@@ -5617,6 +5628,31 @@ def _stitch_vias(design: Design) -> list[Via]:
         return all(math.dist((vx, vy), hole) >= 1.2 for hole in holes)
 
     kept: list[Via] = []
+    # Along the rim first, then one row deeper into the band the rule measures.
+    # Half a step either way is as far as a via can move and still be the one
+    # that belongs at this station rather than its neighbour's.
+    offsets = [0.0]
+    reach = 0.5
+    while reach <= step / 2 + 0.01:
+        offsets += [reach, -reach]
+        reach += 0.5
+
+    def _room_on_the_rim(vx, vy, along, inward):
+        """The nearest spot on this stretch of rim that a via actually fits."""
+        for depth in (0.0, 1.5):
+            for offset in offsets:
+                px = round(vx + along[0] * offset + inward[0] * depth, 2)
+                py = round(vy + along[1] * offset + inward[1] * depth, 2)
+                if clears(px, py):
+                    return (px, py)
+        return None
+
+    for vx, vy, along, inward in ring:
+        placed = _room_on_the_rim(vx, vy, along, inward)
+        if placed is not None:
+            holes.append(placed)
+            kept.append(Via(POUR_NET, x=placed[0], y=placed[1]))
+
     for vx, vy in rim:
         if clears(vx, vy):
             holes.append((vx, vy))
