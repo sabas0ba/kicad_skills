@@ -410,14 +410,16 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "a ground pour whose largest connected island holds less than "
         "`min_pour_island_fraction` of its filled copper - the tracks crossing "
         "it have cut the plane into pieces, and a return that starts on one of "
-        "them has to leave the layer to get home",
+        "them has to leave the layer to get home. Ground vias join two islands "
+        "only where they land on one connected piece of far-side copper",
         "warning",
         threshold="min_pour_island_fraction",
     ),
     "layout.pour_single_sided": RuleSpec(
         "a two-layer board whose ground pour covers only one face - the other "
         "face's spare copper is doing nothing, and its edge traces have no "
-        "adjacent return",
+        "adjacent return. Read from the fills KiCad computed, not the layers "
+        "the zone declares",
         "info",
     ),
     "silk.missing_reference": RuleSpec(
@@ -1790,11 +1792,23 @@ def rule_pour_sides(ctx: PcbContext) -> list[Finding]:
     board = ctx.board
     if len(board.copper_layers) != 2:
         return []
-    ground_layers = set()
+    # The layers the fill actually reached, not the ones the zones asked for:
+    # a zone that requests both faces and fills one is a one-sided pour on the
+    # finished board, and `layout.unfilled_zone` does not cover the partial
+    # case. The fallback to the stated layers is for a board nobody has filled
+    # yet - which is that rule's business, not this one's - so it is asked of
+    # the board as a whole. Per zone it would let one unfilled zone declaring
+    # both faces speak for a board whose only real copper is on one.
+    filled = set()
+    declared = set()
     for zone in board.zones:
         if zone.keepout or not netlist_helpers_is_ground(zone.net):
             continue
-        ground_layers.update(layer for layer in zone.layers if layer.endswith(".Cu"))
+        filled |= {
+            layer for layer, points in zone.fills if layer.endswith(".Cu") and len(points) >= 3
+        }
+        declared |= {layer for layer in zone.layers if layer.endswith(".Cu")}
+    ground_layers = filled or declared
     if not ground_layers or len(ground_layers) >= 2:
         return []
     return [
@@ -1831,12 +1845,10 @@ def rule_pour_fragmented(ctx: PcbContext) -> list[Finding]:
     """
     limit = ctx.thresholds["min_pour_island_fraction"]
     findings = []
+    region_cache: dict = {}
     for zone in ctx.board.zones:
         if zone.keepout or not zone.filled or not netlist_helpers_is_ground(zone.net):
             continue
-        # a via of the pour's own net reaches the other side of the board,
-        # which is where two pieces of this pour meet each other
-        stitches = [(via.x, via.y) for via in ctx.board.vias if via.net == zone.net]
         by_layer: dict[str, list[list[tuple[float, float]]]] = {}
         for layer, points in zone.fills:
             if len(points) >= 3:
@@ -1846,7 +1858,12 @@ def rule_pour_fragmented(ctx: PcbContext) -> list[Finding]:
             total = sum(areas)
             if total <= 0:
                 continue
-            islands = _merge_touching(polygons, areas, stitches)
+            # two pieces meet through the other side only where a via of
+            # this net lands on one connected fill there, so the vias are
+            # grouped by the far-side copper they actually share
+            islands = _merge_touching(
+                polygons, areas, _stitch_groups(ctx.board, zone.net, region_cache)
+            )
             largest = max(islands)
             share = largest / total
             if share >= limit - 1e-9 or len(islands) < 2:
@@ -1980,7 +1997,74 @@ def _polygon_area(points: list[tuple[float, float]]) -> float:
     return total / 2
 
 
-def _polygons_touch(a: list[tuple[float, float]], b: list[tuple[float, float]]) -> bool:
+def _poly_bbox(points: Sequence[tuple[float, float]]) -> tuple[float, float, float, float]:
+    """The polygon's extent, computed once so the pairwise loops can reuse it.
+
+    A fill polygon on a real board carries thousands of vertices, and the
+    quadratic loops below ask about every pair of them; recomputing the extent
+    inside the gate makes the cheap test the expensive one.
+    """
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _boxes_meet(a: tuple[float, float, float, float], b, tol: float = 1e-6) -> bool:
+    """Whether two extents share any area *or* any edge.
+
+    Not `_boxes_overlap`, further down, which asks for a real intersection: two
+    fill polygons welded along one line are the same copper, and their boxes
+    touch without overlapping at all.
+    """
+    return not (a[2] < b[0] - tol or b[2] < a[0] - tol or a[3] < b[1] - tol or b[3] < a[1] - tol)
+
+
+# How finely the edge index below divides the board. Small enough that a cell
+# holds a handful of a fill's edges, large enough that a zone outline's long
+# sides are not filed under thousands of them.
+_EDGE_CELL_MM = 0.5
+
+
+def _edge_index(points: Sequence[tuple[float, float]]) -> tuple[list, dict, dict]:
+    """The polygon's edges, filed by the cells and the rows they pass through.
+
+    KiCad writes a filled plane as one polygon of fifteen thousand vertices,
+    and asking whether two of those touch by trying every edge against every
+    other edge is two hundred million segment tests for a single pair. Two
+    edges can only meet inside a cell they both occupy, so filing them by cell
+    first turns the question into the few edges that run near each other.
+
+    The rows serve the other question asked of these polygons - whether a via
+    lands inside one - because a ray cast only counts the edges whose vertical
+    span contains the point. The jetson demo board has three thousand vias and
+    a ground plane of eighty thousand vertices on each of four layers, which
+    is six billion vertex visits asked one edge at a time. Both answers are
+    the ones the exhaustive passes give; only the work differs.
+    """
+    edges = list(zip(points, [*points[1:], points[0]], strict=True))
+    cells: dict[tuple[int, int], list[int]] = {}
+    rows: dict[int, list[int]] = {}
+    tol = 1e-6
+    for index, (p0, p1) in enumerate(edges):
+        cx0 = math.floor((min(p0[0], p1[0]) - tol) / _EDGE_CELL_MM)
+        cx1 = math.floor((max(p0[0], p1[0]) + tol) / _EDGE_CELL_MM)
+        cy0 = math.floor((min(p0[1], p1[1]) - tol) / _EDGE_CELL_MM)
+        cy1 = math.floor((max(p0[1], p1[1]) + tol) / _EDGE_CELL_MM)
+        for cy in range(cy0, cy1 + 1):
+            rows.setdefault(cy, []).append(index)
+            for cx in range(cx0, cx1 + 1):
+                cells.setdefault((cx, cy), []).append(index)
+    return edges, cells, rows
+
+
+def _polygons_touch(
+    a: list[tuple[float, float]],
+    b: list[tuple[float, float]],
+    a_box: tuple[float, float, float, float] | None = None,
+    b_box: tuple[float, float, float, float] | None = None,
+    a_index: tuple[list, dict, dict] | None = None,
+    b_index: tuple[list, dict, dict] | None = None,
+) -> bool:
     """Whether two filled polygons share copper - overlap, or touch on an edge.
 
     The bounding boxes are the cheap gate; a real board's fill polygons are
@@ -1988,21 +2072,28 @@ def _polygons_touch(a: list[tuple[float, float]], b: list[tuple[float, float]]) 
     edges have to be asked. Generated fills are rectangles, where the box test
     is already exact and the edge pass agrees with it.
     """
-    ax0, ay0 = min(p[0] for p in a), min(p[1] for p in a)
-    ax1, ay1 = max(p[0] for p in a), max(p[1] for p in a)
-    bx0, by0 = min(p[0] for p in b), min(p[1] for p in b)
-    bx1, by1 = max(p[0] for p in b), max(p[1] for p in b)
-    tol = 1e-6
-    if ax1 < bx0 - tol or bx1 < ax0 - tol or ay1 < by0 - tol or by1 < ay0 - tol:
+    if not _boxes_meet(a_box or _poly_bbox(a), b_box or _poly_bbox(b)):
         return False
-    a_edges = list(zip(a, [*a[1:], a[0]], strict=True))
-    b_edges = list(zip(b, [*b[1:], b[0]], strict=True))
-    for p0, p1 in a_edges:
-        for q0, q1 in b_edges:
-            if _segments_meet(p0, p1, q0, q1):
-                return True
+    a_edges, a_cells, _ = a_index or _edge_index(a)
+    b_edges, b_cells, _ = b_index or _edge_index(b)
+    if len(b_cells) < len(a_cells):  # walk the smaller index
+        a_edges, a_cells, b_edges, b_cells = b_edges, b_cells, a_edges, a_cells
+    for cell, mine in a_cells.items():
+        theirs = b_cells.get(cell)
+        if not theirs:
+            continue
+        for i in mine:
+            p0, p1 = a_edges[i]
+            for j in theirs:
+                q0, q1 = b_edges[j]
+                if _segments_meet(p0, p1, q0, q1):
+                    return True
     # one wholly inside the other still shares copper
     return _point_in_polygon(a[0], b) or _point_in_polygon(b[0], a)
+
+
+def _point_in_box(point: tuple[float, float], box, tol: float = 1e-6) -> bool:
+    return box[0] - tol <= point[0] <= box[2] + tol and box[1] - tol <= point[1] <= box[3] + tol
 
 
 def _segments_meet(p0, p1, q0, q1) -> bool:
@@ -2036,10 +2127,169 @@ def _point_in_polygon(point, polygon) -> bool:
     return inside
 
 
+def _point_in_polygon_indexed(point, polygon, index) -> bool:
+    """`_point_in_polygon`, asking only the edges that can straddle the point.
+
+    The ray cast counts edges whose vertical span contains the point's y; on a
+    plane fill of eighty thousand vertices the rest are known not to matter
+    before any arithmetic happens, and a board's worth of vias asks this
+    question tens of thousands of times.
+    """
+    edges, _cells, rows = index
+    band = rows.get(math.floor(point[1] / _EDGE_CELL_MM))
+    if not band:
+        return False
+    x, y = point
+    inside = False
+    for i in band:
+        (x0, y0), (x1, y1) = edges[i]
+        if (y0 > y) != (y1 > y) and x < (x1 - x0) * (y - y0) / (y1 - y0 or 1e-12) + x0:
+            inside = not inside
+    return inside
+
+
+def _fill_regions(
+    polygons: list[list[tuple[float, float]]],
+) -> list[list[list[tuple[float, float]]]]:
+    """The polygons grouped into pieces of connected copper."""
+    parent = list(range(len(polygons)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    boxes = [_poly_bbox(poly) for poly in polygons]
+    indexes = [_edge_index(poly) for poly in polygons]
+    for i, one in enumerate(polygons):
+        for j in range(i + 1, len(polygons)):
+            if not _boxes_meet(boxes[i], boxes[j]) or find(i) == find(j):
+                continue
+            if _polygons_touch(one, polygons[j], boxes[i], boxes[j], indexes[i], indexes[j]):
+                parent[find(i)] = find(j)
+    groups: dict[int, list[list[tuple[float, float]]]] = {}
+    for index, polygon in enumerate(polygons):
+        groups.setdefault(find(index), []).append(polygon)
+    return list(groups.values())
+
+
+# Each region is a list of (polygon, extent, edge index) for one piece of copper.
+_Regions = dict[str, list[list[tuple[list[tuple[float, float]], tuple, tuple]]]]
+
+
+def _ground_stitching(board: Any, net: str, cache: dict) -> tuple[_Regions, dict]:
+    """``net``'s fill grouped into connected regions, and the vias tying them.
+
+    Neither answer depends on the layer being asked about, and both are the
+    expensive part of this file - the grouping is quadratic in the fills, and
+    the via lookup is every via against every region. Computing them once per
+    net is the difference between the jetson demo board taking a minute and
+    not finishing: it carries a dozen ground zones over ten copper layers, and
+    the fragmentation rule walks every zone-and-layer pair of them.
+
+    The vias are grouped by *connected* copper, not by the one region each
+    happens to sit in. A via that reaches two regions welds them, so a chain -
+    front island to an inner region, a buried via on to a second inner region,
+    another via back up to a second front island - is one piece of ground, and
+    the two front islands are one island. Grouping per region would call that
+    board fragmented.
+    """
+    if net in cache:
+        return cache[net]
+
+    fills: dict[str, list[list[tuple[float, float]]]] = {}
+    for zone in board.zones:
+        if zone.keepout or not netlist_helpers_is_ground(zone.net) or zone.net != net:
+            continue
+        for layer, points in zone.fills:
+            if len(points) >= 3:
+                fills.setdefault(layer, []).append(points)
+    regions: _Regions = {
+        layer: [
+            [(poly, _poly_bbox(poly), _edge_index(poly)) for poly in region]
+            for region in _fill_regions(polys)
+        ]
+        for layer, polys in fills.items()
+    }
+
+    # One node per region of copper, welded together by the vias that land in
+    # more than one of them.
+    nodes = {
+        (layer, index): number
+        for number, (layer, index) in enumerate(
+            (layer, index) for layer, regs in regions.items() for index in range(len(regs))
+        )
+    }
+    parent = list(range(len(nodes)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    order = {layer: i for i, layer in enumerate(board.copper_layers)}
+    landings: list[tuple[tuple[float, float], int]] = []
+    for via in board.vias:
+        if via.net != net:
+            continue
+        indices = [order[layer] for layer in getattr(via, "layers", []) if layer in order]
+        span = (
+            set(board.copper_layers[min(indices) : max(indices) + 1])
+            if len(indices) >= 2
+            else set(board.copper_layers)
+        )
+        point = (via.x, via.y)
+        reached = []
+        for layer, layer_regions in regions.items():
+            if layer not in span:
+                continue
+            for index, region in enumerate(layer_regions):
+                if any(
+                    _point_in_box(point, box) and _point_in_polygon_indexed(point, poly, edges)
+                    for poly, box, edges in region
+                ):
+                    reached.append(nodes[(layer, index)])
+                    break
+        if not reached:
+            continue
+        for other in reached[1:]:
+            parent[find(other)] = find(reached[0])
+        landings.append((point, reached[0]))
+
+    groups: dict[int, list[tuple[float, float]]] = {}
+    for point, node in landings:
+        groups.setdefault(find(node), []).append(point)
+
+    cache[net] = (regions, groups)
+    return regions, groups
+
+
+def _stitch_groups(
+    board: Any, net: str, cache: dict | None = None
+) -> list[list[tuple[float, float]]]:
+    """Vias of ``net`` gathered by the copper they actually share.
+
+    Two pieces of this layer's pour are one piece if the vias in them reach
+    the same connected ground - directly on a far layer, or through a chain of
+    vias and regions. Vias reaching copper that is not connected join nothing:
+    a back pour that is itself cut, or blind vias whose spans never meet,
+    leave the pour they sit in in pieces however much the same net it is.
+
+    The layer being asked about is not excluded from the connectivity. A
+    component that reaches it says the pieces holding those vias are one piece
+    of copper through this layer too, which is true, and which the polygon
+    pass in `_merge_touching` only ever sees within a single zone's own fills.
+    """
+    _regions, groups = _ground_stitching(board, net, cache if cache is not None else {})
+    return [points for points in groups.values() if len(points) >= 2]
+
+
 def _merge_touching(
     polygons: list[list[tuple[float, float]]],
     areas: list[float],
-    stitches: Sequence[tuple[float, float]] = (),
+    stitch_groups: Sequence[Sequence[tuple[float, float]]] = (),
 ) -> list[float]:
     """Group polygons that share copper, and return one area per group.
 
@@ -2050,9 +2300,11 @@ def _merge_touching(
     island tile it, so the sum is what matters and the cap only stops the
     weld overlap from inflating it.
 
-    ``stitches`` are points where the pour reaches the other side of the board.
-    Two pieces that both hold one are the same copper, through that side, so
-    they are grouped as one.
+    ``stitch_groups`` are sets of via positions already proven to meet the
+    same connected copper on some other layer. Two pieces holding vias from
+    one group are the same copper through that layer, so they are grouped as
+    one; two pieces holding vias that reach *different* far-side regions are
+    not, however much the same net they are called.
     """
     parent = list(range(len(polygons)))
 
@@ -2062,21 +2314,28 @@ def _merge_touching(
             i = parent[i]
         return i
 
+    boxes = [_poly_bbox(poly) for poly in polygons]
+    indexes = [_edge_index(poly) for poly in polygons]
     for i, one in enumerate(polygons):
         for j in range(i + 1, len(polygons)):
-            if find(i) != find(j) and _polygons_touch(one, polygons[j]):
+            if not _boxes_meet(boxes[i], boxes[j]) or find(i) == find(j):
+                continue
+            if _polygons_touch(one, polygons[j], boxes[i], boxes[j], indexes[i], indexes[j]):
                 parent[find(i)] = find(j)
 
-    stitched: int | None = None
-    for point in stitches:
-        for index, polygon in enumerate(polygons):
-            if not _point_in_polygon(point, polygon):
-                continue
-            if stitched is None:
-                stitched = index
-            elif find(index) != find(stitched):
-                parent[find(index)] = find(stitched)
-            break
+    for group in stitch_groups:
+        anchor: int | None = None
+        for point in group:
+            for index, polygon in enumerate(polygons):
+                if not _point_in_box(point, boxes[index]) or not _point_in_polygon_indexed(
+                    point, polygon, indexes[index]
+                ):
+                    continue
+                if anchor is None:
+                    anchor = index
+                elif find(index) != find(anchor):
+                    parent[find(index)] = find(anchor)
+                break
 
     groups: dict[int, list[int]] = {}
     for index in range(len(polygons)):

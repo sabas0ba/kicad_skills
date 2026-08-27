@@ -246,9 +246,9 @@ mismatches).
 | `silk.unlabeled_indicator` | — | an LED or switch with no silk saying what it means |
 | `silk.missing_board_id` | — | no free silkscreen text: the bare board states neither name nor revision |
 | `silk.unlabeled_connector` | — | a connector with no silk text near it saying which pin carries what |
-| `layout.pour_single_sided` | — | a two-layer board pouring ground on only one face |
+| `layout.pour_single_sided` | — | a two-layer board pouring ground on only one face. Read from the fills KiCad actually computed: a zone declared on both faces that only filled one is one-sided, and a zone that filled nothing at all is not judged |
 | `layout.pour_coverage` | 80 % | how much of its own outline a ground pour actually filled — context, since it is a density and a smaller board scores lower |
-| `layout.pour_fragmented` | 70 % | a ground pour whose largest island holds less than this share of its copper: the plane is pieces |
+| `layout.pour_fragmented` | 70 % | a ground pour whose largest island holds less than this share of its copper: the plane is pieces. Ground vias join two islands only where they land on one connected piece of far-side copper — two vias reaching two different regions, because the back pour is itself cut or because their spans never meet, join nothing |
 | `route.mixed_track_widths` | 3 widths | a net nobody decided the width of |
 | `route.detour` | 2.5x | routed copper against the minimum spanning tree of the net's pads — the scenic tour an autorouter leaves |
 | `route.self_crossing` | — | a net whose own copper crosses itself on one layer. The same potential, so DRC has nothing to say — but two branches of one net crossing means the copper carries a redundant loop, and a person never draws one: the plot reads as tracks driven through each other. KiCad's demo boards carry at most one to three, at dense escapes |

@@ -72,6 +72,14 @@ class Pad:
     # primitives are drawn onto. ``size`` describes it either way, so without
     # this a circular anchor reads as a square and gains its corners.
     anchor: str = "rect"
+    # A trapezoid's taper, KiCad's ``(rect_delta dy dx)``: the first number
+    # lengthens one pair of sides and shortens the other, the second does the
+    # same across. ``size`` alone describes the enclosing rectangle only.
+    rect_delta: tuple[float, float] = (0.0, 0.0)
+    # A chamfered rectangle's corner cut, as a fraction of the short side, and
+    # which corners carry it ("top_left", "bottom_right", ...).
+    chamfer_ratio: float = 0.0
+    chamfer_corners: list[str] = field(default_factory=list)
     # The pad's own override of how a zone connects to it, when it carries one:
     # 0 none, 1 thermal relief, 2 solid. ``None`` means it inherits the zone's
     # setting, which is what most pads do.
@@ -109,6 +117,11 @@ class Pad:
         rad = math.radians(self.angle + angle_offset)
         cos_a, sin_a = abs(math.cos(rad)), abs(math.sin(rad))
         w, h = self.size
+        if self.shape == "trapezoid":
+            # the taper pushes one pair of sides past `size`: the wide end of
+            # a trapezium is wider than the rectangle that names it
+            w += abs(self.rect_delta[0])
+            h += abs(self.rect_delta[1])
         ex = (w * cos_a + h * sin_a) / 2 + margin
         ey = (w * sin_a + h * cos_a) / 2 + margin
         return (self.x - ex, self.y - ey, self.x + ex, self.y + ey)
@@ -656,6 +669,17 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     drill_offset = (ox, oy)
             net_code, net_name = _net_of(pad_node, board.nets)
             primitives: list[tuple] = []
+            delta_node = pad_node.child("rect_delta")
+            rect_delta = (0.0, 0.0)
+            if delta_node is not None:
+                nums = [a for a in delta_node.atoms() if isinstance(a, (int, float))]
+                if len(nums) >= 2:
+                    rect_delta = (float(nums[0]), float(nums[1]))
+            chamfer_ratio = float(pad_node.value("chamfer_ratio", default=0.0) or 0.0)
+            chamfer_node = pad_node.child("chamfer")
+            chamfer_corners = (
+                [str(a) for a in chamfer_node.atoms()] if chamfer_node is not None else []
+            )
             options_node = pad_node.child("options")
             anchor = "rect"
             if options_node is not None:
@@ -764,6 +788,9 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     drill_size=drill_size,
                     drill_offset=drill_offset,
                     anchor=anchor,
+                    rect_delta=rect_delta,
+                    chamfer_ratio=chamfer_ratio,
+                    chamfer_corners=chamfer_corners,
                     zone_connect=(
                         int(zone_connect)
                         if (zone_connect := pad_node.value("zone_connect", default=None))
