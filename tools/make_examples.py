@@ -5519,6 +5519,20 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
     return replace(design, tracks=unique)
 
 
+# What the gap-filling pass below aims for, measured round the *ring* - which
+# is not what the rule measures. `emc.stitching_pitch` walks the board
+# outline, and the ring sits inset from it, so a stretch that is under
+# eighteen millimetres here is longer out there: the shortfall is the inset
+# again at each corner the stretch crosses. Fourteen leaves room for that
+# without laying a via the rule was never going to ask for.
+RIM_MAX_GAP_MM = 14.0
+
+# How many times the fill pass may halve what is left. Each round can only put
+# one via in a gap, so getting a via onto both sides of a blocked corner needs
+# a second, and a third round is where it stops finding anything new.
+RIM_FILL_ROUNDS = 4
+
+
 def _stitch_vias(design: Design) -> list[Via]:
     """Ground vias over the pour, so no face's copper floats.
 
@@ -5641,30 +5655,94 @@ def _stitch_vias(design: Design) -> list[Via]:
         return all(math.dist((vx, vy), hole) >= 1.2 for hole in holes)
 
     kept: list[Via] = []
+
     # Along the rim first, then one row deeper into the band the rule measures.
     # Half a step either way is as far as a via can move and still be the one
     # that belongs at this station rather than its neighbour's.
-    offsets = [0.0]
-    reach = 0.5
-    while reach <= step / 2 + 0.01:
-        offsets += [reach, -reach]
-        reach += 0.5
+    def _offsets(reach: float) -> list[float]:
+        out = [0.0]
+        step_out = 0.5
+        while step_out <= reach + 0.01:
+            out += [step_out, -step_out]
+            step_out += 0.5
+        return out
 
-    def _room_on_the_rim(vx, vy, along, inward):
+    def _room_on_the_rim(vx, vy, along, inward, reach: float | None = None):
         """The nearest spot on this stretch of rim that a via actually fits."""
         for depth in (0.0, 1.5):
-            for offset in offsets:
+            for offset in _offsets(step / 2 if reach is None else reach):
                 px = round(vx + along[0] * offset + inward[0] * depth, 2)
                 py = round(vy + along[1] * offset + inward[1] * depth, 2)
                 if clears(px, py):
                     return (px, py)
         return None
 
+    seated: list[tuple[float, float]] = []
     for vx, vy, along, inward in ring:
         placed = _room_on_the_rim(vx, vy, along, inward)
         if placed is not None:
             holes.append(placed)
+            seated.append(placed)
             kept.append(Via(POUR_NET, x=placed[0], y=placed[1]))
+
+    # Then the gaps that are still gaps. A station whose slide ran out leaves
+    # its neighbour a stretch of nineteen millimetres against a limit of
+    # eighteen, and the answer to that is another via in the middle of it, not
+    # a wider slide: a via that walks further than half a step is standing at
+    # its neighbour's station. Measured the way `emc.stitching_pitch` measures
+    # it, round the rim rather than across the corner.
+    width, height = right - left, bottom - top
+    perimeter = 2 * (width + height)
+
+    def _arc_of(x: float, y: float) -> float:
+        """Where a point sits round the inset rectangle, from its top-left."""
+        edges = (abs(y - top), abs(right - x), abs(bottom - y), abs(x - left))
+        nearest = edges.index(min(edges))
+        if nearest == 0:
+            return min(max(x - left, 0.0), width)
+        if nearest == 1:
+            return width + min(max(y - top, 0.0), height)
+        if nearest == 2:
+            return width + height + min(max(right - x, 0.0), width)
+        return 2 * width + height + min(max(bottom - y, 0.0), height)
+
+    def _station_at(arc: float):
+        """The rim point that far round, with its along and inward directions."""
+        arc %= perimeter
+        if arc <= width:
+            return (left + arc, top, (1.0, 0.0), (0.0, 1.0))
+        arc -= width
+        if arc <= height:
+            return (right, top + arc, (0.0, 1.0), (-1.0, 0.0))
+        arc -= height
+        if arc <= width:
+            return (right - arc, bottom, (1.0, 0.0), (0.0, -1.0))
+        return (left, bottom - (arc - width), (0.0, 1.0), (1.0, 0.0))
+
+    # A fill station may walk further than a ring station: half a step was the
+    # limit because past it a via stands at its neighbour's station, and a fill
+    # station has no neighbour - it is placed precisely where the rim is empty,
+    # so half the gap is its reach. That is what gets round a mounting hole:
+    # the corner itself belongs to the screw, and the nearest copper a via may
+    # sit on is eight millimetres along the edge from it, one on each side.
+    # Which takes more than one round, since each round can only halve a gap.
+    arcs = sorted(_arc_of(*point) for point in seated)
+    for _round in range(RIM_FILL_ROUNDS):
+        if not arcs:
+            break
+        added = []
+        for start, end in pairwise([*arcs, arcs[0] + perimeter]):
+            if end - start <= RIM_MAX_GAP_MM:
+                continue
+            middle = (start + end) / 2
+            placed = _room_on_the_rim(*_station_at(middle), reach=(end - start) / 2)
+            if placed is not None:
+                holes.append(placed)
+                kept.append(Via(POUR_NET, x=placed[0], y=placed[1]))
+                added.append(_arc_of(*placed))
+        if not added:
+            break
+        arcs = sorted([*arcs, *added])
 
     for vx, vy in rim:
         if clears(vx, vy):
