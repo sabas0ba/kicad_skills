@@ -354,3 +354,38 @@ def test_a_curved_courtyard_follows_its_curve(tmp_path):
     assert len(fp.courtyard) > 8
     # the cubic's apex is 7.5; the control cage would reach 10
     assert max(y for _, y in fp.courtyard) == pytest.approx(7.5, abs=0.05)
+
+
+def test_a_trapezoid_pads_taper_is_parsed_and_widens_its_box(tmp_path):
+    """`size` names the rectangle a trapezoid leans out of, not its extent.
+
+    Measuring the wide end against `size` alone clips it, which is how a
+    tapered land loses copper to every check that works off the box.
+    """
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:t" (layer "F.Cu") (at 0 0 0)'
+        '    (pad "1" smd trapezoid (at 0 0) (size 4 2) (rect_delta 1 0)'
+        '      (layers "F.Cu"))))'
+    )
+    path = tmp_path / "tz.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    pad = pcb.parse(path).footprints[0].pads[0]
+    assert pad.rect_delta == (1.0, 0.0)
+    x0, y0, x1, y1 = pad.bbox()
+    assert (round(x1 - x0, 3), round(y1 - y0, 3)) == (5.0, 2.0)
+
+
+def test_a_chamfered_pads_cut_and_corners_are_parsed(tmp_path):
+    body = (
+        '(kicad_pcb (version 20221018) (generator "t")'
+        '  (footprint "l:c" (layer "F.Cu") (at 0 0 0)'
+        '    (pad "1" smd roundrect (at 0 0) (size 2 2) (layers "F.Cu")'
+        "      (roundrect_rratio 0) (chamfer_ratio 0.25)"
+        "      (chamfer top_left bottom_right))))"
+    )
+    path = tmp_path / "ch.kicad_pcb"
+    path.write_text(body, encoding="utf-8")
+    pad = pcb.parse(path).footprints[0].pads[0]
+    assert pad.chamfer_ratio == 0.25
+    assert pad.chamfer_corners == ["top_left", "bottom_right"]

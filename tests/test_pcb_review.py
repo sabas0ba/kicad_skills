@@ -736,6 +736,9 @@ def test_two_halves_stitched_to_the_far_side_are_one_piece():
     assert [f.rule for f in pcb_review.rule_pour_fragmented(ctx_for(stitched))] == [
         "layout.pour_fragmented"
     ]
+    # Two vias are still not a connection when there is nothing on the other
+    # side to connect to: this zone pours B.Cu only, so both vias rise into
+    # bare laminate and the halves stay two planes.
     both = board_from(
         zones=[_plane_zone(cut=True)],
         vias=[
@@ -743,7 +746,22 @@ def test_two_halves_stitched_to_the_far_side_are_one_piece():
             for x in (10, 40)
         ],
     )
-    assert pcb_review.rule_pour_fragmented(ctx_for(both)) == []
+    assert [f.rule for f in pcb_review.rule_pour_fragmented(ctx_for(both))] == [
+        "layout.pour_fragmented"
+    ]
+
+    # Give the far side ground copper under both vias and they do join the
+    # halves - the same two vias, now landing on the same plane.
+    landed = _plane_zone(cut=True)
+    landed.fills = [*landed.fills, ("F.Cu", [(0.0, 0.0), (50.0, 0.0), (50.0, 40.0), (0.0, 40.0)])]
+    joined = board_from(
+        zones=[landed],
+        vias=[
+            pcb.Via(x=x, y=20, size=0.8, drill=0.4, layers=["F.Cu", "B.Cu"], net_code=1, net="GND")
+            for x in (10, 40)
+        ],
+    )
+    assert pcb_review.rule_pour_fragmented(ctx_for(joined)) == []
 
 
 def test_welded_rectangles_of_one_island_are_not_fragmentation():
@@ -1382,3 +1400,71 @@ def test_a_double_sided_pour_wants_its_rim_stitched():
     # a single-sided pour has no sandwich to stitch
     single = [pours[0]]
     assert pcb_review.rule_stitching_pitch(ctx_for(board_from(zones=single, vias=sparse))) == []
+
+
+def _gnd_via_at(x, y, layers=("F.Cu", "B.Cu")):
+    return pcb.Via(x=x, y=y, size=0.6, drill=0.3, layers=list(layers), net_code=1, net="GND")
+
+
+def test_a_via_joins_two_islands_only_where_it_reaches_the_same_far_copper():
+    """A same-net via proves nothing on its own: it has to land somewhere.
+
+    Two halves of a front pour are one plane when the back is unbroken under
+    them, and two planes when the back is cut in the same place - the vias are
+    identical either way, so the fill on the far side is what decides.
+    """
+    left = [(0, 0), (20, 0), (20, 40), (0, 40)]
+    right = [(30, 0), (50, 0), (50, 40), (30, 40)]
+    vias = [_gnd_via_at(10, 20), _gnd_via_at(40, 20)]
+
+    whole = [
+        pcb.Zone(
+            net="GND",
+            layers=["F.Cu", "B.Cu"],
+            filled=True,
+            fills=[
+                ("F.Cu", left),
+                ("F.Cu", right),
+                ("B.Cu", [(0, 0), (50, 0), (50, 40), (0, 40)]),
+            ],
+        )
+    ]
+    quiet = pcb_review.rule_pour_fragmented(ctx_for(board_from(zones=whole, vias=vias)))
+    assert [f for f in quiet if f.rule == "layout.pour_fragmented"] == []
+
+    cut = [
+        pcb.Zone(
+            net="GND",
+            layers=["F.Cu", "B.Cu"],
+            filled=True,
+            fills=[("F.Cu", left), ("F.Cu", right), ("B.Cu", left), ("B.Cu", right)],
+        )
+    ]
+    findings = pcb_review.rule_pour_fragmented(ctx_for(board_from(zones=cut, vias=vias)))
+    # both faces are cut in the same place, so both are in pieces
+    assert [f.rule for f in findings if f.rule == "layout.pour_fragmented"] == [
+        "layout.pour_fragmented",
+        "layout.pour_fragmented",
+    ]
+
+
+def test_a_pour_that_only_filled_one_face_is_one_sided():
+    """The zone asked for both; what landed is what the board has."""
+    full = [(0, 0), (50, 0), (50, 40), (0, 40)]
+    partial = [pcb.Zone(net="GND", layers=["F.Cu", "B.Cu"], filled=True, fills=[("F.Cu", full)])]
+    findings = pcb_review.rule_pour_sides(ctx_for(board_from(zones=partial)))
+    assert [f.rule for f in findings] == ["layout.pour_single_sided"]
+
+    both = [
+        pcb.Zone(
+            net="GND",
+            layers=["F.Cu", "B.Cu"],
+            filled=True,
+            fills=[("F.Cu", full), ("B.Cu", full)],
+        )
+    ]
+    assert pcb_review.rule_pour_sides(ctx_for(board_from(zones=both))) == []
+
+    # a zone with no computed fill at all is `layout.unfilled_zone`'s business
+    unfilled = [pcb.Zone(net="GND", layers=["F.Cu", "B.Cu"], filled=False, fills=[])]
+    assert pcb_review.rule_pour_sides(ctx_for(board_from(zones=unfilled))) == []

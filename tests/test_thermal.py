@@ -313,3 +313,76 @@ def test_a_pad_smaller_than_a_cell_does_not_vanish():
         counts.append(int(masks["F.Cu"].sum()))
     assert all(c >= 1 for c in counts), f"the pad vanished at some phase: {counts}"
     assert counts[0] == counts[1], f"the answer moved with the grid's phase: {counts}"
+
+
+def _pad(shape, w, h, **kw):
+    return pcb_mod.Pad(
+        number="1",
+        type="smd",
+        shape=shape,
+        x=20.0,
+        y=15.0,
+        angle=0.0,
+        size=(w, h),
+        drill=None,
+        layers=["F.Cu"],
+        **kw,
+    )
+
+
+def _copper_area_mm2(pad, step=0.05):
+    import numpy as np
+
+    board = _Board(footprints=[_Part("U1", 20, 15, half=5.0, pads=[pad])])
+    masks, _ = thermal._copper_masks(board, 0.0, 0.0, int(40 / step), int(30 / step), step)
+    return float(np.count_nonzero(masks["F.Cu"])) * step * step
+
+
+@pytest.mark.parametrize("delta", [-1.0, 1.0])
+def test_a_trapezoid_pad_keeps_the_area_its_taper_conserves(delta):
+    """A pure taper moves copper across the pad; it does not create or destroy it.
+
+    Both signs of ``(rect_delta dy dx)`` widen one end by the same amount they
+    narrow the other, so a 4 x 2 land is 8 mm2 whichever way it leans. Reading
+    the shape as a plain rectangle passes this test by accident, which is why
+    the sibling test below checks that the copper actually leans.
+    """
+    area = _copper_area_mm2(_pad("trapezoid", 4.0, 2.0, rect_delta=(delta, 0.0)))
+    assert area == pytest.approx(8.0, abs=0.05)
+
+
+def test_a_trapezoid_pad_is_wider_at_the_end_its_delta_names():
+    """`(rect_delta dy dx)`: a positive dy is the wide end at increasing y."""
+    import numpy as np
+
+    pad = _pad("trapezoid", 4.0, 2.0, rect_delta=(1.0, 0.0))
+    board = _Board(footprints=[_Part("U1", 20, 15, half=5.0, pads=[pad])])
+    step = 0.05
+    masks, _ = thermal._copper_masks(board, 0.0, 0.0, int(40 / step), int(30 / step), step)
+    rows = np.nonzero(masks["F.Cu"].any(axis=1))[0]
+    top, bottom = int(masks["F.Cu"][rows[0]].sum()), int(masks["F.Cu"][rows[-1]].sum())
+    assert bottom > top * 1.5, (
+        f"the taper did not lean: {top} cells at the top, {bottom} at the bottom"
+    )
+
+
+def test_a_chamfered_pad_loses_a_triangle_at_each_named_corner():
+    """cut = ratio * short side; each corner named drops a cut x cut triangle.
+
+    A 4 x 4 land with ratio 0.25 has a 1 mm cut, so two chamfered corners take
+    2 x 0.5 mm2 off 16 mm2 and leave 15.
+    """
+    pad = _pad(
+        "chamfered_rect",
+        4.0,
+        4.0,
+        chamfer_ratio=0.25,
+        chamfer_corners=["top_left", "bottom_right"],
+    )
+    assert _copper_area_mm2(pad) == pytest.approx(15.0, abs=0.05)
+
+
+def test_a_chamfered_pad_with_no_corners_named_is_the_whole_rectangle():
+    """`chamfer_ratio` alone cuts nothing: KiCad names the corners separately."""
+    pad = _pad("chamfered_rect", 4.0, 4.0, chamfer_ratio=0.25)
+    assert _copper_area_mm2(pad) == pytest.approx(16.0, abs=0.05)

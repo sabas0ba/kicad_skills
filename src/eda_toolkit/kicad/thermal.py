@@ -263,6 +263,35 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
                     & (np.abs(local_y) <= half_h)
                     & (dx_r * dx_r + dy_r * dy_r <= radius * radius)
                 )
+            elif shape == "trapezoid":
+                # (rect_delta dy dx): one pair of sides grows by the delta and
+                # the opposite pair shrinks by it, so the land is a trapezium
+                # and its corners are not where the enclosing box says.
+                d_y, d_x = getattr(pad, "rect_delta", (0.0, 0.0)) or (0.0, 0.0)
+                # width varies along y, height along x, each linearly
+                span_w = half_w + (d_y / 2) * (local_y / max(half_h, 1e-9))
+                span_h = half_h + (d_x / 2) * (local_x / max(half_w, 1e-9))
+                inside = (np.abs(local_x) <= np.abs(span_w)) & (np.abs(local_y) <= np.abs(span_h))
+            elif shape == "chamfered_rect":
+                # the named corners are cut back by a fraction of the short side
+                cut = min(half_w, half_h) * 2 * (getattr(pad, "chamfer_ratio", 0.0) or 0.0)
+                inside = (np.abs(local_x) <= half_w) & (np.abs(local_y) <= half_h)
+                corners = {
+                    # KiCad's y grows downward, so "top" is the negative side
+                    "top_left": (-1, -1),
+                    "top_right": (1, -1),
+                    "bottom_left": (-1, 1),
+                    "bottom_right": (1, 1),
+                }
+                for name in getattr(pad, "chamfer_corners", ()) or ():
+                    sign = corners.get(str(name))
+                    if sign is None or cut <= 0:
+                        continue
+                    sx, sy = sign
+                    # the corner's diagonal cut: x/cut + y/cut > 1 inside it
+                    dx_c = (local_x * sx) - (half_w - cut)
+                    dy_c = (local_y * sy) - (half_h - cut)
+                    inside &= ~((dx_c > 0) & (dy_c > 0) & (dx_c + dy_c > cut))
             elif shape == "custom" and getattr(pad, "anchor", "rect") == "circle":
                 # the land the primitives sit on is round; taking it square
                 # would hand the pad four corners of copper it does not have
