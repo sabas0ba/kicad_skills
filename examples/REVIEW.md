@@ -113,12 +113,43 @@ the point of writing them down is to say which:
   differential pairs exempt by name. Quiet on all five boards — the router's
   habit of spreading nets across free space turns out to be an EMC feature.
 * **Rim stitching pitch** — now the **rule** `emc.stitching_pitch`, and
-  **open** on all five boards: the stitcher aims a 10 mm rim ring, but a
-  candidate that collides with a pad, a track or a hole is dropped rather than
-  slid along the rim, so congested stretches keep gaps of 20–40 mm against
-  the rule's 18 mm — measured along the perimeter, the way edge noise
-  travels. Real, understood, and the fix is the stitcher learning to slide
-  its candidates, which is a regeneration round, not a waiver.
+  **fixed** on all five boards. It was open because the stitcher aimed a 10 mm
+  rim ring and *dropped* a candidate that collided with a pad, a track or a
+  hole, so the congested stretches — which are the stretches the rule is about
+  — kept gaps of 20–40 mm against the rule's 18, measured along the perimeter
+  the way edge noise travels. Twenty-four gaps across the five boards, the
+  widest 40 mm; now none, for thirty-three vias across the whole set.
+
+  Three things it took, and only the first was the one anticipated:
+
+  * **Slide, do not drop.** A collision is a reason to give up on that
+    millimetre, not on the station. Each candidate carries the direction its
+    edge runs in and the one that goes deeper into the band, and walks half a
+    step either way before trying a row further in. Half a step is the limit:
+    past it a via stands at its neighbour's station.
+  * **Anchor both corners.** Stepping from one corner and stopping when the
+    next is overshot ends the last stretch short of it, and the rule measures
+    round the corner, so the run to the first station on the next side is two
+    spans. That is arithmetic, not congestion — the buck board's residue was
+    exactly 2 × step — and each edge is now divided into equal spans no longer
+    than a step.
+  * **Fill what is left, and let a fill station walk.** The remainder was
+    stretches of 19 mm against a limit of 18, so the placed ring is walked and
+    any gap over target is halved. Two measurements settled the shape of this:
+    the target is 14 and not 18, because the rule walks the board *outline*
+    and this walks the ring inset from it (at 18 the pass placed nothing at
+    all); and a fill station's reach is half its gap, not half a step, because
+    it has no neighbour to stand at. That last one is what gets round the
+    motor board's two remaining gaps, which turned out to be its two M3
+    mounting holes: the corner belongs to the screw, the nearest copper a via
+    may sit on is 8 mm along the edge from it, and one via on each side makes
+    16.8 mm where one via anywhere leaves 20.8.
+
+  A fourth thing was a defect the round found rather than fixed: sliding put a
+  via 0.4944 mm from a fiducial against a 0.6 mm rule. The predicate had always
+  taken a flat 0.3 mm off every pad's box; the nominal grid had simply never
+  landed there. A fiducial states `(clearance 0.6)` on its own pad, and the
+  stitcher reads it now.
 
 ## 3. Schematic readability and semantics
 
