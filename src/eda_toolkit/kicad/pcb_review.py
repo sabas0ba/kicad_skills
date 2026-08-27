@@ -410,14 +410,16 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "a ground pour whose largest connected island holds less than "
         "`min_pour_island_fraction` of its filled copper - the tracks crossing "
         "it have cut the plane into pieces, and a return that starts on one of "
-        "them has to leave the layer to get home",
+        "them has to leave the layer to get home. Ground vias join two islands "
+        "only where they land on one connected piece of far-side copper",
         "warning",
         threshold="min_pour_island_fraction",
     ),
     "layout.pour_single_sided": RuleSpec(
         "a two-layer board whose ground pour covers only one face - the other "
         "face's spare copper is doing nothing, and its edge traces have no "
-        "adjacent return",
+        "adjacent return. Read from the fills KiCad computed, not the layers "
+        "the zone declares",
         "info",
     ),
     "silk.missing_reference": RuleSpec(
