@@ -5602,7 +5602,11 @@ def _stitch_vias(design: Design) -> list[Via]:
                 (n for n, nodes in design.nets.items() if f"{part.ref}.{number}" in nodes),
                 None,
             )
-            pads.append((pad_box(design, part, pad), net))
+            # A pad may carry its own clearance, and the ones that do mean it:
+            # a fiducial asks for 0.6 mm so the camera sees copper against bare
+            # laminate. Taking the flat default instead is how a slid via
+            # landed half a millimetre from FID1 and failed DRC.
+            pads.append((pad_box(design, part, pad), net, float(pad.value("clearance", 0) or 0)))
     segments = []
     for track in design.tracks:
         points = [resolve(design, point) for point in track.points]
@@ -5617,12 +5621,12 @@ def _stitch_vias(design: Design) -> list[Via]:
         # violation and an orphan the fill never reaches.
         if not (x0 + 0.7 <= vx <= x1 - 0.7 and y0 + 0.7 <= vy <= y1 - 0.7):
             return False
-        for (bx0, by0, bx1, by1), _net in pads:
+        for (bx0, by0, bx1, by1), _net, stated in pads:
             # Same distance whoever owns the pad. A ground via touching a
             # ground land is still a hole in a land, and solder wicks down it
             # exactly as it does on a signal pad; the plane gains nothing from
             # the two being one piece of copper here rather than a stub away.
-            grow = radius + 0.3
+            grow = radius + max(0.3, stated)
             if bx0 - grow <= vx <= bx1 + grow and by0 - grow <= vy <= by1 + grow:
                 return False
         for net, width, a, b in segments:
