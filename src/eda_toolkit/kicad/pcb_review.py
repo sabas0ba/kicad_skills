@@ -2004,8 +2004,44 @@ def _poly_bbox(points: Sequence[tuple[float, float]]) -> tuple[float, float, flo
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def _boxes_overlap(a: tuple[float, float, float, float], b, tol: float = 1e-6) -> bool:
+def _boxes_meet(a: tuple[float, float, float, float], b, tol: float = 1e-6) -> bool:
+    """Whether two extents share any area *or* any edge.
+
+    Not `_boxes_overlap`, further down, which asks for a real intersection: two
+    fill polygons welded along one line are the same copper, and their boxes
+    touch without overlapping at all.
+    """
     return not (a[2] < b[0] - tol or b[2] < a[0] - tol or a[3] < b[1] - tol or b[3] < a[1] - tol)
+
+
+# How finely the edge index below divides the board. Small enough that a cell
+# holds a handful of a fill's edges, large enough that a zone outline's long
+# sides are not filed under thousands of them.
+_EDGE_CELL_MM = 0.5
+
+
+def _edge_index(points: Sequence[tuple[float, float]]) -> tuple[list, dict]:
+    """The polygon's edges, and which grid cells each one passes through.
+
+    KiCad writes a filled plane as one polygon of fifteen thousand vertices,
+    and asking whether two of those touch by trying every edge against every
+    other edge is two hundred million segment tests for a single pair. Two
+    edges can only meet inside a cell they both occupy, so filing them by cell
+    first turns the question into the few edges that run near each other. The
+    answer is the same one the exhaustive pass gives; only the work differs.
+    """
+    edges = list(zip(points, [*points[1:], points[0]], strict=True))
+    cells: dict[tuple[int, int], list[int]] = {}
+    tol = 1e-6
+    for index, (p0, p1) in enumerate(edges):
+        cx0 = math.floor((min(p0[0], p1[0]) - tol) / _EDGE_CELL_MM)
+        cx1 = math.floor((max(p0[0], p1[0]) + tol) / _EDGE_CELL_MM)
+        cy0 = math.floor((min(p0[1], p1[1]) - tol) / _EDGE_CELL_MM)
+        cy1 = math.floor((max(p0[1], p1[1]) + tol) / _EDGE_CELL_MM)
+        for cx in range(cx0, cx1 + 1):
+            for cy in range(cy0, cy1 + 1):
+                cells.setdefault((cx, cy), []).append(index)
+    return edges, cells
 
 
 def _polygons_touch(
@@ -2013,6 +2049,8 @@ def _polygons_touch(
     b: list[tuple[float, float]],
     a_box: tuple[float, float, float, float] | None = None,
     b_box: tuple[float, float, float, float] | None = None,
+    a_index: tuple[list, dict] | None = None,
+    b_index: tuple[list, dict] | None = None,
 ) -> bool:
     """Whether two filled polygons share copper - overlap, or touch on an edge.
 
@@ -2021,14 +2059,22 @@ def _polygons_touch(
     edges have to be asked. Generated fills are rectangles, where the box test
     is already exact and the edge pass agrees with it.
     """
-    if not _boxes_overlap(a_box or _poly_bbox(a), b_box or _poly_bbox(b)):
+    if not _boxes_meet(a_box or _poly_bbox(a), b_box or _poly_bbox(b)):
         return False
-    a_edges = list(zip(a, [*a[1:], a[0]], strict=True))
-    b_edges = list(zip(b, [*b[1:], b[0]], strict=True))
-    for p0, p1 in a_edges:
-        for q0, q1 in b_edges:
-            if _segments_meet(p0, p1, q0, q1):
-                return True
+    a_edges, a_cells = a_index or _edge_index(a)
+    b_edges, b_cells = b_index or _edge_index(b)
+    if len(b_cells) < len(a_cells):  # walk the smaller index
+        a_edges, a_cells, b_edges, b_cells = b_edges, b_cells, a_edges, a_cells
+    for cell, mine in a_cells.items():
+        theirs = b_cells.get(cell)
+        if not theirs:
+            continue
+        for i in mine:
+            p0, p1 = a_edges[i]
+            for j in theirs:
+                q0, q1 = b_edges[j]
+                if _segments_meet(p0, p1, q0, q1):
+                    return True
     # one wholly inside the other still shares copper
     return _point_in_polygon(a[0], b) or _point_in_polygon(b[0], a)
 
@@ -2081,11 +2127,12 @@ def _fill_regions(
         return i
 
     boxes = [_poly_bbox(poly) for poly in polygons]
+    indexes = [_edge_index(poly) for poly in polygons]
     for i, one in enumerate(polygons):
         for j in range(i + 1, len(polygons)):
-            if not _boxes_overlap(boxes[i], boxes[j]) or find(i) == find(j):
+            if not _boxes_meet(boxes[i], boxes[j]) or find(i) == find(j):
                 continue
-            if _polygons_touch(one, polygons[j], boxes[i], boxes[j]):
+            if _polygons_touch(one, polygons[j], boxes[i], boxes[j], indexes[i], indexes[j]):
                 parent[find(i)] = find(j)
     groups: dict[int, list[list[tuple[float, float]]]] = {}
     for index, polygon in enumerate(polygons):
@@ -2194,11 +2241,12 @@ def _merge_touching(
         return i
 
     boxes = [_poly_bbox(poly) for poly in polygons]
+    indexes = [_edge_index(poly) for poly in polygons]
     for i, one in enumerate(polygons):
         for j in range(i + 1, len(polygons)):
-            if not _boxes_overlap(boxes[i], boxes[j]) or find(i) == find(j):
+            if not _boxes_meet(boxes[i], boxes[j]) or find(i) == find(j):
                 continue
-            if _polygons_touch(one, polygons[j], boxes[i], boxes[j]):
+            if _polygons_touch(one, polygons[j], boxes[i], boxes[j], indexes[i], indexes[j]):
                 parent[find(i)] = find(j)
 
     for group in stitch_groups:

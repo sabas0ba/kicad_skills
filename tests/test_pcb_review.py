@@ -1468,3 +1468,44 @@ def test_a_pour_that_only_filled_one_face_is_one_sided():
     # a zone with no computed fill at all is `layout.unfilled_zone`'s business
     unfilled = [pcb.Zone(net="GND", layers=["F.Cu", "B.Cu"], filled=False, fills=[])]
     assert pcb_review.rule_pour_sides(ctx_for(board_from(zones=unfilled))) == []
+
+
+def test_the_edge_index_answers_what_the_exhaustive_pass_would():
+    """The grid is an optimisation; it must not change a single verdict.
+
+    The cases that could go wrong are the ones near a cell boundary, so every
+    shape here is placed on one: two rectangles welded along x = 1.0, two more
+    a whisker apart across it, and a small square wholly inside a large one
+    with no edge in common at all.
+    """
+    touch = pcb_review._polygons_touch
+
+    def box(x0, y0, x1, y1):
+        return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+
+    def exhaustive(a, b):
+        for p0, p1 in zip(a, [*a[1:], a[0]], strict=True):
+            for q0, q1 in zip(b, [*b[1:], b[0]], strict=True):
+                if pcb_review._segments_meet(p0, p1, q0, q1):
+                    return True
+        return pcb_review._point_in_polygon(a[0], b) or pcb_review._point_in_polygon(b[0], a)
+
+    pairs = [
+        (box(0, 0, 1.0, 1), box(1.0, 0, 2, 1), True),  # welded on a cell edge
+        (box(0, 0, 1.0, 1), box(1.001, 0, 2, 1), False),  # a whisker apart
+        (box(0, 0, 4, 4), box(1.5, 1.5, 2.5, 2.5), True),  # wholly inside
+        (box(0, 0, 1, 1), box(3, 3, 4, 4), False),  # nowhere near
+        (box(0, 0, 2, 2), box(1, 1, 3, 3), True),  # overlapping corners
+    ]
+    for a, b, expected in pairs:
+        assert touch(a, b) is expected, f"{a} vs {b}"
+        assert exhaustive(a, b) is expected, f"the reference disagrees on {a} vs {b}"
+
+
+def test_the_edge_index_survives_a_polygon_off_the_origin():
+    """Negative coordinates floor to negative cells; the grid must still line up."""
+    a = [(-10.0, -10.0), (-5.0, -10.0), (-5.0, -5.0), (-10.0, -5.0)]
+    b = [(-5.0, -10.0), (0.0, -10.0), (0.0, -5.0), (-5.0, -5.0)]
+    assert pcb_review._polygons_touch(a, b) is True
+    away = [(0.5, -10.0), (5.0, -10.0), (5.0, -5.0), (0.5, -5.0)]
+    assert pcb_review._polygons_touch(a, away) is False
