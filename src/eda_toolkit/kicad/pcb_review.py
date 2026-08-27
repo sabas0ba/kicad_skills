@@ -1792,20 +1792,23 @@ def rule_pour_sides(ctx: PcbContext) -> list[Finding]:
     board = ctx.board
     if len(board.copper_layers) != 2:
         return []
-    ground_layers = set()
+    # The layers the fill actually reached, not the ones the zones asked for:
+    # a zone that requests both faces and fills one is a one-sided pour on the
+    # finished board, and `layout.unfilled_zone` does not cover the partial
+    # case. The fallback to the stated layers is for a board nobody has filled
+    # yet - which is that rule's business, not this one's - so it is asked of
+    # the board as a whole. Per zone it would let one unfilled zone declaring
+    # both faces speak for a board whose only real copper is on one.
+    filled = set()
+    declared = set()
     for zone in board.zones:
         if zone.keepout or not netlist_helpers_is_ground(zone.net):
             continue
-        # the layers the fill actually reached, not the ones the zone asked
-        # for: a zone that requests both faces and fills on one is a one-sided
-        # pour on the finished board, and `layout.unfilled_zone` does not
-        # cover the partial case. A zone with no computed fill at all keeps
-        # its stated layers - the board has not been filled yet, which is that
-        # rule's business rather than this one's.
-        filled = {
+        filled |= {
             layer for layer, points in zone.fills if layer.endswith(".Cu") and len(points) >= 3
         }
-        ground_layers.update(filled or {layer for layer in zone.layers if layer.endswith(".Cu")})
+        declared |= {layer for layer in zone.layers if layer.endswith(".Cu")}
+    ground_layers = filled or declared
     if not ground_layers or len(ground_layers) >= 2:
         return []
     return [
@@ -1859,7 +1862,7 @@ def rule_pour_fragmented(ctx: PcbContext) -> list[Finding]:
             # this net lands on one connected fill there, so the vias are
             # grouped by the far-side copper they actually share
             islands = _merge_touching(
-                polygons, areas, _stitch_groups(ctx.board, zone.net, layer, region_cache)
+                polygons, areas, _stitch_groups(ctx.board, zone.net, region_cache)
             )
             largest = max(islands)
             share = largest / total
@@ -2176,7 +2179,7 @@ _Regions = dict[str, list[list[tuple[list[tuple[float, float]], tuple, tuple]]]]
 
 
 def _ground_stitching(board: Any, net: str, cache: dict) -> tuple[_Regions, dict]:
-    """``net``'s fill grouped into connected regions, and which vias reach each.
+    """``net``'s fill grouped into connected regions, and the vias tying them.
 
     Neither answer depends on the layer being asked about, and both are the
     expensive part of this file - the grouping is quadratic in the fills, and
@@ -2184,6 +2187,13 @@ def _ground_stitching(board: Any, net: str, cache: dict) -> tuple[_Regions, dict
     net is the difference between the jetson demo board taking a minute and
     not finishing: it carries a dozen ground zones over ten copper layers, and
     the fragmentation rule walks every zone-and-layer pair of them.
+
+    The vias are grouped by *connected* copper, not by the one region each
+    happens to sit in. A via that reaches two regions welds them, so a chain -
+    front island to an inner region, a buried via on to a second inner region,
+    another via back up to a second front island - is one piece of ground, and
+    the two front islands are one island. Grouping per region would call that
+    board fragmented.
     """
     if net in cache:
         return cache[net]
@@ -2203,8 +2213,24 @@ def _ground_stitching(board: Any, net: str, cache: dict) -> tuple[_Regions, dict
         for layer, polys in fills.items()
     }
 
+    # One node per region of copper, welded together by the vias that land in
+    # more than one of them.
+    nodes = {
+        (layer, index): number
+        for number, (layer, index) in enumerate(
+            (layer, index) for layer, regs in regions.items() for index in range(len(regs))
+        )
+    }
+    parent = list(range(len(nodes)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
     order = {layer: i for i, layer in enumerate(board.copper_layers)}
-    groups: dict[tuple[str, int], list[tuple[float, float]]] = {}
+    landings: list[tuple[tuple[float, float], int]] = []
     for via in board.vias:
         if via.net != net:
             continue
@@ -2215,6 +2241,7 @@ def _ground_stitching(board: Any, net: str, cache: dict) -> tuple[_Regions, dict
             else set(board.copper_layers)
         )
         point = (via.x, via.y)
+        reached = []
         for layer, layer_regions in regions.items():
             if layer not in span:
                 continue
@@ -2223,29 +2250,40 @@ def _ground_stitching(board: Any, net: str, cache: dict) -> tuple[_Regions, dict
                     _point_in_box(point, box) and _point_in_polygon_indexed(point, poly, edges)
                     for poly, box, edges in region
                 ):
-                    groups.setdefault((layer, index), []).append(point)
+                    reached.append(nodes[(layer, index)])
                     break
+        if not reached:
+            continue
+        for other in reached[1:]:
+            parent[find(other)] = find(reached[0])
+        landings.append((point, reached[0]))
+
+    groups: dict[int, list[tuple[float, float]]] = {}
+    for point, node in landings:
+        groups.setdefault(find(node), []).append(point)
 
     cache[net] = (regions, groups)
     return regions, groups
 
 
 def _stitch_groups(
-    board: Any, net: str, this_layer: str, cache: dict | None = None
+    board: Any, net: str, cache: dict | None = None
 ) -> list[list[tuple[float, float]]]:
-    """Vias of ``net`` gathered by the far-side copper they actually share.
+    """Vias of ``net`` gathered by the copper they actually share.
 
-    A via only joins two pieces of this layer's pour if it lands on one
-    connected region of ground fill on some layer it spans. Two vias reaching
-    two different regions - a cut pour on the far face, or blind vias that
-    never meet - join nothing, and the pour they sit in is still in pieces.
+    Two pieces of this layer's pour are one piece if the vias in them reach
+    the same connected ground - directly on a far layer, or through a chain of
+    vias and regions. Vias reaching copper that is not connected join nothing:
+    a back pour that is itself cut, or blind vias whose spans never meet,
+    leave the pour they sit in in pieces however much the same net it is.
+
+    The layer being asked about is not excluded from the connectivity. A
+    component that reaches it says the pieces holding those vias are one piece
+    of copper through this layer too, which is true, and which the polygon
+    pass in `_merge_touching` only ever sees within a single zone's own fills.
     """
     _regions, groups = _ground_stitching(board, net, cache if cache is not None else {})
-    return [
-        points
-        for (layer, _index), points in groups.items()
-        if layer != this_layer and len(points) >= 2
-    ]
+    return [points for points in groups.values() if len(points) >= 2]
 
 
 def _merge_touching(

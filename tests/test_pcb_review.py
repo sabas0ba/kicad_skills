@@ -1534,3 +1534,69 @@ def test_the_row_index_answers_what_the_full_ray_cast_would():
         assert pcb_review._point_in_polygon_indexed(probe, el, index) is (
             pcb_review._point_in_polygon(probe, el)
         ), f"the index and the full cast disagree at {probe}"
+
+
+def test_a_chain_of_buried_vias_makes_two_front_islands_one_plane():
+    """Connectivity is transitive; grouping vias by one region is not.
+
+    A front island reaches an inner region, a buried via carries that region
+    on to a second inner region, and a third via comes back up to the second
+    front island. That is one piece of ground, and calling the front pour
+    fragmented because no single region holds both front vias is a fault the
+    board does not have.
+    """
+    board = pcb.Board(path=Path("memory.kicad_pcb"), version=0, generator="test")
+    board.layers = [
+        {"id": "0", "name": "F.Cu", "type": "signal", "user_name": ""},
+        {"id": "1", "name": "In1.Cu", "type": "signal", "user_name": ""},
+        {"id": "2", "name": "In2.Cu", "type": "signal", "user_name": ""},
+        {"id": "31", "name": "B.Cu", "type": "signal", "user_name": ""},
+    ]
+    board.edges = [{"type": "gr_rect", "points": [(0, 0), (50, 40)]}]
+    left = [(0, 0), (20, 0), (20, 40), (0, 40)]
+    right = [(30, 0), (50, 0), (50, 40), (30, 40)]
+    board.zones = [
+        pcb.Zone(
+            net="GND",
+            layers=["F.Cu", "In1.Cu", "In2.Cu"],
+            filled=True,
+            # the front in two islands, and each inner layer carrying one
+            # patch that spans the gap between a front island and the middle
+            fills=[
+                ("F.Cu", left),
+                ("F.Cu", right),
+                ("In1.Cu", [(5, 15), (28, 15), (28, 25), (5, 25)]),
+                ("In2.Cu", [(22, 15), (45, 15), (45, 25), (22, 25)]),
+            ],
+        )
+    ]
+    board.vias = [
+        _gnd_via_at(10, 20, layers=("F.Cu", "In1.Cu")),  # left island -> In1
+        _gnd_via_at(25, 20, layers=("In1.Cu", "In2.Cu")),  # In1 -> In2, buried
+        _gnd_via_at(40, 20, layers=("F.Cu", "In2.Cu")),  # In2 -> right island
+    ]
+    findings = pcb_review.rule_pour_fragmented(ctx_for(board))
+    assert findings == [], f"the chain was not followed: {[f.message for f in findings]}"
+
+    # break the chain and the two front islands are two islands again
+    board.zones[0].fills[3] = ("In2.Cu", [(35, 15), (45, 15), (45, 25), (35, 25)])
+    assert [f.rule for f in pcb_review.rule_pour_fragmented(ctx_for(board))] == [
+        "layout.pour_fragmented"
+    ]
+
+
+def test_one_unfilled_zone_does_not_speak_for_a_board_poured_on_one_face():
+    """The fallback to stated layers is for a board nobody has filled yet.
+
+    Asked per zone, an unfilled zone declaring both faces hides a board whose
+    only real copper is on the front - which is exactly the case this rule
+    exists to name.
+    """
+    full = [(0, 0), (50, 0), (50, 40), (0, 40)]
+    zones = [
+        pcb.Zone(net="GND", layers=["F.Cu"], filled=True, fills=[("F.Cu", full)]),
+        pcb.Zone(net="GND", layers=["F.Cu", "B.Cu"], filled=False, fills=[]),
+    ]
+    findings = pcb_review.rule_pour_sides(ctx_for(board_from(zones=zones)))
+    assert [f.rule for f in findings] == ["layout.pour_single_sided"]
+    assert findings[0].details["layers"] == ["F.Cu"]

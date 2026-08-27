@@ -272,26 +272,6 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
                 span_w = half_w + (d_y / 2) * (local_y / max(half_h, 1e-9))
                 span_h = half_h + (d_x / 2) * (local_x / max(half_w, 1e-9))
                 inside = (np.abs(local_x) <= np.abs(span_w)) & (np.abs(local_y) <= np.abs(span_h))
-            elif shape == "chamfered_rect":
-                # the named corners are cut back by a fraction of the short side
-                cut = min(half_w, half_h) * 2 * (getattr(pad, "chamfer_ratio", 0.0) or 0.0)
-                inside = (np.abs(local_x) <= half_w) & (np.abs(local_y) <= half_h)
-                corners = {
-                    # KiCad's y grows downward, so "top" is the negative side
-                    "top_left": (-1, -1),
-                    "top_right": (1, -1),
-                    "bottom_left": (-1, 1),
-                    "bottom_right": (1, 1),
-                }
-                for name in getattr(pad, "chamfer_corners", ()) or ():
-                    sign = corners.get(str(name))
-                    if sign is None or cut <= 0:
-                        continue
-                    sx, sy = sign
-                    # the corner's diagonal cut: x/cut + y/cut > 1 inside it
-                    dx_c = (local_x * sx) - (half_w - cut)
-                    dy_c = (local_y * sy) - (half_h - cut)
-                    inside &= ~((dx_c > 0) & (dy_c > 0) & (dx_c + dy_c > cut))
             elif shape == "custom" and getattr(pad, "anchor", "rect") == "circle":
                 # the land the primitives sit on is round; taking it square
                 # would hand the pad four corners of copper it does not have
@@ -299,6 +279,31 @@ def _copper_masks(board: Any, x0: float, y0: float, nx: int, ny: int, step: floa
                 inside = local_x**2 + local_y**2 <= radius * radius
             else:
                 inside = (np.abs(local_x) <= half_w) & (np.abs(local_y) <= half_h)
+            # The chamfer is a cut taken off whatever shape the pad already is,
+            # not a shape of its own: KiCad writes a chamfered land as
+            # `roundrect` carrying `chamfer_ratio` and `chamfer`, which is why
+            # this cannot be a branch above - the shape dispatch never reaches
+            # one. The ESP32 modules in KiCad's own library are the common
+            # case, and they use it with `roundrect_rratio 0`, where a straight
+            # cut is exact; with a radius as well the cut edge is really
+            # rounded too, and this reads it as straight.
+            cut = min(half_w, half_h) * 2 * (getattr(pad, "chamfer_ratio", 0.0) or 0.0)
+            corners = {
+                # KiCad's y grows downward, so "top" is the negative side
+                "top_left": (-1, -1),
+                "top_right": (1, -1),
+                "bottom_left": (-1, 1),
+                "bottom_right": (1, 1),
+            }
+            for name in (getattr(pad, "chamfer_corners", ()) or ()) if cut > 0 else ():
+                sign = corners.get(str(name))
+                if sign is None:
+                    continue
+                sx, sy = sign
+                # the corner's diagonal cut: x/cut + y/cut > 1 is inside it
+                dx_c = (local_x * sx) - (half_w - cut)
+                dy_c = (local_y * sy) - (half_h - cut)
+                inside &= ~((dx_c > 0) & (dy_c > 0) & (dx_c + dy_c > cut))
             for kind, *geom in primitives:
                 # the drawn copper of a custom pad, in the same pad-local frame
                 if kind == "circle":

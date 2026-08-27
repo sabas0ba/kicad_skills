@@ -366,14 +366,19 @@ def test_a_trapezoid_pad_is_wider_at_the_end_its_delta_names():
     )
 
 
-def test_a_chamfered_pad_loses_a_triangle_at_each_named_corner():
+# The shape token KiCad actually writes for a chamfered land: it is a
+# `roundrect` carrying `chamfer_ratio` and `chamfer`, with the radius often
+# nought. The ESP32 modules in KiCad's own library are drawn this way, so a
+# test that says `chamfered_rect` tests a branch no real board reaches.
+@pytest.mark.parametrize("shape", ["roundrect", "rect", "chamfered_rect"])
+def test_a_chamfered_pad_loses_a_triangle_at_each_named_corner(shape):
     """cut = ratio * short side; each corner named drops a cut x cut triangle.
 
     A 4 x 4 land with ratio 0.25 has a 1 mm cut, so two chamfered corners take
     2 x 0.5 mm2 off 16 mm2 and leave 15.
     """
     pad = _pad(
-        "chamfered_rect",
+        shape,
         4.0,
         4.0,
         chamfer_ratio=0.25,
@@ -384,5 +389,24 @@ def test_a_chamfered_pad_loses_a_triangle_at_each_named_corner():
 
 def test_a_chamfered_pad_with_no_corners_named_is_the_whole_rectangle():
     """`chamfer_ratio` alone cuts nothing: KiCad names the corners separately."""
-    pad = _pad("chamfered_rect", 4.0, 4.0, chamfer_ratio=0.25)
+    pad = _pad("roundrect", 4.0, 4.0, chamfer_ratio=0.25)
     assert _copper_area_mm2(pad) == pytest.approx(16.0, abs=0.05)
+
+
+def test_a_chamfer_and_a_corner_radius_both_come_off_the_same_land():
+    """A rounded corner and a chamfered one are not exclusive in KiCad's file.
+
+    `roundrect_rratio 0.25` takes a quarter-circle off each corner and the
+    chamfer takes a triangle off one of them, so the land is smaller than
+    either cut alone leaves it.
+    """
+    rounded = _pad("roundrect", 4.0, 4.0, roundrect_rratio=0.25)
+    both = _pad(
+        "roundrect",
+        4.0,
+        4.0,
+        roundrect_rratio=0.25,
+        chamfer_ratio=0.25,
+        chamfer_corners=["top_left"],
+    )
+    assert _copper_area_mm2(both) < _copper_area_mm2(rounded) - 0.05
