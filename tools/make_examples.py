@@ -5550,16 +5550,25 @@ def _stitch_vias(design: Design) -> list[Via]:
     # (x, y, along, inward): the direction the edge runs in, and the direction
     # that goes deeper into the band rather than out over the board edge.
     ring: list[tuple[float, float, tuple[float, float], tuple[float, float]]] = []
-    x = left
-    while x < right + 0.01:
+
+    def _stations(start: float, end: float) -> list[float]:
+        """Both corners, and evenly spaced stations no more than a step apart.
+
+        Stepping from one corner and stopping when the next is overshot leaves
+        the last stretch short of it: a 55 mm edge on a 10 mm step ends five
+        millimetres early, and the rule measures round the corner, so the run
+        from there to the first station on the next side is two spans. That is
+        the 20 mm gap that survived on the buck board once the sliding was in.
+        """
+        spans = max(1, math.ceil((end - start) / step - 0.01))
+        return [start + (end - start) * i / spans for i in range(spans + 1)]
+
+    for x in _stations(left, right):
         ring.append((round(x, 2), round(top, 2), (1.0, 0.0), (0.0, 1.0)))
         ring.append((round(x, 2), round(bottom, 2), (1.0, 0.0), (0.0, -1.0)))
-        x += step
-    y = top + step
-    while y < bottom - 0.01:
+    for y in _stations(top, bottom)[1:-1]:  # the corners came from the sides
         ring.append((round(left, 2), round(y, 2), (0.0, 1.0), (1.0, 0.0)))
         ring.append((round(right, 2), round(y, 2), (0.0, 1.0), (-1.0, 0.0)))
-        y += step
     # The interior: purpose first, mesh second. A hand-stitched board puts
     # its vias where the plane needs them - beside every place a signal
     # crosses on the back layer, because that is where the plane is cut and
