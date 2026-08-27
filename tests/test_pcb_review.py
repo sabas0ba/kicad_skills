@@ -1509,3 +1509,28 @@ def test_the_edge_index_survives_a_polygon_off_the_origin():
     assert pcb_review._polygons_touch(a, b) is True
     away = [(0.5, -10.0), (5.0, -10.0), (5.0, -5.0), (0.5, -5.0)]
     assert pcb_review._polygons_touch(a, away) is False
+
+
+def test_the_row_index_answers_what_the_full_ray_cast_would():
+    """Skipping the edges that cannot straddle the point must skip nothing else.
+
+    An L takes the interesting cases with it: points in the notch are outside
+    while sitting inside the bounding box, and the ones on a row boundary are
+    where an index that files an edge in the wrong band goes wrong.
+    """
+    el = [(0.0, 0.0), (4.0, 0.0), (4.0, 1.0), (1.0, 1.0), (1.0, 4.0), (0.0, 4.0)]
+    index = pcb_review._edge_index(el)
+    probes = [
+        (0.5, 0.5),
+        (3.5, 0.5),
+        (3.5, 2.0),  # in the notch: inside the box, outside the copper
+        (0.5, 3.5),
+        (2.0, 1.0),  # exactly on an edge, and on a row boundary
+        (0.5, 2.0),
+        (-1.0, 0.5),
+        (2.0, 4.5),
+    ]
+    for probe in probes:
+        assert pcb_review._point_in_polygon_indexed(probe, el, index) is (
+            pcb_review._point_in_polygon(probe, el)
+        ), f"the index and the full cast disagree at {probe}"

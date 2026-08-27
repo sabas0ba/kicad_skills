@@ -2020,28 +2020,36 @@ def _boxes_meet(a: tuple[float, float, float, float], b, tol: float = 1e-6) -> b
 _EDGE_CELL_MM = 0.5
 
 
-def _edge_index(points: Sequence[tuple[float, float]]) -> tuple[list, dict]:
-    """The polygon's edges, and which grid cells each one passes through.
+def _edge_index(points: Sequence[tuple[float, float]]) -> tuple[list, dict, dict]:
+    """The polygon's edges, filed by the cells and the rows they pass through.
 
     KiCad writes a filled plane as one polygon of fifteen thousand vertices,
     and asking whether two of those touch by trying every edge against every
     other edge is two hundred million segment tests for a single pair. Two
     edges can only meet inside a cell they both occupy, so filing them by cell
-    first turns the question into the few edges that run near each other. The
-    answer is the same one the exhaustive pass gives; only the work differs.
+    first turns the question into the few edges that run near each other.
+
+    The rows serve the other question asked of these polygons - whether a via
+    lands inside one - because a ray cast only counts the edges whose vertical
+    span contains the point. The jetson demo board has three thousand vias and
+    a ground plane of eighty thousand vertices on each of four layers, which
+    is six billion vertex visits asked one edge at a time. Both answers are
+    the ones the exhaustive passes give; only the work differs.
     """
     edges = list(zip(points, [*points[1:], points[0]], strict=True))
     cells: dict[tuple[int, int], list[int]] = {}
+    rows: dict[int, list[int]] = {}
     tol = 1e-6
     for index, (p0, p1) in enumerate(edges):
         cx0 = math.floor((min(p0[0], p1[0]) - tol) / _EDGE_CELL_MM)
         cx1 = math.floor((max(p0[0], p1[0]) + tol) / _EDGE_CELL_MM)
         cy0 = math.floor((min(p0[1], p1[1]) - tol) / _EDGE_CELL_MM)
         cy1 = math.floor((max(p0[1], p1[1]) + tol) / _EDGE_CELL_MM)
-        for cx in range(cx0, cx1 + 1):
-            for cy in range(cy0, cy1 + 1):
+        for cy in range(cy0, cy1 + 1):
+            rows.setdefault(cy, []).append(index)
+            for cx in range(cx0, cx1 + 1):
                 cells.setdefault((cx, cy), []).append(index)
-    return edges, cells
+    return edges, cells, rows
 
 
 def _polygons_touch(
@@ -2049,8 +2057,8 @@ def _polygons_touch(
     b: list[tuple[float, float]],
     a_box: tuple[float, float, float, float] | None = None,
     b_box: tuple[float, float, float, float] | None = None,
-    a_index: tuple[list, dict] | None = None,
-    b_index: tuple[list, dict] | None = None,
+    a_index: tuple[list, dict, dict] | None = None,
+    b_index: tuple[list, dict, dict] | None = None,
 ) -> bool:
     """Whether two filled polygons share copper - overlap, or touch on an edge.
 
@@ -2061,8 +2069,8 @@ def _polygons_touch(
     """
     if not _boxes_meet(a_box or _poly_bbox(a), b_box or _poly_bbox(b)):
         return False
-    a_edges, a_cells = a_index or _edge_index(a)
-    b_edges, b_cells = b_index or _edge_index(b)
+    a_edges, a_cells, _ = a_index or _edge_index(a)
+    b_edges, b_cells, _ = b_index or _edge_index(b)
     if len(b_cells) < len(a_cells):  # walk the smaller index
         a_edges, a_cells, b_edges, b_cells = b_edges, b_cells, a_edges, a_cells
     for cell, mine in a_cells.items():
@@ -2114,6 +2122,27 @@ def _point_in_polygon(point, polygon) -> bool:
     return inside
 
 
+def _point_in_polygon_indexed(point, polygon, index) -> bool:
+    """`_point_in_polygon`, asking only the edges that can straddle the point.
+
+    The ray cast counts edges whose vertical span contains the point's y; on a
+    plane fill of eighty thousand vertices the rest are known not to matter
+    before any arithmetic happens, and a board's worth of vias asks this
+    question tens of thousands of times.
+    """
+    edges, _cells, rows = index
+    band = rows.get(math.floor(point[1] / _EDGE_CELL_MM))
+    if not band:
+        return False
+    x, y = point
+    inside = False
+    for i in band:
+        (x0, y0), (x1, y1) = edges[i]
+        if (y0 > y) != (y1 > y) and x < (x1 - x0) * (y - y0) / (y1 - y0 or 1e-12) + x0:
+            inside = not inside
+    return inside
+
+
 def _fill_regions(
     polygons: list[list[tuple[float, float]]],
 ) -> list[list[list[tuple[float, float]]]]:
@@ -2140,9 +2169,8 @@ def _fill_regions(
     return list(groups.values())
 
 
-_Regions = dict[
-    str, list[list[tuple[list[tuple[float, float]], tuple[float, float, float, float]]]]
-]
+# Each region is a list of (polygon, extent, edge index) for one piece of copper.
+_Regions = dict[str, list[list[tuple[list[tuple[float, float]], tuple, tuple]]]]
 
 
 def _ground_regions(board: Any, net: str, cache: dict[str, _Regions]) -> _Regions:
@@ -2163,7 +2191,10 @@ def _ground_regions(board: Any, net: str, cache: dict[str, _Regions]) -> _Region
             if len(points) >= 3:
                 fills.setdefault(layer, []).append(points)
     regions: _Regions = {
-        layer: [[(poly, _poly_bbox(poly)) for poly in region] for region in _fill_regions(polys)]
+        layer: [
+            [(poly, _poly_bbox(poly), _edge_index(poly)) for poly in region]
+            for region in _fill_regions(polys)
+        ]
         for layer, polys in fills.items()
     }
     cache[net] = regions
@@ -2204,8 +2235,9 @@ def _stitch_groups(
                 continue
             for index, region in enumerate(layer_regions):
                 if any(
-                    _point_in_box((via.x, via.y), box) and _point_in_polygon((via.x, via.y), poly)
-                    for poly, box in region
+                    _point_in_box((via.x, via.y), box)
+                    and _point_in_polygon_indexed((via.x, via.y), poly, index)
+                    for poly, box, index in region
                 ):
                     groups.setdefault((layer, index), []).append((via.x, via.y))
                     break
@@ -2253,7 +2285,9 @@ def _merge_touching(
         anchor: int | None = None
         for point in group:
             for index, polygon in enumerate(polygons):
-                if not _point_in_box(point, boxes[index]) or not _point_in_polygon(point, polygon):
+                if not _point_in_box(point, boxes[index]) or not _point_in_polygon_indexed(
+                    point, polygon, indexes[index]
+                ):
                     continue
                 if anchor is None:
                     anchor = index
