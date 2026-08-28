@@ -555,6 +555,27 @@ def cmd_pcb_electrical(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pcb_crosstalk(args: argparse.Namespace) -> int:
+    from .kicad import crosstalk, pcb
+
+    board_path = pcb.find_board(args.target)
+    try:
+        payload = crosstalk.analyse(
+            pcb.parse(board_path),
+            rise_ns=args.rise_ns,
+            swing_v=args.swing,
+            min_coupled_mm=args.min_coupled,
+            limit=args.limit,
+        )
+    except ValueError as exc:
+        # a nonsense edge or a cross-section the mesh cannot afford is a
+        # property of the request, not a traceback
+        raise EdaError(str(exc)) from exc
+    payload["board"] = str(board_path)
+    emit(payload, as_json=True)
+    return 0
+
+
 def cmd_pcb_thermal(args: argparse.Namespace) -> int:
     from .kicad import pcb, thermal
 
@@ -980,6 +1001,40 @@ def build_parser() -> argparse.ArgumentParser:
         help="re-measure the impedance widths with the 2D field solver (a few s per layer)",
     )
     p.set_defaults(func=cmd_pcb_electrical)
+
+    p = pcb_p.add_parser(
+        "crosstalk", help="near- and far-end crosstalk of the board's coupled runs"
+    )
+    p.add_argument("target")
+    p.add_argument(
+        "--rise-ns",
+        type=float,
+        default=1.0,
+        metavar="NS",
+        help="the aggressor edge's rise time (default: 1.0)",
+    )
+    p.add_argument(
+        "--swing",
+        type=float,
+        default=3.3,
+        metavar="V",
+        help="the aggressor's voltage swing (default: 3.3)",
+    )
+    p.add_argument(
+        "--min-coupled",
+        type=float,
+        default=5.0,
+        metavar="MM",
+        help="report pairs coupled at least this long (default: 5)",
+    )
+    p.add_argument(
+        "--limit",
+        type=int,
+        default=12,
+        metavar="N",
+        help="field solves to spend; further pairs report geometry only (default: 12)",
+    )
+    p.set_defaults(func=cmd_pcb_crosstalk)
 
     p = pcb_p.add_parser("thermal", help="steady-state temperature map for stated dissipations")
     p.add_argument("target")

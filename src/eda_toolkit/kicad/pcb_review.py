@@ -1583,7 +1583,20 @@ def rule_parallel_runs(ctx: PcbContext) -> list[Finding]:
 
 
 def _parallel_overlap(a0, a1, b0, b1, near: float) -> float:
-    """How much of two segments runs side by side within ``near``, in mm.
+    """How much of two segments runs side by side within ``near``, in mm."""
+    return _parallel_overlap_span(a0, a1, b0, b1, near)[0]
+
+
+def _mean_abs_linear(f_lo: float, f_hi: float) -> float:
+    """The mean of |f| over an interval where f is linear, from its two ends."""
+    if f_lo * f_hi >= 0:
+        return (abs(f_lo) + abs(f_hi)) / 2
+    # crossing zero: two triangles, exact rather than sampled
+    return (f_lo * f_lo + f_hi * f_hi) / (2 * (abs(f_lo) + abs(f_hi)))
+
+
+def _parallel_overlap_span(a0, a1, b0, b1, near: float) -> tuple[float, float]:
+    """The side-by-side run within ``near``, and its mean separation, in mm.
 
     Parallel means what a plot means by it: headings within ~15 degrees.
     The overlap is one segment projected onto the other and clipped; within
@@ -1591,44 +1604,50 @@ def _parallel_overlap(a0, a1, b0, b1, near: float) -> float:
     than ``near`` is an interval the two endpoint offsets pin down exactly.
     A pair that merely converges at a crossing therefore counts only the few
     millimetres around the crossing, not the whole shared span.
+
+    The second number is the mean centre-to-centre distance across that run -
+    the length weighs the crosstalk rule's verdict, the distance is what the
+    crosstalk *solver* needs to pose the cross-section.
     """
     va = (a1[0] - a0[0], a1[1] - a0[1])
     vb = (b1[0] - b0[0], b1[1] - b0[1])
     la, lb = math.hypot(*va), math.hypot(*vb)
     if la <= GEOM_TOL or lb <= GEOM_TOL:
-        return 0.0
+        return 0.0, 0.0
     cos = abs(va[0] * vb[0] + va[1] * vb[1]) / (la * lb)
     if cos < 0.966:  # more than ~15 degrees apart in heading
-        return 0.0
+        return 0.0, 0.0
     ua = (va[0] / la, va[1] / la)
     normal = (-ua[1], ua[0])
     t0 = (b0[0] - a0[0]) * ua[0] + (b0[1] - a0[1]) * ua[1]
     t1 = (b1[0] - a0[0]) * ua[0] + (b1[1] - a0[1]) * ua[1]
     lo, hi = max(0.0, min(t0, t1)), min(la, max(t0, t1))
     if hi <= lo:
-        return 0.0
+        return 0.0, 0.0
     # signed lateral offset of b's line from a's, at b's two ends
     d0 = (b0[0] - a0[0]) * normal[0] + (b0[1] - a0[1]) * normal[1]
     d1 = (b1[0] - a0[0]) * normal[0] + (b1[1] - a0[1]) * normal[1]
     if abs(t1 - t0) <= GEOM_TOL:
-        return (hi - lo) if max(abs(d0), abs(d1)) <= near else 0.0
+        if max(abs(d0), abs(d1)) <= near:
+            return hi - lo, _mean_abs_linear(d0, d1)
+        return 0.0, 0.0
     slope = (d1 - d0) / (t1 - t0)
 
     def offset(t: float) -> float:
         return d0 + slope * (t - t0)
 
     if abs(slope) <= 1e-9:
-        return (hi - lo) if abs(d0) <= near else 0.0
+        return ((hi - lo), abs(d0)) if abs(d0) <= near else (0.0, 0.0)
     # |offset| <= near between the two crossings of +near and -near
     t_at = sorted(((near - d0) / slope + t0, (-near - d0) / slope + t0))
     close_lo, close_hi = max(lo, t_at[0]), min(hi, t_at[1])
     if close_hi <= close_lo:
-        return 0.0
+        return 0.0, 0.0
     mid = (close_lo + close_hi) / 2
     point = (a0[0] + ua[0] * mid, a0[1] + ua[1] * mid)
     if _point_to_segment(point, b0, b1) > near:
-        return 0.0
-    return close_hi - close_lo
+        return 0.0, 0.0
+    return close_hi - close_lo, _mean_abs_linear(offset(close_lo), offset(close_hi))
 
 
 @rule
