@@ -119,7 +119,7 @@ flowchart LR
 | Datasheets | Text, parameter tables, embedded figures and rendered page images from a PDF | `eda datasheet parse lm321.pdf -o out/` | [guide](docs/guides/datasheet-analysis.md) |
 | Simulation | ngspice op/dc/ac/tran/noise, THD, Monte Carlo tolerance analysis, temperature sweeps — with measurements and plots | `eda sim run filter.cir -o out/` | [guide](docs/guides/spice-simulation.md) |
 | Schematic review | Components, nets and hierarchy from `.kicad_sch`; ERC plus decoupling / floating-input / annotation / pull-up checks, drawing readability (grid, junctions, overlap, page) and part specification (ratings, derating, part numbers) | `eda sch review hardware/ --text` | [guide](docs/guides/kicad-schematic-review.md) |
-| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen over pads, placement grid and rotation, track stubs and acute corners, decoupling vias; current capacity, resistance and impedance from the stackup — closed forms, or a 2D field solve with `--solve`; a steady-state temperature map for stated dissipations (`pcb thermal`); layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](docs/guides/kicad-pcb-review.md) |
+| Board review | DRC, schematic parity, track widths, drills, exact board-edge clearance, ground pour, silkscreen over pads, placement grid and rotation, track stubs and acute corners, decoupling vias; current capacity, resistance and impedance from the stackup — closed forms, or a 2D field solve with `--solve`; a steady-state temperature map and heating curve for stated dissipations (`pcb thermal`); near- and far-end crosstalk of the coupled runs from solved line matrices (`pcb crosstalk`); layer plots and 3D renders | `eda pcb review hardware/ --text` | [guide](docs/guides/kicad-pcb-review.md) |
 | Design gate | One pass/fail verdict over ERC, DRC and both reviews against a stated policy; readability, layout-practice and part-specification rules; waivers that must carry a reason | `eda gate hardware/ --policy ai-generated` | [guide](docs/guides/kicad-design-gate.md) |
 | Fabrication | Gerbers, Excellon drill, pick-and-place, BOM, STEP/IPC-2581, zipped with a manifest | `eda pcb fab hardware/ -o fab/` | [guide](docs/guides/kicad-fabrication-output.md) |
 | The container | Build, pin, verify and troubleshoot the toolchain | `eda doctor` | [guide](docs/guides/eda-environment.md) |
@@ -417,8 +417,9 @@ eda pcb render   TARGET -o DIR [--views ...] [--per-layer] [--no-3d] [--no-sheet
                               [--background white|black|transparent]
 eda pcb glb      TARGET -o FILE              3D model a browser can display
 eda pcb electrical TARGET [--temperature-rise K] [--top N] [--solve]
+eda pcb crosstalk TARGET [--rise-ns NS] [--swing V] [--min-coupled MM] [--limit N]
 eda pcb thermal  TARGET --power REF=W [--power ...] [--ambient C] [--htc W_M2K]
-                              [--step MM] [-o DIR]
+                              [--step MM] [--transient S] [-o DIR]
 eda pcb stats    TARGET
 ```
 

@@ -119,18 +119,31 @@ rows = d['impedance']
 print(f'{len(rows)} impedance row(s); solved columns present where a width was proposed')
 "
 
-step "thermal: where the stated watts end up"
-eda pcb thermal "$PROJECT" --power U1=1.2 -o "$OUT/thermal" > "$OUT/thermal.json"
+step "thermal: where the stated watts end up, and how fast"
+eda pcb thermal "$PROJECT" --power U1=1.2 --transient 60 -o "$OUT/thermal" > "$OUT/thermal.json"
 have "$OUT/thermal.json" \
   "d['max_temperature_c'] > d['ambient_c'] and d['balance']['residual'] < 0.01"
+have "$OUT/thermal.json" \
+  "d['transient']['balance']['residual'] < 1e-6 and d['transient']['curve']"
 test -s "$OUT/thermal/thermal.png"
 python3 -c "
 import json
 d = json.load(open('$OUT/thermal.json'))
 hot = d['parts'][0]
 print(f\"{hot['ref']} at {hot['power_w']} W: {hot['temperature_c']} degC, \"
-      f\"balance residual {d['balance']['residual']}\")
+      f\"balance residual {d['balance']['residual']}, \"
+      f\"reached {d['transient']['reached_fraction']:.0%} of steady in 60 s\")
 "
+
+# The fixture routes two nets, nowhere near each other - so like --solve
+# above, what smoke proves is the wiring: the command runs, the assumptions
+# are stated, and an empty pair list is the truthful answer for this board.
+# The physics is covered by tests/test_crosstalk.py against anchors that are
+# not other simulators (stripline's forward silence, the lumped RC clock).
+step "crosstalk: the coupled runs, or the truthful lack of them"
+eda pcb crosstalk "$PROJECT" > "$OUT/crosstalk.json"
+have "$OUT/crosstalk.json" \
+  "d['assumptions']['method'].startswith('weak-coupling') and isinstance(d['pairs'], list)"
 
 step "bill of materials"
 eda sch bom "$PROJECT" -o "$OUT/bom.csv" > "$OUT/bom.json"
