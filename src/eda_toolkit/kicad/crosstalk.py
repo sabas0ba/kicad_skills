@@ -326,15 +326,30 @@ def render(board: Any, result: dict[str, Any], path: Any) -> dict[str, Any]:
     by_key = {
         (tuple(pair["nets"]), pair["layer"]): pair.get("spans", []) for pair in coupled_pairs(board)
     }
-    colour = (203, 75, 22)
-    for pair in result.get("pairs", []):
+    # neither copper colour: the strikes must read over red front tracks and
+    # blue back ones alike
+    colour = (211, 54, 130)
+    # the worst offenders only: a routed bus is dozens of pairs sharing one
+    # geometry, and striking every one paints the artwork over. Ten is what
+    # a reviewer walks to; the JSON still carries the rest.
+    solved = [pair for pair in result.get("pairs", []) if "next" in pair]
+    solved.sort(key=lambda pair: -abs(pair["next"]["mv"]))
+    for pair in solved[:10]:
         runs = by_key.get((tuple(pair["nets"]), pair["layer"]), [])
         for start, end, _length in runs:
-            draw.line([at(*start), at(*end)], fill=colour, width=max(2, int(0.35 * scale)))
+            draw.line([at(*start), at(*end)], fill=colour, width=max(3, int(0.5 * scale)))
         if runs:
             start, end, _length = max(runs, key=lambda run: run[2])
             mid = ((start[0] + end[0]) / 2, (start[1] + end[1]) / 2)
             cx, cy = at(*mid)
-            draw.text((cx + 4, cy - 12), str(pair["index"]), fill=colour)
+            radius = 9.0
+            draw.ellipse(
+                [cx - radius, cy - radius, cx + radius, cy + radius],
+                fill=(255, 255, 255),
+                outline=colour,
+                width=2,
+            )
+            label = str(pair["index"])
+            draw.text((cx - 3 * len(label), cy - 6), label, fill=colour)
     image.save(os.fspath(path))
     return {"path": str(path)}
