@@ -596,6 +596,7 @@ def cmd_pcb_thermal(args: argparse.Namespace) -> int:
             ambient_c=args.ambient,
             htc_w_m2k=args.htc,
             step_mm=args.step,
+            transient_s=args.transient,
         )
     except ValueError as exc:
         # a mistyped reference or a nonsense parameter is a user error, not
@@ -1046,6 +1047,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="a part and what it dissipates (repeatable), e.g. --power U1=1.2",
     )
     p.add_argument("--ambient", type=float, default=25.0, metavar="C")
+    p.add_argument(
+        "--transient",
+        type=float,
+        metavar="S",
+        help="also march the heating curve from power-on to this many seconds",
+    )
     p.add_argument(
         "--htc",
         type=float,

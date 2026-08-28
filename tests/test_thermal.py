@@ -410,3 +410,62 @@ def test_a_chamfer_and_a_corner_radius_both_come_off_the_same_land():
         chamfer_corners=["top_left"],
     )
     assert _copper_area_mm2(both) < _copper_area_mm2(rounded) - 0.05
+
+
+def test_the_heating_curve_is_the_lumped_rc_on_a_uniform_plate():
+    """Cover the board with the source: the exact clock is C/(2hA) on paper.
+
+    A uniformly heated plate has no gradients, so the whole march collapses
+    to one RC - tau = rho*c*V / (2hA) - and the curve has an exponential to
+    be held against, not another simulation.
+    """
+    board = _Board(footprints=[_Part("HEAT", 20, 15, half=25.0)])
+    area = 40e-3 * 30e-3
+    tau = (area * 1.6e-3 * thermal.RHO_C_LAMINATE) / (2 * 10.0 * area)
+    result = thermal.analyse(board, {"HEAT": 1.0}, htc_w_m2k=10.0, step_mm=1.0, transient_s=5 * tau)
+    tr = result["transient"]
+    assert tr["time_to_63pct_s"] == pytest.approx(tau, rel=0.05)
+    # backward Euler runs a touch behind the true exponential, never ahead
+    steady = result["max_rise_c"]
+    for point in tr["curve"][10:]:
+        exact = steady * (1 - math.exp(-point["t_s"] / tau))
+        assert point["max_rise_c"] == pytest.approx(exact, rel=0.03)
+    assert tr["reached_fraction"] == pytest.approx(1 - math.exp(-5), abs=0.01)
+
+
+def test_every_joule_in_is_stored_or_convected():
+    """The discrete identity backward Euler owes: no energy invented, none lost.
+
+    With adiabatic edges the conduction terms telescope away exactly, so this
+    is machine precision or the solver is not solving its own equations - a
+    much sharper claim than any tolerance on a temperature.
+    """
+    board = _Board(footprints=[_Part("U1", 10, 10)])
+    result = thermal.analyse(board, {"U1": 1.5}, step_mm=1.0, transient_s=60.0)
+    assert result["transient"]["balance"]["residual"] < 1e-6
+
+
+def test_a_short_march_has_not_reached_its_clock_yet():
+    board = _Board(footprints=[_Part("HEAT", 20, 15, half=25.0)])
+    result = thermal.analyse(board, {"HEAT": 1.0}, step_mm=1.0, transient_s=5.0)
+    tr = result["transient"]
+    assert tr["time_to_63pct_s"] is None
+    assert tr["reached_fraction"] < 0.2
+
+
+def test_copper_holds_more_heat_than_the_bare_board():
+    """The same artwork, plus a pour: more thermal mass, a slower clock."""
+    bare = _Board(footprints=[_Part("HEAT", 20, 15, half=25.0)])
+    poured = _Board(
+        footprints=[_Part("HEAT", 20, 15, half=25.0)],
+        zones=[_Zone("F.Cu", [(0, 0), (40, 0), (40, 30), (0, 30)])],
+    )
+    a = thermal.analyse(bare, {"HEAT": 1.0}, step_mm=1.0, transient_s=400.0)
+    b = thermal.analyse(poured, {"HEAT": 1.0}, step_mm=1.0, transient_s=400.0)
+    assert b["transient"]["time_to_63pct_s"] > a["transient"]["time_to_63pct_s"] * 1.02
+
+
+def test_a_nonsense_duration_is_refused():
+    board = _Board(footprints=[_Part("U1", 10, 10)])
+    with pytest.raises(ValueError):
+        thermal.analyse(board, {"U1": 1.0}, transient_s=0.0)

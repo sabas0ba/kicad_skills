@@ -59,6 +59,17 @@ DEFAULT_STEP_MM = 0.5
 DEFAULT_AMBIENT_C = 25.0
 DEFAULT_BOARD_THICKNESS_MM = 1.6
 
+# Volumetric heat capacities, J/(m^3 K), for the transient march. Copper is
+# copper; FR-4 spreads +-20% with the glass-to-resin ratio, and every time
+# constant scales linearly with it - the curve's shape survives, its clock
+# does not, which is the honest precision of a board-level transient.
+RHO_C_COPPER = 3.45e6
+RHO_C_LAMINATE = 1.7e6
+
+# The march's resolution: geometric steps, so the fast copper-limited start
+# and the slow convection-limited tail both get their share of them.
+TRANSIENT_STEPS = 80
+
 
 def _primitive_points(primitives) -> list[tuple[float, float]]:
     """Every pad-local point a custom pad's primitives reach."""
@@ -492,6 +503,73 @@ def _relax(
     return u
 
 
+def _march(
+    duration_s: float,
+    capacity: np.ndarray,
+    face_x: np.ndarray,
+    face_y: np.ndarray,
+    sink: np.ndarray,
+    source: np.ndarray,
+    inside: np.ndarray,
+    *,
+    steady_max: float,
+) -> dict[str, Any]:
+    """The heating curve from power-on, by backward Euler on the same grid.
+
+    Each step solves the steady problem with ``C/dt`` added to the diagonal
+    and ``(C/dt) * u_old`` to the source - unconditionally stable, and warm
+    started from the field it just left, so a step costs a few sweeps rather
+    than a solve from cold.
+
+    The march keeps its own books: with adiabatic edges the conduction terms
+    telescope away, so every joule in is exactly a joule stored plus a joule
+    convected, step by discrete step. The residual reported is that identity
+    measured, and it owes nothing to the physics being right - it is the
+    solver confessing whether it solved its own equations.
+    """
+    times = np.geomspace(duration_s / 200.0, duration_s, TRANSIENT_STEPS)
+    u = np.zeros_like(capacity)
+    curve = []
+    energy_in = 0.0
+    convected = 0.0
+    previous = 0.0
+    for now in times:
+        dt = now - previous
+        step_sink = sink + capacity / dt
+        step_source = source + (capacity / dt) * u
+        u = _relax(u, face_x, face_y, step_sink, step_source)
+        energy_in += float(np.sum(source)) * float(dt)
+        convected += float(np.sum(sink * u)) * float(dt)
+        previous = now
+        curve.append({"t_s": round(float(now), 3), "max_rise_c": round(float(np.max(u)), 2)})
+    stored = float(np.sum(capacity * u))
+    final = float(np.max(np.where(inside, u, 0.0)))
+    time_63 = None
+    target = 0.632 * steady_max
+    for before, after in itertools.pairwise([{"t_s": 0.0, "max_rise_c": 0.0}, *curve]):
+        if after["max_rise_c"] >= target > before["max_rise_c"]:
+            span = after["max_rise_c"] - before["max_rise_c"]
+            frac = (target - before["max_rise_c"]) / span if span > 0 else 0.0
+            time_63 = round(before["t_s"] + frac * (after["t_s"] - before["t_s"]), 3)
+            break
+    return {
+        "duration_s": duration_s,
+        "steps": TRANSIENT_STEPS,
+        "curve": curve,
+        "final_rise_c": round(final, 2),
+        "reached_fraction": round(final / steady_max, 4) if steady_max > 0 else None,
+        # the classic 63% clock, read off the curve - None while the run is
+        # still too short to have got there
+        "time_to_63pct_s": time_63,
+        "balance": {
+            "energy_in_j": round(energy_in, 4),
+            "energy_stored_j": round(stored, 4),
+            "energy_convected_j": round(convected, 4),
+            "residual": round(abs(energy_in - stored - convected) / max(energy_in, 1e-12), 6),
+        },
+    }
+
+
 def analyse(
     board: Any,
     powers: dict[str, float],
@@ -499,11 +577,19 @@ def analyse(
     ambient_c: float = DEFAULT_AMBIENT_C,
     htc_w_m2k: float = DEFAULT_HTC_W_M2K,
     step_mm: float = DEFAULT_STEP_MM,
+    transient_s: float | None = None,
 ) -> dict[str, Any]:
     """Temperature-rise map for the stated dissipations, on this artwork.
 
     Returns the grid (for rendering), the balance that proves the solve, and
     the per-part and hottest-point summaries a review actually reads.
+
+    ``transient_s`` additionally marches the heating curve from power-on to
+    that time: how fast the board approaches the steady answer, and how far
+    it gets. The same conductances and the same convection; what is added is
+    each cell's heat capacity, and backward Euler - which is the steady solve
+    again with the capacity on the diagonal, so the march inherits the
+    solver's convergence and its honesty metric both.
     """
     from .electrical import copper_thickness
 
@@ -521,6 +607,8 @@ def analyse(
         )
     if not math.isfinite(ambient_c):
         raise ValueError(f"the ambient temperature must be finite, got {ambient_c}")
+    if transient_s is not None and (not math.isfinite(transient_s) or transient_s <= 0):
+        raise ValueError(f"the transient duration must be positive, got {transient_s}")
     bbox = board.outline_bbox()
     if bbox is None:
         raise ValueError("the board has no outline to solve on")
@@ -592,6 +680,25 @@ def analyse(
 
     rise = _relax(np.zeros((ny, nx)), face_x, face_y, sink, source)
 
+    transient = None
+    if transient_s is not None:
+        # heat capacity per cell: the laminate's volume plus every copper
+        # layer's, the same accounting the conductance summed
+        capacity = np.where(inside, RHO_C_LAMINATE * board_thickness * 1e-3 * area_m2, 0.0)
+        for layer, mask in masks.items():
+            t_mm, _ = copper_thickness(board, layer)
+            capacity += np.where(mask & inside, RHO_C_COPPER * t_mm * 1e-3 * area_m2, 0.0)
+        transient = _march(
+            transient_s,
+            capacity,
+            face_x,
+            face_y,
+            sink,
+            source,
+            inside,
+            steady_max=float(np.max(np.where(inside, rise, 0.0))),
+        )
+
     total_in = float(np.sum(source))
     total_out = float(np.sum(sink * rise))
     hot = np.unravel_index(int(np.argmax(np.where(inside, rise, -1.0))), rise.shape)
@@ -626,6 +733,7 @@ def analyse(
             # solver's honesty metric, not a physical quantity
             "residual": round(abs(total_in - total_out) / total_in, 4),
         },
+        "transient": transient,
         "rise_grid": rise,
         "origin_mm": [x0, y0],
         "notes": [
