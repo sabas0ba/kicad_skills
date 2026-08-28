@@ -793,3 +793,31 @@ def render(result: dict[str, Any], out_path: Any) -> None:
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
     plt.close(fig)
+
+
+def render_curve(result: dict[str, Any], out_path: Any) -> None:
+    """The heating curve as an image, the 63% clock marked where it landed."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    transient = result["transient"]
+    times = [0.0] + [point["t_s"] for point in transient["curve"]]
+    rises = [0.0] + [point["max_rise_c"] for point in transient["curve"]]
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(times, rises, color="#b58900")
+    steady = result["max_rise_c"]
+    ax.axhline(steady, color="#93a1a1", linestyle="--", linewidth=1)
+    ax.annotate(f" steady {steady:.1f} K", (times[-1], steady), va="bottom", ha="right", fontsize=8)
+    clock = transient.get("time_to_63pct_s")
+    if clock is not None:
+        ax.axvline(clock, color="#268bd2", linestyle=":", linewidth=1)
+        ax.annotate(f" 63% at {clock:.0f} s", (clock, steady * 0.632), fontsize=8, color="#268bd2")
+    ax.set_xlabel("s after power-on")
+    ax.set_ylabel("hottest cell rise, K")
+    ax.set_xlim(0, times[-1])
+    ax.set_ylim(0, None)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)

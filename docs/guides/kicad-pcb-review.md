@@ -168,7 +168,10 @@ is exact by construction (every joule in is stored or convected, and
 `transient.balance.residual` measures the solver against its own equations),
 the curve's *shape* is as good as the steady map, and the clock leans on
 FR-4's volumetric heat capacity, which spreads ±20% with the glass ratio — so
-read the time constants to the nearest quarter, not the nearest second.
+read the time constants to the nearest quarter, not the nearest second. With
+`-o` the curve is drawn to `heating.png` beside the temperature map, the 63%
+clock marked where it landed; the map itself already carries `hotspot_mm`, so
+the where of the heat is on the record in both forms.
 
 `pcb crosstalk` picks up where the `emc.parallel_run` warning stops. The rule
 points at two nets sharing a channel; this command poses those same coupled
@@ -177,14 +180,18 @@ inductance matrices with the same 2D field solver `--solve` uses, and turns
 them into the two numbers the argument is actually about:
 
 ```console
-$ ./bin/eda.sh pcb crosstalk hardware/ --rise-ns 2 --swing 3.3
+$ ./bin/eda.sh pcb crosstalk hardware/ --rise-ns 2 --swing 3.3 -o build/crosstalk
 {
   "pairs": [{
+    "index": 1,
     "nets": ["/MA16", "/OE-"], "layer": "B.Cu",
     "coupled_mm": 54.6, "gap_mm": 0.838,
+    "where_mm": [55.9, 82.6, 152.4, 108.0],
+    "longest_run": {"from": [93.3, 105.4], "to": [124.5, 105.4], "length_mm": 31.2},
     "next": {"coefficient": 0.1365, "mv": 282.8, "saturated": false},
     "fext": {"mv": -51.7, "note": "negative-going: the inductive coupling wins ..."}
-  }]
+  }],
+  "image": "build/crosstalk/crosstalk.png"
 }
 ```
 
@@ -207,6 +214,11 @@ How to read it, and what to trust:
 * Each unique cross-section costs a field solve (seconds; a two-layer board's
   tall thin sections the most), so identical bus geometries share one and
   `--limit` caps the spend; pairs beyond it report geometry only.
+* **Where, not just what.** Every pair carries the box its coupled stretches
+  fit in (`where_mm`) and its single longest run end to end — the place to
+  look at on the plot. With `-o` the same stretches are struck through in
+  orange on the board's own copper, numbered by each pair's `index`, the way
+  `review --map` marks its findings.
 
 `eda diff OLD NEW -o DIR` compares two revisions: which footprints moved and how
 far, what the board statistics did, and a rendered diff of the plots - red for

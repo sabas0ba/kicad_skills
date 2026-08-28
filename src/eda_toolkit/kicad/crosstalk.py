@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import os
 from collections import defaultdict
 from typing import Any
 
@@ -99,6 +100,7 @@ def coupled_pairs(board: Any, *, spacing_w: float = SPACING_W) -> list[dict[str,
     sums: dict[tuple[str, str, str], dict[str, float]] = defaultdict(
         lambda: {"length": 0.0, "distance": 0.0, "width": 0.0}
     )
+    spans: dict[tuple[str, str, str], list] = defaultdict(list)
     seen: set[tuple[int, int]] = set()
     for bucket in cells.values():
         for i in bucket:
@@ -112,28 +114,50 @@ def coupled_pairs(board: Any, *, spacing_w: float = SPACING_W) -> list[dict[str,
                 stem_a, stem_b = _pair_stem(a.net), _pair_stem(b.net)
                 if stem_a is not None and stem_a == stem_b:
                     continue
-                length, distance = _parallel_overlap_span(
+                length, distance, span = _parallel_overlap_span(
                     a.start, a.end, b.start, b.end, spacing_w * max(a.width, b.width)
                 )
-                if length <= 0:
+                if length <= 0 or span is None:
                     continue
                 key = (*sorted((a.net, b.net)), a.layer)
                 entry = sums[key]
                 entry["length"] += length
                 entry["distance"] += length * distance
                 entry["width"] += length * (a.width + b.width) / 2
+                spans[key].append((span[0], span[1], length))
 
-    pairs = [
-        {
-            "nets": [net_a, net_b],
-            "layer": layer,
-            "coupled_mm": round(entry["length"], 1),
-            "centre_mm": round(entry["distance"] / entry["length"], 3),
-            "width_mm": round(entry["width"] / entry["length"], 3),
-        }
-        for (net_a, net_b, layer), entry in sums.items()
-        if entry["length"] > 0
-    ]
+    pairs = []
+    for (net_a, net_b, layer), entry in sums.items():
+        if entry["length"] <= 0:
+            continue
+        runs = spans[(net_a, net_b, layer)]
+        xs = [p[0] for a, b, _l in runs for p in (a, b)]
+        ys = [p[1] for a, b, _l in runs for p in (a, b)]
+        start, end, longest = max(runs, key=lambda run: run[2])
+        pairs.append(
+            {
+                "nets": [net_a, net_b],
+                "layer": layer,
+                "coupled_mm": round(entry["length"], 1),
+                "centre_mm": round(entry["distance"] / entry["length"], 3),
+                "width_mm": round(entry["width"] / entry["length"], 3),
+                # where on the board: the box every coupled stretch fits in,
+                # and the single longest stretch end to end - the place to
+                # look at on the plot, not just the fact that there is one
+                "where_mm": [
+                    round(min(xs), 1),
+                    round(min(ys), 1),
+                    round(max(xs), 1),
+                    round(max(ys), 1),
+                ],
+                "longest_run": {
+                    "from": [round(start[0], 2), round(start[1], 2)],
+                    "to": [round(end[0], 2), round(end[1], 2)],
+                    "length_mm": round(longest, 1),
+                },
+                "spans": runs,
+            }
+        )
     pairs.sort(key=lambda pair: -pair["coupled_mm"])
     return pairs
 
@@ -183,7 +207,8 @@ def analyse(
         section = _cross_section(board, pair["layer"])
         thickness, _source = electrical.copper_thickness(board, pair["layer"])
         gap = max(MIN_GAP_MM, pair["centre_mm"] - pair["width_mm"])
-        entry: dict[str, Any] = dict(pair)
+        entry: dict[str, Any] = {k: v for k, v in pair.items() if k != "spans"}
+        entry["index"] = len(out_pairs) + 1
         entry["gap_mm"] = round(gap, 3)
         entry["cross_section"] = section
 
@@ -282,3 +307,34 @@ def analyse(
         },
         "pairs": out_pairs,
     }
+
+
+def render(board: Any, result: dict[str, Any], path: Any) -> dict[str, Any]:
+    """The reported pairs drawn where they are, on the board's own copper.
+
+    A pair in the JSON is a sentence; the same pair on the artwork is a
+    place. Each reported pair's coupled stretches are struck through in the
+    finding colour and numbered with its ``index``, over the same diagnostic
+    plot the review map draws.
+    """
+    from PIL import ImageDraw
+
+    from .review_map import board_canvas
+
+    image, at, scale = board_canvas(board)
+    draw = ImageDraw.Draw(image)
+    by_key = {
+        (tuple(pair["nets"]), pair["layer"]): pair.get("spans", []) for pair in coupled_pairs(board)
+    }
+    colour = (203, 75, 22)
+    for pair in result.get("pairs", []):
+        runs = by_key.get((tuple(pair["nets"]), pair["layer"]), [])
+        for start, end, _length in runs:
+            draw.line([at(*start), at(*end)], fill=colour, width=max(2, int(0.35 * scale)))
+        if runs:
+            start, end, _length = max(runs, key=lambda run: run[2])
+            mid = ((start[0] + end[0]) / 2, (start[1] + end[1]) / 2)
+            cx, cy = at(*mid)
+            draw.text((cx + 4, cy - 12), str(pair["index"]), fill=colour)
+    image.save(os.fspath(path))
+    return {"path": str(path)}

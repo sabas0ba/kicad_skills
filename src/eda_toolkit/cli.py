@@ -572,6 +572,11 @@ def cmd_pcb_crosstalk(args: argparse.Namespace) -> int:
         # property of the request, not a traceback
         raise EdaError(str(exc)) from exc
     payload["board"] = str(board_path)
+    if args.out and payload["pairs"]:
+        out_dir = ensure_dir(args.out)
+        image = out_dir / "crosstalk.png"
+        crosstalk.render(pcb.parse(board_path), payload, image)
+        payload["image"] = str(image)
     emit(payload, as_json=True)
     return 0
 
@@ -608,6 +613,10 @@ def cmd_pcb_thermal(args: argparse.Namespace) -> int:
         image = out_dir / "thermal.png"
         thermal.render(payload, image)
         payload["image"] = str(image)
+        if payload.get("transient"):
+            curve = out_dir / "heating.png"
+            thermal.render_curve(payload, curve)
+            payload["transient"]["image"] = str(curve)
     # the grid is for the renderer; the JSON carries the conclusions
     payload.pop("rise_grid", None)
     payload.pop("origin_mm", None)
@@ -1034,6 +1043,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=12,
         metavar="N",
         help="field solves to spend; further pairs report geometry only (default: 12)",
+    )
+    p.add_argument(
+        "-o",
+        "--out",
+        metavar="DIR",
+        help="also draw the coupled runs where they sit on the board",
     )
     p.set_defaults(func=cmd_pcb_crosstalk)
 

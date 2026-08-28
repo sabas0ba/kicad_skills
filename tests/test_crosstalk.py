@@ -161,3 +161,37 @@ def test_copper_weight_tells_two_otherwise_identical_layers_apart():
     assert (
         by_layer["In1.Cu"]["coupling"]["z_odd_ohm"] != by_layer["In2.Cu"]["coupling"]["z_odd_ohm"]
     )
+
+
+def test_a_pair_says_where_on_the_board_it_couples():
+    """ "These two nets couple" is a sentence; "here" is a place to look."""
+    pairs = crosstalk.coupled_pairs(_board(_pair()))
+    (pair,) = pairs
+    x0, y0, x1, y1 = pair["where_mm"]
+    assert (x0, x1) == (pytest.approx(5.0, abs=0.5), pytest.approx(45.0, abs=0.5))
+    assert y0 == pytest.approx(10.0, abs=0.7) and y1 == pytest.approx(10.6, abs=0.7)
+    run = pair["longest_run"]
+    assert run["length_mm"] == pytest.approx(40.0, abs=0.5)
+    assert run["from"][1] == pytest.approx(10.0, abs=0.1)
+
+
+def test_the_json_carries_the_place_but_not_the_raw_spans(tmp_path):
+    result = crosstalk.analyse(_board(_pair("In1.Cu"), stackup=_STACKUP))
+    (pair,) = result["pairs"]
+    assert "where_mm" in pair and "longest_run" in pair and pair["index"] == 1
+    assert "spans" not in pair
+    import json
+
+    json.dumps(result)  # nothing numpy-shaped leaks into the record
+
+
+def test_the_map_draws_the_reported_pairs(tmp_path):
+    board = _board(
+        [*_pair("In1.Cu"), pcb.Track((5.0, 30.0), (45.0, 30.0), 0.3, "F.Cu", 3, "FAR")],
+        stackup=_STACKUP,
+    )
+    board.edges = [{"type": "gr_rect", "points": [(0.0, 0.0), (50.0, 40.0)]}]
+    result = crosstalk.analyse(board)
+    out = tmp_path / "crosstalk.png"
+    crosstalk.render(board, result, out)
+    assert out.stat().st_size > 1000

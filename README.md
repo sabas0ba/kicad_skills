@@ -418,6 +418,7 @@ eda pcb render   TARGET -o DIR [--views ...] [--per-layer] [--no-3d] [--no-sheet
 eda pcb glb      TARGET -o FILE              3D model a browser can display
 eda pcb electrical TARGET [--temperature-rise K] [--top N] [--solve]
 eda pcb crosstalk TARGET [--rise-ns NS] [--swing V] [--min-coupled MM] [--limit N]
+                              [-o DIR]
 eda pcb thermal  TARGET --power REF=W [--power ...] [--ambient C] [--htc W_M2K]
                               [--step MM] [--transient S] [-o DIR]
 eda pcb stats    TARGET

@@ -53,23 +53,21 @@ def positions_of(finding: dict[str, Any]) -> list[tuple[float, float]]:
     return out
 
 
-def render_review_map(
+def board_canvas(
     board: pcb.Board,
-    findings: Sequence[dict[str, Any]],
-    path: str | os.PathLike[str],
+    extra_points: Sequence[tuple[float, float]] = (),
     *,
     scale: float = 8.0,
     margin: float = 6.0,
-) -> dict[str, Any]:
-    """Draw the board and mark every finding that carries a position.
+):
+    """The diagnostic plot every marked-up map starts from.
 
-    ``scale`` is pixels per millimetre. Returns the legend, so a caller that
-    wants the numbering in its own report does not have to re-derive it.
+    Outline, pads, copper and vias, drawn from the parsed geometry at
+    ``scale`` pixels per millimetre. Returns the image, the mm-to-pixel
+    transform, and the scale, so a caller can put its own marks on top -
+    the review map's numbered circles, the crosstalk map's struck runs.
     """
     from PIL import Image, ImageDraw  # imported here: the CLI must load without it
-
-    marked = [(f, positions_of(f)) for f in findings]
-    marked = [(f, p) for f, p in marked if p]
 
     xs: list[float] = []
     ys: list[float] = []
@@ -80,9 +78,9 @@ def render_review_map(
     for track in board.tracks:
         xs += [track.start[0], track.end[0]]
         ys += [track.start[1], track.end[1]]
-    for _f, points in marked:
-        xs += [p[0] for p in points]
-        ys += [p[1] for p in points]
+    for x, y in extra_points:
+        xs.append(x)
+        ys.append(y)
     if not xs:
         raise ValueError("nothing on this board to draw")
 
@@ -124,6 +122,31 @@ def render_review_map(
         cx, cy = at(via.x, via.y)
         draw.ellipse([cx - radius, cy - radius, cx + radius, cy + radius], outline=(90, 90, 90))
 
+    return image, at, scale
+
+
+def render_review_map(
+    board: pcb.Board,
+    findings: Sequence[dict[str, Any]],
+    path: str | os.PathLike[str],
+    *,
+    scale: float = 8.0,
+    margin: float = 6.0,
+) -> dict[str, Any]:
+    """Draw the board and mark every finding that carries a position.
+
+    ``scale`` is pixels per millimetre. Returns the legend, so a caller that
+    wants the numbering in its own report does not have to re-derive it.
+    """
+    from PIL import ImageDraw
+
+    marked = [(f, positions_of(f)) for f in findings]
+    marked = [(f, p) for f, p in marked if p]
+
+    every = [point for _f, points in marked for point in points]
+    image, at, scale = board_canvas(board, every, scale=scale, margin=margin)
+    draw = ImageDraw.Draw(image)
+
     legend: list[dict[str, Any]] = []
     for index, (finding, points) in enumerate(marked, start=1):
         colour = _SEVERITY_COLOUR.get(finding.get("severity", "info"), (100, 100, 100))
@@ -145,4 +168,4 @@ def render_review_map(
         )
 
     image.save(os.fspath(path))
-    return {"path": str(path), "legend": legend, "scale": scale, "size": [width, height]}
+    return {"path": str(path), "legend": legend, "scale": scale, "size": list(image.size)}

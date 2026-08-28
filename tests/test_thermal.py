@@ -488,3 +488,11 @@ def test_a_long_march_still_resolves_the_boards_own_clock():
     assert tr["curve"][0]["t_s"] <= tau / 10
     assert tr["time_to_63pct_s"] == pytest.approx(tau, rel=0.08)
     assert tr["reached_fraction"] == pytest.approx(1.0, abs=0.01)
+
+
+def test_the_heating_curve_renders(tmp_path):
+    board = _Board(footprints=[_Part("U1", 10, 10)])
+    result = thermal.analyse(board, {"U1": 1.0}, step_mm=1.0, transient_s=120.0)
+    out = tmp_path / "heating.png"
+    thermal.render_curve(result, out)
+    assert out.stat().st_size > 1000
