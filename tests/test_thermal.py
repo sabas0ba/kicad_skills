@@ -469,3 +469,22 @@ def test_a_nonsense_duration_is_refused():
     board = _Board(footprints=[_Part("U1", 10, 10)])
     with pytest.raises(ValueError):
         thermal.analyse(board, {"U1": 1.0}, transient_s=0.0)
+
+
+def test_a_long_march_still_resolves_the_boards_own_clock():
+    """Asked for fifty time constants, the early curve must not be skipped.
+
+    Steps that scale only with the duration leap over the whole transient in
+    one bound; the grid has to start inside the board's own tau, however long
+    the caller watches.
+    """
+    board = _Board(footprints=[_Part("HEAT", 20, 15, half=25.0)])
+    area = 40e-3 * 30e-3
+    tau = (area * 1.6e-3 * thermal.RHO_C_LAMINATE) / (2 * 10.0 * area)
+    result = thermal.analyse(
+        board, {"HEAT": 1.0}, htc_w_m2k=10.0, step_mm=1.0, transient_s=50 * tau
+    )
+    tr = result["transient"]
+    assert tr["curve"][0]["t_s"] <= tau / 10
+    assert tr["time_to_63pct_s"] == pytest.approx(tau, rel=0.08)
+    assert tr["reached_fraction"] == pytest.approx(1.0, abs=0.01)

@@ -118,3 +118,46 @@ def test_the_solve_budget_reports_geometry_instead_of_stalling():
     skipped = [p for p in result["pairs"] if "not_solved" in p]
     assert len(solved) >= 1 and len(skipped) >= 1
     assert "budget" in skipped[0]["not_solved"]
+
+
+def test_a_mixed_gap_is_refused_rather_than_granted_the_cancellation():
+    """kl = kc is a property of one medium; an averaged solve would invent it.
+
+    The same refusal `--solve` makes, and sharper here: a homogeneous solve of
+    a two-material gap does not blur the FEXT, it manufactures its cancellation.
+    """
+    mixed = [dict(entry) for entry in _STACKUP]
+    mixed[1]["epsilon_r"] = 3.2  # prepreg well apart from the 4.5 core
+    result = crosstalk.analyse(_board(_pair("In1.Cu"), stackup=mixed))
+    (pair,) = result["pairs"]
+    assert "fext" not in pair
+    assert "dielectrics differ" in pair["not_solved"]
+
+
+def test_copper_weight_tells_two_otherwise_identical_layers_apart():
+    """Same dielectric, same trace, heavier copper: not the same cross-section.
+
+    With p1 = core = p2 the two inner layers see identical spans and offsets,
+    so only the copper thickness separates their solve keys - dropping it from
+    the key hands one layer the other's matrices.
+    """
+    symmetric = [
+        {"name": "F.Cu", "type": "copper", "thickness": 0.035},
+        {"name": "p1", "type": "prepreg", "thickness": 0.2, "epsilon_r": 4.5},
+        {"name": "In1.Cu", "type": "copper", "thickness": 0.035},
+        {"name": "core", "type": "core", "thickness": 0.2, "epsilon_r": 4.5},
+        {"name": "In2.Cu", "type": "copper", "thickness": 0.105},  # 3 oz
+        {"name": "p2", "type": "prepreg", "thickness": 0.2, "epsilon_r": 4.5},
+        {"name": "B.Cu", "type": "copper", "thickness": 0.035},
+    ]
+    tracks = [*_pair("In1.Cu"), *_pair("In2.Cu", nets=("SIG3", "SIG4"))]
+    result = crosstalk.analyse(_board(tracks, stackup=symmetric))
+    by_layer = {pair["layer"]: pair for pair in result["pairs"]}
+    sections = [
+        {k: v for k, v in by_layer[layer]["cross_section"].items() if k != "layer"}
+        for layer in ("In1.Cu", "In2.Cu")
+    ]
+    assert sections[0] == sections[1]
+    assert (
+        by_layer["In1.Cu"]["coupling"]["z_odd_ohm"] != by_layer["In2.Cu"]["coupling"]["z_odd_ohm"]
+    )

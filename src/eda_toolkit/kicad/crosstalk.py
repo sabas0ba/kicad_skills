@@ -187,10 +187,26 @@ def analyse(
         entry["gap_mm"] = round(gap, 3)
         entry["cross_section"] = section
 
+        er_range = section.get("epsilon_r_range")
+        if er_range is not None and er_range[1] > 1.1 * er_range[0]:
+            # the same refusal `--solve` makes, and it matters more here: a
+            # homogeneous solve of a mixed gap does not merely blur the
+            # numbers, it *manufactures* stripline's forward cancellation -
+            # kl = kc is a property of one medium, and reporting "FEXT: none"
+            # for a gap that holds two would be the model asserting physics
+            # the board does not have
+            entry["not_solved"] = (
+                "dielectrics differ across the gap; an averaged solve would "
+                "invent the forward-crosstalk cancellation"
+            )
+            out_pairs.append(entry)
+            continue
+
         key = (
             section["kind"],
             round(pair["width_mm"], 2),
             round(gap, 2),
+            round(thickness, 4),
             section["height_mm"],
             section.get("height_below_mm"),
             section["epsilon_r"],

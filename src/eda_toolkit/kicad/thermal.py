@@ -527,7 +527,15 @@ def _march(
     measured, and it owes nothing to the physics being right - it is the
     solver confessing whether it solved its own equations.
     """
-    times = np.geomspace(duration_s / 200.0, duration_s, TRANSIENT_STEPS)
+    # The march has to resolve the *board's* clock, not the caller's: asked
+    # for a day, steps that only scale with the day would leap over a
+    # hundred-second heating transient in one bound and the 63% clock would
+    # be read off an interpolation across it. The lumped estimate
+    # tau = sum(C)/sum(hA) is exact on a uniform plate and the right order
+    # of magnitude on any board, so the first step starts well inside it.
+    tau_lumped = float(np.sum(capacity)) / max(float(np.sum(sink)), 1e-12)
+    first = min(duration_s / 200.0, tau_lumped / 20.0)
+    times = np.geomspace(first, duration_s, TRANSIENT_STEPS)
     u = np.zeros_like(capacity)
     curve = []
     energy_in = 0.0
