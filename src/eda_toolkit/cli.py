@@ -555,6 +555,32 @@ def cmd_pcb_electrical(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pcb_crosstalk(args: argparse.Namespace) -> int:
+    from .kicad import crosstalk, pcb
+
+    board_path = pcb.find_board(args.target)
+    try:
+        payload = crosstalk.analyse(
+            pcb.parse(board_path),
+            rise_ns=args.rise_ns,
+            swing_v=args.swing,
+            min_coupled_mm=args.min_coupled,
+            limit=args.limit,
+        )
+    except ValueError as exc:
+        # a nonsense edge or a cross-section the mesh cannot afford is a
+        # property of the request, not a traceback
+        raise EdaError(str(exc)) from exc
+    payload["board"] = str(board_path)
+    if args.out and payload["pairs"]:
+        out_dir = ensure_dir(args.out)
+        image = out_dir / "crosstalk.png"
+        crosstalk.render(pcb.parse(board_path), payload, image)
+        payload["image"] = str(image)
+    emit(payload, as_json=True)
+    return 0
+
+
 def cmd_pcb_thermal(args: argparse.Namespace) -> int:
     from .kicad import pcb, thermal
 
@@ -575,6 +601,7 @@ def cmd_pcb_thermal(args: argparse.Namespace) -> int:
             ambient_c=args.ambient,
             htc_w_m2k=args.htc,
             step_mm=args.step,
+            transient_s=args.transient,
         )
     except ValueError as exc:
         # a mistyped reference or a nonsense parameter is a user error, not
@@ -586,6 +613,10 @@ def cmd_pcb_thermal(args: argparse.Namespace) -> int:
         image = out_dir / "thermal.png"
         thermal.render(payload, image)
         payload["image"] = str(image)
+        if payload.get("transient"):
+            curve = out_dir / "heating.png"
+            thermal.render_curve(payload, curve)
+            payload["transient"]["image"] = str(curve)
     # the grid is for the renderer; the JSON carries the conclusions
     payload.pop("rise_grid", None)
     payload.pop("origin_mm", None)
@@ -981,6 +1012,46 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.set_defaults(func=cmd_pcb_electrical)
 
+    p = pcb_p.add_parser(
+        "crosstalk", help="near- and far-end crosstalk of the board's coupled runs"
+    )
+    p.add_argument("target")
+    p.add_argument(
+        "--rise-ns",
+        type=float,
+        default=1.0,
+        metavar="NS",
+        help="the aggressor edge's rise time (default: 1.0)",
+    )
+    p.add_argument(
+        "--swing",
+        type=float,
+        default=3.3,
+        metavar="V",
+        help="the aggressor's voltage swing (default: 3.3)",
+    )
+    p.add_argument(
+        "--min-coupled",
+        type=float,
+        default=5.0,
+        metavar="MM",
+        help="report pairs coupled at least this long (default: 5)",
+    )
+    p.add_argument(
+        "--limit",
+        type=int,
+        default=12,
+        metavar="N",
+        help="field solves to spend; further pairs report geometry only (default: 12)",
+    )
+    p.add_argument(
+        "-o",
+        "--out",
+        metavar="DIR",
+        help="also draw the coupled runs where they sit on the board",
+    )
+    p.set_defaults(func=cmd_pcb_crosstalk)
+
     p = pcb_p.add_parser("thermal", help="steady-state temperature map for stated dissipations")
     p.add_argument("target")
     p.add_argument(
@@ -991,6 +1062,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="a part and what it dissipates (repeatable), e.g. --power U1=1.2",
     )
     p.add_argument("--ambient", type=float, default=25.0, metavar="C")
+    p.add_argument(
+        "--transient",
+        type=float,
+        metavar="S",
+        help="also march the heating curve from power-on to this many seconds",
+    )
     p.add_argument(
         "--htc",
         type=float,

@@ -7,8 +7,10 @@ cross-section a caller can pose as a grid.
 
 The method is the oldest one there is. The cross-section becomes a grid of
 cells, each carrying a permittivity; the trace is held at 1 V and the planes at
-0; the potential solves div(eps * grad(phi)) = 0 by red-black successive
-over-relaxation; and the capacitance per metre falls out of the field energy.
+0; the potential solves div(eps * grad(phi)) = 0, discretised on the 5-point
+stencil and solved exactly by sparse LU - one factorisation answers every
+excitation of the same geometry; and the capacitance per metre falls out of
+the field energy.
 Solving the same geometry with the dielectric replaced by vacuum gives the
 air-line capacitance, and
 
@@ -70,53 +72,92 @@ CELLS_PER_FEATURE = 8
 MAX_GRID_CELLS = 10_000_000
 
 
-def _relax(
-    phi: np.ndarray,
-    fixed: np.ndarray,
-    eps: np.ndarray,
-    *,
-    closed_top: bool,
-    max_sweeps: int,
-    tol: float = 1e-7,
-) -> np.ndarray:
-    """Red-black SOR on div(eps grad phi) = 0, Dirichlet where ``fixed``.
+def _factorized(eps: np.ndarray, fixed: np.ndarray, *, closed_top: bool):
+    """One LU factorisation of div(eps grad phi) = 0 on this grid.
 
-    The open boundaries (sides, and the top of a microstrip box) are Neumann,
-    imposed by copying the neighbouring row after each half-sweep - the field
-    leaves the box normally instead of being pinned to zero, which would
-    squeeze the fringing capacitance.
+    Returns a function taking the boundary potentials (the ``phi`` array with
+    values on the ``fixed`` cells) and handing back the solved field. The
+    matrix depends only on the permittivities and on *where* the copper is,
+    not on what it is held at - so the odd and even excitations of a pair,
+    which is what a capacitance matrix needs, share one factorisation.
+
+    The stencil is the same face-averaged 5-point operator `_face_energy`
+    measures, Dirichlet on ``fixed`` cells, and Neumann elsewhere on the box:
+    the sides (and the top of a microstrip box) mirror their inner neighbour,
+    so the field leaves normally instead of being pinned to zero, which would
+    squeeze the fringing capacitance. A direct solve has no sweep budget to
+    exhaust: the residual is machine precision at every size the box guard
+    admits, where the relaxation this replaced ran out of iterations on tall
+    thin cross-sections and quietly handed back an unconverged field.
     """
-    p = phi.copy()
-    ny, nx = p.shape
-    e = eps
-    ee = 0.5 * (e[1:-1, 1:-1] + e[1:-1, 2:])
-    ew = 0.5 * (e[1:-1, 1:-1] + e[1:-1, :-2])
-    en = 0.5 * (e[1:-1, 1:-1] + e[2:, 1:-1])
-    es = 0.5 * (e[1:-1, 1:-1] + e[:-2, 1:-1])
-    total = ee + ew + en + es
-    jj, ii = np.meshgrid(np.arange(1, nx - 1), np.arange(1, ny - 1))
-    interior_free = ~fixed[1:-1, 1:-1]
-    colours = [((ii + jj) % 2 == parity) & interior_free for parity in (0, 1)]
-    # the classic optimal over-relaxation for a Laplace problem of this size
-    omega = 2.0 / (1.0 + math.sin(math.pi / max(nx, ny)))
-    check_every = 25
-    for sweep in range(max_sweeps):
-        largest = 0.0
-        for colour in colours:
-            target = (
-                ee * p[1:-1, 2:] + ew * p[1:-1, :-2] + en * p[2:, 1:-1] + es * p[:-2, 1:-1]
-            ) / total
-            step = omega * (target - p[1:-1, 1:-1])
-            if sweep % check_every == 0:
-                largest = max(largest, float(np.max(np.abs(np.where(colour, step, 0.0)))))
-            p[1:-1, 1:-1] += np.where(colour, step, 0.0)
-            p[:, 0] = p[:, 1]
-            p[:, -1] = p[:, -2]
-            if not closed_top:
-                p[-1, :] = p[-2, :]
-        if sweep % check_every == 0 and largest < tol:
-            break
-    return p
+    from scipy import sparse
+    from scipy.sparse.linalg import splu
+
+    ny, nx = eps.shape
+    n = ny * nx
+    index = np.arange(n).reshape(ny, nx)
+
+    # who owns each cell's row: Dirichlet beats the open-top mirror beats the
+    # side mirrors beats the interior stencil - the same precedence the
+    # relaxation's copy order produced
+    dirichlet = fixed.copy()
+    dirichlet[0, :] = True
+    if closed_top:
+        dirichlet[-1, :] = True
+    top_mirror = np.zeros_like(dirichlet)
+    if not closed_top:
+        top_mirror[-1, :] = ~dirichlet[-1, :]
+    side_mirror = np.zeros_like(dirichlet)
+    side_mirror[:, 0] = ~(dirichlet[:, 0] | top_mirror[:, 0])
+    side_mirror[:, -1] = ~(dirichlet[:, -1] | top_mirror[:, -1])
+    interior = ~(dirichlet | top_mirror | side_mirror)
+
+    rows: list[np.ndarray] = []
+    cols: list[np.ndarray] = []
+    vals: list[np.ndarray] = []
+
+    def add(r: np.ndarray, c: np.ndarray, v: np.ndarray) -> None:
+        rows.append(r.ravel())
+        cols.append(c.ravel())
+        vals.append(np.broadcast_to(v, r.shape).ravel().astype(float))
+
+    ii = index[dirichlet]
+    add(ii, ii, np.ones_like(ii, dtype=float))
+    ii = index[top_mirror]
+    add(ii, ii, np.ones_like(ii, dtype=float))
+    add(ii, ii - nx, -np.ones_like(ii, dtype=float))
+    for col, inward in ((0, 1), (nx - 1, -1)):
+        ii = index[side_mirror[:, col], col]
+        add(ii, ii, np.ones_like(ii, dtype=float))
+        add(ii, ii + inward, -np.ones_like(ii, dtype=float))
+
+    centre = eps[1:-1, 1:-1]
+    faces = {
+        (0, 1): 0.5 * (centre + eps[1:-1, 2:]),
+        (0, -1): 0.5 * (centre + eps[1:-1, :-2]),
+        (1, 0): 0.5 * (centre + eps[2:, 1:-1]),
+        (-1, 0): 0.5 * (centre + eps[:-2, 1:-1]),
+    }
+    free = interior[1:-1, 1:-1]
+    ii = index[1:-1, 1:-1][free]
+    total = sum(faces.values())[free]
+    add(ii, ii, -total)
+    for (dy, dx), face in faces.items():
+        add(ii, ii + dy * nx + dx, face[free])
+
+    matrix = sparse.csc_matrix(
+        (np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=(n, n)
+    )
+    # measured on the tallest box the mesh guard admits: minimum-degree on
+    # A^T A halves the factorisation against the COLAMD default here
+    solve = splu(matrix, permc_spec="MMD_ATA").solve
+
+    def apply(phi: np.ndarray) -> np.ndarray:
+        b = np.zeros(n)
+        b[index[dirichlet]] = phi[dirichlet]
+        return solve(b).reshape(ny, nx)
+
+    return apply
 
 
 def _face_energy(p: np.ndarray, eps: np.ndarray) -> float:
@@ -136,19 +177,6 @@ def _face_energy(p: np.ndarray, eps: np.ndarray) -> float:
             + float(np.sum(ey * np.diff(p, axis=0) ** 2))
         )
     )
-
-
-def _upsample(p: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
-    """The coarse potential stretched onto the fine grid, as a starting guess."""
-    grown = np.repeat(np.repeat(p, 2, axis=0), 2, axis=1)
-    out = np.zeros(shape)
-    ny, nx = min(shape[0], grown.shape[0]), min(shape[1], grown.shape[1])
-    out[:ny, :nx] = grown[:ny, :nx]
-    if ny < shape[0]:
-        out[ny:, :] = out[ny - 1, :]
-    if nx < shape[1]:
-        out[:, nx:] = out[:, nx - 1 : nx]
-    return out
 
 
 class _Counts:
@@ -238,8 +266,13 @@ class _Counts:
             out["below_mm"] = self.below * h
         return out
 
-    def grids(self, scale: int, epsilon_r: float, vacuum: bool):
-        """Permittivity, boundary potential and fixed mask at ``scale``x."""
+    def grids(self, scale: int, epsilon_r: float, vacuum: bool, pair_v: float = -1.0):
+        """Permittivity, boundary potential and fixed mask at ``scale``x.
+
+        ``pair_v`` is the second trace's potential when there is one: -1 V is
+        the odd mode every differential impedance is about, +1 V the even mode
+        a capacitance matrix needs as its second equation.
+        """
         kh = self.height * scale
         n_w = self.width * scale
         n_t = self.thickness * scale
@@ -273,7 +306,7 @@ class _Counts:
         if self.gap is not None:
             x0 = n_m + n_w + n_g
             fixed[trace_bottom:top, x0 : x0 + n_w] = True
-            phi[trace_bottom:top, x0 : x0 + n_w] = -1.0
+            phi[trace_bottom:top, x0 : x0 + n_w] = pair_v
         return eps, phi, fixed
 
 
@@ -299,17 +332,16 @@ def _solve(
     # this wrong halves every differential impedance, silently.
     energy_to_c = 1.0 if counts.gap is not None else 2.0
 
-    def one(scale: int, warm: np.ndarray | None, sweeps: int):
+    def one(scale: int):
         eps, phi, fixed = counts.grids(scale, epsilon_r, vacuum=False)
-        start = phi if warm is None else np.where(fixed, phi, _upsample(warm, phi.shape))
-        solved = _relax(start, fixed, eps, closed_top=counts.stripline, max_sweeps=sweeps)
+        solved = _factorized(eps, fixed, closed_top=counts.stripline)(phi)
         c_die = energy_to_c * _face_energy(solved, eps)
         ones = np.ones_like(eps)
-        solved_air = _relax(solved, fixed, ones, closed_top=counts.stripline, max_sweeps=sweeps)
-        return c_die, energy_to_c * _face_energy(solved_air, ones), solved
+        solved_air = _factorized(ones, fixed, closed_top=counts.stripline)(phi)
+        return c_die, energy_to_c * _face_energy(solved_air, ones)
 
-    c1, a1, warm = one(1, None, 4000)
-    c2, a2, _ = one(2, warm, 6000)
+    c1, a1 = one(1)
+    c2, a2 = one(2)
 
     def z0(c_die: float, c_air: float) -> float:
         return 1.0 / (C_LIGHT_M_S * math.sqrt(c_die * c_air))
@@ -331,7 +363,7 @@ def _solve(
         "z0_ohm": round(z_star + delta, 2),
         "eps_eff": round(eps_star + eps_delta, 3),
         "meta": {
-            "method": "2D quasi-static, red-black SOR, Richardson-extrapolated",
+            "method": "2D quasi-static, sparse direct solve, Richardson-extrapolated",
             "z0_coarse_ohm": round(z_coarse, 2),
             "z0_fine_ohm": round(z_fine, 2),
             "snapped": {k: round(v, 4) for k, v in snapped.items()},
@@ -475,3 +507,97 @@ def stripline(
     result = _solve(counts, epsilon_r, reference, asked)
     result.pop("eps_eff", None)
     return result
+
+
+def coupled_matrices(
+    width_mm: float,
+    thickness_mm: float,
+    height_mm: float,
+    epsilon_r: float,
+    gap_mm: float,
+    *,
+    stripline: bool = False,
+    trace_below_mm: float | None = None,
+    cells: int = CELLS_PER_FEATURE,
+) -> dict[str, Any]:
+    """The capacitance and inductance matrices of a symmetric coupled pair.
+
+    Two solves instead of one: the pair driven odd (+1 V, -1 V) has energy
+    C11 + Cm and driven even (+1 V, +1 V) energy C11 - Cm, so the two
+    energies *are* the matrix, no extra machinery. The inductance matrix
+    comes from the vacuum solve the impedance already needs: with the
+    dielectric removed the medium is homogeneous, TEM holds exactly, and
+    [L] = mu0*eps0 * [C_air]^-1.
+
+    This is what crosstalk is made of. The ratios Cm/C11 and Lm/L11 are the
+    capacitive and inductive coupling per unit length; in a homogeneous
+    dielectric (stripline) they are equal - the matrices are proportional -
+    and their difference on an outer layer is precisely why microstrip has
+    far-end crosstalk and stripline has none. The tests hold the solver to
+    that physics rather than to another fit.
+    """
+    if min(width_mm, thickness_mm, height_mm, gap_mm) <= 0 or epsilon_r < 1:
+        raise ValueError("geometry must be positive and epsilon_r at least 1")
+    if stripline and thickness_mm >= height_mm:
+        raise ValueError("the trace is thicker than the gap between the planes")
+    counts = _Counts(
+        width_mm=width_mm,
+        thickness_mm=thickness_mm,
+        height_mm=height_mm,
+        gap_mm=gap_mm,
+        stripline=stripline,
+        cells=cells,
+        below_mm=trace_below_mm,
+    )
+
+    def energies(scale: int) -> dict[str, float]:
+        eps, phi_odd, fixed = counts.grids(scale, epsilon_r, vacuum=False, pair_v=-1.0)
+        _eps, phi_even, _fixed = counts.grids(scale, epsilon_r, vacuum=False, pair_v=1.0)
+        out = {}
+        for suffix, medium in (("", eps), ("_air", np.ones_like(eps))):
+            # the matrix knows where the copper is, not what it is held at,
+            # so both excitations ride one factorisation
+            solve = _factorized(medium, fixed, closed_top=counts.stripline)
+            out["odd" + suffix] = _face_energy(solve(phi_odd), medium)
+            out["even" + suffix] = _face_energy(solve(phi_even), medium)
+        return out
+
+    coarse = energies(1)
+    fine = energies(2)
+    # first-order error from the staircased edges, so z* = 2*fine - coarse,
+    # applied to each energy before any of them meet in a ratio
+    w = {key: 2 * fine[key] - coarse[key] for key in coarse}
+
+    c11 = (w["odd"] + w["even"]) / 2
+    cm = (w["odd"] - w["even"]) / 2
+    c11_air = (w["odd_air"] + w["even_air"]) / 2
+    cm_air = (w["odd_air"] - w["even_air"]) / 2
+    if not (0 < cm < c11) or not (0 < cm_air < c11_air):
+        raise ValueError(
+            "the extrapolated matrices are not passive - the mesh did not "
+            "resolve this geometry; widen the gap or refine `cells`"
+        )
+    det = c11_air**2 - cm_air**2
+    mu0_eps0 = 1.0 / C_LIGHT_M_S**2
+    l11 = mu0_eps0 * c11_air / det
+    lm = mu0_eps0 * cm_air / det
+
+    def z0(c_die: float, c_air: float) -> float:
+        return 1.0 / (C_LIGHT_M_S * math.sqrt(c_die * c_air))
+
+    return {
+        "c11_pf_m": round(c11 * 1e12, 3),
+        "cm_pf_m": round(cm * 1e12, 4),
+        "l11_nh_m": round(l11 * 1e9, 2),
+        "lm_nh_m": round(lm * 1e9, 3),
+        "capacitive_coupling": round(cm / c11, 5),
+        "inductive_coupling": round(lm / l11, 5),
+        "z_odd_ohm": round(z0(w["odd"], w["odd_air"]), 2),
+        "z_even_ohm": round(z0(w["even"], w["even_air"]), 2),
+        "delay_ns_m": round(math.sqrt(l11 * c11) * 1e9, 3),
+        "meta": {
+            "method": "2D quasi-static, odd+even direct solves, Richardson-extrapolated",
+            "snapped": {k: round(v, 4) for k, v in counts.snapped().items()},
+            "cell_mm": round(counts.cell_mm / 2, 5),
+        },
+    }

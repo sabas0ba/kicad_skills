@@ -23,6 +23,7 @@ looked at. Runs in the container (see the `eda-environment` guide).
 ./bin/eda.sh pcb glb    hardware/ -o /tmp/board.glb    # 3D model for a browser
 ./bin/eda.sh pcb electrical hardware/                  # current, resistance, impedance
 ./bin/eda.sh pcb thermal hardware/ --power U1=1.2      # where those watts end up
+./bin/eda.sh pcb crosstalk hardware/                   # NEXT/FEXT of the coupled runs
 ./bin/eda.sh report     hardware/ -o /tmp/report       # all of the above, one page
 ```
 
@@ -156,6 +157,68 @@ How to read it, and what to trust:
 * It is a 2.5D thin-plate model: in-plane conduction, no vertical gradient, no
   modelled via barrels. Good below a few watts per square centimetre; a power
   module deserves a real conjugate solver.
+
+`--transient 300` additionally marches the heating curve from power-on to that
+many seconds: backward Euler on the same grid, each cell carrying its heat
+capacity. The output adds the curve, the time to 63% of the steady rise, and
+how much of the steady answer the run reached — the question this answers is
+*how fast*, whether the part crosses its limit before anything could react or
+coasts up over minutes. Two things to trust and one not to: the energy balance
+is exact by construction (every joule in is stored or convected, and
+`transient.balance.residual` measures the solver against its own equations),
+the curve's *shape* is as good as the steady map, and the clock leans on
+FR-4's volumetric heat capacity, which spreads ±20% with the glass ratio — so
+read the time constants to the nearest quarter, not the nearest second. With
+`-o` the curve is drawn to `heating.png` beside the temperature map, the 63%
+clock marked where it landed; the map itself already carries `hotspot_mm`, so
+the where of the heat is on the record in both forms.
+
+`pcb crosstalk` picks up where the `emc.parallel_run` warning stops. The rule
+points at two nets sharing a channel; this command poses those same coupled
+runs as the cross-sections they are, solves each for its capacitance and
+inductance matrices with the same 2D field solver `--solve` uses, and turns
+them into the two numbers the argument is actually about:
+
+```console
+$ ./bin/eda.sh pcb crosstalk hardware/ --rise-ns 2 --swing 3.3 -o build/crosstalk
+{
+  "pairs": [{
+    "index": 1,
+    "nets": ["/MA16", "/OE-"], "layer": "B.Cu",
+    "coupled_mm": 54.6, "gap_mm": 0.838,
+    "where_mm": [55.9, 82.6, 152.4, 108.0],
+    "longest_run": {"from": [93.3, 105.4], "to": [124.5, 105.4], "length_mm": 31.2},
+    "next": {"coefficient": 0.1365, "mv": 282.8, "saturated": false},
+    "fext": {"mv": -51.7, "note": "negative-going: the inductive coupling wins ..."}
+  }],
+  "image": "build/crosstalk/crosstalk.png"
+}
+```
+
+How to read it, and what to trust:
+
+* **NEXT** rises to `(Lm/L + Cm/C)/4` of the aggressor's swing and holds for a
+  round trip of the coupled run; an edge slower than the round trip only
+  reaches the fraction that fits, which is why `--rise-ns` matters and why
+  `saturated` is reported.
+* **FEXT is physics you can check by eye**: between two planes the matrices
+  come out proportional and it cancels — stripline's quiet is a property, not
+  luck — while on an outer layer the inductive coupling wins and the far-end
+  pulse is negative-going. The tests hold the solver to both.
+* The estimate is weak-coupling with both victim ends matched — reflections
+  and terminations are the schematic's business, the coupling itself is the
+  artwork's. Tightly coupled pairs are marked as at-least numbers.
+* A board with no stated stackup gets the classic two-layer guess and the
+  output says `"assumed": true` — the ratios forgive an epsilon nobody stated
+  better than an absolute impedance would.
+* Each unique cross-section costs a field solve (seconds; a two-layer board's
+  tall thin sections the most), so identical bus geometries share one and
+  `--limit` caps the spend; pairs beyond it report geometry only.
+* **Where, not just what.** Every pair carries the box its coupled stretches
+  fit in (`where_mm`) and its single longest run end to end — the place to
+  look at on the plot. With `-o` the same stretches are struck through in
+  orange on the board's own copper, numbered by each pair's `index`, the way
+  `review --map` marks its findings.
 
 `eda diff OLD NEW -o DIR` compares two revisions: which footprints moved and how
 far, what the board statistics did, and a rendered diff of the plots - red for

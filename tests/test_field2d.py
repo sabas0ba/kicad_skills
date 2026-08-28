@@ -128,3 +128,53 @@ def test_the_gaps_a_real_pair_uses_are_still_affordable():
             cells=field2d.CELLS_PER_FEATURE,
         )
         assert counts.grid_cells(scale=2) < field2d.MAX_GRID_CELLS
+
+
+def test_a_striplines_matrices_are_proportional_because_its_medium_is_one():
+    """Lm/L11 must equal Cm/C11 between two planes - and that is not a tautology.
+
+    The inductance matrix comes from inverting the vacuum capacitance matrix,
+    the capacitance matrix from the dielectric solve; in a homogeneous medium
+    the two fields coincide and the inversion has to hand the proportionality
+    back through det and all. This equality is also why stripline has no
+    far-end crosstalk, which is what the crosstalk module builds on.
+    """
+    m = field2d.coupled_matrices(0.2, 0.035, 0.7, 4.5, 0.3, stripline=True)
+    assert m["inductive_coupling"] == pytest.approx(m["capacitive_coupling"], rel=0.02)
+    # and the delay in a homogeneous medium is sqrt(eps_r)/c on a calculator
+    assert m["delay_ns_m"] == pytest.approx(math.sqrt(4.5) / 0.299792458, rel=0.02)
+
+
+def test_a_microstrips_inductive_coupling_exceeds_its_capacitive():
+    """The air above the traces starves Cm and leaves Lm alone.
+
+    The mutual inductance does not care about the dielectric at all, the
+    mutual capacitance is diluted by the fringing field's excursion into the
+    air - so kl > kc on an outer layer, which is the whole reason microstrip
+    has far-end crosstalk of one polarity and stripline none.
+    """
+    m = field2d.coupled_matrices(0.3, 0.035, 0.2, 4.5, 0.2)
+    assert m["inductive_coupling"] > m["capacitive_coupling"] * 1.5
+
+
+def test_the_matrices_agree_with_the_odd_mode_the_pair_solve_found():
+    """Same geometry, two routes to z_odd: the energies must meet."""
+    m = field2d.coupled_matrices(0.3, 0.035, 0.2, 4.5, 0.2)
+    d = field2d.differential_microstrip(0.3, 0.035, 0.2, 4.5, 0.2)
+    assert m["z_odd_ohm"] == pytest.approx(d["z_odd_ohm"], rel=0.03)
+    # and even mode is the loosely coupled one, so it sits above odd
+    assert m["z_even_ohm"] > m["z_odd_ohm"]
+
+
+def test_a_distant_pair_stops_coupling():
+    near = field2d.coupled_matrices(0.3, 0.035, 0.2, 4.5, 0.2)
+    far = field2d.coupled_matrices(0.3, 0.035, 0.2, 4.5, 2.0)
+    assert far["capacitive_coupling"] < near["capacitive_coupling"] / 10
+    assert far["inductive_coupling"] < near["inductive_coupling"] / 10
+
+
+def test_matrix_nonsense_is_refused():
+    with pytest.raises(ValueError):
+        field2d.coupled_matrices(0.3, 0.035, 0.2, 4.5, 0.0)
+    with pytest.raises(ValueError):
+        field2d.coupled_matrices(0.2, 0.8, 0.7, 4.5, 0.3, stripline=True)
