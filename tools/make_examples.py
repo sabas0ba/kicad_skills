@@ -7023,7 +7023,7 @@ def buck_5v() -> Design:
             "220u",
             "Capacitor_SMD:CP_Elec_8x10.5",
             sheet=(179.07, 74.93),
-            board=(74.0, 16.5, 0.0),
+            board=(72.5, 16.5, 0.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",

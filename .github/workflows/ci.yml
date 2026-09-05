@@ -92,16 +92,36 @@ jobs:
             done
           done
 
-      - name: Gate every reviewed design
+      - name: Gate every generated variant
         if: always()
         run: |
           set -euo pipefail
           mkdir -p build/golden-report
+          failed=0
           for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
+            set +e
             ./bin/eda.sh gate "build/golden/${example}/reviewed" \
               --policy "examples/${example}/gate.toml" --text \
-              | tee "build/golden-report/${example}-gate.txt"
+              | tee "build/golden-report/${example}-reviewed-gate.txt"
+            reviewed_status=${PIPESTATUS[0]}
+            set -e
+            if [ "$reviewed_status" -ne 0 ]; then
+              echo "::error::${example}/reviewed should pass its gate, got ${reviewed_status}"
+              failed=1
+            fi
+
+            set +e
+            ./bin/eda.sh gate "build/golden/${example}/as-generated" \
+              --policy "examples/${example}/gate.toml" --text \
+              | tee "build/golden-report/${example}-as-generated-gate.txt"
+            status=${PIPESTATUS[0]}
+            set -e
+            if [ "$status" -ne 2 ]; then
+              echo "::error::${example}/as-generated should fail its gate (exit 2), got ${status}"
+              failed=1
+            fi
           done
+          exit "$failed"
 
       - name: Render every generated variant
         if: always()

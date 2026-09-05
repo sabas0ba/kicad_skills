@@ -115,7 +115,7 @@ Under KiCad's own ERC and DRC, and the `ai-generated` policy:
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 1 finding waived | 0 / 0 / 0 | 0 / 0 / 5 |
-| `as-generated` | **FAIL**, 28 blocking | — | — |
+| `as-generated` | **FAIL**, blockers retained | — | — |
 | first edition | **FAIL**, 45 blocking | — | — |
 
 ### The three, side by side
@@ -199,7 +199,7 @@ charge pump, bypass and pull-up the datasheet asks for.
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, gate exceptions documented | 0 / 0 / 0 | 0 / 0 / 5 |
-| `as-generated` | **FAIL**, 37 blocking | — | — |
+| `as-generated` | **FAIL**, blockers retained | — | — |
 | first edition | **FAIL**, 43 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
@@ -261,7 +261,7 @@ that reaches VSYS the way the Pico datasheet asks for.
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 9 findings waived | 0 / 0 / 0 | 0 / 0 / 4 |
-| `as-generated` | **FAIL**, 33 blocking | — | — |
+| `as-generated` | **FAIL**, blockers retained | — | — |
 | first edition | **FAIL**, 50 blocking | — | — |
 
 Under KiCad's own checks `reviewed` has no errors and no unconnected items, on
@@ -322,7 +322,7 @@ filter is referenced to.
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, 5 findings waived | 0 / 0 / 0 | 0 / 0 / 4 |
-| `as-generated` | **FAIL**, 32 blocking | — | — |
+| `as-generated` | **FAIL**, blockers retained | — | — |
 | first edition | **FAIL**, 33 blocking | — | — |
 
 `reviewed` passes KiCad's own DRC with two silkscreen warnings — no
@@ -370,7 +370,7 @@ a 1.2 V regulator for the core — on four layers.
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
 | `reviewed` | **PASS**, gate exceptions documented | 0 / 0 / 0 | 0 / 0 / 5 |
-| `as-generated` | **FAIL**, 29 blocking | — | — |
+| `as-generated` | **FAIL**, blockers retained | — | — |
 | first edition | **FAIL**, 34 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
