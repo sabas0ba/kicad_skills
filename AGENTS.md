@@ -83,7 +83,9 @@ does not move copper, so those runs reuse the answer and finish in seconds;
 editing the router invalidates every answer it ever gave. `--no-route-cache`
 routes from scratch.
 
-The golden CI job uses KiCad 9.0.9 for generation, gates and renders. It also
+The golden CI matrix uses KiCad 9.0.9 for generation, gates and renders. Each
+example runs independently with fail-fast disabled, so a failed or slow FPGA
+iteration does not suppress the other four designs' evidence. Each job also
 regenerates from the populated route cache and compares the result with the
 cold run: a cache hit must preserve the same board, not merely a passing gate.
 Use `--only motor-driver` (or another example name) for a targeted iteration,
@@ -94,6 +96,10 @@ fresh result for a later cache-hit check. The golden job additionally runs
 `tools/check_example_contracts.py` over the generated designs and gate JSON;
 keep these explicit electrical, plane and negative-control requirements in
 sync with any intentional change in the examples' specification.
+Both version-matrix jobs gate the five checked-in reviewed designs as well,
+and run the same contracts with `--reviewed-only` over those verdicts. The
+fixture test suite alone is not evidence that every example passes both
+KiCad versions.
 
 The rip-up order is kept separately, in `<design>.order.json`, and survives a
 change that does invalidate the cache: it is what an afternoon of rip-up

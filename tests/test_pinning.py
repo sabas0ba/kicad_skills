@@ -216,6 +216,18 @@ def test_golden_job_pins_generation_gates_and_renders_to_oldest_supported_kicad(
     assert "--no-route-cache" in golden
     assert "--require-route-cache" in golden
     assert "diff -ru build/golden build/golden-cached" in golden
+    assert "fail-fast: false" in golden
+    assert "EXAMPLE: ${{ matrix.example }}" in golden
+    assert '--only "$EXAMPLE"' in golden
+    assert "name: golden-examples-${{ matrix.example }}" in golden
+
+
+def test_cross_version_matrix_gates_real_examples_as_well_as_fixtures():
+    matrix_job = (ROOT / ".github/workflows/ci.yml").read_text().split("\n  container:", 1)[1]
+    assert 'gate "examples/${example}/reviewed"' in matrix_job
+    assert "--verdicts build/checked-in-report --reviewed-only" in matrix_job
+    assert "KICAD_VERSION: ${{ matrix.kicad }}" in matrix_job
+    assert "checked-in-gates-kicad-${{ matrix.kicad }}" in matrix_job
 
 
 def test_every_matrix_kicad_version_has_a_pinned_digest():

@@ -1,6 +1,7 @@
 """The golden contract must reject plausible regressions, not just parse files."""
 
 import importlib.util
+import json
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace as NS
@@ -181,3 +182,33 @@ def test_verdict_requires_both_halves_and_specific_negative_controls():
     negative["blocking"].pop()
     assert contracts.verdict_contract(negative, reviewed=False)
     assert contracts.verdict_contract(good, reviewed=False)
+
+
+@pytest.mark.parametrize("rule", ["erc.unavailable", "drc.unavailable", "internal.rule_example"])
+@pytest.mark.parametrize("bucket", ["findings", "waived"])
+def test_verdict_rejects_failed_checks_even_if_informational_or_waived(rule, bucket):
+    verdict = {
+        "pass": True,
+        "schematic": {"schematic": {}},
+        "board": {"board": {}},
+        bucket: [{"rule": rule, "severity": "info"}],
+    }
+    assert any("incomplete checks" in e for e in contracts.verdict_contract(verdict, reviewed=True))
+
+
+def test_single_example_and_reviewed_only_cli_scope(tmp_path, monkeypatch):
+    parsed = []
+
+    def parse(path):
+        parsed.append(path)
+        return NS()
+
+    monkeypatch.setattr(contracts.pcb, "parse", parse)
+    verdict = {"pass": True, "schematic": {"schematic": {}}, "board": {"board": {}}}
+    (tmp_path / "buck-5v-reviewed-gate.json").write_text(json.dumps(verdict))
+    argv = [str(tmp_path), "--only", "buck-5v", "--verdicts", str(tmp_path)]
+    assert contracts.main([*argv, "--reviewed-only"]) == 0
+    assert parsed == [tmp_path / "buck-5v/reviewed/buck-5v.kicad_pcb"]
+    # The normal golden invocation must not silently omit negative controls.
+    with pytest.raises(FileNotFoundError):
+        contracts.main(argv)

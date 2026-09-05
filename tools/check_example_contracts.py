@@ -98,6 +98,17 @@ def verdict_contract(verdict: dict, *, reviewed: bool) -> list[str]:
     for stage in ("schematic", "board"):
         if stage not in verdict or "skipped" in verdict[stage] or stage not in verdict[stage]:
             errors.append(f"gate skipped {stage}")
+    # Generic reviews remain useful without KiCad and report these as info.
+    # A golden acceptance run must actually execute all its checks, even if
+    # a policy would otherwise waive or demote the diagnostic.
+    incomplete = {
+        finding["rule"]
+        for finding in [*verdict.get("findings", []), *verdict.get("waived", [])]
+        if finding["rule"] in {"erc.unavailable", "drc.unavailable"}
+        or finding["rule"].startswith("internal.")
+    }
+    if incomplete:
+        errors.append(f"incomplete checks: {sorted(incomplete)}")
     if not reviewed:
         actual = {finding["rule"] for finding in verdict.get("blocking", [])}
         expected = {"readability.title_block", "spec.missing_rating", "spec.missing_part_number"}
@@ -109,10 +120,18 @@ def verdict_contract(verdict: dict, *, reviewed: bool) -> list[str]:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
+    parser.add_argument("--only", choices=EXAMPLES, help="check a single generated example")
     parser.add_argument("--verdicts", type=Path)
+    parser.add_argument(
+        "--reviewed-only",
+        action="store_true",
+        help="check only reviewed verdicts (the cross-version CI matrix)",
+    )
     args = parser.parse_args(argv)
     errors = []
     for name in EXAMPLES:
+        if args.only and name != args.only:
+            continue
         project = args.root / name / "reviewed" / name
         board = pcb.parse(project.with_suffix(".kicad_pcb"))
         if name == "motor-driver":
@@ -120,7 +139,7 @@ def main(argv=None) -> int:
         if name in ("motor-driver", "fpga-audio"):
             errors.extend(f"{name}: {e}" for e in plane_contract(board))
         if args.verdicts:
-            for variant in ("reviewed", "as-generated"):
+            for variant in ("reviewed",) if args.reviewed_only else ("reviewed", "as-generated"):
                 verdict = json.loads((args.verdicts / f"{name}-{variant}-gate.json").read_text())
                 errors.extend(
                     f"{name}/{variant}: {e}"

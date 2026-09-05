@@ -1441,7 +1441,8 @@ The real dielectric stack-up and reference transitions remain review items.
 `tools/check_example_contracts.py` checks the motor component values, package
 rating and exact VINT/VCP/nFAULT connections on both schematic and board,
 alongside the four-layer GND contract. It also rejects a skipped schematic or
-board stage and requires each negative control to fail for the intended
+board stage, unavailable ERC/DRC and crashed review rules (even when reported
+as info or waived), and requires each negative control to fail for the intended
 title/rating/part-number defects. An unrelated error is not sufficient proof
 that a negative control is still useful.
 
@@ -1452,6 +1453,13 @@ footprint definitions so an unconnected pad's size change invalidates routing
 too. CI requires a cold run and a cache-hit run to produce byte-identical
 projects. Generation, gates and renders all use pinned KiCad 9; the former
 workflow accidentally gated and rendered with the global KiCad 10 default.
+The version-matrix jobs also gate all five checked-in reviewed examples and
+apply their contracts, rather than relying on the small test fixture to prove
+example compatibility with both KiCad versions. Their JSON verdicts are
+uploaded separately for each version.
+Golden regeneration runs in five independent matrix jobs with fail-fast
+disabled. Each retains its own cold/warm comparison, both verdicts, contract
+checks and renders; one failed design cannot hide the other four results.
 
 Finally, `layout.connection_span` uses a maintained Prim frontier: O(n²)
 footprint-pair evaluations instead of rescanning every cut in O(n³). Pad-pair

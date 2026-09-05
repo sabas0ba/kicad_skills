@@ -56,6 +56,32 @@ def test_route_cache_invalidates_legacy_format(tmp_path, monkeypatch):
     assert examples._cache_read("cache-test", "old") is None
 
 
+def test_connector_legend_can_be_placed_explicitly_without_moving_copper(monkeypatch):
+    examples = _generator()
+    part = examples.Part(
+        "J1",
+        "test:connector",
+        "OUT",
+        "test:fp",
+        (0.0, 0.0),
+        (10.0, 10.0, 0.0),
+        pin_legend_at={"1": (15.0, 12.0, "left")},
+    )
+    node = examples.sexp.loads("""(footprint "fp"
+      (pad "1" thru_hole circle (at 0 0) (size 2 2) (drill 1) (layers "*.Cu" "*.Mask")))""")
+    monkeypatch.setattr(examples, "footprint_definition", lambda _name: node)
+    design = _design(
+        examples, parts=[part], nets={"SIG": ["J1.1"]}, rev="A", board_size=(50.0, 40.0)
+    )
+    root = examples.sexp.loads("(root " + "\n".join(examples._board_silk(design)) + ")")
+    legend = next(t for t in root.children("gr_text") if t.atom(0) == "SIG")
+    assert list(legend.child("at").atoms())[:2] == [
+        design.origin[0] + 15.0,
+        design.origin[1] + 12.0,
+    ]
+    assert part.board == (10.0, 10.0, 0.0)
+
+
 @pytest.mark.parametrize("reverse", [False, True])
 def test_fixed_layer_survives_loop_cleanup_and_merging(reverse):
     examples = _generator()

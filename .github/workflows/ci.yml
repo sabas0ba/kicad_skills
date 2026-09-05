@@ -56,13 +56,18 @@ jobs:
         run: uv run --frozen --extra test pytest -q -m "not kicad and not ngspice" tests
 
   golden-examples:
-    name: regenerate and gate golden examples
+    name: golden (${{ matrix.example }})
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [buck-5v, motor-driver, pico-carrier, opamp-filter, fpga-audio]
     env:
       # Override the workflow's KiCad 10 default for *every* step, including
       # bin/eda.sh gates and renders, not just the direct generator invocation.
       KICAD_VERSION: 9.0.9
+      EXAMPLE: ${{ matrix.example }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,17 +79,13 @@ jobs:
 
       - name: Regenerate the worked examples
         run: |
-          failed=0
-          for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
-            docker run --rm --user "$(id -u):$(id -g)" \
-              --network none \
-              -v "$PWD:/work" -w /work \
-              -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
-              --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
-              tools/make_examples.py build/golden --no-route-cache \
-              --only "$example" --route-cache-dir build/golden-cache || failed=1
-          done
-          exit "$failed"
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --network none \
+            -v "$PWD:/work" -w /work \
+            -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/make_examples.py build/golden --no-route-cache \
+            --only "$EXAMPLE" --route-cache-dir build/golden-cache
 
       - name: Verify cache-hit regeneration matches the cold run
         run: |
@@ -94,14 +95,14 @@ jobs:
             -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
             --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
             tools/make_examples.py build/golden-cached --require-route-cache \
-            --route-cache-dir build/golden-cache
+            --only "$EXAMPLE" --route-cache-dir build/golden-cache
           diff -ru build/golden build/golden-cached
 
       - name: Check generated-file drift
         run: |
           set -uo pipefail
           failed=0
-          for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
+          for example in "$EXAMPLE"; do
             for variant in as-generated reviewed; do
               for extension in kicad_pro kicad_sch kicad_pcb; do
                 if ! diff -u \
@@ -120,7 +121,7 @@ jobs:
           set -euo pipefail
           mkdir -p build/golden-report
           failed=0
-          for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
+          for example in "$EXAMPLE"; do
             set +e
             ./bin/eda.sh gate "build/golden/${example}/reviewed" \
               --policy "examples/${example}/gate.toml" --text \
@@ -156,14 +157,14 @@ jobs:
             -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
             --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
             tools/check_example_contracts.py build/golden \
-            --verdicts build/golden-report
+            --verdicts build/golden-report --only "$EXAMPLE"
 
       - name: Render every generated variant
         if: always()
         run: |
           set -euo pipefail
           failed=0
-          for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
+          for example in "$EXAMPLE"; do
             for variant in as-generated reviewed; do
               ./bin/eda.sh sch render "build/golden/${example}/${variant}" \
                 -o "build/golden-render/${example}/${variant}/schematic" --dpi 150 || failed=1
@@ -178,7 +179,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: golden-examples
+          name: golden-examples-${{ matrix.example }}
           path: |
             build/golden
             build/golden-cached
@@ -215,6 +216,36 @@ jobs:
 
       - name: End-to-end smoke test
         run: make smoke KICAD_VERSION=${{ matrix.kicad }}
+
+      - name: Gate all checked-in reviewed examples
+        env:
+          KICAD_VERSION: ${{ matrix.kicad }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/checked-in-report
+          failed=0
+          for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
+            ./bin/eda.sh gate "examples/${example}/reviewed" \
+              --policy "examples/${example}/gate.toml" --text \
+              -o "build/checked-in-report/${example}-reviewed-gate.json" || failed=1
+          done
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --network none \
+            -v "$PWD:/work" -w /work \
+            -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/check_example_contracts.py examples \
+            --verdicts build/checked-in-report --reviewed-only || failed=1
+          exit "$failed"
+
+      - name: Upload checked-in example verdicts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checked-in-gates-kicad-${{ matrix.kicad }}
+          path: build/checked-in-report
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Build the visual report for the example project
         env:

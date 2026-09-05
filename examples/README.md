@@ -28,9 +28,12 @@ docker run --rm -u $(id -u):$(id -g) -v "$PWD:/work" -w /work \
 and the images below with:
 
 ```bash
-./bin/eda.sh sch render examples/buck-5v/reviewed -o build/render/reviewed/sch --dpi 150
-./bin/eda.sh pcb render examples/buck-5v/reviewed -o build/render/reviewed/pcb \
-    --dpi 300 --views front back --no-3d --no-sheet
+KICAD_VERSION=9.0.9 ./bin/eda.sh sch render examples/buck-5v/reviewed \
+    -o build/render/reviewed/schematic --dpi 150
+KICAD_VERSION=9.0.9 ./bin/eda.sh pcb render examples/buck-5v/reviewed \
+    -o build/render/reviewed/pcb --dpi 300 --views front back --per-layer --no-3d --no-sheet
+uv run --frozen python tools/update_example_images.py \
+    build/render/reviewed examples/buck-5v/images reviewed
 ```
 
 The generator reads KiCad's own symbol and footprint libraries, so these are the
@@ -397,6 +400,13 @@ pull-up, and the LDO reservoir is 2.2 uF.
 | ![schematic, first edition](fpga-audio/images/schematic-first.jpg) | ![schematic, as generated](fpga-audio/images/schematic-as-generated.jpg) | ![schematic, reviewed](fpga-audio/images/schematic-reviewed.jpg) |
 | ![board front, first edition](fpga-audio/images/board-front-first.jpg) | ![board front, as generated](fpga-audio/images/board-front-as-generated.jpg) | ![board front, reviewed](fpga-audio/images/board-front-reviewed.jpg) |
 | ![board back, first edition](fpga-audio/images/board-back-first.jpg) | ![board back, as generated](fpga-audio/images/board-back-as-generated.jpg) | ![board back, reviewed](fpga-audio/images/board-back-reviewed.jpg) |
+
+| In1: GND | In2: +3V3 and SPI clock lane |
+| --- | --- |
+| ![FPGA inner ground](fpga-audio/images/board-in1-reviewed.jpg) | ![FPGA inner power](fpga-audio/images/board-in2-reviewed.jpg) |
+
+These are actual KiCad copper renders. The image utility only removes the
+empty page margin and converts the format; it does not redraw or rescale copper.
 
 ### What this one is honest about
 

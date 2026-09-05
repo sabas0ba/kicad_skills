@@ -120,6 +120,9 @@ class Part:
     # their net names automatically; this is for parts whose purpose the
     # reference alone does not state.
     silk_label: str = ""
+    # Reviewed exceptions to automatic connector legend placement, in board
+    # coordinates: pin number -> (x, y, justification). Does not move copper.
+    pin_legend_at: dict[str, tuple[float, float, str]] = field(default_factory=dict)
     # Whether to print the symbol's value on the sheet. A fiducial's value is
     # the word "Fiducial" and a screw hole's is its thread: nothing a reader
     # needs, and one more string to collide with a wire. The libraries leave
@@ -6539,6 +6542,8 @@ def _board_silk(
                         design, _silk_box(net, side[0], side[1], 0.8, side[2]), others, all_pads
                     ),
                 )
+                if number in part.pin_legend_at:
+                    tx, ty, justify = part.pin_legend_at[number]
                 placed.append(_silk_box(net, tx, ty, 0.8, justify))
                 if legend_boxes is not None:
                     legend_boxes.append(_silk_box(net, tx, ty, 0.8, justify))
@@ -7133,6 +7138,9 @@ def buck_5v() -> Design:
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(200.66, 68.58),
             board=(85.0, 16.5, 90.0),
+            # KiCad 9 catches the automatic +5V legend on C3's body silk.
+            # Put it below the output terminal, clear of both outlines.
+            pin_legend_at={"1": (80.0, 21.8, "right")},
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -7595,10 +7603,10 @@ def motor_driver() -> Design:
     # VM and VCP on short front-side connections to the three capacitors.
     # The east lands begin at x=38.625. A 0.58 mm via at x=38.2 leaves
     # 0.135 mm copper gap to its own land, so it does not require via-in-pad.
-    east = {"16": (38.2, 23.225), "15": (40.5, 23.5), "10": (38.2, 27.125), "9": (40.2, 28.3)}
+    east = {"16": (38.2, 23.225), "15": (40.75, 23.625), "10": (38.2, 27.125), "9": (40.2, 28.3)}
     right = [
         Track("AIN1", "F.Cu", SIG, ["U1.16", east["16"]]),
-        Track("AIN2", "F.Cu", SIG, ["U1.15", (40.125, 23.875), east["15"]]),
+        Track("AIN2", "F.Cu", SIG, ["U1.15", (40.5, 23.875), east["15"]]),
         Track("BIN2", "F.Cu", SIG, ["U1.10", east["10"]]),
         Track("BIN1", "F.Cu", SIG, ["U1.9", (39.675, 27.775), east["9"]]),
     ]
@@ -7623,17 +7631,19 @@ def motor_driver() -> Design:
     # -- the supply, placed by hand ----------------------------------------
     # The input feeds In2; C2 and C3 each pick it up locally. No redundant
     # outer-layer supply trunk, and no logic escape between IC and bypass.
-    feed, vm_bypass, pump_supply = (57.5, 13.0), (41.1, 26.0), (45.15, 28.5)
+    feed, vm_bypass, pump_supply = (57.5, 13.0), (42.05, 24.75), (45.15, 28.5)
     vias += [
-        *(Via("VM", x=p[0], y=p[1]) for p in (feed, vm_bypass, pump_supply)),
+        *(Via("VM", x=p[0], y=p[1]) for p in (feed, pump_supply)),
+        Via("VM", x=vm_bypass[0], y=vm_bypass[1], size=0.58, drill=0.3),
     ]
     tracks += [
-        Track("VM", "F.Cu", POWER, ["U1.12", (40.925, 25.825), vm_bypass, "C2.1"]),
+        Track("VM", "F.Cu", POWER, ["U1.12", (41.875, 25.825), "C2.1"]),
+        Track("VM", "F.Cu", POWER, [vm_bypass, "C2.1"]),
         Track("VM", "F.Cu", POWER, ["J1.1", "C1.1"], auto=True),
         Track("VM", "F.Cu", POWER, ["C1.1", feed], auto=True),
         Track("VM", "F.Cu", POWER, ["C3.1", pump_supply]),
         Track("VM", "F.Cu", POWER, ["C1.1", "R2.1"], auto=True),
-        Track("VCP", "F.Cu", POWER, ["U1.11", (40.025, 26.475), "C3.2"]),
+        Track("VCP", "F.Cu", POWER, ["U1.11", (40.6, 26.475), (42.05, 27.925), "C3.2"]),
         Track("VINT", "F.Cu", POWER, ["U1.14", (41.025, 24.525), "C4.1"]),
         Track("LED_A", "F.Cu", SIG, ["R2.2", "D2.2"], auto=True),
     ]
@@ -7676,7 +7686,7 @@ def motor_driver() -> Design:
 
     # -- everything that simply has to arrive ------------------------------
     nsleep_pickup = (35.25, 22.75)
-    nsleep_landing = (37.5, 24.5)
+    nsleep_landing = (37.1, 24.5)
     vias += [
         Via("nSLEEP", x=nsleep_pickup[0], y=nsleep_pickup[1]),
         Via("nSLEEP", x=nsleep_landing[0], y=nsleep_landing[1]),
@@ -7691,10 +7701,10 @@ def motor_driver() -> Design:
             "nSLEEP",
             "B.Cu",
             SIG,
-            [nsleep_pickup, (35.75, 22.75), nsleep_landing],
+            [nsleep_pickup, (35.35, 22.75), nsleep_landing],
             keep_layer=True,
         ),
-        Track("nSLEEP", "F.Cu", SIG, [nsleep_landing, (37.5, 37.75), "J4.2"]),
+        Track("nSLEEP", "F.Cu", SIG, [nsleep_landing, (37.1, 37.64), "J4.2"]),
         Track("nFAULT", "F.Cu", SIG, [west["8"], "J4.7"], auto=True),
     ]
 
@@ -9053,14 +9063,14 @@ def fpga_audio() -> Design:
         anchored.append(Track("GND", "F.Cu", 0.4, [f"{cref}.2", site]))
         placed.add(cref)
 
-    # The 1.2 V rail gets a stated back-side spine. Its west via sits outside
+    # The 1.2 V rail gets a stated back-side spine. Its west bend sits outside
     # the FPGA escape comb, while the east end stops before the exposed-pad
     # via field. Local consumers tap this short trunk instead of touring the
     # board edge around the SPI fanout.
     SPINE_1V2 = ((24.0, 30.25), (34.2, 30.25))
-    vias.append(Via("+1V2", x=SPINE_1V2[0][0], y=SPINE_1V2[0][1]))
-    # No via belongs on the east end: a through via there would enter U1's
-    # ground paddle, and the east tap already starts on the back layer.
+    # Both ends join B.Cu runs: neither needs a layer-change via. A via on
+    # the west bend was redundant once the feed's fixed-layer intent survived
+    # cleanup (KiCad 9 reports it as via_dangling).
     anchored.append(Track("+1V2", "B.Cu", SIG, [SPINE_1V2[0], SPINE_1V2[1]]))
 
     # Every endpoint goes through `end`, which returns the far end of a pin's
