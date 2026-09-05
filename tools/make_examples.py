@@ -7554,8 +7554,6 @@ def motor_driver() -> Design:
         # the logic pins beside them carry nothing and stay at 0.3.
         widths={"14": POWER, "13": POWER, "12": POWER, "11": POWER},
     )
-    logic_pins = {"AIN1": "16", "AIN2": "15", "BIN2": "10", "BIN1": "9"}
-
     # AISEN, BISEN and GND leave the fan and take one more step clear of it
     # before dropping into the plane. On top of the fan the pour is whatever
     # fits between two escape lanes and their clearance - a strip too thin to
