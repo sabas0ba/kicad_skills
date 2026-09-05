@@ -55,6 +55,139 @@ jobs:
       - name: Run tests
         run: uv run --frozen --extra test pytest -q -m "not kicad and not ngspice" tests
 
+  golden-examples:
+    name: golden (${{ matrix.example }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        example: [buck-5v, motor-driver, pico-carrier, opamp-filter, fpga-audio]
+    env:
+      # Override the workflow's KiCad 10 default for *every* step, including
+      # bin/eda.sh gates and renders, not just the direct generator invocation.
+      KICAD_VERSION: 9.0.9
+      EXAMPLE: ${{ matrix.example }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The generator copies symbols and footprints from KiCad's libraries, so
+      # regeneration is part of the container contract rather than a host test.
+      - name: Build the pinned KiCad 9 image
+        run: make build
+
+      - name: Regenerate the worked examples
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --network none \
+            -v "$PWD:/work" -w /work \
+            -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/make_examples.py build/golden --no-route-cache \
+            --only "$EXAMPLE" --route-cache-dir build/golden-cache
+
+      - name: Verify cache-hit regeneration matches the cold run
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --network none \
+            -v "$PWD:/work" -w /work \
+            -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/make_examples.py build/golden-cached --require-route-cache \
+            --only "$EXAMPLE" --route-cache-dir build/golden-cache
+          diff -ru build/golden build/golden-cached
+
+      - name: Check generated-file drift
+        run: |
+          set -uo pipefail
+          failed=0
+          for example in "$EXAMPLE"; do
+            for variant in as-generated reviewed; do
+              for extension in kicad_pro kicad_sch kicad_pcb; do
+                if ! diff -u \
+                    "examples/${example}/${variant}/${example}.${extension}" \
+                    "build/golden/${example}/${variant}/${example}.${extension}"; then
+                  failed=1
+                fi
+              done
+            done
+          done
+          exit "$failed"
+
+      - name: Gate every generated variant
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p build/golden-report
+          failed=0
+          for example in "$EXAMPLE"; do
+            set +e
+            ./bin/eda.sh gate "build/golden/${example}/reviewed" \
+              --policy "examples/${example}/gate.toml" --text \
+              -o "build/golden-report/${example}-reviewed-gate.json" \
+              | tee "build/golden-report/${example}-reviewed-gate.txt"
+            reviewed_status=${PIPESTATUS[0]}
+            set -e
+            if [ "$reviewed_status" -ne 0 ]; then
+              echo "::error::${example}/reviewed should pass its gate, got ${reviewed_status}"
+              failed=1
+            fi
+
+            set +e
+            ./bin/eda.sh gate "build/golden/${example}/as-generated" \
+              --policy "examples/${example}/gate.toml" --text \
+              -o "build/golden-report/${example}-as-generated-gate.json" \
+              | tee "build/golden-report/${example}-as-generated-gate.txt"
+            status=${PIPESTATUS[0]}
+            set -e
+            if [ "$status" -ne 2 ]; then
+              echo "::error::${example}/as-generated should fail its gate (exit 2), got ${status}"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: Check electrical, plane and negative-control contracts
+        if: always()
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --network none \
+            -v "$PWD:/work" -w /work \
+            -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/check_example_contracts.py build/golden \
+            --verdicts build/golden-report --only "$EXAMPLE"
+
+      - name: Render every generated variant
+        if: always()
+        run: |
+          set -euo pipefail
+          failed=0
+          for example in "$EXAMPLE"; do
+            for variant in as-generated reviewed; do
+              ./bin/eda.sh sch render "build/golden/${example}/${variant}" \
+                -o "build/golden-render/${example}/${variant}/schematic" --dpi 150 || failed=1
+              ./bin/eda.sh pcb render "build/golden/${example}/${variant}" \
+                -o "build/golden-render/${example}/${variant}/pcb" --dpi 300 \
+                --views front back --per-layer --no-3d --no-sheet || failed=1
+            done
+          done
+          exit "$failed"
+
+      - name: Upload golden review evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: golden-examples-${{ matrix.example }}
+          path: |
+            build/golden
+            build/golden-cached
+            build/golden-report
+            build/golden-render
+          retention-days: 14
+          if-no-files-found: warn
+
   container:
     # The KiCad release is a build argument, so "it works on 10" is a claim the
     # matrix has to back up. Every version here must have a pinned digest in
@@ -83,6 +216,36 @@ jobs:
 
       - name: End-to-end smoke test
         run: make smoke KICAD_VERSION=${{ matrix.kicad }}
+
+      - name: Gate all checked-in reviewed examples
+        env:
+          KICAD_VERSION: ${{ matrix.kicad }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/checked-in-report
+          failed=0
+          for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
+            ./bin/eda.sh gate "examples/${example}/reviewed" \
+              --policy "examples/${example}/gate.toml" --text \
+              -o "build/checked-in-report/${example}-reviewed-gate.json" || failed=1
+          done
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --network none \
+            -v "$PWD:/work" -w /work \
+            -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/check_example_contracts.py examples \
+            --verdicts build/checked-in-report --reviewed-only || failed=1
+          exit "$failed"
+
+      - name: Upload checked-in example verdicts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: checked-in-gates-kicad-${{ matrix.kicad }}
+          path: build/checked-in-report
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: Build the visual report for the example project
         env:
