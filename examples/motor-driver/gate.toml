@@ -6,19 +6,12 @@ extends = "ai-generated"
 [[waivers]]
 rule = "layout.decoupling_distance"
 reason = """A TSSOP-16 at 0.65 mm pitch has to walk its rows out to a routable \
-pitch before anything can be placed against them, and that walk is the distance \
-the rule measures. On two layers with parts on one side these are the closest \
-positions that exist; the four-layer answer (caps on the back, under the pins) \
-is out of this generator's reach. U1.11 is also the charge pump: C3 sits \
-between VCP and VM because the datasheet says exactly that."""
-
-[[waivers]]
-rule = "layout.decoupling_via"
-location = "C1"
-reason = """C1 is the bulk electrolytic on VM. Its ground pad reaches the plane \
-through the pour-side via 4 mm away; a via inside that distance would sit in \
-the screw terminal's courtyard. The bypass loop that matters at switching \
-speed is C2's, which passes."""
+pitch before anything can be placed against them. C2, C3 and C4 are aligned \
+with the VM/GND, VM/VCP and VINT/GND fan lanes respectively, immediately \
+beyond that escape; the board-only rule therefore measures 11.7-11.9 mm from \
+the original package pads even though each local copper connection is short. \
+U1.11 is also the charge pump: C3 sits between VCP and VM because the \
+datasheet says exactly that."""
 
 [[waivers]]
 rule = "readability.label_only"

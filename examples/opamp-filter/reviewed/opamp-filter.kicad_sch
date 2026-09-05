@@ -2,12 +2,12 @@
   (uuid "efb028ab-a5b5-5d27-b654-08a8ba6b5d9d")
   (paper "A4")
   (title_block
-  	(title "1 kHz Sallen-Key low pass, single 5 V")
-  	(date "2026-08-12")
-  	(rev "A")
-  	(company "kicad_skills examples")
-  	(comment 1 "generated 2026-08-12 by Claude Code (claude-fable-5)")
-  	(comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
+    (title "1 kHz Sallen-Key low pass, single 5 V")
+    (date "2026-09-05")
+    (rev "A")
+    (company "kicad_skills examples")
+    (comment 1 "generated 2026-09-05 by OpenAI Codex")
+    (comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
   )
   (lib_symbols
     (symbol "Amplifier_Operational:MCP6001R"

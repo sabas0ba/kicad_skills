@@ -55,6 +55,76 @@ jobs:
       - name: Run tests
         run: uv run --frozen --extra test pytest -q -m "not kicad and not ngspice" tests
 
+  golden-examples:
+    name: regenerate and gate golden examples
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      KICAD_VERSION: 9.0.9
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The generator copies symbols and footprints from KiCad's libraries, so
+      # regeneration is part of the container contract rather than a host test.
+      - name: Build the pinned KiCad 9 image
+        run: make build KICAD_VERSION=${{ env.KICAD_VERSION }}
+
+      - name: Regenerate the worked examples
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --network none \
+            -v "$PWD:/work" -w /work \
+            -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/make_examples.py build/golden
+
+      - name: Check generated-file drift
+        run: |
+          set -euo pipefail
+          for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
+            for variant in as-generated reviewed; do
+              for extension in kicad_pro kicad_sch kicad_pcb; do
+                diff -u \
+                  "examples/${example}/${variant}/${example}.${extension}" \
+                  "build/golden/${example}/${variant}/${example}.${extension}"
+              done
+            done
+          done
+
+      - name: Gate every reviewed design
+        run: |
+          set -euo pipefail
+          mkdir -p build/golden-report
+          for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
+            ./bin/eda.sh gate "build/golden/${example}/reviewed" \
+              --policy "examples/${example}/gate.toml" --text \
+              | tee "build/golden-report/${example}-gate.txt"
+          done
+
+      - name: Render every reviewed design
+        run: |
+          set -euo pipefail
+          for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
+            ./bin/eda.sh sch render "build/golden/${example}/reviewed" \
+              -o "build/golden-render/${example}/schematic" --dpi 150
+            ./bin/eda.sh pcb render "build/golden/${example}/reviewed" \
+              -o "build/golden-render/${example}/pcb" --dpi 200 \
+              --views front back --no-3d --no-sheet
+          done
+
+      - name: Upload golden review evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: golden-examples
+          path: |
+            build/golden
+            build/golden-report
+            build/golden-render
+          retention-days: 14
+          if-no-files-found: warn
+
   container:
     # The KiCad release is a build argument, so "it works on 10" is a claim the
     # matrix has to back up. Every version here must have a pinned digest in

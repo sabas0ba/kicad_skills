@@ -76,8 +76,8 @@ the point of writing them down is to say which:
 
 ## 2. Electromagnetics and layout physics
 
-* **Return paths** — the strongest physical criticism of the set. On a
-  two-layer board with the ground plane on the back, every bottom-layer track
+* **Return paths** — the strongest physical criticism of a two-layer layout.
+  On a two-layer board with the ground plane on the back, every bottom-layer track
   cuts a channel through the plane, and any top-layer signal crossing that
   channel has its return current detoured around the gap: the loop area, and
   with it emission and coupling, grows by the detour. Now the **rule**
@@ -86,10 +86,11 @@ the point of writing them down is to say which:
 * **Decoupling geometry** (already ruled: `layout.decoupling_distance`,
   `layout.decoupling_via`). The three fine-pitch boards all fail the distance
   rule for the same reason — the escape from the package spends the distance
-  budget before a capacitor can be placed. On two layers, with parts on one
-  side, this is a fact of the package, not a placement mistake; the real-world
-  fix is caps on the back under the pins, which this generator cannot yet
-  place. **Waived** per project, with that reason. The *via* half is now
+  budget before a capacitor can be placed. On the two-layer examples, with
+  parts on one side, this is a fact of the package rather than a loose
+  placement; the real-world fix is caps on the back under the pins. On the
+  four-layer FPGA board each local supply instead drops directly to its plane.
+  **Waived** per project, with that reason. The *via* half is now
   **fixed** where it was failing: on the FPGA board every 0603's ground via
   is anchored against its own pad, on the far side from the supply pad, with
   the 1.2 mm stub as the whole loop — placed as a declared via next to the
@@ -98,10 +99,10 @@ the point of writing them down is to say which:
   its narrowest millimetre, which on a fine-pitch board is the escape neck it
   cannot avoid. Now it measures the longest *contiguous* narrow run against a
   `power_neck_mm` allowance — necks pass, thin trunks still fail. Where a
-  whole distribution stays narrow (the fpga board routes its rails at 0.2 mm
-  because nothing wider fits between the fans), the finding stands and the
-  waiver argues in numbers: an iCE40 draws tens of milliamps, and 0.2 mm
-  carries 0.74 A at a 10 °C rise.
+  whole distribution stays narrow, the finding stands. The FPGA now uses an
+  In2 +3V3 plane and a short +1V2 spine, but its QFN escape necks remain 0.2 mm;
+  the waiver argues in numbers that an iCE40 draws tens of milliamps while
+  0.2 mm carries 0.74 A at a 10 °C rise.
 * **Thermals, open**: nothing yet judges copper area under a TO-263 tab or a
   QFN's exposed pad against the watts the part dissipates (the buck and the
   motor driver both care); stitching-via count under the iCE40's pad is
@@ -1321,3 +1322,57 @@ renderer so the only difference is the design:
 The distance between the first two columns is the review turned into code,
 which arrives before anyone runs the gate. The distance between the second and
 the third is what the gate still had to catch on the day.
+
+## 25. The reviewer's pass, round twenty: floorplan before routing
+
+The previous rounds taught the router to make poor placement look orderly.
+That was useful, but it left the decision in the wrong place: once two parts
+that must talk are thirty millimetres apart, no choice of 45-degree corners can
+make the floorplan compact.
+
+`layout.connection_span` now asks the question before copper exists. For each
+non-ground net it collapses all pads on one footprint into one node, computes
+the nearest pad-to-pad distance between every pair of footprints, and builds a
+deterministic minimum spanning tree. Any edge over
+`max_connection_span_mm` (25 mm by default) is a placement finding. The use of
+a tree matters: a three-pin net needs two local connections, not every possible
+pair, and two far-apart pads inside one package must not accuse the package of
+being far from itself. The `ai-generated` policy promotes the rule to an error;
+a long backplane can raise the threshold in its own policy.
+
+Running that rule over the old reviewed baselines found 2 long logical hops on
+buck-5v, 10 on motor-driver and 13 on fpga-audio. It found none on
+opamp-filter or pico-carrier, which is also useful evidence: a rule intended to
+judge placement did not merely rediscover dense routing everywhere. Rebuilding
+the three floorplans took all 25 findings to zero:
+
+| design | old baseline | rebuilt baseline | consequence |
+| --- | --- | --- | --- |
+| buck-5v | 126 × 56 mm, 459.30 mm tracks, 124 vias | 92 × 38 mm, 282.17 mm, 88 vias | input switch loop and output filter become one power-flow row |
+| motor-driver | 88 × 50 mm, 654.06 mm tracks, 94 vias | 68 × 46 mm, 485.91 mm, 84 vias | supply capacitors share the package fan; logic header meets its lanes |
+| pico-carrier | 88 × 62 mm, 90 vias | 80 × 60 mm, 78 vias | edge clearances retained while unused perimeter is removed |
+| opamp-filter | 58 × 42 mm | 58 × 42 mm | a smaller trial made the analogue feedback routing worse, so the honest optimum stayed put |
+| fpga-audio | 100 × 84 mm, two layers | 76 × 58 mm, four layers | the QFN gets a solid In1 reference and In2 +3V3 plane; return-path and routing-tour waivers disappear |
+
+The FPGA change is not a concession to the gate. It is the engineering result
+the gate exposed. A four-sided QFN-48, codec and boot flash can be forced onto
+two layers, but the resulting cuts in the only reference plane are not a good
+teaching baseline. The rebuilt board spends two inner layers on an uninterrupted
+ground reference and power distribution, leaving the outer layers for escape
+and signals. One SPI clock lane crosses the In2 pour, still referenced to In1;
+the +3V3 plane remains continuous around it rather than being mistaken for the
+signal's reference.
+
+That board also exposed one parser assumption: KiCad writes a through via as
+`F.Cu B.Cu` on a four-layer board. Those are the barrel's endpoints, not the
+only copper layers it reaches. The stub and via-in-pad checks now expand the
+inclusive layer range; a regression test puts an In2 track into a through via
+so the mistake cannot return.
+
+Finally, regeneration itself is a gate. CI now rebuilds all five projects from
+an empty route cache inside the pinned KiCad 9 image, diffs every schematic,
+project and board file, runs each reviewed policy, and renders both drawings.
+The generated projects, verdicts and renders are uploaded together. A checked-in
+example therefore has to be reproducible as well as electrically and
+geometrically acceptable; a hand-edited golden file can no longer drift away
+from the generator that claims to own it.

@@ -55,6 +55,11 @@ THRESHOLDS = {
     # How far in from the board edge a connector may sit before the cable has
     # to cross the board to reach it.
     "max_connector_edge_mm": 6.0,
+    # One logical hop longer than this means the parts it joins were placed as
+    # islands rather than as a circuit block.  It is intentionally generous:
+    # connector-to-connector boards and mechanical front panels can raise it,
+    # while a converter or feedback loop should be far below it.
+    "max_connection_span_mm": 25.0,
     # How near a pad a track may change width: a neck is allowed to end where
     # the thing that forced it does, and nowhere else.
     "width_step_free_mm": 3.0,
@@ -306,6 +311,13 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "a footprint turned to something other than a multiple of the step",
         "info",
         threshold="rotation_step_deg",
+    ),
+    "layout.connection_span": RuleSpec(
+        "an edge in a net's shortest possible footprint-to-footprint tree is "
+        "longer than max_connection_span_mm. Pads on one footprint are treated "
+        "as one node and ground is excluded because its plane is global",
+        "warning",
+        threshold="max_connection_span_mm",
     ),
     "layout.double_sided_assembly": RuleSpec(
         "footprints on the bottom side, which costs an assembly pass", "info"
@@ -756,7 +768,7 @@ def rule_via_in_pad(ctx: PcbContext) -> list[Finding]:
     hits = []
     for via in board.vias:
         for fp, pad, layers, (x0, y0, x1, y1) in lands:
-            if not layers & set(via.layers):
+            if not layers & _via_layers(via, board):
                 continue
             dx = max(x0 - via.x, 0.0, via.x - x1)
             dy = max(y0 - via.y, 0.0, via.y - y1)
@@ -2429,6 +2441,108 @@ def rule_placement(ctx: PcbContext) -> list[Finding]:
     return findings
 
 
+def _footprint_mst_edges(
+    pads: list[tuple[pcb.Footprint, pcb.Pad]],
+) -> list[tuple[float, str, str, str, str]]:
+    """Shortest tree between footprints, with their nearest pads as each edge.
+
+    A rail often reaches several pads of one IC. Placement moves those pads as
+    one component, so counting distances within the package exaggerates the
+    floorplanning cost (and is especially misleading for modules and
+    connectors). The graph therefore has one node per footprint and the
+    distance between two nodes is the nearest pair of their pads.
+    """
+    by_ref: dict[str, list[pcb.Pad]] = defaultdict(list)
+    for fp, pad in pads:
+        by_ref[fp.ref].append(pad)
+    refs = sorted(by_ref)
+    if len(refs) < 2:
+        return []
+
+    def nearest(a: str, b: str) -> tuple[float, str, str]:
+        distance, pa, pb = min(
+            (
+                (math.dist((left.x, left.y), (right.x, right.y)), left, right)
+                for left in by_ref[a]
+                for right in by_ref[b]
+            ),
+            key=lambda item: (item[0], str(item[1].number), str(item[2].number)),
+        )
+        return distance, str(pa.number), str(pb.number)
+
+    distances = {
+        (a, b): nearest(a, b)
+        for index, a in enumerate(refs)
+        for b in refs[index + 1 :]
+    }
+
+    def edge(a: str, b: str) -> tuple[float, str, str]:
+        if a < b:
+            return distances[(a, b)]
+        distance, pb, pa = distances[(b, a)]
+        return distance, pa, pb
+
+    tree = {refs[0]}
+    rest = set(refs[1:])
+    edges: list[tuple[float, str, str, str, str]] = []
+    while rest:
+        distance, a, b, pa, pb = min(
+            (distance, a, b, pa, pb)
+            for a in tree
+            for b in rest
+            for distance, pa, pb in (edge(a, b),)
+        )
+        edges.append((distance, a, pa, b, pb))
+        tree.add(b)
+        rest.remove(b)
+    return edges
+
+
+@rule
+def rule_connection_span(ctx: PcbContext) -> list[Finding]:
+    """Find circuit blocks whose theoretical shortest connections are long.
+
+    Route length cannot judge placement: an autorouter can draw a perfectly
+    direct 40 mm line between two parts that should have been neighbours.  For
+    each net this rule builds the Euclidean minimum spanning tree between
+    footprints and asks about its individual edges.  The result is a lower
+    bound independent of routing style and board outline size.
+
+    Ground is deliberately excluded.  A plane is global by design, and its
+    component spread says nothing about whether signal and power blocks are
+    local.  Long mechanical boards remain expressible through the threshold or
+    an explicit waiver, while generated boards must account for that choice.
+    """
+    limit = ctx.thresholds["max_connection_span_mm"]
+    findings: list[Finding] = []
+    for net, pads in sorted(ctx.pads_by_net.items()):
+        if ctx.net_class_of(net) == "ground":
+            continue
+        offenders = [edge for edge in _footprint_mst_edges(pads) if edge[0] > limit]
+        if not offenders:
+            continue
+        worst = max(offenders, key=lambda edge: edge[0])
+        items = [
+            {
+                "from": f"{a}.{pa}",
+                "to": f"{b}.{pb}",
+                "span_mm": round(distance, 3),
+            }
+            for distance, a, pa, b, pb in sorted(offenders, reverse=True)
+        ]
+        findings.append(
+            Finding(
+                "layout.connection_span",
+                "warning",
+                f"{net} needs {len(offenders)} connection(s) longer than {limit:g} mm "
+                f"even before routing; worst is {worst[0]:.1f} mm",
+                location=net,
+                details={"count": len(offenders), "items": items[:12]},
+            )
+        )
+    return findings
+
+
 # A socket lands inside the outline a pin header already draws, so a header
 # asks for nothing above its courtyard. A screw terminal's wires leave
 # horizontally from its face and a barrel jack swallows a plug the size of
@@ -2672,6 +2786,22 @@ def _pad_layers(pad: pcb.Pad, board: pcb.Board) -> set[str]:
         else:
             layers.add(layer)
     return layers
+
+
+def _via_layers(via: pcb.Via, board: pcb.Board) -> set[str]:
+    """Copper layers reached by a via, including layers between its endpoints.
+
+    KiCad records a through via as ``F.Cu B.Cu`` even on a multilayer board;
+    those are the ends of the barrel, not an exhaustive membership list.
+    Blind and buried vias use the same endpoint notation, so expanding the
+    inclusive slice also describes them correctly.
+    """
+    copper = board.copper_layers
+    indices = [copper.index(layer) for layer in via.layers if layer in copper]
+    if len(indices) < 2:
+        return set(via.layers)
+    first, last = min(indices), max(indices)
+    return set(copper[first : last + 1])
 
 
 class _PadIndex:
@@ -3222,7 +3352,10 @@ def rule_track_stubs(ctx: PcbContext) -> list[Finding]:
     # the via's centre exactly called a joint a stub whenever a reshaping pass
     # had moved the track a quarter of a millimetre - still well inside the
     # barrel's own pad, still connected, and KiCad's DRC agreed it was.
-    vias = [(v.x, v.y, v.size / 2 + GEOM_TOL, set(v.layers)) for v in board.vias]
+    vias = [
+        (v.x, v.y, v.size / 2 + GEOM_TOL, _via_layers(v, board))
+        for v in board.vias
+    ]
     pad_boxes = [
         (pad.bbox(angle_offset=fp.angle), _pad_layers(pad, board))
         for fp in board.footprints

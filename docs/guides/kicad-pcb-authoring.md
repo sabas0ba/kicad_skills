@@ -39,6 +39,21 @@ Then render both sides and look at them:
 The rules see loop areas and track widths; only the plot shows a board that
 *reads* as machine work.
 
+## Floorplan before routing
+
+Route quality cannot rescue a scattered floorplan. `layout.connection_span`
+builds the shortest possible tree between the footprints on each net and
+reports any single edge over 25 mm. It measures pad-to-pad Euclidean distance,
+not the copper, so an autorouter cannot make it pass by drawing a straight line
+and cannot make it fail merely by taking a detour.
+
+Use it before routing: put the connector, protection, conversion, load and
+control blocks in signal-flow order; rotate packages so the pins face the block
+they serve; then run `pcb review`. Ground is excluded because its plane is
+global. A backplane or mechanically constrained front panel may genuinely need
+long connections; encode that fact as a project threshold or a net-specific
+waiver instead of training every generated board to accept it.
+
 ## Decoupling: the loop is the deliverable
 
 `layout.decoupling_distance` and `layout.decoupling_via` measure the two
@@ -454,7 +469,7 @@ three are visible in one glance at the `interf_u` demo:
 
 `eda gate --list-rules` prints all of them. The ones this guide exists to
 satisfy: `layout.decoupling_distance`, `layout.decoupling_via`,
-`route.return_path`, `route.detour`, `route.wander`, `route.acute_angle`,
+`layout.connection_span`, `route.return_path`, `route.detour`, `route.wander`, `route.acute_angle`,
 `track.thin_power`, plus KiCad's own DRC. What cannot be a rule — where to
 spend the escape budget, how hard to price the plane layer, when a crossing
 is cheap enough to keep — is this guide, and the rendered board.

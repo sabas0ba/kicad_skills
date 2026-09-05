@@ -229,6 +229,7 @@ rating.
 | `silk.text_too_small` | below the screen printer's limit it comes back a smudge |
 | `layout.pad_collision` | pads of two footprints sharing copper — parts placed on top of each other |
 | `layout.off_grid_placement` / `layout.odd_rotation` | free electrically, and most of why a generated layout looks generated |
+| `layout.connection_span` | a net whose shortest possible footprint-to-footprint tree still needs an edge over 25 mm — a floorplan defect no tidy route can hide |
 | `layout.decoupling_via` | the capacitor closes a loop through the plane; a ground pad millimetres from the nearest via has more inductance in the path than the part removes |
 | `route.stub` | copper with one free end is an antenna nobody asked for |
 | `route.acute_angle` | an acute corner traps etchant and is a discontinuity for anything fast |
@@ -291,8 +292,9 @@ Everything that matters most:
 * Whether a part's operating conditions are respected. That needs the datasheet;
   see the `datasheet-analysis` guide.
 * Power budget, thermal dissipation, EMC.
-* Whether the placement makes sense as a *circuit* — signal flow across the
-  board, what sits next to what, where the noisy things are.
+* Why the placement makes sense as a *circuit*. The gate can reject a provably
+  long logical hop with `layout.connection_span`; it cannot know which blocks
+  are noisy, thermally coupled, user-facing or intentionally isolated.
 
 A design that passes the gate has cleared the checks a machine can make. That is
 the floor, not the ceiling. Render it and look at it: `eda report` exists so that

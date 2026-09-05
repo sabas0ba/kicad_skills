@@ -49,7 +49,7 @@ Each comparison below has three, and the leftmost is the honest one.
 | column | what it is |
 | --- | --- |
 | **first edition** | the board as it came out of the generator the day it was written, before any finding had been read. Recovered from this repository's own history — one `git show` per file, no editing — and rendered with today's renderer so the only difference is the design |
-| **as-generated** | what the generator produces *now* when told to skip the review. It is much better than the first edition, because eighteen rounds of findings were built into the generator itself rather than patched into the output |
+| **as-generated** | what the generator produces *now* when told to skip the review. It is much better than the first edition, because twenty rounds of findings were built into the generator itself rather than patched into the output |
 | **reviewed** | the same design with the review applied: what passes `eda gate` |
 
 The middle column is the part that is easy to miss. A tool that only fixed its
@@ -66,12 +66,12 @@ is clean under KiCad's own DRC on both versions in the matrix: no violations,
 nothing unconnected. Every `as-generated/` fails.
 
 What each of them still carries is a waiver, and a waiver here is a decision
-with the argument attached rather than a finding hidden. The FPGA board holds
-the two that a two-layer stackup buys: three nets running 10 to 19 mm over
-cuts in the back plane, and one run that goes round rather than through at
-twice the straight line. Both come from the same place - a 48-pin QFN whose
-pins have one signal layer to escape onto - and the fix for both is the
-four-layer board this example deliberately is not.
+with the argument attached rather than a finding hidden. Package escape necks,
+board-only decoupling heuristics and deliberately exposed module rails remain
+visible there. The former FPGA return-path and routing-tour waivers do not: a
+48-pin, 0.5 mm QFN plus codec is a four-layer design, so the rebuilt baseline
+uses outer signal layers, an uninterrupted In1 ground plane and a +3V3 In2
+plane instead of documenting the cost of the wrong stack-up.
 
 All five carry what a board needs to be *made* as well as to work: the ground
 pour is filled by KiCad's own filler against the board's own rules, every
@@ -91,7 +91,7 @@ Both variants carry it in their title block, in the comment fields, on the
 schematic and on the board:
 
 ```
-(comment 1 "generated 2026-08-12 by Claude Code (claude-fable-5)")
+(comment 1 "generated 2026-09-05 by OpenAI Codex")
 (comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
 ```
 
@@ -198,17 +198,18 @@ charge pump, bypass and pull-up the datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 6 findings waived | 0 / 0 / 0 | 0 / 0 / 5 |
+| `reviewed` | **PASS**, gate exceptions documented | 0 / 0 / 0 | 0 / 0 / 5 |
 | `as-generated` | **FAIL**, 37 blocking | — | — |
 | first edition | **FAIL**, 43 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
 unconnected items, zero parity findings, on 9.0.9 and 10.0.4. What the gate
-still found is now *answered* rather than pending: seven waivers in
+still found is now *answered* rather than pending: three waiver decisions in
 [`motor-driver/gate.toml`](https://github.com/sabas0ba/kicad_skills/blob/main/examples/motor-driver/gate.toml),
 each carrying the engineering argument — the charge pump wired the way the
-datasheet asks, the escape geometry of a 0.65 mm package, a 2 mA LED branch on
-a 1 A track. [REVIEW.md](REVIEW.md) is the pass that decided them.
+datasheet asks, the escape geometry of a 0.65 mm package, and the small set of
+logic nets that is clearer as named connections than as a wire lattice.
+[REVIEW.md](REVIEW.md) is the pass that decided them.
 
 | first edition | as-generated | reviewed |
 | --- | --- | --- |
@@ -226,28 +227,18 @@ something cross it.
 This is the first example that cannot be drawn on one signal layer. A DRV8833
 brings VM, GND, VCP and VINT out in the *middle* of a row that also carries
 four logic inputs, so whichever way round the connectors go, something has to
-cross something. Three consequences show up in the findings, and all three are
-real:
+cross something. The rebuilt floorplan puts C2, C3 and C4 in the same supply
+fan as the pins they serve, and puts the control header where the four logic
+lanes naturally arrive. That removes ten footprint-to-footprint connections
+longer than 25 mm, shortens the routed copper from 654.06 to 485.91 mm, and
+removes the former power-width and acute-corner exceptions.
 
-* **`track.thin_power`** — nothing leaves a TSSOP-16 wider than 0.3 mm. Two
-  0.4 mm tracks and the clearance between them do not fit in a 0.65 mm row
-  once the row starts to spread, so every pin escapes narrow and widens when
-  it is clear. The rule counts the narrowest millimetre of the net and does
-  not know the wide part is a millimetre away.
-* **`layout.decoupling_distance` ×3** — the same 0.65 mm pitch is why. The
-  escape has to walk the row out to a pitch a bypass capacitor can straddle
-  before one can be placed, and that walk is five millimetres. The usual
-  answer is a capacitor on the *back* of the board under the pins; this
-  generator can only place parts on the front.
-* **`analog.missing_decoupling` and `layout.decoupling_distance` on VCP** —
-  VCP is a charge pump output and C3 is its flying capacitor, wired to VM
-  rather than to ground. It is not decoupling and there is nothing to be
-  near.
-
-`route.acute_angle` is the fourth, and is the router's: it turns in 45°
-steps and the fan-out leaves at 24°, so a corner between the two is sharper
-than 90°. Whether that is worth reporting on a signal net is one of the
-questions the rule pass has to answer.
+What remains is **`layout.decoupling_distance` ×3**. The rule measures from
+the original TSSOP land to the capacitor land, so the 0.65 mm escape fan reads
+as 11.7–11.9 mm even though each capacitor's local copper path is short. One
+of those pins is VCP: C3 is the charge-pump capacitor and goes to VM, not to
+ground, because the datasheet says exactly that. The measurements and the
+topology are stated in the policy rather than silently ignored.
 
 ### What building it changed in the toolkit
 
@@ -374,42 +365,27 @@ new `analog.no_dc_path` rule now catches from the netlist alone.
 ## fpga-audio — iCE40UP5K to PCM5102A, I2S out
 
 An FPGA, an I2S DAC, the SPI flash the FPGA boots from, a 12 MHz oscillator and
-a 1.2 V regulator for the core — on two layers.
+a 1.2 V regulator for the core — on four layers.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
-| `reviewed` | **PASS**, 6 findings waived | 0 / 0 / 0 | 0 / 0 / 5 |
+| `reviewed` | **PASS**, gate exceptions documented | 0 / 0 / 0 | 0 / 0 / 5 |
 | `as-generated` | **FAIL**, 29 blocking | — | — |
 | first edition | **FAIL**, 34 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
-unconnected, no schematic-parity findings. On every *style* measure it now
-sits in the hand-routed band — and `route.under_package` no longer
-fires anywhere: the boot flash and the DAC are fenced, because the 1.2 V
-core rail kept sneaking under one or the other. Cutting the redundant loops
-out of the supply rails (`route.self_crossing`, and the `_unlooped` pass it
-drove into the generator) then retired `route.detour` outright. The stated
-1.2 V spine named as the last round's work is now in the file: one straight
-back-side stroke under the FPGA's own die, tapped by every branch at the
-nearest point — the tee described in [REVIEW.md](REVIEW.md) is what makes
-tapping possible. The rails no longer wander, and the board is 15% lighter
-in copper for it. The line-out tour that stood here for three rounds — 88 mm
-of copper for a 20 mm net, `route.detour` and `route.wander` both naming it —
-is gone, and it went the way the write-ups kept saying it would: not by
-re-routing but by moving parts. Seven of them — four decoupling capacitors,
-the two 1.2 V ones and the LED resistor — were parked in the eleven
-millimetres between the FPGA's twelve-lane east escape and the codec's
-ten-lane west one. They now sit in the empty band below it, and the corridor
-carries the bundle it was always for. What the gate still states plainly is
-the two-layer bill: four nets over cuts in the back plane (10-18 mm each)
-and one corner at 88 degrees (`route.acute_angle`). The engineering pass
-there found and fixed
-four real electrical faults here: the PCM5102A's charge pump was miswired
-(flying cap to ground instead of CAPP-CAPM — the DAC had no negative rail),
-VCCPLL was tied straight to the core rail instead of RC-filtered from it, the
-boot flash had no chip-select pull-up, and the LDO reservoir was undersized.
-The first of these is the humbling one: `analog.missing_decoupling` had been
-firing on VNEG all along, and the earlier write-up called it a false positive.
+unconnected, no schematic-parity findings. The rebuilt floorplan is 76 x 58 mm
+instead of 100 x 84 mm. The FPGA, codec, flash and regulator form one compact
+signal-flow block; the line-out and configuration headers sit on the edges they
+serve. Four ordered I2S runs cross on B.Cu above an unbroken In1 reference,
+while the +3V3 distribution uses an In2 plane instead of sharing a long
+outer-layer trunk. The short +1V2 spine remains on B.Cu beneath its own FPGA
+block.
+
+The earlier engineering pass also fixed four electrical faults that the new
+floorplan retains: the PCM5102A charge pump is CAPP–CAPM with a VNEG reservoir,
+VCCPLL is RC-filtered from the core rail, the boot flash has a chip-select
+pull-up, and the LDO reservoir is 2.2 uF.
 
 | first edition | as-generated | reviewed |
 | --- | --- | --- |
@@ -419,16 +395,13 @@ firing on VNEG all along, and the earlier write-up called it a false positive.
 
 ### What this one is honest about
 
-**A 0.5 mm pitch QFN with pads on four sides is not a two layer board.** A real
-iCE40 design drops each pin straight into an inner layer; with no inner layer
-all forty-eight have to fan out on the top, at 0.2 mm track and 0.2 mm
-clearance, which is a fine-line process. The cost is the first thing you see in
-the plot: a 7 mm chip needs a 26 mm square of board around it before anything
-else can be placed, and everything that talks to it is pushed to the edges.
-
-That is the answer to "can it be done on two layers": yes, and you would not
-want to. The board is here because the answer is worth having in a form you can
-open in KiCad rather than take on trust.
+**A 0.5 mm pitch QFN with pads on four sides is not a two-layer baseline.** The
+previous version proved that it could be forced onto two layers, but paid in
+plane cuts, routing tours and a board almost twice the area. The present design
+uses four layers because that is the engineering answer the example should
+teach. It does not pretend the package becomes easy: the outer-row escape still
+uses 0.2 mm tracks and clearances, and the capacitors still begin beyond that
+fan.
 
 The findings that follow from it, at the scale a 48-pin part gives them:
 
@@ -441,15 +414,9 @@ The findings that follow from it, at the scale a 48-pin part gives them:
   0603's ground via now sits anchored against its own pad, on the far side
   from the supply, with a 1.2 mm stub as the whole loop.
 * **`track.thin_power` at 0.2 mm** — nothing leaves this package wider.
-* **`net.single_pin` × 31** — every unused pin has a net of its own, named
-  `unconnected-(U1A-IOT_36b-Pad25)` by KiCad. A no-connect flag is a decision,
-  not a defect, and the rule cannot tell.
-* **`erc.pin_to_pin` on VCCPLL** — KiCad's iCE40 symbol declares VCCPLL a power
-  *output*, so tying it to the regulator's output is two power outputs wired
-  together. The datasheet would rather see it filtered from the core rail than
-  tied to it, and the review round agreed with both: the reviewed board now
-  takes VCCPLL through a 100 Ω / 10 µF + 100 nF RC from the core rail, which
-  retired the ERC finding and the noise path in one move.
+* **`erc.pin_to_pin` on flash WP/HOLD** — the symbol calls these bidirectional
+  quad-SPI pins. This single-bit design straps them high as the datasheet asks;
+  the policy file records why that is intentional.
 
 ### What building it changed in the toolkit
 
@@ -506,6 +473,11 @@ And the two things no rule caught at all became rules in the review round:
   length and still hold one track that goes out and comes back) and
   `route.return_path` (signal over cuts in the other layer's ground fill —
   the electromagnetic cost of the two-layer choice).
+* **A tidy route hiding a bad floorplan** → `layout.connection_span` (the
+  minimum footprint-to-footprint tree before routing exists; pads inside one
+  package collapse to one node). It removed 2 long logical hops from buck-5v,
+  10 from motor-driver and 13 from fpga-audio before the router was allowed to
+  make their copper look deliberate.
 * **Strings printed through each other** → `readability.text_over_text` (any
   two printed strings whose extents overlap — a designator, a value, a
   rating, a design note or a net label — or any of them across a symbol
