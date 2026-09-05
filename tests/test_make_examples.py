@@ -33,3 +33,27 @@ def test_chamfer_does_not_cut_a_track_away_from_its_via():
     chamfered = examples._chamfer_tracks(design)
 
     assert corner in chamfered.tracks[0].points
+
+
+def test_board_uuid_canonicalization_ignores_random_input_ids(tmp_path):
+    examples = _generator()
+    first = tmp_path / "same.kicad_pcb"
+    second_dir = tmp_path / "other"
+    second_dir.mkdir()
+    second = second_dir / first.name
+    template = """(kicad_pcb
+  (footprint "R" (uuid "{one}"))
+  (group "g" (uuid "{two}") (members "{one}"))
+)
+"""
+    first.write_text(template.format(one="1" * 36, two="2" * 36))
+    second.write_text(template.format(one="3" * 36, two="4" * 36))
+
+    examples._canonicalize_board_uuids(first)
+    examples._canonicalize_board_uuids(second)
+
+    assert first.read_text() == second.read_text()
+    root = examples.sexp.load(first)
+    uuids = {str(atom) for node in root.walk() if node.name == "uuid" for atom in node.atoms()}
+    members = root.child("group").child("members")
+    assert set(map(str, members.atoms())) <= uuids

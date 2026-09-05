@@ -5875,6 +5875,39 @@ def _reuuid(node: SNode, *salt: object) -> None:
     rewrite(node)
 
 
+def _canonicalize_board_uuids(path: Path) -> None:
+    """Undo the random UUIDs that pcbnew assigns while saving a board.
+
+    The emitter gives every object a stable UUID, but loading and saving for
+    zone fill replaces UUIDs inside library footprints. That makes two cold
+    generations differ even when their copper is identical. Re-key every UUID
+    by structural order after pcbnew is finished, and rewrite group membership
+    references with the same map. The order is KiCad's saved order, so the
+    result changes when the board changes and is identical when it does not.
+    """
+    root = sexp.load(path)
+    mapping: dict[str, str] = {}
+
+    def collect(node: SNode) -> None:
+        if node.name == "uuid":
+            for atom in node.atoms():
+                old = str(atom)
+                if old not in mapping:
+                    mapping[old] = stable_uuid(path.stem, "canonical-pcb", len(mapping))
+        for child in node.children():
+            collect(child)
+
+    def rewrite(node: SNode) -> None:
+        if node.name in ("uuid", "members"):
+            node.args = [mapping.get(str(atom), atom) for atom in node.args]
+        for child in node.children():
+            rewrite(child)
+
+    collect(root)
+    rewrite(root)
+    path.write_text(sexp.dumps(root) + "\n", encoding="utf-8")
+
+
 def emit_board(design: Design, path: Path) -> None:
     ox, oy = design.origin
     net_of: dict[tuple[str, str], str] = {}
@@ -9830,11 +9863,12 @@ def _kicad_fill(board: Path) -> None:
             "(run the generator in the container)",
             file=sys.stderr,
         )
-        return
-    loaded = pcbnew.LoadBoard(str(board))
-    if not pcbnew.ZONE_FILLER(loaded).Fill(loaded.Zones()):
-        raise SystemExit(f"{board.stem}: KiCad's zone filler refused the board")
-    loaded.Save(str(board))
+    else:
+        loaded = pcbnew.LoadBoard(str(board))
+        if not pcbnew.ZONE_FILLER(loaded).Fill(loaded.Zones()):
+            raise SystemExit(f"{board.stem}: KiCad's zone filler refused the board")
+        loaded.Save(str(board))
+    _canonicalize_board_uuids(board)
 
 
 def write_variant(design: Design, root: Path, *, check: bool = True) -> None:

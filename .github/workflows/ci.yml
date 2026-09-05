@@ -81,16 +81,20 @@ jobs:
 
       - name: Check generated-file drift
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          failed=0
           for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
             for variant in as-generated reviewed; do
               for extension in kicad_pro kicad_sch kicad_pcb; do
-                diff -u \
-                  "examples/${example}/${variant}/${example}.${extension}" \
-                  "build/golden/${example}/${variant}/${example}.${extension}"
+                if ! diff -u \
+                    "examples/${example}/${variant}/${example}.${extension}" \
+                    "build/golden/${example}/${variant}/${example}.${extension}"; then
+                  failed=1
+                fi
               done
             done
           done
+          exit "$failed"
 
       - name: Gate every generated variant
         if: always()
