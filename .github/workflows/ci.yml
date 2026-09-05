@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      KICAD_VERSION: 9.0.9
+      GOLDEN_KICAD: 9.0.9
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -68,7 +68,7 @@ jobs:
       # The generator copies symbols and footprints from KiCad's libraries, so
       # regeneration is part of the container contract rather than a host test.
       - name: Build the pinned KiCad 9 image
-        run: make build KICAD_VERSION=${{ env.KICAD_VERSION }}
+        run: make build KICAD_VERSION=${{ env.GOLDEN_KICAD }}
 
       - name: Regenerate the worked examples
         run: |
@@ -76,7 +76,7 @@ jobs:
             --network none \
             -v "$PWD:/work" -w /work \
             -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
-            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            --entrypoint python3 "eda-toolkit:${GOLDEN_KICAD}" \
             tools/make_examples.py build/golden
 
       - name: Check generated-file drift

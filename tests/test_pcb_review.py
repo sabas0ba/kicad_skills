@@ -81,9 +81,7 @@ def test_connection_span_flags_theoretical_distance_not_route_style():
     findings = pcb_review.rule_connection_span(ctx_for(board_from(parts)))
     assert [f.rule for f in findings] == ["layout.connection_span"]
     assert findings[0].location == "SIG"
-    assert findings[0].details["items"] == [
-        {"from": "J1.1", "to": "R1.1", "span_mm": 30.0}
-    ]
+    assert findings[0].details["items"] == [{"from": "J1.1", "to": "R1.1", "span_mm": 30.0}]
 
 
 def test_connection_span_collapses_multiple_pads_inside_one_footprint():
@@ -110,9 +108,7 @@ def test_connection_span_breaks_equal_distance_pad_ties_by_number():
         footprint("J1", 45, 5, [pad("1", 45, 5, "SIG")]),
     ]
     finding = pcb_review.rule_connection_span(ctx_for(board_from(parts)))[0]
-    assert finding.details["items"] == [
-        {"from": "J1.1", "to": "U1.1", "span_mm": 40.012}
-    ]
+    assert finding.details["items"] == [{"from": "J1.1", "to": "U1.1", "span_mm": 40.012}]
 
 
 def test_connection_span_is_configurable_and_ignores_ground():
@@ -122,9 +118,7 @@ def test_connection_span_is_configurable_and_ignores_ground():
     ]
     assert pcb_review.rule_connection_span(ctx_for(board_from(signal))) == []
     tight = ctx_for(board_from(signal), thresholds={"max_connection_span_mm": 15.0})
-    assert [f.rule for f in pcb_review.rule_connection_span(tight)] == [
-        "layout.connection_span"
-    ]
+    assert [f.rule for f in pcb_review.rule_connection_span(tight)] == ["layout.connection_span"]
 
     ground = [
         footprint("U1", 5, 5, [pad("1", 5, 5, "GND")]),

@@ -2404,10 +2404,9 @@ def board_layers(count: int, power_plane: str | None = None) -> str:
     power_name = f' "{power_plane}"' if power_plane else ""
     return BOARD_LAYERS.replace(
         '\t\t(2 "B.Cu" signal)',
-        '\t\t(2 "In1.Cu" power "GND")\n'
-        f'\t\t(4 "In2.Cu" power{power_name})\n'
-        '\t\t(6 "B.Cu" signal)',
+        f'\t\t(2 "In1.Cu" power "GND")\n\t\t(4 "In2.Cu" power{power_name})\n\t\t(6 "B.Cu" signal)',
     )
+
 
 _footprint_cache: dict[str, SNode] = {}
 
@@ -7541,6 +7540,7 @@ def motor_driver() -> Design:
         # the four bridge outputs leave at the width they keep: no step
         widths={"2": POWER, "4": POWER, "5": POWER, "7": POWER, "3": POWER, "6": POWER},
     )
+    left = [track for track in left if track.net != "nSLEEP"]
     right, east = fan(
         design,
         "U1",
@@ -7554,6 +7554,15 @@ def motor_driver() -> Design:
         # the logic pins beside them carry nothing and stay at 0.3.
         widths={"14": POWER, "13": POWER, "12": POWER, "11": POWER},
     )
+    # AIN1 leaves the fan before its other east-side neighbours. Carrying it
+    # to the common far column only to route back under the package made the
+    # long tail compete for the same narrow corridor twice.
+    ain1_pickup = (41.0, 22.75)
+    right = [track for track in right if track.net != "AIN1"]
+    right.append(
+        Track("AIN1", "F.Cu", SIG, ["U1.16", (40.525, 23.225), ain1_pickup])
+    )
+    east["16"] = ain1_pickup
     # AISEN, BISEN and GND leave the fan and take one more step clear of it
     # before dropping into the plane. On top of the fan the pour is whatever
     # fits between two escape lanes and their clearance - a strip too thin to
@@ -7628,6 +7637,19 @@ def motor_driver() -> Design:
     ):
         site = east[pin]
         vias.append(Via(net, x=site[0], y=site[1]))
+        if net == "AIN1":
+            # The automatic path changed face twice beside the supply fan.
+            # Its F.Cu trunk then followed the clearance channel that path cut
+            # in the back pour, accumulating 11.2 mm without a local return.
+            # One short, stated crossing clears the fan and reaches a front
+            # lane whose opposite copper remains continuous.
+            landing = (36.5, 26.5)
+            vias.append(Via(net, x=landing[0], y=landing[1]))
+            tracks += [
+                Track(net, "B.Cu", SIG, [site, (37.25, 26.5), landing], keep_layer=True),
+                Track(net, "F.Cu", SIG, [landing, (36.5, 39.58), header]),
+            ]
+            continue
         tracks.append(
             Track(
                 net,
@@ -7656,12 +7678,26 @@ def motor_driver() -> Design:
     ]
 
     # -- everything that simply has to arrive ------------------------------
+    nsleep_pickup = (35.25, 22.75)
+    nsleep_landing = (37.5, 24.5)
+    vias += [
+        Via("nSLEEP", x=nsleep_pickup[0], y=nsleep_pickup[1]),
+        Via("nSLEEP", x=nsleep_landing[0], y=nsleep_landing[1]),
+    ]
     tracks += [
         Track("AOUT1", "F.Cu", POWER, [west["2"], "J2.2"], auto=True),
         Track("AOUT2", "F.Cu", POWER, [west["4"], "J2.1"], auto=True),
         Track("BOUT2", "F.Cu", POWER, [west["5"], "J3.2"], auto=True),
         Track("BOUT1", "F.Cu", POWER, [west["7"], "J3.1"], auto=True),
-        Track("nSLEEP", "F.Cu", SIG, [west["1"], "J4.2"], auto=True),
+        Track("nSLEEP", "F.Cu", SIG, ["U1.1", (34.775, 23.225), nsleep_pickup]),
+        Track(
+            "nSLEEP",
+            "B.Cu",
+            SIG,
+            [nsleep_pickup, (35.75, 22.75), nsleep_landing],
+            keep_layer=True,
+        ),
+        Track("nSLEEP", "F.Cu", SIG, [nsleep_landing, (37.5, 37.75), "J4.2"]),
         Track("nFAULT", "F.Cu", SIG, [west["8"], "R1.2"], auto=True),
         Track("nFAULT", "F.Cu", SIG, ["R1.2", "J4.7"], auto=True),
     ]
@@ -9193,9 +9229,7 @@ def fpga_audio() -> Design:
     # below.  These two short parallel entries are the bypass loop; leaving
     # them to a grid search made the ground land look like a wall in front of
     # the supply land.
-    tracks.append(
-        Track("+3V3", "F.Cu", SIG, [end("U2.20"), (40.175, 31.6), "C10.1"])
-    )
+    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.20"), (40.175, 31.6), "C10.1"]))
     # The I2S pins face each other in the same order. They drop at the ends of
     # their two escape fans and cross on B.Cu as four parallel 45-degree runs;
     # the uninterrupted In1 ground plane stays immediately below them.
@@ -9413,9 +9447,7 @@ def fpga_audio() -> Design:
             # The codec's digital-ground pin returns through the ground side
             # of its nearest 3.3 V bypass.  Reusing C10's anchored plane via is
             # both shorter and cleaner than placing a second via beside it.
-            tracks.append(
-                Track("GND", "F.Cu", SIG, [end(pad), (40.575, 30.8), "C10.2"])
-            )
+            tracks.append(Track("GND", "F.Cu", SIG, [end(pad), (40.575, 30.8), "C10.2"]))
             continue
         if pad == "U2.11":
             # The low-strapped filter pin continues the 0.8 mm via row used by
@@ -9444,9 +9476,7 @@ def fpga_audio() -> Design:
             vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
             continue
         width = SIG if pad.startswith("U2.") else 0.4
-        tracks.append(
-            Track("GND", "F.Cu", width, [end(pad), target], auto=True, goal_layer="B.Cu")
-        )
+        tracks.append(Track("GND", "F.Cu", width, [end(pad), target], auto=True, goal_layer="B.Cu"))
     return replace(design, tracks=tracks, vias=vias)
 
 

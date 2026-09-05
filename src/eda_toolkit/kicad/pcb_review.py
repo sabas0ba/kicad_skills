@@ -2470,11 +2470,7 @@ def _footprint_mst_edges(
         )
         return distance, str(pa.number), str(pb.number)
 
-    distances = {
-        (a, b): nearest(a, b)
-        for index, a in enumerate(refs)
-        for b in refs[index + 1 :]
-    }
+    distances = {(a, b): nearest(a, b) for index, a in enumerate(refs) for b in refs[index + 1 :]}
 
     def edge(a: str, b: str) -> tuple[float, str, str]:
         if a < b:
@@ -3352,10 +3348,7 @@ def rule_track_stubs(ctx: PcbContext) -> list[Finding]:
     # the via's centre exactly called a joint a stub whenever a reshaping pass
     # had moved the track a quarter of a millimetre - still well inside the
     # barrel's own pad, still connected, and KiCad's DRC agreed it was.
-    vias = [
-        (v.x, v.y, v.size / 2 + GEOM_TOL, _via_layers(v, board))
-        for v in board.vias
-    ]
+    vias = [(v.x, v.y, v.size / 2 + GEOM_TOL, _via_layers(v, board)) for v in board.vias]
     pad_boxes = [
         (pad.bbox(angle_offset=fp.angle), _pad_layers(pad, board))
         for fp in board.footprints
