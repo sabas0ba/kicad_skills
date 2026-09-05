@@ -230,7 +230,7 @@ four logic inputs, so whichever way round the connectors go, something has to
 cross something. The rebuilt floorplan puts C2, C3 and C4 in the same supply
 fan as the pins they serve, and puts the control header where the four logic
 lanes naturally arrive. That removes ten footprint-to-footprint connections
-longer than 25 mm, shortens the routed copper from 654.06 to 470.62 mm, and
+longer than 25 mm, shortens the routed copper from 654.06 to 470.53 mm, and
 removes the former power-width and acute-corner exceptions.
 
 What remains is **`layout.decoupling_distance` ×3**. The rule measures from

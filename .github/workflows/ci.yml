@@ -93,6 +93,7 @@ jobs:
           done
 
       - name: Gate every reviewed design
+        if: always()
         run: |
           set -euo pipefail
           mkdir -p build/golden-report
@@ -102,15 +103,18 @@ jobs:
               | tee "build/golden-report/${example}-gate.txt"
           done
 
-      - name: Render every reviewed design
+      - name: Render every generated variant
+        if: always()
         run: |
           set -euo pipefail
           for example in buck-5v motor-driver pico-carrier opamp-filter fpga-audio; do
-            ./bin/eda.sh sch render "build/golden/${example}/reviewed" \
-              -o "build/golden-render/${example}/schematic" --dpi 150
-            ./bin/eda.sh pcb render "build/golden/${example}/reviewed" \
-              -o "build/golden-render/${example}/pcb" --dpi 200 \
-              --views front back --no-3d --no-sheet
+            for variant in as-generated reviewed; do
+              ./bin/eda.sh sch render "build/golden/${example}/${variant}" \
+                -o "build/golden-render/${example}/${variant}/schematic" --dpi 150
+              ./bin/eda.sh pcb render "build/golden/${example}/${variant}" \
+                -o "build/golden-render/${example}/${variant}/pcb" --dpi 300 \
+                --views front back --no-3d --no-sheet
+            done
           done
 
       - name: Upload golden review evidence

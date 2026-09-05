@@ -7554,15 +7554,17 @@ def motor_driver() -> Design:
         # the logic pins beside them carry nothing and stay at 0.3.
         widths={"14": POWER, "13": POWER, "12": POWER, "11": POWER},
     )
-    # AIN1 leaves the fan before its other east-side neighbours. Carrying it
-    # to the common far column only to route back under the package made the
-    # long tail compete for the same narrow corridor twice.
+    # AIN1 leaves the fan before its other east-side neighbours. AIN2 keeps the
+    # fan's staggered 45-degree escape but stops where its diagonal is done.
+    # Carrying either to the common far column only to route back under the
+    # package made its long tail compete for the same narrow corridor twice.
     ain1_pickup = (41.0, 22.75)
-    right = [track for track in right if track.net != "AIN1"]
-    right.append(
-        Track("AIN1", "F.Cu", SIG, ["U1.16", (40.525, 23.225), ain1_pickup])
-    )
+    ain2_pickup = (46.625, 21.0)
+    right = [track for track in right if track.net not in {"AIN1", "AIN2"}]
+    right.append(Track("AIN1", "F.Cu", SIG, ["U1.16", (40.525, 23.225), ain1_pickup]))
+    right.append(Track("AIN2", "F.Cu", SIG, ["U1.15", (43.75, 23.875), ain2_pickup]))
     east["16"] = ain1_pickup
+    east["15"] = ain2_pickup
     # AISEN, BISEN and GND leave the fan and take one more step clear of it
     # before dropping into the plane. On top of the fan the pour is whatever
     # fits between two escape lanes and their clearance - a strip too thin to
@@ -7648,6 +7650,24 @@ def motor_driver() -> Design:
             tracks += [
                 Track(net, "B.Cu", SIG, [site, (37.25, 26.5), landing], keep_layer=True),
                 Track(net, "F.Cu", SIG, [landing, (36.5, 39.58), header]),
+            ]
+            continue
+        if net == "AIN2":
+            # Keep the first via at the declared fan exit: letting the
+            # automatic route move it back across the fixed fan left a
+            # 0-degree foldback. One lane below AIN1 then returns to the front
+            # beside it.
+            landing = (35.5, 27.25)
+            vias.append(Via(net, x=landing[0], y=landing[1]))
+            tracks += [
+                Track(
+                    net,
+                    "B.Cu",
+                    SIG,
+                    [site, (40.375, 27.25), landing],
+                    keep_layer=True,
+                ),
+                Track(net, "F.Cu", SIG, [landing, (35.5, 39.0), header]),
             ]
             continue
         tracks.append(
