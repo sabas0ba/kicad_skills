@@ -42,6 +42,7 @@ def motor(monkeypatch):
                 reference=ref,
                 value=value,
                 is_power=False,
+                footprint=contracts.MOTOR_PACKAGE if ref == "U1" else "",
                 properties={"MPN": "DRV8833PWR"} if ref == "U1" else {},
             )
             for ref, value in {"U1": "DRV8833PW", "C2": "10u", "C3": "10n", "C4": "2u2"}.items()
@@ -52,7 +53,12 @@ def motor(monkeypatch):
         for node in pins:
             ref, number = node.split(".")
             pads.setdefault(ref, []).append(NS(number=number, net=f"/{name}"))
-    board = NS(footprints=[NS(ref=ref, pads=p) for ref, p in pads.items()])
+    board = NS(
+        footprints=[
+            NS(ref=ref, pads=p, lib_id=contracts.MOTOR_PACKAGE if ref == "U1" else "")
+            for ref, p in pads.items()
+        ]
+    )
     return doc, board, netlist
 
 
@@ -71,6 +77,16 @@ def test_motor_rejects_wrong_package_current_rating(motor):
     doc, board, _ = motor
     doc.title_block["title"] = "DRV8833, 2 x 1.5 A RMS"
     assert any("0.5 A" in e for e in contracts.motor_contract(doc, board))
+
+
+@pytest.mark.parametrize("stage", ["schematic", "board"])
+def test_motor_rejects_mpn_footprint_mismatch(motor, stage):
+    doc, board, _ = motor
+    if stage == "schematic":
+        doc.symbols[0].footprint = "wrong:exposed_pad_package"
+    else:
+        board.footprints[0].lib_id = "wrong:exposed_pad_package"
+    assert any(stage in e and "footprint" in e for e in contracts.motor_contract(doc, board))
 
 
 @pytest.mark.parametrize("stage", ["schematic", "board"])

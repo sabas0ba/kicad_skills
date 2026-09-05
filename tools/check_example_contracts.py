@@ -16,6 +16,7 @@ from eda_toolkit.kicad import pcb, schematic
 from eda_toolkit.kicad.pcb_review import _polygon_area
 
 EXAMPLES = ("buck-5v", "motor-driver", "pico-carrier", "opamp-filter", "fpga-audio")
+MOTOR_PACKAGE = "Package_SO:TSSOP-16_4.4x5mm_P0.65mm"
 
 
 def motor_contract(doc: schematic.SchematicDoc, board: pcb.Board) -> list[str]:
@@ -28,6 +29,11 @@ def motor_contract(doc: schematic.SchematicDoc, board: pcb.Board) -> list[str]:
         errors.append("motor-driver: PW package must be identified as 0.5 A RMS, not 1.5 A")
     if parts.get("U1") and parts["U1"].properties.get("MPN") != "DRV8833PWR":
         errors.append("motor-driver: changing the package requires reviewing its current rating")
+    if parts.get("U1") and parts["U1"].footprint != MOTOR_PACKAGE:
+        errors.append("motor-driver: schematic footprint must match the selected PW package")
+    driver = next((fp for fp in board.footprints if fp.ref == "U1"), None)
+    if driver is None or driver.lib_id != MOTOR_PACKAGE:
+        errors.append("motor-driver: board footprint must match the selected PW package")
     # Exact nodes protect against accidentally loading the unspecified VINT
     # supply, strapping the flying capacitor to GND, or adding a VM pull-up on
     # the logic interface. Board parity is independently checked by KiCad.

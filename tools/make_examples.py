@@ -7520,7 +7520,7 @@ def motor_driver() -> Design:
             ),
             (
                 (93.98, 115.57),
-                ["VM present: 1.5 mA through R2."],
+                ["VM indicator: about 1.5 mA at VM=9 V."],
             ),
             (
                 (60.96, 55.88),
@@ -7593,7 +7593,9 @@ def motor_driver() -> Design:
     # A four-layer board need not fan every supply pin out to a common distant
     # column. Drop GND into In1 under the non-exposed-pad body, and keep VINT,
     # VM and VCP on short front-side connections to the three capacitors.
-    east = {"16": (38.4, 23.225), "15": (40.5, 23.5), "10": (38.4, 27.125), "9": (40.2, 28.3)}
+    # The east lands begin at x=38.625. A 0.58 mm via at x=38.2 leaves
+    # 0.135 mm copper gap to its own land, so it does not require via-in-pad.
+    east = {"16": (38.2, 23.225), "15": (40.5, 23.5), "10": (38.2, 27.125), "9": (40.2, 28.3)}
     right = [
         Track("AIN1", "F.Cu", SIG, ["U1.16", east["16"]]),
         Track("AIN2", "F.Cu", SIG, ["U1.15", (40.125, 23.875), east["15"]]),
@@ -7603,7 +7605,7 @@ def motor_driver() -> Design:
     stops = {
         "3": (35.0, 24.525),
         "6": (35.0, 26.475),
-        "13": (38.4, 25.175),
+        "13": (38.2, 25.175),
     }
     tracks = [
         *left,
@@ -9138,7 +9140,9 @@ def fpga_audio() -> Design:
             drill=0.3,
         )
     )
-    east_bank_site = (40.8, 26.0)
+    # Stay west of the diagonal I2S bundle on B.Cu. At x=40.8 this through
+    # via had only 0.20 mm clearance once fixed-layer intent was preserved.
+    east_bank_site = (40.0, 26.0)
     tracks.append(Track("+3V3", "F.Cu", SIG, [end("U1.33"), east_bank_site]))
     vias.append(
         Via(

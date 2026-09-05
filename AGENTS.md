@@ -86,6 +86,14 @@ routes from scratch.
 The golden CI job uses KiCad 9.0.9 for generation, gates and renders. It also
 regenerates from the populated route cache and compares the result with the
 cold run: a cache hit must preserve the same board, not merely a passing gate.
+Use `--only motor-driver` (or another example name) for a targeted iteration,
+`--route-cache-dir <directory>` to isolate its cache, and
+`--require-route-cache` to fail rather than silently routing on a cache miss.
+`--no-route-cache` ignores both cached tracks and learned order but writes its
+fresh result for a later cache-hit check. The golden job additionally runs
+`tools/check_example_contracts.py` over the generated designs and gate JSON;
+keep these explicit electrical, plane and negative-control requirements in
+sync with any intentional change in the examples' specification.
 
 The rip-up order is kept separately, in `<design>.order.json`, and survives a
 change that does invalidate the cache: it is what an afternoon of rip-up

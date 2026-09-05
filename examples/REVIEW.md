@@ -1,5 +1,10 @@
 # An engineer's pass over the five examples
 
+This is a chronological record, not a claim that every earlier conclusion
+still holds. Section 26 corrects the motor package rating, bypass network,
+decoupling placement and the scope of multilayer return-path checks; it
+supersedes the corresponding claims and measurements in earlier rounds.
+
 The five projects under [`examples/`](README.md) were generated to be reviewed.
 This is the review: the five designs read the way an electrical engineer would
 read them — circuit theory first, then the physics of the layout, then whether
@@ -1388,3 +1393,74 @@ The generated projects, verdicts and renders are uploaded together. A checked-in
 example therefore has to be reproducible as well as electrically and
 geometrically acceptable; a hand-edited golden file can no longer drift away
 from the generator that claims to own it.
+
+## 26. Follow-up audit: circuit requirements and reproducible evidence
+
+The previous green CI run did not establish all the claims made about the
+designs. This pass rechecked the selected components, actual layer ordering,
+cache semantics and the cost of the new placement rule.
+
+### Motor driver: fix the circuit and the placement
+
+The selected part is **DRV8833PWR**, the PW TSSOP package without an exposed
+thermal pad. Its stated rating is 0.5 A RMS per bridge at VM = 5 V and 25 °C;
+the 1.5 A headline applies to thermally enhanced packages. C2 changes from
+100 nF to 10 µF for VM, C4 from 1 µF to 2.2 µF for VINT, and C3 remains 10 nF
+between VCP and VM. R1 no longer uses VINT as an unspecified logic supply:
+the host must pull J4.7 nFAULT up to 3.3 V through 10 kΩ. Grounded AISEN/BISEN
+disable PWM current regulation; the internal overcurrent trip is fault
+protection, not regulation at the PW package's continuous-current rating.
+[TI DRV8833 datasheet, SLVSAR1E](https://www.ti.com/lit/ds/symlink/drv8833.pdf).
+
+The former 11.7–11.9 mm bypass distance was not an inevitable consequence of
+0.65 mm pin pitch. The redesigned east side puts C2/C3/C4 beside their supply
+pins; logic drops to B.Cu at the package, and the IC grounds drop directly to
+In1. VM reaches each local capacitor from In2, without a redundant long
+outer-layer trunk. The decoupling-distance waiver is deleted: the normal
+5 mm rule is now part of the acceptance criterion.
+
+These changes do not certify the motor supply, wiring or thermal design.
+Effective ceramic capacitance at operating bias, transient/reverse-polarity
+protection, motor stall behavior and emissions still need application-specific
+assessment. The current rating is conditional, not a guarantee for any
+ambient temperature or enclosure.
+
+### Plane presence is not return-path verification
+
+Both four-layer examples use F.Cu / In1 GND / In2 power / B.Cu. **In2 is
+adjacent to B.Cu, not In1.** The FPGA's SPI clock also cuts a lane through In2.
+The existing `route.return_path` rule only checks two-layer boards, so removing
+its waivers did not prove multilayer reference continuity. CI now renders
+individual copper layers and checks that In1 has no foreign signal tracks and
+retains a single filled GND region covering at least 90% of its zone outline.
+That is a baseline regression guard, not an SI/EMC or impedance criterion.
+The real dielectric stack-up and reference transitions remain review items.
+
+### Gates that test the stated requirements
+
+`tools/check_example_contracts.py` checks the motor component values, package
+rating and exact VINT/VCP/nFAULT connections on both schematic and board,
+alongside the four-layer GND contract. It also rejects a skipped schematic or
+board stage and requires each negative control to fail for the intended
+title/rating/part-number defects. An unrelated error is not sufficient proof
+that a negative control is still useful.
+
+Route caching previously discarded `Track.keep_layer`; the loop-removal and
+run-merging passes could also lose it on a cold run. All now preserve that
+intent. Cache version 2 invalidates older entries, and its key includes whole
+footprint definitions so an unconnected pad's size change invalidates routing
+too. CI requires a cold run and a cache-hit run to produce byte-identical
+projects. Generation, gates and renders all use pinned KiCad 9; the former
+workflow accidentally gated and rendered with the global KiCad 10 default.
+
+Finally, `layout.connection_span` uses a maintained Prim frontier: O(n²)
+footprint-pair evaluations instead of rescanning every cut in O(n³). Pad-pair
+distance and deterministic tie behavior are retained. Regression tests check
+both fixed-layer preservation and operation counts, so a passing small example
+cannot hide the previous large-net performance problem.
+
+An independent comparison with the previous implementation returned identical
+edge lists on 200 seeded, randomized multi-pad/tied-distance cases. On the same
+host, a 500-footprint single-pad net took 16.557 s before and 0.288 s after.
+These are illustrative timings; CI enforces operation counts and correctness,
+not a wall-clock threshold tied to one machine.
