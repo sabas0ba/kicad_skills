@@ -60,7 +60,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      GOLDEN_KICAD: 9.0.9
+      # Override the workflow's KiCad 10 default for *every* step, including
+      # bin/eda.sh gates and renders, not just the direct generator invocation.
+      KICAD_VERSION: 9.0.9
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -68,7 +70,7 @@ jobs:
       # The generator copies symbols and footprints from KiCad's libraries, so
       # regeneration is part of the container contract rather than a host test.
       - name: Build the pinned KiCad 9 image
-        run: make build KICAD_VERSION=${{ env.GOLDEN_KICAD }}
+        run: make build
 
       - name: Regenerate the worked examples
         run: |
@@ -76,8 +78,20 @@ jobs:
             --network none \
             -v "$PWD:/work" -w /work \
             -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
-            --entrypoint python3 "eda-toolkit:${GOLDEN_KICAD}" \
-            tools/make_examples.py build/golden
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/make_examples.py build/golden --no-route-cache \
+            --route-cache-dir build/golden-cache
+
+      - name: Verify cache-hit regeneration matches the cold run
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --network none \
+            -v "$PWD:/work" -w /work \
+            -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/make_examples.py build/golden-cached --require-route-cache \
+            --route-cache-dir build/golden-cache
+          diff -ru build/golden build/golden-cached
 
       - name: Check generated-file drift
         run: |
@@ -106,6 +120,7 @@ jobs:
             set +e
             ./bin/eda.sh gate "build/golden/${example}/reviewed" \
               --policy "examples/${example}/gate.toml" --text \
+              -o "build/golden-report/${example}-reviewed-gate.json" \
               | tee "build/golden-report/${example}-reviewed-gate.txt"
             reviewed_status=${PIPESTATUS[0]}
             set -e
@@ -117,6 +132,7 @@ jobs:
             set +e
             ./bin/eda.sh gate "build/golden/${example}/as-generated" \
               --policy "examples/${example}/gate.toml" --text \
+              -o "build/golden-report/${example}-as-generated-gate.json" \
               | tee "build/golden-report/${example}-as-generated-gate.txt"
             status=${PIPESTATUS[0]}
             set -e
@@ -126,6 +142,17 @@ jobs:
             fi
           done
           exit "$failed"
+
+      - name: Check electrical, plane and negative-control contracts
+        if: always()
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            --network none \
+            -v "$PWD:/work" -w /work \
+            -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/check_example_contracts.py build/golden \
+            --verdicts build/golden-report
 
       - name: Render every generated variant
         if: always()
@@ -137,7 +164,7 @@ jobs:
                 -o "build/golden-render/${example}/${variant}/schematic" --dpi 150
               ./bin/eda.sh pcb render "build/golden/${example}/${variant}" \
                 -o "build/golden-render/${example}/${variant}/pcb" --dpi 300 \
-                --views front back --no-3d --no-sheet
+                --views front back --per-layer --no-3d --no-sheet
             done
           done
 
@@ -148,6 +175,7 @@ jobs:
           name: golden-examples
           path: |
             build/golden
+            build/golden-cached
             build/golden-report
             build/golden-render
           retention-days: 14

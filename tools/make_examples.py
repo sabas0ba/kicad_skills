@@ -3363,6 +3363,7 @@ def _route_all(
 
 
 ROUTE_CACHE = Path(__file__).resolve().parent.parent / ".cache" / "routes"
+ROUTE_CACHE_VERSION = 2
 
 
 def _track_signature(design: Design, track: Track) -> str:
@@ -3387,6 +3388,7 @@ def _routing_digest(design: Design) -> str:
     routes invalidates every answer it gave.
     """
     lines = [
+        str(ROUTE_CACHE_VERSION),
         design.name,
         repr(design.board_size),
         repr(design.keepouts),
@@ -3395,11 +3397,16 @@ def _routing_digest(design: Design) -> str:
     ]
     for part in sorted(design.footprints(), key=lambda p: p.ref):
         lines.append(f"P {part.ref}|{part.footprint}|{part.board}")
+        # Unrouted and unconnected pads are obstacles too. Endpoint positions
+        # alone do not capture a library pad's size, drill or layer changes.
+        lines.append(sexp.dumps(footprint_definition(part.footprint)))
     for name, nodes in sorted(design.nets.items()):
         lines.append(f"N {name}={','.join(sorted(nodes))}")
     for track in design.tracks:
         points = [tuple(round(v, 4) for v in resolve(design, point)) for point in track.points]
-        lines.append(f"T {_track_signature(design, track)}|{track.auto}|{points}")
+        lines.append(
+            f"T {_track_signature(design, track)}|{track.auto}|{track.keep_layer}|{points}"
+        )
     for via in design.vias:
         lines.append(f"V {via.net}|{via_position(design, via)}|{via.size}|{via.drill}")
     lines.append(Path(autoroute.__file__).read_text())
@@ -3415,6 +3422,8 @@ def _cache_read(name: str, digest: str) -> tuple[list[Track], list[Via]] | None:
         blob = json.loads(path.read_text())
     except (OSError, ValueError):
         return None
+    if not isinstance(blob, dict) or blob.get("version") != ROUTE_CACHE_VERSION:
+        return None
     tracks = [
         Track(
             net=t["net"],
@@ -3422,6 +3431,7 @@ def _cache_read(name: str, digest: str) -> tuple[list[Track], list[Via]] | None:
             width=t["width"],
             points=[tuple(point) for point in t["points"]],
             goal_layer=t.get("goal_layer"),
+            keep_layer=t["keep_layer"],
         )
         for t in blob["tracks"]
     ]
@@ -3438,6 +3448,7 @@ def _cache_write(design: Design, digest: str, done: Design, order: list[Track]) 
         (ROUTE_CACHE / f"{design.name}.{digest}.json").write_text(
             json.dumps(
                 {
+                    "version": ROUTE_CACHE_VERSION,
                     "tracks": [
                         {
                             "net": t.net,
@@ -3445,6 +3456,7 @@ def _cache_write(design: Design, digest: str, done: Design, order: list[Track]) 
                             "width": t.width,
                             "points": [list(resolve(done, p)) for p in t.points],
                             "goal_layer": t.goal_layer,
+                            "keep_layer": t.keep_layer,
                         }
                         for t in done.tracks
                     ],
@@ -3504,7 +3516,9 @@ def _learned_order(design: Design, order: list[Track]) -> list[Track]:
     return sorted(order, key=lambda t: rank.get(_track_signature(design, t), len(rank)))
 
 
-def resolve_routes(design: Design, use_cache: bool = True) -> Design:
+def resolve_routes(
+    design: Design, use_cache: bool = True, *, require_cache: bool = False
+) -> Design:
     """Replace every ``auto`` track with the path a router found for it.
 
     Done once, before anything looks at the geometry, so the clearance check and
@@ -3545,13 +3559,15 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
     )
     if not order:
         return _pipeline(design)
-    digest = _routing_digest(design) if use_cache else ""
+    digest = _routing_digest(design)
     if use_cache:
         cached = _cache_read(design.name, digest)
         if cached:
             print(f"{design.name}: routing unchanged, reusing {digest[:8]}", file=sys.stderr)
             done = replace(design, tracks=cached[0], vias=cached[1])
             return _pipeline(done)
+        if require_cache:
+            raise SystemExit(f"{design.name}: required route cache is missing for {digest}")
         order = _learned_order(design, order)
     ripped: list[Track] = []
     relaid: list[Track] = []
@@ -3621,8 +3637,9 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         done = replace(
             design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
         )
-        if use_cache:
-            _cache_write(design, digest, done, order)
+        # A cold run ignores both cached routes and the learned order, but
+        # records its fresh answer so the next run can verify the warm path.
+        _cache_write(design, digest, done, order)
         return _pipeline(done)
 
 
@@ -3668,7 +3685,14 @@ def _unlooped(design: Design) -> Design:
             if math.dist(a, b) < GEOM_EPS:
                 continue
             segs.append(
-                {"net": track.net, "layer": track.layer, "width": track.width, "a": a, "b": b}
+                {
+                    "net": track.net,
+                    "layer": track.layer,
+                    "width": track.width,
+                    "a": a,
+                    "b": b,
+                    "source": track,
+                }
             )
 
     def _cross_point(p1, p2, p3, p4):
@@ -3904,7 +3928,7 @@ def _unlooped(design: Design) -> Design:
 
     vias = [via for via in design.vias if via.net in keep_nets or touched(via)]
     tracks = passthrough + [
-        Track(seg["net"], seg["layer"], seg["width"], [seg["a"], seg["b"]]) for seg in kept_segs
+        replace(seg["source"], points=[seg["a"], seg["b"]]) for seg in kept_segs
     ]
     return replace(design, tracks=tracks, vias=vias)
 
@@ -5022,6 +5046,7 @@ def _join_runs(design: Design) -> Design:
                         continue
                     left = pa if a_end == -1 else pa[::-1]
                     right = pb if b_end == 0 else pb[::-1]
+                    runs[i][0] = replace(ta, keep_layer=ta.keep_layer or tb.keep_layer)
                     runs[i][1] = left + right[1:]
                     runs[j][0] = None
                     merged = True
@@ -7270,8 +7295,8 @@ def motor_driver() -> Design:
 
     *The blocks.* The motor terminals face the left edge, power enters at the
     top-right edge and logic enters at the bottom. The driver sits between
-    them, with its three local capacitors immediately beyond the east escape
-    fan instead of scattered around an otherwise empty board.
+    them. Logic drops to the back near its pins so the three local capacitors
+    can sit beside the supply pins, without a twelve-millimetre escape fan.
     """
     parts = [
         Part(
@@ -7308,16 +7333,16 @@ def motor_driver() -> Design:
         Part(
             "C2",
             "Device:C",
-            "100n",
+            "10u",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(68.58, 86.36),
-            board=(54.0, 25.5, 90.0),
+            board=(43.0, 26.0, 0.0),
             fields={
-                "Voltage": "50V",
+                "Voltage": "25V",
                 "Tolerance": "10%",
-                "MPN": "CL21B104KBCNNNC",
+                "MPN": "CL21A106KAYNNNE",
                 "Manufacturer": "Samsung",
-                "Datasheet": "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do",
+                "Datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A106KAYNNN",
             },
         ),
         Part(
@@ -7327,7 +7352,7 @@ def motor_driver() -> Design:
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(96.52, 72.39),
             angle=90.0,
-            board=(51.0, 27.3, 270.0),
+            board=(43.0, 28.5, 180.0),
             fields={
                 "Voltage": "50V",
                 "Tolerance": "10%",
@@ -7352,31 +7377,16 @@ def motor_driver() -> Design:
         Part(
             "C4",
             "Device:C",
-            "1u",
+            "2u2",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(149.86, 60.96),
-            board=(51.0, 23.0, 270.0),
+            board=(43.0, 23.5, 0.0),
             fields={
-                "Voltage": "16V",
+                "Voltage": "25V",
                 "Tolerance": "10%",
-                "MPN": "CL21A105KBFNNNE",
+                "MPN": "CL21A225KAFNNNE",
                 "Manufacturer": "Samsung",
-                "Datasheet": "https://product.samsungsem.com/mlcc/CL21A105KBFNNNE.do",
-            },
-        ),
-        Part(
-            "R1",
-            "Device:R",
-            "10k",
-            "Resistor_SMD:R_0805_2012Metric",
-            sheet=(160.02, 60.96),
-            board=(32.0, 35.0, 0.0),
-            fields={
-                "Tolerance": "1%",
-                "Power": "0.125W",
-                "MPN": "RC0805FR-0710KL",
-                "Manufacturer": "Yageo",
-                "Datasheet": "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf",
+                "Datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A225KAFNNN",
             },
         ),
         Part(
@@ -7469,8 +7479,8 @@ def motor_driver() -> Design:
             "J4.8",
         ],
         "VCP": ["U1.11", "C3.2"],
-        "VINT": ["U1.14", "C4.1", "R1.1"],
-        "nFAULT": ["U1.8", "R1.2", "J4.7"],
+        "VINT": ["U1.14", "C4.1"],
+        "nFAULT": ["U1.8", "J4.7"],
         "nSLEEP": ["U1.1", "J4.2"],
         "AIN1": ["U1.16", "J4.3"],
         "AIN2": ["U1.15", "J4.4"],
@@ -7487,7 +7497,7 @@ def motor_driver() -> Design:
 
     design = Design(
         name="motor-driver",
-        title="Dual H-bridge, DRV8833, 2 x 1.5 A",
+        title="Dual H-bridge, DRV8833PW, 2 x 0.5 A RMS",
         rev="A",
         company="kicad_skills examples",
         notes=[],
@@ -7495,17 +7505,17 @@ def motor_driver() -> Design:
             (
                 (17.78, 115.57),
                 [
-                    "The bridge outputs run 0.4 mm end to end: that is all a",
-                    "0.65 mm pin row will take, and the escape sets the current",
-                    "whatever the rest of the run is widened to. 0.4 mm carries",
-                    "1.4 A at a 10 C rise, 1.9 A at 20 - the part's 1.5 A.",
+                    "PW package: 0.5 A RMS per bridge at VM=5 V, 25 C.",
+                    "Not the 1.5 A thermally enhanced PWP/RTY versions.",
+                    "0.4 mm outputs; verify temperature and stall current",
+                    "for the actual motor. OCP is not a 0.5 A limiter.",
                 ],
             ),
             (
                 (17.78, 102.87),
                 [
                     "C1 100 uF / 25 V bulk on a rail that can reach 10.8 V -",
-                    "1.5x headroom, and reserve for the motor current steps.",
+                    "C2 10 uF / 25 V ceramic is the local VM bypass.",
                 ],
             ),
             (
@@ -7522,15 +7532,15 @@ def motor_driver() -> Design:
             (
                 (147.32, 33.02),
                 [
-                    "C4 1 uF bypasses VINT, the internal 3.3 V",
-                    "regulator; R1 10k pulls up open-drain nFAULT.",
+                    "C4 2.2 uF bypasses VINT; no external load.",
+                    "nFAULT needs a host-side 10k pull-up to 3.3 V.",
                 ],
             ),
             (
                 (162.56, 106.68),
                 [
-                    "AISEN/BISEN grounded: no current sense,",
-                    "the part's internal limit only.",
+                    "AISEN/BISEN grounded: PWM current regulation",
+                    "disabled; OCP is fault protection, not regulation.",
                     "A lands on J2 reversed, B on J3 straight -",
                     "the package brings them out that way.",
                 ],
@@ -7562,8 +7572,8 @@ def motor_driver() -> Design:
     design = design.snapped()
 
     # -- the escape from the package ---------------------------------------
-    # 1.5 A a bridge, so an output leaves at the width of its own pad and is
-    # widened by the router once it is clear; logic carries nothing.
+    # The PW package is rated at 0.5 A RMS per bridge under TI's stated
+    # conditions. Outputs use the full 0.4 mm the escape geometry admits.
     SIG, POWER = 0.3, 0.4
     # The output side spreads to 2.0 mm because four 0.8 mm tracks start there
     # and two of them are 0.8 mm apart from a ground via.
@@ -7579,91 +7589,50 @@ def motor_driver() -> Design:
         # the four bridge outputs leave at the width they keep: no step
         widths={"2": POWER, "4": POWER, "5": POWER, "7": POWER, "3": POWER, "6": POWER},
     )
-    left = [track for track in left if track.net != "nSLEEP"]
-    right, east = fan(
-        design,
-        "U1",
-        ["16", "15", "14", "13", "12", "11", "10", "9"],
-        lead=43.0,
-        column=50.5,
-        pitch=1.8,
-        centre=25.5,
-        width=SIG,
-        # VINT, AISEN/GND, VM and VCP leave at the width the row allows;
-        # the logic pins beside them carry nothing and stay at 0.3.
-        widths={"14": POWER, "13": POWER, "12": POWER, "11": POWER},
-    )
-    # AIN1 leaves the fan before its other east-side neighbours. AIN2 keeps the
-    # fan's staggered 45-degree escape but stops where its diagonal is done.
-    # Carrying either to the common far column only to route back under the
-    # package made its long tail compete for the same narrow corridor twice.
-    ain1_pickup = (41.0, 22.75)
-    ain2_pickup = (46.625, 21.0)
-    right = [track for track in right if track.net not in {"AIN1", "AIN2"}]
-    right.append(Track("AIN1", "F.Cu", SIG, ["U1.16", (40.525, 23.225), ain1_pickup]))
-    right.append(Track("AIN2", "F.Cu", SIG, ["U1.15", (43.75, 23.875), ain2_pickup]))
-    east["16"] = ain1_pickup
-    east["15"] = ain2_pickup
-    # AISEN, BISEN and GND leave the fan and take one more step clear of it
-    # before dropping into the plane. On top of the fan the pour is whatever
-    # fits between two escape lanes and their clearance - a strip too thin to
-    # reach anything, which is a via connected to an island rather than to the
-    # plane. A millimetre and a half further out the pour is solid.
+    left = [track for track in left if track.net not in {"nSLEEP", "GND"}]
+    # A four-layer board need not fan every supply pin out to a common distant
+    # column. Drop GND into In1 under the non-exposed-pad body, and keep VINT,
+    # VM and VCP on short front-side connections to the three capacitors.
+    east = {"16": (38.4, 23.225), "15": (40.5, 23.5), "10": (38.4, 27.125), "9": (40.2, 28.3)}
+    right = [
+        Track("AIN1", "F.Cu", SIG, ["U1.16", east["16"]]),
+        Track("AIN2", "F.Cu", SIG, ["U1.15", (40.125, 23.875), east["15"]]),
+        Track("BIN2", "F.Cu", SIG, ["U1.10", east["10"]]),
+        Track("BIN1", "F.Cu", SIG, ["U1.9", (39.675, 27.775), east["9"]]),
+    ]
     stops = {
-        "3": (west["3"][0] - 1.5, west["3"][1]),
-        "6": (west["6"][0] - 1.5, west["6"][1]),
-        "13": (east["13"][0] + 1.5, east["13"][1]),
+        "3": (35.0, 24.525),
+        "6": (35.0, 26.475),
+        "13": (38.4, 25.175),
     }
     tracks = [
         *left,
         *right,
-        *(
-            Track("GND", "F.Cu", POWER, [end, stops[number]])
-            for number, end in (("3", west["3"]), ("6", west["6"]), ("13", east["13"]))
-        ),
+        *(Track("GND", "F.Cu", POWER, [f"U1.{number}", point]) for number, point in stops.items()),
     ]
-    local_ground = (55.5, 24.55)
+    local_ground = (45.15, 26.0)
+    vint_ground = (45.15, 23.5)
     vias = [
-        *(Via("GND", x=point[0], y=point[1]) for point in stops.values()),
+        *(Via("GND", x=point[0], y=point[1], size=0.58, drill=0.3) for point in stops.values()),
         Via("GND", x=local_ground[0], y=local_ground[1]),
+        Via("GND", x=vint_ground[0], y=vint_ground[1]),
     ]
 
     # -- the supply, placed by hand ----------------------------------------
-    # Bulk, then the local capacitor bank, then the pin: C2, the VCP flying
-    # capacitor and the VINT bypass all sit at the end of the east escape fan,
-    # and the two ground-referenced parts each have a via beside their pad.
-    # VM has to reach the middle of the east row, and the logic has to leave
-    # from either side of it. The former two-layer version had to choose what
-    # crossed the ground pour. Here the stated outer-layer spine feeds a solid
-    # In2 plane instead: one via is at the input end and one lands directly on
-    # the local C2/C3 run. The clean-up pass may lift the spine from B.Cu when
-    # the finished front layer has room; either way In1 remains uninterrupted.
-    LINK = (57.5, 13.0), (57.5, 26.45)
+    # The input feeds In2; C2 and C3 each pick it up locally. No redundant
+    # outer-layer supply trunk, and no logic escape between IC and bypass.
+    feed, vm_bypass, pump_supply = (57.5, 13.0), (41.1, 26.0), (45.15, 28.5)
     vias += [
-        Via("VM", x=LINK[0][0], y=LINK[0][1]),
-        Via("VM", x=LINK[1][0], y=LINK[1][1]),
-        Via("VINT", x=52.5, y=22.05),
-        Via("VINT", x=33.0, y=32.95),
+        *(Via("VM", x=p[0], y=p[1]) for p in (feed, vm_bypass, pump_supply)),
     ]
     tracks += [
-        Track("VM", "F.Cu", POWER, [east["12"], "C3.1"]),
+        Track("VM", "F.Cu", POWER, ["U1.12", (40.925, 25.825), vm_bypass, "C2.1"]),
         Track("VM", "F.Cu", POWER, ["J1.1", "C1.1"], auto=True),
-        Track("VM", "F.Cu", POWER, ["C1.1", LINK[0]], auto=True),
-        Track("VM", "B.Cu", POWER, [LINK[0], LINK[1]]),
-        Track("VM", "F.Cu", POWER, [LINK[1], "C2.1"]),
-        Track("VM", "F.Cu", POWER, ["C2.1", "C3.1"]),
+        Track("VM", "F.Cu", POWER, ["C1.1", feed], auto=True),
+        Track("VM", "F.Cu", POWER, ["C3.1", pump_supply]),
         Track("VM", "F.Cu", POWER, ["C1.1", "R2.1"], auto=True),
-        Track("VCP", "F.Cu", POWER, [east["11"], "C3.2"]),
-        Track("VINT", "F.Cu", POWER, [east["14"], "C4.1"]),
-        Track("VINT", "F.Cu", POWER, ["C4.1", (52.5, 22.05)]),
-        Track(
-            "VINT",
-            "B.Cu",
-            POWER,
-            [(52.5, 22.05), (41.6, 32.95), (33.0, 32.95)],
-            keep_layer=True,
-        ),
-        Track("VINT", "F.Cu", POWER, [(33.0, 32.95), (33.0, 33.0875), "R1.1"]),
+        Track("VCP", "F.Cu", POWER, ["U1.11", (40.025, 26.475), "C3.2"]),
+        Track("VINT", "F.Cu", POWER, ["U1.14", (41.025, 24.525), "C4.1"]),
         Track("LED_A", "F.Cu", SIG, ["R2.2", "D2.2"], auto=True),
     ]
     # The four logic inputs are boxed in by the supply fan on the front. A
@@ -7675,36 +7644,7 @@ def motor_driver() -> Design:
         ("BIN1", "9", "J4.6"),
     ):
         site = east[pin]
-        vias.append(Via(net, x=site[0], y=site[1]))
-        if net == "AIN1":
-            # The automatic path changed face twice beside the supply fan.
-            # Its F.Cu trunk then followed the clearance channel that path cut
-            # in the back pour, accumulating 11.2 mm without a local return.
-            # One short, stated crossing clears the fan and reaches a front
-            # lane whose opposite copper remains continuous.
-            landing = (36.5, 26.5)
-            vias.append(Via(net, x=landing[0], y=landing[1]))
-            tracks += [
-                Track(net, "B.Cu", SIG, [site, (37.25, 26.5), landing], keep_layer=True),
-                Track(net, "F.Cu", SIG, [landing, (36.5, 39.58), header]),
-            ]
-            continue
-        if net == "AIN2":
-            # Keep the first via at the declared fan exit: letting the
-            # automatic route move it back across the fixed fan left a
-            # 0-degree foldback. J4 is through-hole, so the lane stays on the
-            # back all the way to the header instead of returning to F.Cu and
-            # running above the cuts made by the other control lanes.
-            tracks.append(
-                Track(
-                    net,
-                    "B.Cu",
-                    SIG,
-                    [site, (39.625, 28.0), (31.5, 28.0), (31.5, 37.12), header],
-                    keep_layer=True,
-                )
-            )
-            continue
+        vias.append(Via(net, x=site[0], y=site[1], size=0.58, drill=0.3))
         tracks.append(
             Track(
                 net,
@@ -7724,15 +7664,7 @@ def motor_driver() -> Design:
     # via; the plane is under all of it.
     tracks += [
         Track("GND", "F.Cu", POWER, ["C2.2", local_ground]),
-        # Approach the shared fan via from the east. A direct diagonal from C4
-        # meets the fan tap at 33 degrees; the via keeps that corner connected,
-        # but its annulus does not make the acute copper wedge good geometry.
-        Track(
-            "GND",
-            "F.Cu",
-            POWER,
-            ["C4.2", (52.75, 23.95), (52.75, stops["13"][1]), stops["13"]],
-        ),
+        Track("GND", "F.Cu", POWER, ["C4.2", vint_ground]),
         Track("GND", "F.Cu", POWER, ["C1.2", (56.0, 12.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J1.2", (60.0, 15.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J4.1", (44.0, 42.0)], auto=True, goal_layer="B.Cu"),
@@ -7761,8 +7693,7 @@ def motor_driver() -> Design:
             keep_layer=True,
         ),
         Track("nSLEEP", "F.Cu", SIG, [nsleep_landing, (37.5, 37.75), "J4.2"]),
-        Track("nFAULT", "F.Cu", SIG, [west["8"], "R1.2"], auto=True),
-        Track("nFAULT", "F.Cu", SIG, ["R1.2", "J4.7"], auto=True),
+        Track("nFAULT", "F.Cu", SIG, [west["8"], "J4.7"], auto=True),
     ]
 
     return replace(design, tracks=tracks, vias=vias)
@@ -9295,7 +9226,9 @@ def fpga_audio() -> Design:
     tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.20"), (40.175, 31.6), "C10.1"]))
     # The I2S pins face each other in the same order. They drop at the ends of
     # their two escape fans and cross on B.Cu as four parallel 45-degree runs;
-    # the uninterrupted In1 ground plane stays immediately below them.
+    # In2 power is the adjacent inner layer, not In1 GND. Multilayer reference
+    # continuity still needs stack-up/return-transition review; the two-layer
+    # return-path heuristic does not certify these lanes.
     for net, source, sink, knee in (
         ("I2S_SCK", "U1.36", "U2.12", ((41.0, 23.6), (42.6, 25.2))),
         ("I2S_BCK", "U1.35", "U2.13", ((41.0, 24.4), (42.6, 26.0))),
@@ -9894,9 +9827,11 @@ def write_variant(design: Design, root: Path, *, check: bool = True) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global ROUTE_CACHE
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", help="directory to write the examples into")
-    parser.add_argument("--only", help="generate just this design")
+    parser.add_argument("--only", choices=sorted(DESIGNS), help="generate just this design")
     parser.add_argument(
         "--generated-on",
         default=GENERATED_ON,
@@ -9907,12 +9842,25 @@ def main(argv: list[str] | None = None) -> int:
         default=GENERATED_BY,
         help="what to credit the output to (default: %(default)s)",
     )
-    parser.add_argument(
+    cache_mode = parser.add_mutually_exclusive_group()
+    cache_mode.add_argument(
         "--no-route-cache",
         action="store_true",
         help="route from scratch, ignoring what an earlier run found",
     )
+    cache_mode.add_argument(
+        "--require-route-cache",
+        action="store_true",
+        help="fail on a route-cache miss instead of silently routing again",
+    )
+    parser.add_argument(
+        "--route-cache-dir",
+        type=Path,
+        default=ROUTE_CACHE,
+        help="directory for route results and learned orders (default: %(default)s)",
+    )
     args = parser.parse_args(argv)
+    ROUTE_CACHE = args.route_cache_dir
 
     stamp = (
         f"generated {args.generated_on} by {args.generated_by}",
@@ -9934,6 +9882,7 @@ def main(argv: list[str] | None = None) -> int:
                 mount_holes(replace(builder().snapped(), provenance=stamp, date=args.generated_on))
             ),
             use_cache=not args.no_route_cache,
+            require_cache=args.require_route_cache,
         )
         write_variant(design, out / name / "reviewed")
         # the degraded variant is *meant* to be wrong, so it is not checked

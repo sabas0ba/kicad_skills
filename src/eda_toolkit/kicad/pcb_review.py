@@ -2470,27 +2470,29 @@ def _footprint_mst_edges(
         )
         return distance, str(pa.number), str(pb.number)
 
-    distances = {(a, b): nearest(a, b) for index, a in enumerate(refs) for b in refs[index + 1 :]}
-
-    def edge(a: str, b: str) -> tuple[float, str, str]:
+    def edge(a: str, b: str) -> tuple[float, str, str, str, str]:
+        # Preserve the canonical pad-number tie break even when Prim reaches
+        # this edge from its lexically larger endpoint.
         if a < b:
-            return distances[(a, b)]
-        distance, pb, pa = distances[(b, a)]
-        return distance, pa, pb
+            distance, pa, pb = nearest(a, b)
+        else:
+            distance, pb, pa = nearest(b, a)
+        return distance, a, b, pa, pb
 
-    tree = {refs[0]}
-    rest = set(refs[1:])
+    # Dense Prim: one cheapest incoming edge per outside footprint. Each
+    # footprint pair is evaluated once, and the frontier takes O(n) memory.
+    # Rescanning the entire tree x rest cut on each iteration is O(n^3), which
+    # makes an ordinary supply rail on a large board dominate the review.
+    frontier = {ref: edge(refs[0], ref) for ref in refs[1:]}
     edges: list[tuple[float, str, str, str, str]] = []
-    while rest:
-        distance, a, b, pa, pb = min(
-            (distance, a, b, pa, pb)
-            for a in tree
-            for b in rest
-            for distance, pa, pb in (edge(a, b),)
-        )
+    while frontier:
+        distance, a, b, pa, pb = min(frontier.values())
         edges.append((distance, a, pa, b, pb))
-        tree.add(b)
-        rest.remove(b)
+        del frontier[b]
+        for ref, best in frontier.items():
+            candidate = edge(b, ref)
+            if candidate < best:
+                frontier[ref] = candidate
     return edges
 
 

@@ -197,11 +197,25 @@ def test_kicad_version_defaults_agree():
     )
 
     for workflow in workflows():
-        for match in re.finditer(r"KICAD_VERSION:\s*(\S+)", workflow.read_text()):
+        for match in re.finditer(r"^  KICAD_VERSION:\s*(\S+)", workflow.read_text(), re.M):
             value = match.group(1)
             if value.startswith("${{"):  # supplied by the build matrix, checked below
                 continue
             assert value == docker_version, f"{workflow.name} pins a different KiCad version"
+
+
+def test_golden_job_pins_generation_gates_and_renders_to_oldest_supported_kicad():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text()
+    golden = workflow.split("  golden-examples:\n", 1)[1].split("\n  container:", 1)[0]
+    pinned = re.search(r"^      KICAD_VERSION:\s*(\S+)", golden, re.M).group(1)
+    matrix = re.search(r"kicad:\s*\[(.+)\]", workflow).group(1)
+    versions = re.findall(r'"([\d.]+)"', matrix)
+    assert pinned == min(versions, key=lambda v: tuple(map(int, v.split("."))))
+    assert pinned in _kicad_digests()
+    assert '"eda-toolkit:${KICAD_VERSION}"' in golden
+    assert "--no-route-cache" in golden
+    assert "--require-route-cache" in golden
+    assert "diff -ru build/golden build/golden-cached" in golden
 
 
 def test_every_matrix_kicad_version_has_a_pinned_digest():

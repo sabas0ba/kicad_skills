@@ -282,6 +282,14 @@ yet.
 Exit `0` when the design meets the policy, `2` when it does not, `1` on a usage
 error. `-o verdict.json` keeps the structured version for a PR comment.
 
+For the worked examples, CI applies a stricter project contract as well:
+`tools/check_example_contracts.py` rejects a skipped half of the design,
+requires the intended negative-control blockers, checks the motor driver's
+datasheet-derived values/connections, and protects the two four-layer boards'
+reserved inner GND region. These are explicit project requirements, not
+capabilities inferred by the generic gate. The golden job also compares cold
+generation with a required cache hit, using KiCad 9 for every stage.
+
 ## Things the gate cannot judge
 
 Everything that matters most:
@@ -292,6 +300,9 @@ Everything that matters most:
 * Whether a part's operating conditions are respected. That needs the datasheet;
   see the `datasheet-analysis` guide.
 * Power budget, thermal dissipation, EMC.
+* Multilayer return-path quality: `route.return_path` currently checks only
+  two-layer boards. Adding inner planes removes that rule's applicability,
+  not the need to inspect reference continuity and layer transitions.
 * Why the placement makes sense as a *circuit*. The gate can reject a provably
   long logical hop with `layout.connection_span`; it cannot know which blocks
   are noisy, thermally coupled, user-facing or intentionally isolated.

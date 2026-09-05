@@ -69,17 +69,23 @@ belongs in `_AI_BLOCKING` in the same file. `tests/test_gate.py` covers both.
 ## Regenerating the worked examples
 
 `tools/make_examples.py` builds both variants of every design in `examples/`.
-Routing is what it spends its time on: the FPGA board is a 48-pin QFN on two
-layers and takes the better part of an hour, and a net that finds no room sends
-the whole set round again.
+Routing is what it spends its time on: the FPGA board is a 48-pin QFN on four
+layers, with two outer routing layers and two inner planes. The motor-driver
+also uses four layers. Cold regeneration of the five examples takes tens of
+minutes on CI, and a net that finds no room sends the routing pass round again.
 
 So the routed copper is cached under `.cache/routes/` (git-ignored), keyed by
 everything the router reads — the outline, the parts and their pads, every
-stated track and via, and the source of `tools/autoroute.py` and `_route_all`
+stated track (including its fixed-layer intent) and via, the footprint library
+definitions, and the source of `tools/autoroute.py` and `_route_all`
 themselves. Editing where a designator prints or how a legend picks its side
 does not move copper, so those runs reuse the answer and finish in seconds;
 editing the router invalidates every answer it ever gave. `--no-route-cache`
 routes from scratch.
+
+The golden CI job uses KiCad 9.0.9 for generation, gates and renders. It also
+regenerates from the populated route cache and compares the result with the
+cold run: a cache hit must preserve the same board, not merely a passing gate.
 
 The rip-up order is kept separately, in `<design>.order.json`, and survives a
 change that does invalidate the cache: it is what an afternoon of rip-up

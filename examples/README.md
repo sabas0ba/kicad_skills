@@ -61,17 +61,23 @@ had to catch on the day.
 The first editions are `ea93330` (buck-5v), `e7ad2d7` (motor-driver),
 `b4d66f2` (pico-carrier), `3f796a7` (opamp-filter) and `aee7401` (fpga-audio).
 
-All five `reviewed/` projects **pass** their own gate, and every one of them
-is clean under KiCad's own DRC on both versions in the matrix: no violations,
-nothing unconnected. Every `as-generated/` fails.
+CI requires all five `reviewed/` projects to pass and every `as-generated/`
+negative control to fail for its intended missing-title and part-specification
+defects. It checks that neither the schematic nor board stage was skipped.
+The uploaded JSON verdicts and KiCad reports, not stale finding counts in this
+historical walkthrough, are the authority for each revision.
 
 What each of them still carries is a waiver, and a waiver here is a decision
 with the argument attached rather than a finding hidden. Package escape necks,
 board-only decoupling heuristics and deliberately exposed module rails remain
 visible there. The former FPGA and motor return-path waivers do not. Both
-rebuilt baselines use outer signal layers and an uninterrupted In1 ground
-plane; the FPGA puts +3V3 on In2, and the motor driver puts its high-current VM
-rail there, instead of documenting the cost of the wrong stack-up.
+rebuilt baselines reserve In1 for GND; the FPGA puts +3V3 on In2, and the motor
+driver puts VM there. **This is not a multilayer return-path sign-off.**
+`route.return_path` only evaluates two-layer boards. In2, not In1, is adjacent
+to B.Cu, and the FPGA also routes one SPI clock through the In2 pour. CI checks
+the four-layer structure, absence of foreign routing on In1 and a dominant
+filled GND region, and publishes individual copper layers for inspection.
+Reference transitions, actual dielectric stack-up and EMC still need review.
 
 All five carry what a board needs to be *made* as well as to work: the ground
 pour is filled by KiCad's own filler against the board's own rules, every
@@ -191,10 +197,13 @@ Laying out a real board found four things the rules and the parser had wrong:
   layer, where there is no via to be near — 26 findings across the KiCad demo
   corpus, 18 of them false.
 
-## motor-driver — dual H-bridge, DRV8833, 2 × 1.5 A
+## motor-driver — dual H-bridge, DRV8833PW, 2 × 0.5 A RMS
 
 Two brushed DC motors, screw terminals out, an eight pin logic header, and the
-charge pump, bypass and pull-up the datasheet asks for.
+charge pump and bypass capacitors. The PW package is rated at 0.5 A RMS per
+bridge at VM = 5 V and 25 °C, not the 1.5 A of the thermally enhanced PWP/RTY
+packages. Confirm temperature and motor stall current for the actual load.
+[TI DRV8833 datasheet](https://www.ti.com/lit/ds/symlink/drv8833.pdf).
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
@@ -202,13 +211,11 @@ charge pump, bypass and pull-up the datasheet asks for.
 | `as-generated` | **FAIL**, blockers retained | — | — |
 | first edition | **FAIL**, 43 blocking | — | — |
 
-Under KiCad's own checks `reviewed` is spotless — zero DRC violations, zero
-unconnected items, zero parity findings, on 9.0.9 and 10.0.4. What the gate
-still found is now *answered* rather than pending: three waiver decisions in
+The policy retains two waiver decisions in
 [`motor-driver/gate.toml`](https://github.com/sabas0ba/kicad_skills/blob/main/examples/motor-driver/gate.toml),
-each carrying the engineering argument — the charge pump wired the way the
-datasheet asks, the escape geometry of a 0.65 mm package, and the small set of
-logic nets that is clearer as named connections than as a wire lattice.
+covering the intentional grounded sense pins and the small set of logic nets
+drawn as named connections. Grounding AISEN/BISEN disables PWM current
+regulation; overcurrent fault shutdown is not a 0.5 A current regulator.
 [REVIEW.md](REVIEW.md) is the pass that decided them.
 
 | first edition | as-generated | reviewed |
@@ -217,30 +224,24 @@ logic nets that is clearer as named connections than as a wire lattice.
 | ![board front, first edition](motor-driver/images/board-front-first.jpg) | ![board front, as generated](motor-driver/images/board-front-as-generated.jpg) | ![board front, reviewed](motor-driver/images/board-front-reviewed.jpg) |
 | ![board back, first edition](motor-driver/images/board-back-first.jpg) | ![board back, as generated](motor-driver/images/board-back-as-generated.jpg) | ![board back, reviewed](motor-driver/images/board-back-reviewed.jpg) |
 
-The back layer is worth looking at on its own. It carries only the crossings
-that cannot share the front-side package fan; unlike the former two-layer
-version, those crossings sit directly above an uninterrupted In1 ground plane
-instead of cutting the plane they need for their return current.
+The back layer carries logic crossings, leaving room for local supply bypass
+on the front. Its adjacent inner layer is In2 (VM), not In1 (GND); inspect the
+inner-layer images and reference transitions as well as the outer tracks.
 
 ### What this one is honest about
 
-This is the first example that cannot be drawn on one signal layer. A DRV8833
-brings VM, GND, VCP and VINT out in the *middle* of a row that also carries
-four logic inputs, so whichever way round the connectors go, something has to
-cross something. The rebuilt floorplan puts C2, C3 and C4 in the same supply
-fan as the pins they serve, and puts the control header where the four logic
-lanes naturally arrive. That removes ten footprint-to-footprint connections
-longer than 25 mm, shortens the routed copper from 654.06 to 472.54 mm, and
-removes the former power-width and acute-corner exceptions. The four-layer
-stack keeps F.Cu/B.Cu for signals, In1 as continuous GND and In2 as VM; that
-also removes the return-path exception rather than normalising a split plane.
+The first rebuild still placed C2/C3/C4 about 12 mm from their IC pins. That
+was a consequence of the chosen long escape fan, not an unavoidable TSSOP
+constraint. The follow-up puts all three capacitors beside the supply row,
+drops the logic locally to B.Cu, and connects the IC grounds directly to In1.
+The decoupling-distance waiver is removed; the normal 5 mm limit applies.
 
-What remains is **`layout.decoupling_distance` ×3**. The rule measures from
-the original TSSOP land to the capacitor land, so the 0.65 mm escape fan reads
-as 11.7–11.9 mm even though each capacitor's local copper path is short. One
-of those pins is VCP: C3 is the charge-pump capacitor and goes to VM, not to
-ground, because the datasheet says exactly that. The measurements and the
-topology are stated in the policy rather than silently ignored.
+C2 is now 10 µF on VM, C4 2.2 µF on VINT, and the 10 nF C3 remains between
+VCP and VM. R1 is removed: VINT is only bypassed, and **J4.7 nFAULT requires a
+host-side 10 kΩ pull-up to 3.3 V**. The example-specific CI contract checks
+these values and exact connections in both schematic and board. It does not
+verify effective MLCC capacitance under DC bias, thermal performance, motor
+protection or EMC; those remain application-specific design work.
 
 ### What building it changed in the toolkit
 
@@ -379,10 +380,12 @@ Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
 unconnected, no schematic-parity findings. The rebuilt floorplan is 76 x 58 mm
 instead of 100 x 84 mm. The FPGA, codec, flash and regulator form one compact
 signal-flow block; the line-out and configuration headers sit on the edges they
-serve. Four ordered I2S runs cross on B.Cu above an unbroken In1 reference,
-while the +3V3 distribution uses an In2 plane instead of sharing a long
+serve. Four ordered I2S runs cross on B.Cu; In2 power, not In1 GND, is adjacent
+to those tracks. The +3V3 distribution uses an In2 plane instead of a long
 outer-layer trunk. The short +1V2 spine remains on B.Cu beneath its own FPGA
-block.
+block. No two-layer return-path finding is evidence of multilayer signal
+integrity: that rule skips this stack. The inner-layer renders and structural
+GND-plane check are regression evidence, not an impedance/EMC assessment.
 
 The earlier engineering pass also fixed four electrical faults that the new
 floorplan retains: the PCM5102A charge pump is CAPP–CAPM with a VNEG reservoir,

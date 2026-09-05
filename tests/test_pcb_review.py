@@ -1,3 +1,4 @@
+from itertools import permutations
 from pathlib import Path
 
 from eda_toolkit.kicad import pcb, pcb_review
@@ -125,6 +126,46 @@ def test_connection_span_is_configurable_and_ignores_ground():
         footprint("J1", 45, 5, [pad("1", 45, 5, "GND")]),
     ]
     assert pcb_review.rule_connection_span(ctx_for(board_from(ground))) == []
+
+
+def test_footprint_mst_frontier_keeps_deterministic_ties():
+    parts = [
+        footprint(ref, x, y, [pad("2", x, y, "SIG"), pad("1", x, y, "SIG")])
+        for ref, x, y in [("A", 0, 0), ("B", 1, 1), ("C", 1, 0), ("D", 0, 1)]
+    ]
+    expected = [(1.0, "A", "1", "C", "1"), (1.0, "A", "1", "D", "1"), (1.0, "C", "1", "B", "1")]
+    for order in permutations(parts):
+        assert (
+            pcb_review._footprint_mst_edges([(fp, p) for fp in order for p in reversed(fp.pads)])
+            == expected
+        )
+
+
+def test_footprint_mst_does_not_rescan_every_cut(monkeypatch):
+    # Count comparisons, not seconds: this catches cubic Prim without a flaky
+    # timing budget that depends on CI hardware or load.
+    comparisons = 0
+    distance_calls = 0
+    original = pcb_review.math.dist
+
+    class Distance(float):
+        def __lt__(self, other):
+            nonlocal comparisons
+            comparisons += 1
+            return float.__lt__(self, other)
+
+    def measured(a, b):
+        nonlocal distance_calls
+        distance_calls += 1
+        return Distance(original(a, b))
+
+    monkeypatch.setattr(pcb_review.math, "dist", measured)
+    size = 100
+    parts = [footprint(f"R{i:03}", i * i, i, [pad("1", i * i, i, "+3V3")]) for i in range(size)]
+    result = pcb_review._footprint_mst_edges([(fp, fp.pads[0]) for fp in parts])
+    assert len(result) == size - 1
+    assert distance_calls == size * (size - 1) // 2
+    assert comparisons < 2 * size * size
 
 
 def test_thin_tracks_are_errors():
