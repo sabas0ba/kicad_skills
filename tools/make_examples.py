@@ -7363,7 +7363,7 @@ def motor_driver() -> Design:
             "green",
             "LED_SMD:LED_0805_2012Metric",
             sheet=(81.28, 121.92),
-            board=(47.0, 6.0, 180.0),
+            board=(45.0, 6.0, 180.0),
             silk_label="VM OK",
             fields={
                 "Voltage": "2.1V",
@@ -7655,20 +7655,18 @@ def motor_driver() -> Design:
         if net == "AIN2":
             # Keep the first via at the declared fan exit: letting the
             # automatic route move it back across the fixed fan left a
-            # 0-degree foldback. One lane below AIN1 then returns to the front
-            # beside it.
-            landing = (35.5, 27.25)
-            vias.append(Via(net, x=landing[0], y=landing[1]))
-            tracks += [
+            # 0-degree foldback. J4 is through-hole, so the lane stays on the
+            # back all the way to the header instead of returning to F.Cu and
+            # running above the cuts made by the other control lanes.
+            tracks.append(
                 Track(
                     net,
                     "B.Cu",
                     SIG,
-                    [site, (40.375, 27.25), landing],
+                    [site, (39.625, 28.0), (31.5, 28.0), (31.5, 37.12), header],
                     keep_layer=True,
-                ),
-                Track(net, "F.Cu", SIG, [landing, (35.5, 39.0), header]),
-            ]
+                )
+            )
             continue
         tracks.append(
             Track(

@@ -1349,7 +1349,7 @@ the three floorplans took all 25 findings to zero:
 | design | old baseline | rebuilt baseline | consequence |
 | --- | --- | --- | --- |
 | buck-5v | 126 × 56 mm, 459.30 mm tracks, 124 vias | 92 × 38 mm, 284.04 mm, 87 vias | input switch loop and output filter become one power-flow row |
-| motor-driver | 88 × 50 mm, 654.06 mm tracks, 94 vias | 68 × 46 mm, 470.53 mm, 88 vias | supply capacitors share the package fan; logic header meets its lanes |
+| motor-driver | 88 × 50 mm, 654.06 mm tracks, 94 vias | 68 × 46 mm, 470.90 mm, 87 vias | supply capacitors share the package fan; logic header meets its lanes |
 | pico-carrier | 88 × 62 mm, 90 vias | 80 × 60 mm, 78 vias | edge clearances retained while unused perimeter is removed |
 | opamp-filter | 58 × 42 mm | 58 × 42 mm | a smaller trial made the analogue feedback routing worse, so the honest optimum stayed put |
 | fpga-audio | 100 × 84 mm, two layers | 76 × 58 mm, four layers | the QFN gets a solid In1 reference and In2 +3V3 plane; return-path and routing-tour waivers disappear |
@@ -1369,14 +1369,16 @@ only copper layers it reaches. The stub and via-in-pad checks now expand the
 inclusive layer range; a regression test puts an In2 track into a through via
 so the mistake cannot return.
 
-The cold KiCad pass found two final defects that a no-CLI review could not
-close. Buck-5v's output electrolytic overlapped J2's assembly courtyard even
-though their copper was legal, so C3 moved 1.5 mm toward the inductor. On the
-motor board, route straightening moved AIN2's first via back across its fixed
-fan and left a 0-degree foldback; that escape now stops at its declared
-45-degree fan exit and takes an explicit parallel layer-change lane. Neither is
-waived: manufacturability and a non-self-reversing route are properties of the
-baseline.
+The cold KiCad passes found final defects that a no-CLI review could not close.
+Buck-5v's output electrolytic overlapped J2's assembly courtyard even though
+their copper was legal, so C3 moved 1.5 mm toward the inductor. On the motor
+board, D2 moved 2 mm into the space between R2 and C1 to clear both courtyards.
+Route straightening had also moved AIN2's first via back across its fixed fan,
+leaving a 0-degree foldback; that escape now stops at its declared 45-degree
+fan exit and stays on B.Cu until the through-hole header, instead of returning
+to the front above the cuts made by the other control lanes. None is waived:
+manufacturability, a non-self-reversing route and a local return path are
+properties of the baseline.
 
 Finally, regeneration itself is a gate. CI now rebuilds all five projects from
 an empty route cache inside the pinned KiCad 9 image, diffs every schematic,
