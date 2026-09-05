@@ -230,7 +230,7 @@ four logic inputs, so whichever way round the connectors go, something has to
 cross something. The rebuilt floorplan puts C2, C3 and C4 in the same supply
 fan as the pins they serve, and puts the control header where the four logic
 lanes naturally arrive. That removes ten footprint-to-footprint connections
-longer than 25 mm, shortens the routed copper from 654.06 to 470.90 mm, and
+longer than 25 mm, shortens the routed copper from 654.06 to 472.54 mm, and
 removes the former power-width and acute-corner exceptions. The four-layer
 stack keeps F.Cu/B.Cu for signals, In1 as continuous GND and In2 as VM; that
 also removes the return-path exception rather than normalising a split plane.

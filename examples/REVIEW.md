@@ -1350,7 +1350,7 @@ the three floorplans took all 25 findings to zero:
 | design | old baseline | rebuilt baseline | consequence |
 | --- | --- | --- | --- |
 | buck-5v | 126 × 56 mm, 459.30 mm tracks, 124 vias | 92 × 38 mm, 284.04 mm, 87 vias | input switch loop and output filter become one power-flow row |
-| motor-driver | 88 × 50 mm, 654.06 mm tracks, 94 vias | 68 × 46 mm, four layers, 470.90 mm, 89 vias | supply capacitors share the package fan; logic header meets its lanes; In1 is continuous GND and In2 is VM |
+| motor-driver | 88 × 50 mm, 654.06 mm tracks, 94 vias | 68 × 46 mm, four layers, 472.54 mm, 89 vias | supply capacitors share the package fan; logic header meets its lanes; In1 is continuous GND and In2 is VM |
 | pico-carrier | 88 × 62 mm, 90 vias | 80 × 60 mm, 78 vias | edge clearances retained while unused perimeter is removed |
 | opamp-filter | 58 × 42 mm | 58 × 42 mm | a smaller trial made the analogue feedback routing worse, so the honest optimum stayed put |
 | fpga-audio | 100 × 84 mm, two layers | 76 × 58 mm, four layers | the QFN gets a solid In1 reference and In2 +3V3 plane; return-path and routing-tour waivers disappear |

@@ -5049,11 +5049,12 @@ def _corner_ok(p: tuple[float, float], a: tuple[float, float], c: tuple[float, f
 def _pinned_points(design: Design) -> set[tuple[float, float]]:
     """Every point on the copper that no clean-up pass may move.
 
-    Two kinds. The end of a track, because another track is joined to it and
-    moving one leaves the other in mid air - `route.stub`. And a pad, because
+    Three kinds. The end of a track, because another track is joined to it and
+    moving one leaves the other in mid air - `route.stub`. A via, because the
+    hole cannot follow a chamfer that cuts its corner away. And a pad, because
     once `_join_runs` has merged the run arriving at a pad with the one leaving
     it, the pad is an interior corner of one polyline like any other, and a
-    chamfer will happily cut it off the pad it was there to reach. That is one
+    chamfer will happily cut it off the pad it was there to reach. Each is one
     unconnected net per cut, and it is not visible in the shape.
     """
     pinned: set[tuple[float, float]] = set()
@@ -5061,6 +5062,9 @@ def _pinned_points(design: Design) -> set[tuple[float, float]]:
         points = [resolve(design, point) for point in track.points]
         for point in (points[0], points[-1]):
             pinned.add((round(point[0], 3), round(point[1], 3)))
+    for via in design.vias:
+        point = via_position(design, via)
+        pinned.add((round(point[0], 3), round(point[1], 3)))
     for part in design.footprints():
         node = footprint_definition(part.footprint)
         for pad in node.children("pad"):
@@ -7596,13 +7600,11 @@ def motor_driver() -> Design:
     # capacitor and the VINT bypass all sit at the end of the east escape fan,
     # and the two ground-referenced parts each have a via beside their pad.
     # VM has to reach the middle of the east row, and the logic has to leave
-    # from either side of it. On two layers something crosses, and the choice
-    # is which: four signals going round the whole board to keep the front
-    # clear - which is what the router did, 190 mm of copper for a 40 mm net -
-    # or one stated link on the back for the rail. The rail is the right
-    # answer. It is low impedance, its own return is the plane it is crossing,
-    # and the signals cross the cut it leaves at right angles, which costs them
-    # a track width of return path each rather than a detour.
+    # from either side of it. The former two-layer version had to choose what
+    # crossed the ground pour. Here the stated outer-layer spine feeds a solid
+    # In2 plane instead: one via is at the input end and one lands directly on
+    # the local C2/C3 run. The clean-up pass may lift the spine from B.Cu when
+    # the finished front layer has room; either way In1 remains uninterrupted.
     LINK = (57.5, 13.0), (57.5, 26.45)
     vias += [
         Via("VM", x=LINK[0][0], y=LINK[0][1]),
@@ -7689,7 +7691,15 @@ def motor_driver() -> Design:
     # via; the plane is under all of it.
     tracks += [
         Track("GND", "F.Cu", POWER, ["C2.2", local_ground]),
-        Track("GND", "F.Cu", POWER, ["C4.2", stops["13"]]),
+        # Approach the shared fan via from the east. A direct diagonal from C4
+        # meets the fan tap at 33 degrees; the via keeps that corner connected,
+        # but its annulus does not make the acute copper wedge good geometry.
+        Track(
+            "GND",
+            "F.Cu",
+            POWER,
+            ["C4.2", (52.75, 23.95), (52.75, stops["13"][1]), stops["13"]],
+        ),
         Track("GND", "F.Cu", POWER, ["C1.2", (56.0, 12.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J1.2", (60.0, 15.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J4.1", (44.0, 42.0)], auto=True, goal_layer="B.Cu"),
