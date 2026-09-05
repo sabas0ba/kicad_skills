@@ -410,25 +410,21 @@ empty page margin and converts the format; it does not redraw or rescale copper.
 
 ### What this one is honest about
 
-**A 0.5 mm pitch QFN with pads on four sides is not a two-layer baseline.** The
-previous version proved that it could be forced onto two layers, but paid in
-plane cuts, routing tours and a board almost twice the area. The present design
-uses four layers because that is the engineering answer the example should
-teach. It does not pretend the package becomes easy: the outer-row escape still
-uses 0.2 mm tracks and clearances, and the capacitors still begin beyond that
-fan.
+**Four layers are this example's design choice, not a law imposed by QFN pitch.**
+The earlier two-layer version paid in plane cuts, routing tours and board area.
+The present design separates an inner GND layer from signal routing, but its
+long fan and capacitor placement still have room for improvement.
 
 The findings that follow from it, at the scale a 48-pin part gives them:
 
-* **`layout.decoupling_distance` × 16** — the escape has to walk the row out
-  to a routable pitch before a capacitor can be placed against it, and that
-  walk is most of the budget. The same finding as the motor driver and the
-  op-amp filter, three package sizes apart, which is what makes it a pattern
-  rather than three boards' bad luck. The *via* half of the same complaint —
-  `layout.decoupling_via`, nine of them at first — is gone outright: every
-  0603's ground via now sits anchored against its own pad, on the far side
-  from the supply, with a 1.2 mm stub as the whole loop.
-* **`track.thin_power` at 0.2 mm** — nothing leaves this package wider.
+* **`layout.decoupling_distance` × 16** — retained as an explicit limitation
+  of this demonstration floorplan, not an inevitable package constraint.
+  The local ground-via placement is improved, but a short ground stub is not
+  the whole bypass loop. Closer capacitor placement and power-integrity
+  assessment remain open before production reuse.
+* **`track.thin_power` at 0.2 mm** — the escape and +1V2 spine remain narrow.
+  Actual rail currents depend on the FPGA bitstream and IO activity; no
+  firmware-specific power budget has been verified here.
 * **`erc.pin_to_pin` on flash WP/HOLD** — the symbol calls these bidirectional
   quad-SPI pins. This single-bit design straps them high as the datasheet asks;
   the policy file records why that is intentional.

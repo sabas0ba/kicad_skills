@@ -285,6 +285,7 @@ error. `-o verdict.json` keeps the structured version for a PR comment.
 For the worked examples, CI applies a stricter project contract as well:
 `tools/check_example_contracts.py` rejects a skipped half of the design,
 unavailable ERC/DRC and internally failed review rules,
+rejects unwaived native DRC warnings in reviewed designs,
 requires the intended negative-control blockers, checks the motor driver's
 datasheet-derived values/connections, and protects the two four-layer boards'
 reserved inner GND region. These are explicit project requirements, not

@@ -56,6 +56,23 @@ def test_route_cache_invalidates_legacy_format(tmp_path, monkeypatch):
     assert examples._cache_read("cache-test", "old") is None
 
 
+@pytest.mark.parametrize(
+    "net,wired,expected",
+    [
+        ("VM", (), "/VM"),
+        ("GND", (), "GND"),
+        ("+3V3", (), "+3V3"),
+        ("+3V3", ("+3V3",), "/+3V3"),
+    ],
+)
+def test_zone_uses_same_net_name_as_pads_and_schematic_labels(net, wired, expected):
+    examples = _generator()
+    design = _design(examples, wired_power=wired, pour=(1.0, 1.0, 19.0, 19.0))
+    zone = examples.sexp.loads(examples._zone(design, 1, "In2.Cu", net_name=net))
+    assert zone.child("net_name").atom(0) == expected
+    assert examples.board_net_name(design, net) == expected
+
+
 def test_connector_legend_can_be_placed_explicitly_without_moving_copper(monkeypatch):
     examples = _generator()
     part = examples.Part(

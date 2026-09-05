@@ -5936,6 +5936,11 @@ def _canonicalize_board_uuids(path: Path) -> None:
     path.write_text(sexp.dumps(root) + "\n", encoding="utf-8")
 
 
+def board_net_name(design: Design, name: str) -> str:
+    """The exact net name KiCad derives from a power symbol or root-sheet label."""
+    return name if name in POWER_SYMBOLS and name not in design.wired_power else f"/{name}"
+
+
 def emit_board(design: Design, path: Path) -> None:
     ox, oy = design.origin
     net_of: dict[tuple[str, str], str] = {}
@@ -5950,10 +5955,7 @@ def emit_board(design: Design, path: Path) -> None:
     # plain label on the root sheet becomes "/NAME"; only a power symbol keeps
     # its bare name. Getting this wrong costs one `net_conflict` per pad in the
     # schematic-parity check, and nothing else notices.
-    labels = {
-        name: (name if name in POWER_SYMBOLS and name not in design.wired_power else f"/{name}")
-        for name in order
-    }
+    labels = {name: board_net_name(design, name) for name in order}
 
     # Every pin the design does not use gets the name KiCad's own netlister
     # gives it: reference, unit letter when the symbol has more than one, pin
@@ -6861,7 +6863,7 @@ def _zone(
     lines = [
         "\t(zone",
         f"\t\t(net {code})",
-        f'\t\t(net_name "{net_name}")',
+        f'\t\t(net_name "{board_net_name(design, net_name)}")',
         f'\t\t(layer "{layer}")',
         f'\t\t(uuid "{zone_uuid}")',
         "\t\t(hatch edge 0.5)",
@@ -7317,6 +7319,8 @@ def motor_driver() -> Design:
             sheet=(38.0, 80.0),
             board=(62.0, 7.0, 270.0),
             mirror="y",
+            # Keep the supply legend above the nearby bulk capacitor's silk.
+            pin_legend_at={"1": (58.0, 3.0, "right")},
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -7657,6 +7661,15 @@ def motor_driver() -> Design:
     ):
         site = east[pin]
         vias.append(Via(net, x=site[0], y=site[1], size=0.58, drill=0.3))
+        if net == "AIN2":
+            # One declared back-side lane avoids the router's expensive-front
+            # preference turning this connection into a 42 mm tour.
+            tracks.append(
+                Track(
+                    net, "B.Cu", SIG, [site, (41.2, 24.075), (41.2, 33.18), header], keep_layer=True
+                )
+            )
+            continue
         tracks.append(
             Track(
                 net,

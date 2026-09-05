@@ -71,13 +71,17 @@ def motor_contract(doc: schematic.SchematicDoc, board: pcb.Board) -> list[str]:
     return errors
 
 
-def plane_contract(board: pcb.Board) -> list[str]:
+def plane_contract(board: pcb.Board, *, power_net: str | None = None) -> list[str]:
     """Protect the stated inner GND layer; this does not prove signal integrity."""
     errors = []
     if board.copper_layers != ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]:
         errors.append("expected F.Cu / In1.Cu / In2.Cu / B.Cu")
     if any(t.layer == "In1.Cu" and t.net.lstrip("/") != "GND" for t in board.tracks):
         errors.append("foreign routing cuts the reserved In1.Cu GND layer")
+    if power_net is not None:
+        power = [z for z in board.zones if not z.keepout and "In2.Cu" in z.layers]
+        if len(power) != 1 or power[0].net != power_net:
+            errors.append(f"In2.Cu must use the exact schematic/pad net name {power_net!r}")
     zones = [z for z in board.zones if not z.keepout and "In1.Cu" in z.layers]
     if len(zones) != 1 or zones[0].net.lstrip("/") != "GND":
         return [*errors, "expected one GND zone on In1.Cu"]
@@ -109,6 +113,15 @@ def verdict_contract(verdict: dict, *, reviewed: bool) -> list[str]:
     }
     if incomplete:
         errors.append(f"incomplete checks: {sorted(incomplete)}")
+    if reviewed:
+        drc = {
+            finding["rule"]
+            for finding in verdict.get("findings", [])
+            if finding["rule"].startswith("drc.")
+            and finding.get("reported_severity", finding.get("severity")) in {"error", "warning"}
+        }
+        if drc:
+            errors.append(f"unwaived KiCad DRC findings: {sorted(drc)}")
     if not reviewed:
         actual = {finding["rule"] for finding in verdict.get("blocking", [])}
         expected = {"readability.title_block", "spec.missing_rating", "spec.missing_part_number"}
@@ -137,7 +150,8 @@ def main(argv=None) -> int:
         if name == "motor-driver":
             errors.extend(motor_contract(schematic.parse(project.with_suffix(".kicad_sch")), board))
         if name in ("motor-driver", "fpga-audio"):
-            errors.extend(f"{name}: {e}" for e in plane_contract(board))
+            power_net = "/VM" if name == "motor-driver" else "+3V3"
+            errors.extend(f"{name}: {e}" for e in plane_contract(board, power_net=power_net))
         if args.verdicts:
             for variant in ("reviewed",) if args.reviewed_only else ("reviewed", "as-generated"):
                 verdict = json.loads((args.verdicts / f"{name}-{variant}-gate.json").read_text())

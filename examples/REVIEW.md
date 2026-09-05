@@ -1435,6 +1435,11 @@ individual copper layers and checks that In1 has no foreign signal tracks and
 retains a single filled GND region covering at least 90% of its zone outline.
 That is a baseline regression guard, not an SI/EMC or impedance criterion.
 The real dielectric stack-up and reference transitions remain review items.
+The FPGA's 16 decoupling-distance exceptions also remain open design work.
+Their wording no longer claims that a better single-sided placement is
+impossible. Its former assumed 60 mA budget is likewise not a firmware-specific
+power analysis. These retained demonstration exceptions are not production
+sign-off, even when all automated acceptance checks pass.
 
 ### Gates that test the stated requirements
 
@@ -1445,6 +1450,17 @@ board stage, unavailable ERC/DRC and crashed review rules (even when reported
 as info or waived), and requires each negative control to fail for the intended
 title/rating/part-number defects. An unrelated error is not sufficient proof
 that a negative control is still useful.
+Reviewed goldens also reject unwaived native DRC warnings, even if a policy
+demotes their severity. KiCad 9 exposed a redundant FPGA +1V2 via (a B.Cu-to-B.Cu
+bend, not a layer transition) and a buck output legend touching C3's body silk.
+The via is removed and the legend has an explicit clear position; neither
+diagnostic is dismissed as harmless simply because the generic gate passed.
+The motor rebuild also exposed an incorrect inner-power-zone name: `VM`
+instead of the schematic/pad net `/VM`. KiCad treated the plane as a different
+net; the former outer-layer trunk masked the missing power-plane connection.
+Pad and zone names now use one canonical naming helper, with regression tests
+for root labels and power symbols. The project contract checks the exact In2
+net name rather than normalizing away the distinguishing slash.
 
 Route caching previously discarded `Track.keep_layer`; the loop-removal and
 run-merging passes could also lose it on a cold run. All now preserve that

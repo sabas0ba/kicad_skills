@@ -134,6 +134,13 @@ def test_plane_contract_checks_real_filled_region(plane):
     assert contracts.plane_contract(plane)
 
 
+def test_inner_power_zone_must_match_exact_pad_net_name(plane):
+    plane.zones.append(NS(keepout=False, layers=["In2.Cu"], net="VM"))
+    assert any("exact" in e for e in contracts.plane_contract(plane, power_net="/VM"))
+    plane.zones[-1].net = "/VM"
+    assert contracts.plane_contract(plane, power_net="/VM") == []
+
+
 def test_plane_contract_rejects_fragmented_fill(plane):
     # Total coverage is 95%, but neither island carries 90%: summing them
     # would miss the plane split which this regression check protects against.
@@ -212,3 +219,23 @@ def test_single_example_and_reviewed_only_cli_scope(tmp_path, monkeypatch):
     # The normal golden invocation must not silently omit negative controls.
     with pytest.raises(FileNotFoundError):
         contracts.main(argv)
+
+
+@pytest.mark.parametrize("severity", ["error", "warning"])
+@pytest.mark.parametrize("demoted", [False, True])
+def test_reviewed_contract_does_not_hide_native_drc_findings(severity, demoted):
+    verdict = {
+        "pass": True,
+        "schematic": {"schematic": {}},
+        "board": {"board": {}},
+        "findings": [
+            {
+                "rule": "drc.via_dangling",
+                "reported_severity": severity,
+                "severity": "info" if demoted else severity,
+            }
+        ],
+    }
+    assert any(
+        "unwaived KiCad DRC" in e for e in contracts.verdict_contract(verdict, reviewed=True)
+    )
