@@ -460,10 +460,11 @@ three are visible in one glance at the `interf_u` demo:
   reviewer can disagree with it. A finding is fixed, checked, or answered —
   never silently absent. That is the shape of the whole mechanism.
 * **A waiver is not a place to put a review comment.** Everything a reviewer
-  raised on the worked examples is fixed in the geometry, not argued away:
-  the four waivers that remain are about what a two-layer board with parts on
-  one side physically cannot do, and each one names the four-layer answer it
-  is standing in for.
+  raised on the worked examples is fixed in the geometry, not argued away.
+  The waivers that remain state package geometry, pin semantics or deliberate
+  drawing conventions with measurements a reviewer can challenge; the FPGA
+  and motor boards use the four-layer answer instead of waiving a broken
+  return path.
 
 ## Where the rules live
 

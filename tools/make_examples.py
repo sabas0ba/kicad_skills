@@ -7507,6 +7507,8 @@ def motor_driver() -> Design:
         nets=nets,
         power_flags=[("VM", "J1.1"), ("GND", "J1.2"), ("VINT", "C4.1")],
         board_size=(68.0, 46.0),
+        copper_layers=4,
+        power_plane="VM",
         tracks=[],
         vias=[],
         pour=(1.2, 1.2, 66.8, 44.8),

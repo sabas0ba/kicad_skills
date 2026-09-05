@@ -68,10 +68,10 @@ nothing unconnected. Every `as-generated/` fails.
 What each of them still carries is a waiver, and a waiver here is a decision
 with the argument attached rather than a finding hidden. Package escape necks,
 board-only decoupling heuristics and deliberately exposed module rails remain
-visible there. The former FPGA return-path and routing-tour waivers do not: a
-48-pin, 0.5 mm QFN plus codec is a four-layer design, so the rebuilt baseline
-uses outer signal layers, an uninterrupted In1 ground plane and a +3V3 In2
-plane instead of documenting the cost of the wrong stack-up.
+visible there. The former FPGA and motor return-path waivers do not. Both
+rebuilt baselines use outer signal layers and an uninterrupted In1 ground
+plane; the FPGA puts +3V3 on In2, and the motor driver puts its high-current VM
+rail there, instead of documenting the cost of the wrong stack-up.
 
 All five carry what a board needs to be *made* as well as to work: the ground
 pour is filled by KiCad's own filler against the board's own rules, every
@@ -217,10 +217,10 @@ logic nets that is clearer as named connections than as a wire lattice.
 | ![board front, first edition](motor-driver/images/board-front-first.jpg) | ![board front, as generated](motor-driver/images/board-front-as-generated.jpg) | ![board front, reviewed](motor-driver/images/board-front-reviewed.jpg) |
 | ![board back, first edition](motor-driver/images/board-back-first.jpg) | ![board back, as generated](motor-driver/images/board-back-as-generated.jpg) | ![board back, reviewed](motor-driver/images/board-back-reviewed.jpg) |
 
-The back layer is worth looking at on its own. It is a ground pour with the
-clearance around every foreign track and pad cut out of it, computed rather
-than assumed — which is what lets the four signals that have to cross
-something cross it.
+The back layer is worth looking at on its own. It carries only the crossings
+that cannot share the front-side package fan; unlike the former two-layer
+version, those crossings sit directly above an uninterrupted In1 ground plane
+instead of cutting the plane they need for their return current.
 
 ### What this one is honest about
 
@@ -231,7 +231,9 @@ cross something. The rebuilt floorplan puts C2, C3 and C4 in the same supply
 fan as the pins they serve, and puts the control header where the four logic
 lanes naturally arrive. That removes ten footprint-to-footprint connections
 longer than 25 mm, shortens the routed copper from 654.06 to 470.90 mm, and
-removes the former power-width and acute-corner exceptions.
+removes the former power-width and acute-corner exceptions. The four-layer
+stack keeps F.Cu/B.Cu for signals, In1 as continuous GND and In2 as VM; that
+also removes the return-path exception rather than normalising a split plane.
 
 What remains is **`layout.decoupling_distance` ×3**. The rule measures from
 the original TSSOP land to the capacitor land, so the 0.65 mm escape fan reads

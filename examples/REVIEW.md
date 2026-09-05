@@ -86,10 +86,11 @@ the point of writing them down is to say which:
 * **Decoupling geometry** (already ruled: `layout.decoupling_distance`,
   `layout.decoupling_via`). The three fine-pitch boards all fail the distance
   rule for the same reason — the escape from the package spends the distance
-  budget before a capacitor can be placed. On the two-layer examples, with
-  parts on one side, this is a fact of the package rather than a loose
-  placement; the real-world fix is caps on the back under the pins. On the
-  four-layer FPGA board each local supply instead drops directly to its plane.
+  budget before a capacitor can be placed. With parts on one side this is a
+  fact of the package rather than a loose placement; the closest mechanical
+  answer is caps on the back under the pins. The four-layer FPGA and motor
+  boards instead give the local supply and return paths a continuous nearby
+  inner plane.
   **Waived** per project, with that reason. The *via* half is now
   **fixed** where it was failing: on the FPGA board every 0603's ground via
   is anchored against its own pad, on the far side from the supply pad, with
@@ -1349,7 +1350,7 @@ the three floorplans took all 25 findings to zero:
 | design | old baseline | rebuilt baseline | consequence |
 | --- | --- | --- | --- |
 | buck-5v | 126 × 56 mm, 459.30 mm tracks, 124 vias | 92 × 38 mm, 284.04 mm, 87 vias | input switch loop and output filter become one power-flow row |
-| motor-driver | 88 × 50 mm, 654.06 mm tracks, 94 vias | 68 × 46 mm, 470.90 mm, 87 vias | supply capacitors share the package fan; logic header meets its lanes |
+| motor-driver | 88 × 50 mm, 654.06 mm tracks, 94 vias | 68 × 46 mm, four layers, 470.90 mm, 89 vias | supply capacitors share the package fan; logic header meets its lanes; In1 is continuous GND and In2 is VM |
 | pico-carrier | 88 × 62 mm, 90 vias | 80 × 60 mm, 78 vias | edge clearances retained while unused perimeter is removed |
 | opamp-filter | 58 × 42 mm | 58 × 42 mm | a smaller trial made the analogue feedback routing worse, so the honest optimum stayed put |
 | fpga-audio | 100 × 84 mm, two layers | 76 × 58 mm, four layers | the QFN gets a solid In1 reference and In2 +3V3 plane; return-path and routing-tour waivers disappear |
