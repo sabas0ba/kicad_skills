@@ -1418,6 +1418,9 @@ pins; logic drops to B.Cu at the package, and the IC grounds drop directly to
 In1. VM reaches each local capacitor from In2, without a redundant long
 outer-layer trunk. The decoupling-distance waiver is deleted: the normal
 5 mm rule is now part of the acceptance criterion.
+The regenerated board's pad-centre distances are 2.69 mm (VM–C2), 2.88 mm
+(VINT–C4) and 3.37 mm (VCP–C3). These are the placement rule's measurements,
+not measurements of loop inductance or a substitute for power-integrity work.
 
 These changes do not certify the motor supply, wiring or thermal design.
 Effective ceramic capacitance at operating bias, transient/reverse-polarity

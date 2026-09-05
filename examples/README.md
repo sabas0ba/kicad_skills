@@ -5,12 +5,17 @@ Each project here exists twice, generated from one description by
 
 | | what it is |
 | --- | --- |
-| `as-generated/` | what falls out of a generator that got the connectivity roughly right and thought about nothing else |
-| `reviewed/` | the same circuit after the `eda gate` loop has been closed |
+| `as-generated/` | a deterministic negative control: deliberately incomplete title/part metadata and unreviewed layout details |
+| `reviewed/` | the rebuilt baseline accepted by its gate and project-specific contracts, with documented exceptions |
 
 A repository full of good designs proves only that good designs pass. The *pair*
 is the evidence: that the rules catch what they claim to catch, and that fixing
 what they report converges.
+
+**Gate acceptance is not production sign-off.** These are worked examples,
+not hardware-validated reference designs. In particular, the FPGA still has
+16 decoupling-distance exceptions; multilayer signal return, application-specific
+power/thermal budgets and EMC remain engineering review and measurement work.
 
 ```bash
 ./bin/eda.sh gate examples/buck-5v/reviewed     --policy examples/buck-5v/gate.toml --text
@@ -231,6 +236,10 @@ The back layer carries logic crossings, leaving room for local supply bypass
 on the front. Its adjacent inner layer is In2 (VM), not In1 (GND); inspect the
 inner-layer images and reference transitions as well as the outer tracks.
 
+| In1: GND | In2: VM |
+| --- | --- |
+| ![Motor inner ground](motor-driver/images/board-in1-reviewed.jpg) | ![Motor inner supply](motor-driver/images/board-in2-reviewed.jpg) |
+
 ### What this one is honest about
 
 The first rebuild still placed C2/C3/C4 about 12 mm from their IC pins. That
@@ -238,6 +247,8 @@ was a consequence of the chosen long escape fan, not an unavoidable TSSOP
 constraint. The follow-up puts all three capacitors beside the supply row,
 drops the logic locally to B.Cu, and connects the IC grounds directly to In1.
 The decoupling-distance waiver is removed; the normal 5 mm limit applies.
+The generated board measures 2.69 mm from VM to C2, 2.88 mm from VINT to C4,
+and 3.37 mm from VCP to C3 (pad centres, not complete current-loop lengths).
 
 C2 is now 10 µF on VM, C4 2.2 µF on VINT, and the 10 nF C3 remains between
 VCP and VM. R1 is removed: VINT is only bypassed, and **J4.7 nFAULT requires a
