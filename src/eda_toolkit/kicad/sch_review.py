@@ -126,16 +126,20 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "a power connector - power_connector_max_pins pins or fewer, carrying a "
         "ground and a supply and no signal - whose supply, walked inward "
         "through series two-terminal parts (fuse, diode, inductor, bead), "
-        "reaches the circuit with no fuse in the path, or with no diode in it "
-        "or across it to ground. A rail an output or power_out pin drives is "
-        "the board's own and is not judged",
+        "reaches some load with no fuse in that path, or with no diode in it "
+        "or across it to ground the right way round (anode towards the "
+        "connector in series, cathode on the rail across). Every branch of a "
+        "forked rail is judged on its own. A rail an output or power_out pin "
+        "drives is the board's own and is not judged",
         "warning",
         threshold="power_connector_max_pins",
     ),
     "analog.clock_no_series_resistor": RuleSpec(
         "an oscillator module's output pin (reference X, or a symbol from the "
-        "Oscillator library) on a net with no resistor - nothing damps the "
-        "edge into the line",
+        "Oscillator library) whose net carries anything but resistors and "
+        "test points - a load reached directly, with no series resistor "
+        "between it and the pin to damp the edge; a pull on the same net "
+        "does not count",
         "warning",
     ),
     # -- drawing readability ----------------------------------------------
@@ -841,23 +845,63 @@ def rule_led_series_resistor(ctx: ReviewContext) -> list[Finding]:
 # a rail fed through a resistor is a bias network, not an input.
 SERIES_PREFIXES = ("F", "D", "L", "FB", "FL")
 CONNECTOR_PREFIXES = ("J", "P")
+# How a diode's two pins are told apart. KiCad's diode symbols name them K and
+# A and number them 1 and 2 in that order; a pin named neither - A1/A2 on a
+# bidirectional TVS - conducts either way and is accepted either way.
+_DIODE_END_BY_NUMBER = {"1": "K", "2": "A"}
 
 
-def _walk_supply(ctx: ReviewContext, start: str) -> tuple[bool, bool, bool, bool]:
-    """Follow a connector's supply pin into the board.
+def _diode_end(node: dict[str, Any]) -> str:
+    """``K``, ``A``, or ``''`` for a diode pin the netlist cannot orient."""
+    name = (node.get("pin_name") or "").upper()
+    if name in ("K", "A"):
+        return name
+    if name:
+        return ""
+    return _DIODE_END_BY_NUMBER.get(str(node.get("pin") or ""), "")
 
-    Returns (fuse, diode, driven, reaches): whether the path passed a fuse,
-    whether a diode stands in it or across it to ground, whether some net on
-    the path is driven by an output or power_out pin - the mark of a rail the
-    board makes rather than takes in - and whether it reached any part at all
-    beyond connectors and the series parts themselves.
+
+def _walk_supply(ctx: ReviewContext, start: str) -> tuple[bool, list[tuple[bool, bool]]]:
+    """Follow a connector's supply pin into the board, one path at a time.
+
+    Returns ``(driven, arrivals)``: whether any net the walk touched is driven
+    by an output or power_out pin - the mark of a rail the board makes rather
+    than takes in - and, for every part the supply reaches beyond connectors
+    and the series parts themselves, what protected the path that got there,
+    as ``(fuse, diode)``. A rail that forks is judged branch by branch: a fuse
+    on one branch says nothing about the load hanging off the other.
+
+    Polarity counts. A series diode protects when the supply enters at its
+    anode; reversed, it blocks the supply and protects nothing. A shunt diode
+    protects with its cathode on the rail; the other way round it is a short
+    across the supply, not a clamp.
     """
-    fuse = diode = driven = reaches = False
-    seen = {start}
-    queue = [start]
-    while queue:
-        net = queue.pop()
-        for node in next((n["nodes"] for n in ctx.nets if n["name"] == net), []):
+    nodes_of = {net["name"]: net["nodes"] for net in ctx.nets}
+    driven = False
+    arrivals: list[tuple[bool, bool]] = []
+    # A net is visited once per protection state, so a loop terminates and a
+    # second, better-protected arrival at the same net is still walked.
+    seen: set[tuple[str, bool, bool]] = set()
+    stack = [(start, False, False)]
+    while stack:
+        net, fuse, diode = stack.pop()
+        if (net, fuse, diode) in seen:
+            continue
+        seen.add((net, fuse, diode))
+        nodes = nodes_of.get(net, [])
+        # A clamp on this node protects the loads on this very net as well as
+        # everything downstream, so it is collected before the loads are judged.
+        for node in nodes:
+            ref = node["ref"]
+            pins = ctx.pins_by_ref[ref]
+            if ctx.prefix(ref) != "D" or len(pins) != 2:
+                continue
+            other = next((p for p in pins if p["net"] != net), None)
+            if other is None or netlist_mod.classify_net(other["net"]) != "ground":
+                continue
+            if _diode_end(node) in ("K", ""):
+                diode = True
+        for node in nodes:
             ref = node["ref"]
             prefix = ctx.prefix(ref)
             if prefix in CONNECTOR_PREFIXES:
@@ -866,21 +910,14 @@ def _walk_supply(ctx: ReviewContext, start: str) -> tuple[bool, bool, bool, bool
                 driven = True
             pins = ctx.pins_by_ref[ref]
             if len(pins) != 2 or prefix not in SERIES_PREFIXES:
-                reaches = True
+                arrivals.append((fuse, diode))
                 continue
             other = next((p for p in pins if p["net"] != net), None)
-            if other is None:
-                continue
-            if prefix == "F":
-                fuse = True
-            if prefix == "D":
-                diode = True
-            if netlist_mod.classify_net(other["net"]) == "ground":
-                continue  # a shunt part: judged, not walked through
-            if other["net"] not in seen:
-                seen.add(other["net"])
-                queue.append(other["net"])
-    return fuse, diode, driven, reaches
+            if other is None or netlist_mod.classify_net(other["net"]) == "ground":
+                continue  # a shunt part: the clamp was judged above, the rest is not a path
+            series_diode = prefix == "D" and _diode_end(node) in ("A", "")
+            stack.append((other["net"], fuse or prefix == "F", diode or series_diode))
+    return driven, arrivals
 
 
 @rule
@@ -891,10 +928,11 @@ def rule_unprotected_power_input(ctx: ReviewContext) -> list[Finding]:
     that carries a ground and a supply and no signal - a screw terminal, a
     barrel jack. From its supply pin the rule walks inward through two-
     terminal series parts, collecting what it passes and what hangs off each
-    node to ground, until it reaches a part with more than two pins. A rail
-    that gets there with no fuse in the path and no diode either in it or
+    node to ground, until it reaches a part with more than two pins. A load
+    that is reached with no fuse in its path and no diode either in it or
     across it is unprotected: a reversed supply or a shorted load costs the
-    board rather than a fuse.
+    board rather than a fuse. Every branch is judged on its own, and a diode
+    only counts the right way round.
 
     A connector a board *drives* is not an input. If the walk reaches a net
     an output or power_out pin drives - a regulator's output, an inductor
@@ -914,20 +952,22 @@ def rule_unprotected_power_input(ctx: ReviewContext) -> list[Finding]:
         for pin in pins:
             if kinds[pin["pin"]] != "power":
                 continue
-            fuse, diode, driven, reaches = _walk_supply(ctx, pin["net"])
-            if driven or not reaches or (fuse and diode):
+            driven, arrivals = _walk_supply(ctx, pin["net"])
+            if driven or not arrivals:
                 continue
             missing = []
-            if not fuse:
+            if any(not fuse for fuse, _diode in arrivals):
                 missing.append("no fuse")
-            if not diode:
+            if any(not diode for _fuse, diode in arrivals):
                 missing.append("no diode in it or across it against a reversed supply")
+            if not missing:
+                continue
             findings.append(
                 Finding(
                     "analog.unprotected_power_input",
                     "warning",
-                    f"{ref} brings {pin['net']} onto the board with {' and '.join(missing)} "
-                    "between the terminal and the circuit",
+                    f"{ref} brings {pin['net']} onto the board and a load is reached with "
+                    f"{' and '.join(missing)} between the terminal and it",
                     location=f"{ref}.{pin['pin']} / {pin['net']}",
                 )
             )
@@ -942,9 +982,12 @@ def rule_clock_series_resistor(ctx: ReviewContext) -> list[Finding]:
     a few centimetres of track it rings, and the ring is both an EMI source
     and an extra clock edge at the far end. A series resistor at the pin - 22
     to 33 ohms - is the one-part answer, and the netlist shows whether it is
-    there: the net the output pin drives has a resistor on it, or it does not.
+    there: the net the output pin drives carries the oscillator, resistors
+    and nothing else, or some load sits on it directly. A pull-down on the
+    same net is a resistor too, and is not the answer.
     """
     oscillators = {s.reference for s in ctx.parts if s.lib_id.startswith("Oscillator:")}
+    nodes_of = {net["name"]: net["nodes"] for net in ctx.nets}
     findings = []
     for ref, pins in sorted(ctx.pins_by_ref.items()):
         if ctx.prefix(ref) != "X" and ref not in oscillators:
@@ -955,14 +998,24 @@ def rule_clock_series_resistor(ctx: ReviewContext) -> list[Finding]:
             is_output = ptype == "output" if ptype else "OUT" in name
             if not is_output:
                 continue
-            if any(ctx.is_resistor(r) for r in ctx.refs_on_net(pin["net"])):
+            others = [node["ref"] for node in nodes_of.get(pin["net"], []) if node["ref"] != ref]
+            resistors = [r for r in others if ctx.is_resistor(r)]
+            loads = sorted({r for r in others if not ctx.is_resistor(r) and ctx.prefix(r) != "TP"})
+            if resistors and not loads:
                 continue
+            if resistors:
+                why = (
+                    f"reaches {', '.join(loads)} directly - the resistor on the net is a "
+                    "pull, not a series element"
+                )
+            else:
+                why = "leaves with no series resistor"
             findings.append(
                 Finding(
                     "analog.clock_no_series_resistor",
                     "warning",
-                    f"{pin['net']} leaves {ref}'s output with no series resistor - "
-                    "22 to 33 ohm at the pin damps the edge and the ringing on the line",
+                    f"{pin['net']} from {ref}'s output {why}; 22 to 33 ohm at the pin, "
+                    "with the loads behind it, damps the edge and the ringing on the line",
                     location=f"{ref}.{pin['pin']} / {pin['net']}",
                 )
             )

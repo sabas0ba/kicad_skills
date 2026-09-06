@@ -1090,3 +1090,98 @@ def test_a_ceramic_on_the_inductor_net_is_not_judged():
     """C4 shares +5V with L1 and states no ESR; only the polarised part is asked."""
     findings = sch_review.rule_missing_esr(_buck_output({"Voltage": "16V"}))
     assert all("C4" not in f.location for f in findings)
+
+
+def test_a_branch_that_bypasses_the_fuse_is_still_reported():
+    """One load behind the fuse, another straight off the terminal: the fused branch excuses nothing."""
+    ctx = make_ctx(
+        {
+            "GND": [
+                node("J1", "2"),
+                node("D3", "2"),
+                node("U1", "3", "power_in"),
+                node("U2", "2", "power_in"),
+            ],
+            "VIN": [node("J1", "1"), node("F1", "1"), node("U2", "1", "power_in")],
+            "+12V": [node("F1", "2"), node("D3", "1"), node("U1", "1", "power_in")],
+        }
+    )
+    findings = sch_review.rule_unprotected_power_input(ctx)
+    assert len(findings) == 1
+    assert "no fuse" in findings[0].message
+    assert "reversed supply" in findings[0].message
+
+
+def test_a_shunt_diode_the_wrong_way_round_is_not_a_clamp():
+    """Anode on the rail, cathode on ground shorts the supply; it protects nothing."""
+    ctx = make_ctx(
+        {
+            "GND": [
+                node("J1", "2"),
+                node("C1", "2"),
+                node("U1", "3", "power_in"),
+                node("D3", "1", name="K"),
+            ],
+            "VIN": [node("J1", "1"), node("F1", "1")],
+            "+12V": [
+                node("F1", "2"),
+                node("C1", "1"),
+                node("U1", "1", "power_in"),
+                node("D3", "2", name="A"),
+            ],
+        }
+    )
+    findings = sch_review.rule_unprotected_power_input(ctx)
+    assert len(findings) == 1
+    assert "no fuse" not in findings[0].message
+    assert "reversed supply" in findings[0].message
+
+
+def test_a_series_diode_the_wrong_way_round_is_not_protection():
+    ctx = make_ctx(
+        {
+            "GND": [node("J1", "2"), node("U1", "3", "power_in")],
+            "VIN": [node("J1", "1"), node("F1", "1")],
+            "FUSED": [node("F1", "2"), node("D1", "1", name="K")],
+            "+12V": [node("D1", "2", name="A"), node("U1", "1", "power_in")],
+        }
+    )
+    assert len(sch_review.rule_unprotected_power_input(ctx)) == 1
+
+
+def test_a_bidirectional_tvs_is_accepted_either_way_round():
+    """KiCad's SMAJ symbols name both pins A1/A2; nothing orients them, so both are taken."""
+    ctx = make_ctx(
+        {
+            "GND": [node("J1", "2"), node("U1", "3", "power_in"), node("D3", "1", name="A1")],
+            "VIN": [node("J1", "1"), node("F1", "1")],
+            "+12V": [node("F1", "2"), node("U1", "1", "power_in"), node("D3", "2", name="A2")],
+        }
+    )
+    assert sch_review.rule_unprotected_power_input(ctx) == []
+
+
+def test_a_pull_down_on_the_clock_net_is_not_a_series_resistor():
+    ctx = make_ctx(
+        {
+            "CLK12": [
+                node("X1", "3", "output", "OUT"),
+                node("R5", "1"),
+                node("U1", "37", "bidirectional"),
+            ],
+            "GND": [node("R5", "2")],
+        }
+    )
+    findings = sch_review.rule_clock_series_resistor(ctx)
+    assert len(findings) == 1
+    assert "U1" in findings[0].message
+
+
+def test_a_test_point_on_the_oscillator_net_is_not_a_load():
+    ctx = make_ctx(
+        {
+            "OSC_OUT": [node("X1", "3", "output", "OUT"), node("R5", "1"), node("TP1", "1")],
+            "CLK12": [node("R5", "2"), node("U1", "37", "bidirectional")],
+        }
+    )
+    assert sch_review.rule_clock_series_resistor(ctx) == []

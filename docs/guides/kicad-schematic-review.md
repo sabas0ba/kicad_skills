@@ -82,8 +82,8 @@ references, library symbol mismatches, off-grid endpoints, bus errors.
 | `analog.no_dc_path` | a net whose every pin is a capacitor or connector: nothing sets its DC level |
 | `analog.i2c_pullup` | a net named SDA/SCL with no resistor on it |
 | `analog.led_no_series_resistor` | LED with no current limiting on either terminal |
-| `analog.unprotected_power_input` | a power connector (a ground, a supply, nothing else, four pins or fewer) whose supply reaches the circuit with no fuse in the path, or no diode in it or across it — walked inward through series fuses, diodes, inductors and beads; a rail the board itself drives is not judged |
-| `analog.clock_no_series_resistor` | an oscillator module's output on a net with no resistor to damp the edge |
+| `analog.unprotected_power_input` | a power connector (a ground, a supply, nothing else, four pins or fewer) whose supply reaches some load with no fuse in that path, or no diode in it or across it the right way round — walked inward through series fuses, diodes, inductors and beads, branch by branch; a rail the board itself drives is not judged |
+| `analog.clock_no_series_resistor` | an oscillator module's output net carrying a load directly — nothing but resistors and test points may sit on it; a pull on the net is not a series resistor |
 | `power.no_ground` / `power.no_supply` / `power.many_supplies` | rail sanity |
 | `schematic.duplicate_reference` / `schematic.unannotated` | annotation problems |
 | `schematic.missing_footprint` / `missing_value` / `missing_datasheet` | field completeness |
