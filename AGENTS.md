@@ -86,6 +86,10 @@ change that does invalidate the cache: it is what an afternoon of rip-up
 attempts learned, and starting from it is usually the difference between
 seventeen attempts and none.
 
+`tools/example_images.py` re-renders the pictures `examples/README.md` shows
+from the regenerated projects (sheet at 150 dpi, board at 300 dpi, as JPEG). It
+leaves the `*-first.jpg` first editions alone; nothing regenerates those.
+
 ## Tuning a rule
 
 `tools/review_demos.py` runs both reviews over the 18 KiCad demo projects in the
