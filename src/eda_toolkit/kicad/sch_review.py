@@ -46,6 +46,10 @@ THRESHOLDS: dict[str, float] = {
     # The strip inside the page edge that belongs to the drawing frame and its
     # rulers; anything placed there prints on top of them.
     "page_margin_mm": 10.0,
+    # A connector with this many pins or fewer, carrying a ground and a supply
+    # and nothing else, is where power comes onto the board - a screw
+    # terminal, a barrel jack - and is where the input protection belongs.
+    "power_connector_max_pins": 4,
 }
 
 # Geometry lives on a 1/100 mm world; anything below this is file noise.
@@ -117,6 +121,22 @@ RULE_SPEC: dict[str, RuleSpec] = {
     ),
     "analog.led_no_series_resistor": RuleSpec(
         "an LED with no resistor on the nets either terminal reaches", "warning"
+    ),
+    "analog.unprotected_power_input": RuleSpec(
+        "a power connector - power_connector_max_pins pins or fewer, carrying a "
+        "ground and a supply and no signal - whose supply, walked inward "
+        "through series two-terminal parts (fuse, diode, inductor, bead), "
+        "reaches the circuit with no fuse in the path, or with no diode in it "
+        "or across it to ground. A rail an output or power_out pin drives is "
+        "the board's own and is not judged",
+        "warning",
+        threshold="power_connector_max_pins",
+    ),
+    "analog.clock_no_series_resistor": RuleSpec(
+        "an oscillator module's output pin (reference X, or a symbol from the "
+        "Oscillator library) on a net with no resistor - nothing damps the "
+        "edge into the line",
+        "warning",
     ),
     # -- drawing readability ----------------------------------------------
     "readability.off_grid_pin": RuleSpec(
@@ -260,6 +280,13 @@ RULE_SPEC: dict[str, RuleSpec] = {
     "spec.no_design_notes": RuleSpec(
         "no sheet carries a text note and no part carries a description, so the "
         "reasoning behind the values is recorded nowhere",
+        "info",
+    ),
+    "spec.missing_esr": RuleSpec(
+        "a non-DNP polarised capacitor sharing a net with an inductor - a "
+        "switching regulator's output - whose fields state no ESR, when the "
+        "regulator's loop is designed around that ESR and a substitute of the "
+        "same value and rating can still ring",
         "info",
     ),
     "internal.*": RuleSpec(
@@ -804,6 +831,139 @@ def rule_led_series_resistor(ctx: ReviewContext) -> list[Finding]:
                     "warning",
                     f"{sym.reference} ({sym.value}) has no series resistor on either terminal",
                     location=sym.reference,
+                )
+            )
+    return findings
+
+
+# Two-terminal parts a supply is allowed to pass *through* on its way onto the
+# board: a fuse, a diode, an inductor or a bead. A resistor is not among them -
+# a rail fed through a resistor is a bias network, not an input.
+SERIES_PREFIXES = ("F", "D", "L", "FB", "FL")
+CONNECTOR_PREFIXES = ("J", "P")
+
+
+def _walk_supply(ctx: ReviewContext, start: str) -> tuple[bool, bool, bool, bool]:
+    """Follow a connector's supply pin into the board.
+
+    Returns (fuse, diode, driven, reaches): whether the path passed a fuse,
+    whether a diode stands in it or across it to ground, whether some net on
+    the path is driven by an output or power_out pin - the mark of a rail the
+    board makes rather than takes in - and whether it reached any part at all
+    beyond connectors and the series parts themselves.
+    """
+    fuse = diode = driven = reaches = False
+    seen = {start}
+    queue = [start]
+    while queue:
+        net = queue.pop()
+        for node in next((n["nodes"] for n in ctx.nets if n["name"] == net), []):
+            ref = node["ref"]
+            prefix = ctx.prefix(ref)
+            if prefix in CONNECTOR_PREFIXES:
+                continue
+            if (node.get("type") or "") in ("output", "power_out"):
+                driven = True
+            pins = ctx.pins_by_ref[ref]
+            if len(pins) != 2 or prefix not in SERIES_PREFIXES:
+                reaches = True
+                continue
+            other = next((p for p in pins if p["net"] != net), None)
+            if other is None:
+                continue
+            if prefix == "F":
+                fuse = True
+            if prefix == "D":
+                diode = True
+            if netlist_mod.classify_net(other["net"]) == "ground":
+                continue  # a shunt part: judged, not walked through
+            if other["net"] not in seen:
+                seen.add(other["net"])
+                queue.append(other["net"])
+    return fuse, diode, driven, reaches
+
+
+@rule
+def rule_unprotected_power_input(ctx: ReviewContext) -> list[Finding]:
+    """A power connector whose rail meets the circuit with nothing in the way.
+
+    Judged from the netlist. A *power connector* is a connector of few pins
+    that carries a ground and a supply and no signal - a screw terminal, a
+    barrel jack. From its supply pin the rule walks inward through two-
+    terminal series parts, collecting what it passes and what hangs off each
+    node to ground, until it reaches a part with more than two pins. A rail
+    that gets there with no fuse in the path and no diode either in it or
+    across it is unprotected: a reversed supply or a shorted load costs the
+    board rather than a fuse.
+
+    A connector a board *drives* is not an input. If the walk reaches a net
+    an output or power_out pin drives - a regulator's output, an inductor
+    away - the rail is made here and the connector is where it leaves.
+    """
+    findings = []
+    limit = int(ctx.thresholds["power_connector_max_pins"])
+    for ref in sorted(ctx.pins_by_ref):
+        if ctx.prefix(ref) not in CONNECTOR_PREFIXES:
+            continue
+        pins = ctx.pins_by_ref[ref]
+        if len(pins) > limit:
+            continue
+        kinds = {pin["pin"]: netlist_mod.classify_net(pin["net"]) for pin in pins}
+        if "ground" not in kinds.values() or "signal" in kinds.values():
+            continue
+        for pin in pins:
+            if kinds[pin["pin"]] != "power":
+                continue
+            fuse, diode, driven, reaches = _walk_supply(ctx, pin["net"])
+            if driven or not reaches or (fuse and diode):
+                continue
+            missing = []
+            if not fuse:
+                missing.append("no fuse")
+            if not diode:
+                missing.append("no diode in it or across it against a reversed supply")
+            findings.append(
+                Finding(
+                    "analog.unprotected_power_input",
+                    "warning",
+                    f"{ref} brings {pin['net']} onto the board with {' and '.join(missing)} "
+                    "between the terminal and the circuit",
+                    location=f"{ref}.{pin['pin']} / {pin['net']}",
+                )
+            )
+    return findings
+
+
+@rule
+def rule_clock_series_resistor(ctx: ReviewContext) -> list[Finding]:
+    """An oscillator output driving a line with nothing to damp it.
+
+    A packaged oscillator's output is a fast edge from a low impedance. Into
+    a few centimetres of track it rings, and the ring is both an EMI source
+    and an extra clock edge at the far end. A series resistor at the pin - 22
+    to 33 ohms - is the one-part answer, and the netlist shows whether it is
+    there: the net the output pin drives has a resistor on it, or it does not.
+    """
+    oscillators = {s.reference for s in ctx.parts if s.lib_id.startswith("Oscillator:")}
+    findings = []
+    for ref, pins in sorted(ctx.pins_by_ref.items()):
+        if ctx.prefix(ref) != "X" and ref not in oscillators:
+            continue
+        for pin in pins:
+            ptype = pin.get("type") or ""
+            name = (pin.get("pin_name") or "").upper()
+            is_output = ptype == "output" if ptype else "OUT" in name
+            if not is_output:
+                continue
+            if any(ctx.is_resistor(r) for r in ctx.refs_on_net(pin["net"])):
+                continue
+            findings.append(
+                Finding(
+                    "analog.clock_no_series_resistor",
+                    "warning",
+                    f"{pin['net']} leaves {ref}'s output with no series resistor - "
+                    "22 to 33 ohm at the pin damps the edge and the ringing on the line",
+                    location=f"{ref}.{pin['pin']} / {pin['net']}",
                 )
             )
     return findings
@@ -1832,6 +1992,57 @@ def rule_missing_part_number(ctx: ReviewContext) -> list[Finding]:
                     location=f"{sym.sheet}:{sym.reference}",
                 )
             )
+    return findings
+
+
+ESR_FIELDS = ("esr", "esr max", "max esr", "impedance", "esr @100khz", "esr@100khz")
+
+
+def _is_polarised(sym: schematic.Symbol) -> bool:
+    """An electrolytic or a tantalum, read from the symbol and the footprint."""
+    name = sym.lib_id.split(":", 1)[-1].lower()
+    footprint = sym.footprint.lower()
+    return (
+        "polarized" in name
+        or name in ("cp", "cp_small")
+        or "cp_elec" in footprint
+        or "tantal" in footprint
+    )
+
+
+@rule
+def rule_missing_esr(ctx: ReviewContext) -> list[Finding]:
+    """An electrolytic on a switching regulator's output that states no ESR.
+
+    The output capacitor's ESR is part of a switching regulator's loop, and
+    the datasheets say so - the LM2596's gives it both an upper and a lower
+    limit. A ``220u 16V`` that says nothing about ESR can be replaced by a
+    part of the same value and rating that rings, and nothing on the sheet
+    would say the substitution was wrong. The net an inductor shares with the
+    capacitor is what marks it as a regulator's output rather than bulk on a
+    rail.
+    """
+    findings = []
+    for sym in ctx.parts:
+        if not ctx.is_capacitor(sym.reference) or sym.dnp or not _is_polarised(sym):
+            continue
+        nets = sorted({pin["net"] for pin in ctx.pins_by_ref.get(sym.reference, [])})
+        with_inductor = [
+            net for net in nets if any(ctx.prefix(r) == "L" for r in ctx.refs_on_net(net))
+        ]
+        if not with_inductor or _field(sym, ESR_FIELDS):
+            continue
+        findings.append(
+            Finding(
+                "spec.missing_esr",
+                "info",
+                f"{sym.reference} ({sym.value}) sits on {with_inductor[0]} with an inductor "
+                "and states no ESR - a switching regulator's loop is designed around the "
+                "output capacitor's ESR, and a substitute of the same value and rating can "
+                "still ring",
+                location=f"{sym.sheet}:{sym.reference}",
+            )
+        )
     return findings
 
 

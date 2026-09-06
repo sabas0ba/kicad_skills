@@ -213,6 +213,7 @@ cannot be reviewed, ordered, or built twice the same way:
 | `spec.voltage_derating` | a capacitor's voltage rating against the rail it actually sits on |
 | `spec.missing_part_number` | an active part with no orderable identity (MPN/manufacturer) |
 | `spec.no_design_notes` | nothing on any sheet records *why* the design is the way it is |
+| `spec.missing_esr` | a polarised capacitor on a switching regulator's output (a net an inductor also reaches) that states no ESR — the loop is designed around it |
 
 `spec.voltage_derating` only judges rails whose name states a voltage (`+3V3`,
 `-12V`, `VDD_1V8`, `VBUS`). Derating a part against a number nobody wrote down

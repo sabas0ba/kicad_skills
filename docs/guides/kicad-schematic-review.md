@@ -1,6 +1,6 @@
 ---
 name: kicad-schematic-review
-description: Read a KiCad schematic (.kicad_sch) to extract components, nets and hierarchy, and review it - ERC plus design checks for decoupling, floating inputs, single-pin nets, annotation, missing footprints, I2C pull-ups, LED series resistors, drawing readability (off-grid geometry, missing junctions, dangling wires, overlapping symbols) and part specification (voltage/tolerance/power ratings, capacitor derating, part numbers). Use when asked to review, check, understand or summarise a schematic or circuit design in a KiCad project.
+description: Read a KiCad schematic (.kicad_sch) to extract components, nets and hierarchy, and review it - ERC plus design checks for decoupling, floating inputs, single-pin nets, annotation, missing footprints, I2C pull-ups, LED series resistors, power-input protection (fuse and diode), oscillator series resistors, drawing readability (off-grid geometry, missing junctions, dangling wires, overlapping symbols) and part specification (voltage/tolerance/power ratings, capacitor derating, output-capacitor ESR, part numbers). Use when asked to review, check, understand or summarise a schematic or circuit design in a KiCad project.
 ---
 
 # KiCad schematic review
@@ -82,6 +82,8 @@ references, library symbol mismatches, off-grid endpoints, bus errors.
 | `analog.no_dc_path` | a net whose every pin is a capacitor or connector: nothing sets its DC level |
 | `analog.i2c_pullup` | a net named SDA/SCL with no resistor on it |
 | `analog.led_no_series_resistor` | LED with no current limiting on either terminal |
+| `analog.unprotected_power_input` | a power connector (a ground, a supply, nothing else, four pins or fewer) whose supply reaches the circuit with no fuse in the path, or no diode in it or across it — walked inward through series fuses, diodes, inductors and beads; a rail the board itself drives is not judged |
+| `analog.clock_no_series_resistor` | an oscillator module's output on a net with no resistor to damp the edge |
 | `power.no_ground` / `power.no_supply` / `power.many_supplies` | rail sanity |
 | `schematic.duplicate_reference` / `schematic.unannotated` | annotation problems |
 | `schematic.missing_footprint` / `missing_value` / `missing_datasheet` | field completeness |
@@ -120,6 +122,7 @@ line for the 16 V part that fails on a 24 V rail and the 50 V part that does not
 | `spec.voltage_derating` | capacitor rating against the rail it sits on: below the rail is an error, under 1.5x headroom a warning |
 | `spec.missing_part_number` | an active part with no MPN or manufacturer |
 | `spec.no_design_notes` | nothing on any sheet records why the design is the way it is |
+| `spec.missing_esr` | a polarised capacitor on a net an inductor also reaches — a switching regulator's output — with no ESR field; the regulator's loop is designed around that ESR |
 
 `spec.voltage_derating` only judges rails whose name states a voltage (`+3V3`,
 `-12V`, `VDD_1V8`, `VBUS`); derating against a number nobody wrote down would be
@@ -148,8 +151,10 @@ what to use when the schematic is being generated rather than drawn: see the
   time constants. Compute them, or verify with the `spice-simulation` guide.
 * Power budget and thermal dissipation.
 * Whether a part's operating conditions are respected (needs the datasheet).
-* Reset/boot strapping, protection against reverse polarity and ESD,
-  connector pinout against the mating part.
+* Reset/boot strapping, ESD protection on signal connectors, connector pinout
+  against the mating part. (Whether a *power* connector has a fuse and a
+  diode between it and the circuit is checked — `analog.unprotected_power_input`
+  — but not whether their ratings suit the supply.)
 
 ## Notes
 
