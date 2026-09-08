@@ -7408,9 +7408,11 @@ def motor_driver() -> Design:
             "Connector:Screw_Terminal_01x02",
             "VM 2.7-10.8V",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            # 38, not 30: mirrored, the connector prints its long value to the
+            # 33, not 30: mirrored, the connector prints its long value to the
             # left, and at 30 that string reached the sheet frame's ruler strip.
-            sheet=(38.0, 80.0),
+            # Not further right either: the fuse and its pin stubs want the
+            # room between the terminal and the bulk capacitor.
+            sheet=(33.02, 80.01),
             board=(62.0, 7.0, 270.0),
             mirror="y",
             # Keep the supply legend above the nearby bulk capacitor's silk.
@@ -7426,8 +7428,14 @@ def motor_driver() -> Design:
             "Device:C_Polarized",
             "100u",
             "Capacitor_SMD:CP_Elec_6.3x7.7",
-            sheet=(55.88, 86.36),
-            board=(52.0, 8.0, 0.0),
+            sheet=(66.04, 86.36),
+            # 46 and turned round, not 52: the fuse and the clamp want the
+            # column between this and the terminal, and the supply pad has to
+            # be the one facing them so the rail does not cross the bulk
+            # capacitor's own ground to get in. Not further left than 46
+            # either - the board writes its own name in the strip this
+            # capacitor's courtyard bounds, and it needs the width.
+            board=(46.0, 8.0, 180.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "20%",
@@ -7436,12 +7444,51 @@ def motor_driver() -> Design:
                 "Datasheet": "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf",
             },
         ),
+        # Fuse and TVS between the terminal and the rail. VM may reach 10.8 V,
+        # so the TVS stands off 12 V; reversed leads flow through it as a
+        # diode and open the fuse. Both stand in the column between the
+        # terminal's courtyard and the bulk capacitor's, which is the strip
+        # the input rail crosses anyway.
+        Part(
+            "F1",
+            "Device:Fuse",
+            "3A",
+            "Fuse:Fuse_1206_3216Metric",
+            sheet=(49.53, 80.01),
+            angle=90.0,
+            board=(53.7, 8.0, 180.0),
+            fields={
+                "Current": "3A",
+                "MPN": "0466003.NR",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_466,
+            },
+        ),
+        Part(
+            "D3",
+            "Device:D_Zener",
+            "SMAJ12A",
+            "Diode_SMD:D_SMA",
+            sheet=(57.15, 91.44),
+            angle=270.0,
+            # Cathode up to the fused rail, anode down to its own via: below
+            # the fuse, in the same column, with the whole strip to the right
+            # of the capacitor free.
+            board=(53.7, 14.0, 270.0),
+            fields={
+                "Voltage": "12V",
+                "Power": "400W",
+                "MPN": "SMAJ12A",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_SMAJ,
+            },
+        ),
         Part(
             "C2",
             "Device:C",
             "10u",
             "Capacitor_SMD:C_0805_2012Metric",
-            sheet=(68.58, 86.36),
+            sheet=(78.74, 86.36),
             board=(43.0, 26.0, 0.0),
             fields={
                 "Voltage": "25V",
@@ -7500,8 +7547,10 @@ def motor_driver() -> Design:
             "Device:R",
             "4k7",
             "Resistor_SMD:R_0805_2012Metric",
-            sheet=(81.28, 107.95),
-            board=(41.0, 6.0, 0.0),
+            sheet=(96.52, 107.95),
+            # Out of the supply row: the fuse and the clamp took it, and the
+            # strip below the terminal was the board's largest free area.
+            board=(58.0, 20.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -7515,8 +7564,8 @@ def motor_driver() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(81.28, 121.92),
-            board=(45.0, 6.0, 180.0),
+            sheet=(96.52, 121.92),
+            board=(62.0, 20.0, 180.0),
             silk_label="VM OK",
             fields={
                 "Voltage": "2.1V",
@@ -7568,12 +7617,14 @@ def motor_driver() -> Design:
     ]
 
     nets = {
-        "VM": ["J1.1", "C1.1", "C2.1", "C3.1", "U1.12", "R2.1"],
+        "VIN": ["J1.1", "F1.1"],
+        "VM": ["F1.2", "D3.1", "C1.1", "C2.1", "C3.1", "U1.12", "R2.1"],
         # J4 is in the order the tracks arrive, so that nothing has to cross to
         # reach it: ground at both ends, then the two signals that come round
         # the outside of the package and the four that come straight out of it.
         "GND": [
             "J1.2",
+            "D3.2",
             "C1.2",
             "C2.2",
             "U1.13",
@@ -7609,7 +7660,7 @@ def motor_driver() -> Design:
         notes=[],
         note_blocks=[
             (
-                (17.78, 115.57),
+                (17.78, 118.11),
                 [
                     "PW package: 0.5 A RMS per bridge at VM=5 V, 25 C.",
                     "Not the 1.5 A thermally enhanced PWP/RTY versions.",
@@ -7618,14 +7669,14 @@ def motor_driver() -> Design:
                 ],
             ),
             (
-                (17.78, 102.87),
+                (17.78, 106.68),
                 [
                     "C1 100 uF / 25 V bulk on a rail that can reach 10.8 V -",
                     "C2 10 uF / 25 V ceramic is the local VM bypass.",
                 ],
             ),
             (
-                (93.98, 115.57),
+                (109.22, 115.57),
                 ["VM indicator: about 1.5 mA at VM=9 V."],
             ),
             (
@@ -7658,10 +7709,8 @@ def motor_driver() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=[("VM", "J1.1"), ("GND", "J1.2"), ("VINT", "C4.1")],
+        power_flags=[("VM", "F1.2"), ("GND", "J1.2"), ("VINT", "C4.1")],
         board_size=(68.0, 46.0),
-        copper_layers=4,
-        power_plane="VM",
         tracks=[],
         vias=[],
         pour=(1.2, 1.2, 66.8, 44.8),
@@ -7727,24 +7776,36 @@ def motor_driver() -> Design:
     ]
 
     # -- the supply, placed by hand ----------------------------------------
-    # The input feeds In2; C2 and C3 each pick it up locally. No redundant
-    # outer-layer supply trunk, and no logic escape between IC and bypass.
-    feed, vm_bypass, pump_supply = (57.5, 13.0), (42.05, 24.75), (45.15, 28.5)
-    vias += [
-        *(Via("VM", x=p[0], y=p[1]) for p in (feed, pump_supply)),
-        Via("VM", x=vm_bypass[0], y=vm_bypass[1], size=0.58, drill=0.3),
-    ]
+    # On two layers the supply has no plane to disappear into, so it is a
+    # stated front-side spine: down the free column right of the capacitors,
+    # then two short arms west into the bypass pair. The spine passes between
+    # the two ground vias at x = 45.15, which is why they sit 2.5 mm apart -
+    # the gap between their barrels is 1.7 mm and the arm needs 0.9 of it.
+    #
+    # The back of the board stays what it was on four layers: ground, and the
+    # short logic lanes. Putting the rail there instead would have cut the
+    # only reference plane the signals have, and the cut would have run the
+    # length of the board.
+    SPINE_X = 48.7
+    vm_bypass, pump_supply = (42.05, 24.75), (43.95, 28.5)
     tracks += [
         Track("VM", "F.Cu", POWER, ["U1.12", (41.875, 25.825), "C2.1"]),
         Track("VM", "F.Cu", POWER, [vm_bypass, "C2.1"]),
-        Track("VM", "F.Cu", POWER, ["J1.1", "C1.1"], auto=True),
-        Track("VM", "F.Cu", POWER, ["C1.1", feed], auto=True),
-        Track("VM", "F.Cu", POWER, ["C3.1", pump_supply]),
-        Track("VM", "F.Cu", POWER, ["C1.1", "R2.1"], auto=True),
+        # terminal, fuse, clamp, bulk: one row, left to right as it flows
+        Track("VIN", "F.Cu", POWER, ["J1.1", "F1.1"], auto=True),
+        Track("VM", "F.Cu", POWER, ["F1.2", (52.3, 10.0), "D3.1"]),
+        Track("GND", "F.Cu", POWER, ["D3.2", (53.7, 19.0)]),
+        Track("VM", "F.Cu", POWER, ["F1.2", "C1.1"], auto=True),
+        # the spine, and its two arms
+        Track("VM", "F.Cu", POWER, ["C1.1", (SPINE_X, 8.0), (SPINE_X, 28.5)]),
+        Track("VM", "F.Cu", POWER, [(SPINE_X, 24.75), vm_bypass]),
+        Track("VM", "F.Cu", POWER, [(SPINE_X, 28.5), pump_supply]),
+        Track("VM", "F.Cu", POWER, ["F1.2", "R2.1"], auto=True),
         Track("VCP", "F.Cu", POWER, ["U1.11", (40.6, 26.475), (42.05, 27.925), "C3.2"]),
         Track("VINT", "F.Cu", POWER, ["U1.14", (41.025, 24.525), "C4.1"]),
         Track("LED_A", "F.Cu", SIG, ["R2.2", "D2.2"], auto=True),
     ]
+    vias += [Via("GND", x=53.7, y=19.0)]
     # The four logic inputs are boxed in by the supply fan on the front. A
     # short, ordered row of drops is clearer than four tours around that fan.
     for net, pin, header in (
@@ -7784,11 +7845,11 @@ def motor_driver() -> Design:
     tracks += [
         Track("GND", "F.Cu", POWER, ["C2.2", local_ground]),
         Track("GND", "F.Cu", POWER, ["C4.2", vint_ground]),
-        Track("GND", "F.Cu", POWER, ["C1.2", (56.0, 12.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["C1.2", (40.0, 12.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J1.2", (60.0, 15.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J4.1", (44.0, 42.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J4.8", (22.0, 42.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", POWER, ["D2.1", (49.0, 9.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["D2.1", (65.0, 24.0)], auto=True, goal_layer="B.Cu"),
     ]
 
     # -- everything that simply has to arrive ------------------------------
@@ -8736,7 +8797,12 @@ def opamp_filter() -> Design:
         Track("+5V", "F.Cu", POWER, ["F1.2", "D3.1"], auto=True),
         Track("+5V", "F.Cu", POWER, ["F1.2", "C5.1"], auto=True),
         Track("+5V", "F.Cu", POWER, ["C5.1", u1w["2"]], auto=True),
-        Track("+5V", "F.Cu", POWER, ["C5.1", "C7.1"], auto=True),
+        # Down the corridor between the terminal's body and the filter's first
+        # row, then left. Sent straight at C7 the rail cuts the corner off J2's
+        # courtyard, and copper under a screw terminal cannot be probed or
+        # reworked without taking the terminal off - `route.under_package`.
+        Track("+5V", "F.Cu", POWER, ["C5.1", (19.0, 13.8)], auto=True),
+        Track("+5V", "F.Cu", POWER, [(19.0, 13.8), "C7.1"], auto=True),
         Track("+5V", "F.Cu", POWER, ["C7.1", u2w["2"]], auto=True),
         # ...and the divider's feed keeps the rail's width to the junction:
         # a 0.3 branch butt-joined onto 0.5 trunk mid-run is the same
@@ -8771,14 +8837,21 @@ TI = "https://www.ti.com/lit/ds/symlink/pcm5102a.pdf"
 
 
 def fpga_audio() -> Design:
-    """An iCE40UP5K driving a PCM5102A over I2S, on four layers.
+    """An iCE40UP5K driving a PCM5102A over I2S, on two layers.
 
-    A 0.5 mm pitch QFN with pads on four sides is the point where a two-layer
-    baseline stops being honest. This design therefore uses the normal answer:
-    two outer signal layers, an uninterrupted inner ground plane and a +3.3 V
-    inner power plane. The top escape still walks the 0.5 mm row to 0.8 mm at
-    0.2 mm track and clearance, but it no longer forces every bottom-layer hop
-    to cut the return plane.
+    This one is here to be difficult, and the difficulty is worth stating
+    plainly: a 0.5 mm pitch QFN with pads on four sides is not a two layer
+    board. Real iCE40 designs are four layer, with the escape dropping straight
+    into an inner layer through via-in-pad or a dogbone per pin. This generator
+    knows two layers, so the escape has to be a fan out on the top - twelve pins
+    a side walked from 0.5 mm to 0.8 mm, at 0.2 mm track and 0.2 mm clearance,
+    which is a fine-line process and says so in the fabrication notes.
+
+    What that costs is visible in the plot: a 7 mm chip needs a 25 mm square of
+    board around it before anything else can be placed, and the parts that talk
+    to it are pushed to the edges. That is the honest answer to "can this be
+    done on two layers", and it is worth having as an example precisely because
+    the answer is "yes, and you would not want to".
 
     The rest is a normal small digital board. The FPGA boots from U4 over its
     own SPI port, runs from a 12 MHz oscillator, and clocks I2S out to U2. Two
@@ -8795,7 +8868,7 @@ def fpga_audio() -> Design:
                 "iCE40UP5K",
                 "Package_DFN_QFN:QFN-48-1EP_7x7mm_P0.5mm_EP3.5x3.5mm",
                 sheet=where,
-                board=(32.0, 28.0, 0.0),
+                board=(40.0, 40.0, 0.0),
                 stub=6.35,
                 no_connect=True,
                 unit=unit,
@@ -8817,7 +8890,7 @@ def fpga_audio() -> Design:
             "PCM5102A",
             "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
             sheet=(330.0, 110.0),
-            board=(52.0, 28.0, 180.0),
+            board=(72.0, 40.0, 180.0),
             stub=6.35,
             fields={
                 "MPN": "PCM5102APWR",
@@ -8830,8 +8903,11 @@ def fpga_audio() -> Design:
             "Regulator_Linear:AP2112K-1.2",
             "AP2112K-1.2",
             "Package_TO_SOT_SMD:SOT-23-5",
-            sheet=(56.0, 40.0),
-            board=(14.0, 20.0, 0.0),
+            # Right of the fuse's own supply bus and below the terminal's
+            # ground bus: J1, F1 and U3 read left to right as the supply
+            # flows, and nothing of theirs lands on anybody else's row.
+            sheet=(68.58, 46.99),
+            board=(14.0, 24.0, 0.0),
             fields={
                 "Voltage": "1.2V",
                 "Current": "600mA",
@@ -8846,7 +8922,7 @@ def fpga_audio() -> Design:
             "W25Q32JV",
             "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
             sheet=(196.0, 258.0),
-            board=(32.0, 44.0, 0.0),
+            board=(40.0, 72.0, 0.0),
             fields={
                 "MPN": "W25Q32JVSSIQ",
                 "Manufacturer": "Winbond",
@@ -8859,7 +8935,7 @@ def fpga_audio() -> Design:
             "12MHz",
             "Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm",
             sheet=(56.0, 150.0),
-            board=(28.0, 12.0, 0.0),
+            board=(30.0, 14.0, 0.0),
             fields={
                 "Tolerance": "50ppm",
                 "MPN": "ASE-12.000MHZ-L-C-T",
@@ -8872,15 +8948,58 @@ def fpga_audio() -> Design:
             "Connector:Screw_Terminal_01x02",
             "3V3 IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            # 42, not 30: the PWR_FLAG pair lands to the connector's left with
-            # its name printed left of that again, and anywhere nearer the edge
-            # the name reaches into the sheet frame's ruler strip.
-            sheet=(42.0, 40.0),
-            board=(6.0, 8.0, 270.0),
+            # Mirrored so its pins face the fuse to its right, the way the
+            # other boards draw their input. Its ground runs out along a bus
+            # past the fuse before it turns, so nothing else may sit on that
+            # row for the next thirty millimetres.
+            sheet=(27.94, 39.37),
+            mirror="y",
+            board=(8.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
                 "Datasheet": "https://www.phoenixcontact.com/product/1729128",
+            },
+        ),
+        # Fuse and TVS on the 3.3 V input. The whole board draws well under
+        # 100 mA, so 500 mA is the fuse; the TVS is the lowest standoff the
+        # SMAJ series comes in, which leaves a 3.3 V rail well inside it. It
+        # is what reversed leads flow through, and it does not hold the rail
+        # under the FPGA's 3.6 V maximum - the sheet says so.
+        Part(
+            "F1",
+            "Device:Fuse",
+            "500mA",
+            "Fuse:Fuse_1206_3216Metric",
+            # 10.16 mm pin to pin from the terminal: each pin runs a 2.54 mm
+            # stub, and the VIN label between them wants room of its own.
+            sheet=(46.99, 39.37),
+            angle=90.0,
+            board=(17.0, 10.0, 0.0),
+            fields={
+                "Current": "500mA",
+                "MPN": "0466.500NR",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_466,
+            },
+        ),
+        Part(
+            "D3",
+            "Device:D_Zener",
+            "SMAJ5.0A",
+            "Diode_SMD:D_SMA",
+            # Well below the fuse: the terminal's ground bus and its flag own
+            # the rows right under it, and the regulator prints its value into
+            # the space to the fuse's lower right.
+            sheet=(39.37, 60.96),
+            angle=270.0,
+            board=(23.5, 10.0, 0.0),
+            fields={
+                "Voltage": "5V",
+                "Power": "400W",
+                "MPN": "SMAJ5.0A",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_SMAJ,
             },
         ),
         Part(
@@ -8891,7 +9010,7 @@ def fpga_audio() -> Design:
             # 388, not 395: the GND symbol lands to the connector's right, and
             # at 395 its printed name crossed the right frame strip of the A3.
             sheet=(388.0, 110.0),
-            board=(70.0, 26.0, 0.0),
+            board=(95.0, 38.0, 0.0),
             fields={
                 "MPN": "61300311121",
                 "Manufacturer": "Wurth Elektronik",
@@ -8905,7 +9024,7 @@ def fpga_audio() -> Design:
             "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
             # Clear of the title block, which owns the bottom right corner.
             sheet=(268.0, 240.0),
-            board=(28.0, 52.0, 90.0),
+            board=(74.0, 66.0, 0.0),
             mirror="y",
             fields={
                 "MPN": "61300611121",
@@ -8952,34 +9071,42 @@ def fpga_audio() -> Design:
         )
 
     parts += [
-        # Supply lands face U3; with the default orientation their ground
-        # lands stood between the regulator and the rail they were bypassing.
-        cap("C1", "10u", (84.0, 48.0), (7.5, 17.5, 180.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C2", "100n", (100.0, 48.0), (7.5, 21.0, 180.0), "25V", "CL10B104KB8NNNC"),
-        cap("C3", "10u", (56.0, 62.0), (20.0, 22.0, 0.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C4", "100n", (72.0, 62.0), (22.0, 26.0, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C5", "100n", (196.0, 48.0), (43.0, 38.0, 270.0), "25V", "CL10B104KB8NNNC"),
-        cap("C17", "10u", (180.0, 48.0), (46.0, 38.0, 270.0), "16V", "CL10A106MQ8NNNC"),
-        res("R3", "100R", (164.0, 48.0), (43.0, 34.0, 90.0), "RC0603FR-07100RL"),
-        res("R4", "10k", (276.0, 232.0), (18.0, 48.0, 0.0), "RC0603FR-0710KL"),
-        cap("C6", "100n", (244.0, 84.0), (38.0, 18.0, 180.0), "25V", "CL10B104KB8NNNC"),
-        cap("C7", "100n", (244.0, 108.0), (42.0, 18.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C8", "100n", (236.0, 258.0), (43.0, 41.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C9", "100n", (84.0, 150.0), (34.0, 12.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C10", "100n", (244.0, 132.0), (40.0, 31.0, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C11", "100n", (300.0, 62.0), (62.0, 23.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C16", "100n", (328.0, 62.0), (60.0, 39.0, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C12", "2u2", (296.0, 158.0), (48.0, 34.0, 90.0), "16V", "CL10A225KO8NNNC"),
-        cap("C13", "2u2", (324.0, 158.0), (63.0, 32.0, 90.0), "16V", "CL10A225KO8NNNC"),
-        cap("C14", "2u2", (352.0, 158.0), (66.0, 36.0, 0.0), "16V", "CL10A225KO8NNNC"),
-        res("R1", "10k", (112.0, 232.0), (18.0, 29.2, 0.0), "RC0603FR-0710KL"),
-        res("R2", "10k", (140.0, 232.0), (18.0, 27.0, 0.0), "RC0603FR-0710KL"),
-        cap("C15", "100n", (148.0, 62.0), (40.0, 34.0, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C1", "10u", (84.0, 48.0), (7.5, 17.5, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C2", "100n", (100.0, 48.0), (7.5, 21.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C3", "10u", (63.5, 62.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C4", "100n", (87.63, 62.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C5", "100n", (196.0, 48.0), (56.0, 47.0, 270.0), "25V", "CL10B104KB8NNNC"),
+        cap("C17", "10u", (180.0, 48.0), (59.0, 47.0, 270.0), "16V", "CL10A106MQ8NNNC"),
+        res("R3", "100R", (164.0, 48.0), (63.0, 54.0, 90.0), "RC0603FR-07100RL"),
+        res("R4", "10k", (276.0, 232.0), (56.0, 74.0, 0.0), "RC0603FR-0710KL"),
+        cap("C6", "100n", (244.0, 84.0), (57.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C7", "100n", (244.0, 108.0), (61.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C8", "100n", (236.0, 258.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        # C9 sits clear of R5's label on the sheet; on the board it stays
+        # against the oscillator's supply pin.
+        cap("C9", "100n", (96.52, 150.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        # The oscillator's output leaves through R5: 33 ohms at the source
+        # damps the edge into the 30 mm of track to the FPGA, so the clock
+        # arrives once rather than ringing. R6 holds the codec muted until
+        # the FPGA is configured and drives XSMT high itself.
+        res("R5", "33R", (71.12, 149.86), (31.0, 18.5, 0.0), "RC0603FR-0733RL"),
+        res("R6", "10k", (287.02, 127.0), (61.0, 33.5, 0.0), "RC0603FR-0710KL"),
+        cap("C10", "100n", (244.0, 132.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C11", "100n", (300.0, 62.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C16", "100n", (328.0, 62.0), (89.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C12", "2u2", (296.0, 158.0), (60.0, 54.0, 0.0), "16V", "CL10A225KO8NNNC"),
+        cap("C13", "2u2", (324.0, 158.0), (89.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
+        cap("C14", "2u2", (352.0, 158.0), (89.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
+        res("R1", "10k", (112.0, 232.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
+        res("R2", "10k", (140.0, 232.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
+        cap("C15", "100n", (148.0, 62.0), (57.0, 54.0, 180.0), "25V", "CL10B104KB8NNNC"),
     ]
 
     nets = {
+        "VIN": ["J1.1", "F1.1"],
         "+3V3": [
-            "J1.1",
+            "F1.2",
+            "D3.1",
             "C1.1",
             "C2.1",
             "U3.1",
@@ -9009,6 +9136,8 @@ def fpga_audio() -> Design:
         "VCCPLL": ["R3.2", "C5.1", "C17.1", "U1.29"],
         "GND": [
             "J1.2",
+            "D3.2",
+            "R6.2",
             "C1.2",
             "C2.2",
             "U3.2",
@@ -9032,25 +9161,31 @@ def fpga_audio() -> Design:
             "C16.2",
             "C12.2",
             "C14.2",
-            "J2.3",
+            "J2.2",
             "J3.6",
         ],
         # R4 holds the flash deselected while the FPGA is in reset and its
         # pins are still floating - without it the boot bus is a lottery
         "SPI_SS": ["U1.16", "U4.1", "J3.1", "R4.2"],
-        "SPI_SCK": ["U1.15", "U4.6", "J3.4"],
-        "SPI_SI": ["U1.17", "U4.5", "J3.5"],
-        "SPI_SO": ["U1.14", "U4.2", "J3.2"],
-        "CRESET": ["U1.8", "R1.2", "J3.3"],
+        "SPI_SCK": ["U1.15", "U4.6", "J3.2"],
+        "SPI_SI": ["U1.17", "U4.5", "J3.3"],
+        "SPI_SO": ["U1.14", "U4.2", "J3.4"],
+        "CRESET": ["U1.8", "R1.2", "J3.5"],
         "CDONE": ["U1.7", "R2.2"],
-        "CLK12": ["X1.3", "U1.37"],
+        # the clock leaves the oscillator through its series resistor
+        "OSC_OUT": ["X1.3", "R5.1"],
+        "CLK12": ["R5.2", "U1.37"],
+        # Soft mute under the FPGA's control: R6 holds it low - muted - until
+        # the configured design drives it, so the DAC comes up silent instead
+        # of with the rail.
+        "XSMT": ["U1.31", "U2.17", "R6.1"],
         # On the east side, in the order the codec wants them: a bus that
         # leaves the package already in the right order does not cross itself.
         "I2S_SCK": ["U1.36", "U2.12"],
         "I2S_BCK": ["U1.35", "U2.13"],
         "I2S_DIN": ["U1.34", "U2.14"],
         "I2S_LRCK": ["U1.32", "U2.15"],
-        "OUTL": ["U2.6", "J2.2"],
+        "OUTL": ["U2.6", "J2.3"],
         "OUTR": ["U2.7", "J2.1"],
         "LDOO": ["U2.18", "C12.1"],
         # the flying capacitor sits between CAPP and CAPM; the reservoir from
@@ -9059,11 +9194,10 @@ def fpga_audio() -> Design:
         "CAPM": ["U2.4", "C13.2"],
         "VNEG": ["U2.5", "C14.1"],
         # The codec's mode pins are strapped rather than driven: 16-bit I2S,
-        # no de-emphasis, normal filter, un-muted.
+        # no de-emphasis, normal filter. The mute is the exception, above.
         "FMT": ["U2.16"],
         "DEMP": ["U2.10"],
         "FLT": ["U2.11"],
-        "XSMT": ["U2.17"],
         "WP": ["U4.3"],
         "HOLD": ["U4.7"],
         "OSC_EN": ["X1.1"],
@@ -9074,13 +9208,12 @@ def fpga_audio() -> Design:
         ("U2.16", "GND"),
         ("U2.10", "GND"),
         ("U2.11", "GND"),
-        ("U2.17", "+3V3"),
         ("U4.3", "+3V3"),
         ("U4.7", "+3V3"),
         ("X1.1", "+3V3"),
     ):
         nets[rail].append(pin)
-    for name in ("FMT", "DEMP", "FLT", "XSMT", "WP", "HOLD", "OSC_EN"):
+    for name in ("FMT", "DEMP", "FLT", "WP", "HOLD", "OSC_EN"):
         del nets[name]
 
     design = Design(
@@ -9093,20 +9226,31 @@ def fpga_audio() -> Design:
             (
                 (17.78, 232.0),
                 [
-                    "The 0.5 mm QFN uses a four-layer stack: outer signal layers,",
-                    "an uninterrupted In1 ground plane and a +3V3 In2 power plane.",
-                    "Its 0.2 mm top escape spreads to 0.8 mm before routing; bottom",
-                    "signal hops no longer cut the reference plane beneath it.",
+                    "A 0.5 mm pitch QFN with pads on four sides is not a two layer",
+                    "board. A real iCE40 design drops each pin into an inner layer;",
+                    "this one has no inner layer, so all 48 escape on the top at",
+                    "0.2 mm track and 0.2 mm clearance - a fine-line process, and",
+                    "the reason a 7 mm chip needs 25 mm of board around it.",
                 ],
             ),
             (
                 (100.0, 78.0),
                 [
+                    "F1 500 mA and D3 (5 V standoff) guard the input:",
+                    "reversed leads flow through D3 and open F1. D3 does",
+                    "not hold the rail under the FPGA's 3.6 V maximum.",
                     "C1 10u + C2 100n: the 3.3 V input, at U3.",
                     "C3/C4: the 1.2 V core rail it makes. C15 sits",
                     "on U1's VCC pins; VCCPLL is filtered from the",
                     "core rail through R3, C17 and C5 at the pin -",
                     "core switching noise stays out of the PLL.",
+                ],
+            ),
+            (
+                (17.78, 170.0),
+                [
+                    "R5 33R at X1's output damps the 12 MHz edge into",
+                    "the 30 mm run to the FPGA: the clock arrives once.",
                 ],
             ),
             (
@@ -9120,9 +9264,11 @@ def fpga_audio() -> Design:
                 (296.0, 186.0),
                 [
                     "U2's mode pins are strapped, not driven: 16-bit I2S,",
-                    "no de-emphasis, normal filter, un-muted. C11/C16",
-                    "bypass its supplies; C12-C14 are the charge pump",
-                    "and LDO reservoirs the datasheet asks for.",
+                    "no de-emphasis, normal filter. XSMT is the exception:",
+                    "R6 holds it low so the DAC comes up muted, and the",
+                    "configured FPGA un-mutes it - no power-up pop.",
+                    "C11/C16 bypass its supplies; C12-C14 are the charge",
+                    "pump and LDO reservoirs the datasheet asks for.",
                 ],
             ),
             (
@@ -9139,20 +9285,19 @@ def fpga_audio() -> Design:
         nets=nets,
         # GND has no power-output pin on it either: every ground here is a
         # power *input*, and without a flag ERC says so.
-        power_flags=[("+3V3", "J1.1"), ("GND", "J1.2")],
-        board_size=(76.0, 58.0),
-        label_nets=("I2S_SCK", "I2S_BCK", "I2S_DIN", "I2S_LRCK"),
+        power_flags=[("+3V3", "F1.2"), ("GND", "J1.2")],
+        board_size=(100.0, 84.0),
+        label_nets=("I2S_SCK", "I2S_BCK", "I2S_DIN", "I2S_LRCK", "XSMT"),
         # No foreign copper under the boot flash or the DAC: their bellies
         # are the strips a rail sneaks through when everything else is full,
-        # and a rail under a part it does not feed is `route.under_package`.
-        # Fencing U4 alone moved the 1.2 V rail under U2, which is the worse
-        # place: the DAC is the one analogue part on the board.
+        # and a rail under a part it does not feed is `route.under_package` -
+        # the plane cannot get between them on two layers. Fencing U4 alone
+        # just moved the 1.2 V rail under U2, which is the worse place: the
+        # DAC is the one analogue part on the board.
         route_keepout=("U4", "U2"),
         tracks=[],
-        copper_layers=4,
-        power_plane="+3V3",
         vias=[],
-        pour=(1.2, 1.2, 74.8, 56.8),
+        pour=(1.2, 1.2, 98.8, 82.8),
         mounting=Mounting(),
         fiducials=3,
         # Four units of one symbol and twenty-odd parts do not fit on A4.
@@ -9164,17 +9309,17 @@ def fpga_audio() -> Design:
     # to squeeze between two of its neighbours. Only the input, which never goes
     # near the chip, is wider.
     FINE, SIG, POWER = 0.2, 0.2, 0.4
-    cx, cy = 32.0, 28.0
+    cx, cy = 40.0, 40.0
     sides = {
         # Each row runs the way the pads do, not the way the numbers do: a QFN
         # counts anticlockwise, so its east and north rows are bottom-to-top and
         # right-to-left. Handing them over the other way round makes every
         # escape on that side cross every other one, and the fan is legal
         # nowhere.
-        "west": ([str(n) for n in range(1, 13)], "x", 27.55, 24.0),
-        "south": ([str(n) for n in range(13, 25)], "y", 32.45, 36.0),
-        "east": ([str(n) for n in range(36, 24, -1)], "x", 36.45, 40.0),
-        "north": ([str(n) for n in range(48, 36, -1)], "y", 23.55, 20.0),
+        "west": ([str(n) for n in range(1, 13)], "x", 35.55, 27.0),
+        "south": ([str(n) for n in range(13, 25)], "y", 44.45, 53.0),
+        "east": ([str(n) for n in range(36, 24, -1)], "x", 44.45, 53.0),
+        "north": ([str(n) for n in range(48, 36, -1)], "y", 35.55, 27.0),
     }
     escapes: list[Track] = []
     pad_of: dict[str, tuple[float, float]] = {}
@@ -9193,7 +9338,7 @@ def fpga_audio() -> Design:
             pins,
             lead=lead,
             column=column,
-            pitch=0.8,
+            pitch=1.0,
             centre=cy if axis == "x" else cx,
             axis=axis,
             width=FINE,
@@ -9206,39 +9351,39 @@ def fpga_audio() -> Design:
     escape(
         "U2",
         [str(n) for n in range(11, 21)],
-        lead=47.6,
-        column=44.0,
-        pitch=0.8,
-        centre=28.0,
+        lead=67.6,
+        column=64.0,
+        pitch=1.0,
+        centre=40.0,
         width=SIG,
     )
     escape(
         "U2",
         [str(n) for n in range(10, 0, -1)],
-        lead=56.4,
-        column=60.0,
-        pitch=0.8,
-        centre=28.0,
+        lead=76.4,
+        column=82.5,
+        pitch=1.0,
+        centre=40.0,
         width=SIG,
     )
-    escape("U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=20.0, width=SIG)
-    escape("U3", ["5", "4"], lead=16.6, column=19.0, pitch=2.8, centre=20.0, width=SIG)
+    escape("U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=24.0, width=SIG)
+    escape("U3", ["5", "4"], lead=16.6, column=19.0, pitch=2.8, centre=24.0, width=SIG)
     escape(
         "U4",
         ["1", "2", "3", "4"],
-        lead=28.1,
-        column=25.5,
+        lead=36.1,
+        column=33.5,
         pitch=2.0,
-        centre=44.0,
+        centre=72.0,
         width=SIG,
     )
     escape(
         "U4",
         ["8", "7", "6", "5"],
-        lead=35.9,
-        column=38.5,
+        lead=43.9,
+        column=46.5,
         pitch=2.0,
-        centre=44.0,
+        centre=72.0,
         width=SIG,
     )
 
@@ -9289,321 +9434,68 @@ def fpga_audio() -> Design:
         anchored.append(Track("GND", "F.Cu", 0.4, [f"{cref}.2", site]))
         placed.add(cref)
 
-    # The 1.2 V rail gets a stated back-side spine. Its west bend sits outside
-    # the FPGA escape comb, while the east end stops before the exposed-pad
-    # via field. Local consumers tap this short trunk instead of touring the
-    # board edge around the SPI fanout.
-    SPINE_1V2 = ((24.0, 30.25), (34.2, 30.25))
-    # Both ends join B.Cu runs: neither needs a layer-change via. A via on
-    # the west bend was redundant once the feed's fixed-layer intent survived
-    # cleanup (KiCad 9 reports it as via_dangling).
-    anchored.append(Track("+1V2", "B.Cu", SIG, [SPINE_1V2[0], SPINE_1V2[1]]))
+    # The 1.2 V rail gets a stated spine, the way the motor board states its
+    # VM link. Its consumers sit on both sides of the FPGA, and every
+    # east-west lane south of the package is a comb of SPI escapes - routed
+    # link by link the rail toured the south edge of the board to get
+    # across (122 mm for 39). The one corridor nothing else can use is under
+    # the FPGA's own die: the QFN's pads are surface copper, the strip
+    # between its south pad row and its ground-via grid is empty on the
+    # back, and the rail is the package's own supply, so nothing foreign
+    # runs under anything. One straight stroke, back side, a via at each
+    # end; the links then tap it wherever is nearest.
+    # The west via sits west of the escape column (x = 27), because the
+    # column is a comb of horizontal escape lines at every half-millimetre
+    # of y and a through via parked in the comb lands on whichever line owns
+    # that lane. The east via stops short of the east pad row by its own
+    # clearance, and the whole stroke sits at 42.25 - a quarter-millimetre
+    # off the south pad row's reach (their inner ends are at y = 43.01, and
+    # at 42.5 the via missed them by a tenth), and still on the router's
+    # grid, which is what lets a tee land on the stroke at all.
+    SPINE_1V2 = ((25.5, 42.25), (42.2, 42.25))
+    vias.append(Via("+1V2", x=SPINE_1V2[0][0], y=SPINE_1V2[0][1]))
+    # No via on the east end: the exposed pad owns the die centre on the
+    # front - a through via there is a short against U1's ground paddle -
+    # and none is needed, because the east tap is a back-side link that
+    # starts exactly where the stroke ends.
+    anchored.append(Track("+1V2", "B.Cu", POWER, [SPINE_1V2[0], SPINE_1V2[1]]))
 
     # Every endpoint goes through `end`, which returns the far end of a pin's
     # escape when it has one and the pad itself when it does not.
     tracks = [*escapes, *anchored]
-    core_feed = (20.525, 26.775)
-    tracks += [
-        Track("+1V2", "F.Cu", SIG, ["C4.1", core_feed]),
-        Track("+1V2", "B.Cu", SIG, [core_feed, SPINE_1V2[0]], keep_layer=True),
-    ]
-    vias.append(Via("+1V2", x=core_feed[0], y=core_feed[1]))
-    tracks.append(Track("+1V2", "F.Cu", SIG, ["C4.1", end("U1.5")]))
-    # The inner 3.3 V plane replaces the long outer-layer trunk. Each local
-    # island reaches it through a via beside (never inside) its bypass land.
-    for pad, site in (("C1.1", (8.275, 15.75)), ("C10.1", (42.0, 31.775))):
-        tracks.append(Track("+3V3", "F.Cu", POWER, [pad, site]))
-        vias.append(Via("+3V3", x=site[0], y=site[1]))
-    for pad, site in (("C6.1", (38.775, 16.75)), ("C7.1", (41.225, 16.75))):
-        tracks.append(Track("+3V3", "F.Cu", SIG, [pad, site]))
-        vias.append(Via("+3V3", x=site[0], y=site[1]))
-    tracks.append(Track("+3V3", "F.Cu", SIG, ["C8.1", (42.225, 42.25)]))
-    vias.append(Via("+3V3", x=42.225, y=42.25))
-    for pad, site in (("R1.1", (16.0, 29.2)), ("R2.1", (16.0, 27.0))):
-        tracks.append(Track("+3V3", "F.Cu", SIG, [pad, site]))
-        vias.append(Via("+3V3", x=site[0], y=site[1]))
-    reset_bank_site = end("U1.1")
-    vias.append(
-        Via(
-            "+3V3",
-            x=reset_bank_site[0],
-            y=reset_bank_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    tracks += [
-        Track("+3V3", "F.Cu", SIG, ["C8.1", end("U4.8")]),
-        Track("+3V3", "F.Cu", SIG, ["C8.1", end("U4.7")]),
-    ]
-    for pad, site in (
-        ("C9.1", (33.225, 10.75)),
-        ("R4.1", (17.225, 46.75)),
-        ("C16.1", (60.0, 41.025)),
-    ):
-        tracks.append(Track("+3V3", "F.Cu", SIG, [pad, site]))
-        vias.append(Via("+3V3", x=site[0], y=site[1]))
-    bank_plane_site = (42.5, 29.2)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.17"), bank_plane_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=bank_plane_site[0],
-            y=bank_plane_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    fpga_bank_site = (37.2, 36.0)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U1.24"), fpga_bank_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=fpga_bank_site[0],
-            y=fpga_bank_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    south_bank_site = (34.8, 36.8)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U1.22"), south_bank_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=south_bank_site[0],
-            y=south_bank_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    # Stay west of the diagonal I2S bundle on B.Cu. At x=40.8 this through
-    # via had only 0.20 mm clearance once fixed-layer intent was preserved.
-    east_bank_site = (40.0, 26.0)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U1.33"), east_bank_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=east_bank_site[0],
-            y=east_bank_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    codec_bank_site = (58.8, 32.8)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.1"), codec_bank_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=codec_bank_site[0],
-            y=codec_bank_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    flash_hold_site = (24.7, 45.0)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U4.3"), flash_hold_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=flash_hold_site[0],
-            y=flash_hold_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    codec_supply_site = end("U2.8")
-    vias.append(
-        Via(
-            "+3V3",
-            x=codec_supply_site[0],
-            y=codec_supply_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    codec_bypass_site = (61.225, 21.5)
-    tracks.append(Track("+3V3", "F.Cu", SIG, ["C11.1", codec_bypass_site]))
-    vias.append(Via("+3V3", x=codec_bypass_site[0], y=codec_bypass_site[1]))
-    ldo_link = ((42.5, 30.0), (46.75, 34.775))
-    vias += [
-        Via("LDOO", x=ldo_link[0][0], y=ldo_link[0][1], size=0.58, drill=0.3),
-        Via("LDOO", x=ldo_link[1][0], y=ldo_link[1][1]),
-    ]
-    tracks += [
-        Track("LDOO", "F.Cu", SIG, [end("U2.18"), ldo_link[0]]),
-        Track(
-            "LDOO",
-            "B.Cu",
-            SIG,
-            [ldo_link[0], (46.75, 34.25), ldo_link[1]],
-            keep_layer=True,
-        ),
-        Track("LDOO", "F.Cu", SIG, [ldo_link[1], "C12.1"]),
-    ]
-    # The PLL bypass is directly below its east-side pin but the intervening
-    # outer-layer corridor carries the codec bus. A short back-side link uses
-    # the new inner reference plane instead of cutting the return path.
-    pll_link = ((40.8, 29.2), (41.75, 37.225))
-    vias += [
-        Via("VCCPLL", x=pll_link[0][0], y=pll_link[0][1], size=0.58, drill=0.3),
-        Via("VCCPLL", x=pll_link[1][0], y=pll_link[1][1]),
-    ]
-    tracks += [
-        Track("VCCPLL", "F.Cu", SIG, [end("U1.29"), pll_link[0]]),
-        Track(
-            "VCCPLL",
-            "B.Cu",
-            SIG,
-            [pll_link[0], (39.0, 31.0), (39.0, 34.475), pll_link[1]],
-            keep_layer=True,
-        ),
-        Track("VCCPLL", "F.Cu", SIG, [pll_link[1], "C5.1"]),
-    ]
-    # C10's lands follow the neighbouring codec pins: supply above, ground
-    # below.  These two short parallel entries are the bypass loop; leaving
-    # them to a grid search made the ground land look like a wall in front of
-    # the supply land.
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.20"), (40.175, 31.6), "C10.1"]))
-    # The I2S pins face each other in the same order. They drop at the ends of
-    # their two escape fans and cross on B.Cu as four parallel 45-degree runs;
-    # In2 power is the adjacent inner layer, not In1 GND. Multilayer reference
-    # continuity still needs stack-up/return-transition review; the two-layer
-    # return-path heuristic does not certify these lanes.
-    for net, source, sink, knee in (
-        ("I2S_SCK", "U1.36", "U2.12", ((41.0, 23.6), (42.6, 25.2))),
-        ("I2S_BCK", "U1.35", "U2.13", ((41.0, 24.4), (42.6, 26.0))),
-        ("I2S_DIN", "U1.34", "U2.14", ((41.0, 25.2), (42.6, 26.8))),
-        ("I2S_LRCK", "U1.32", "U2.15", ((41.0, 26.8), (41.8, 27.6))),
-    ):
-        source_site, sink_site = end(source), end(sink)
-        vias += [
-            Via(net, x=source_site[0], y=source_site[1], size=0.58, drill=0.3),
-            Via(net, x=sink_site[0], y=sink_site[1], size=0.58, drill=0.3),
-        ]
-        tracks.append(
-            Track(
-                net,
-                "B.Cu",
-                SIG,
-                [source_site, *knee, sink_site],
-                keep_layer=True,
-            )
-        )
-    tracks.append(
-        Track(
-            "VNEG",
-            "F.Cu",
-            SIG,
-            [end("U2.5"), (62.0, 28.4), (65.225, 31.625), "C14.1"],
-        )
-    )
-    tracks += [
-        Track("OUTR", "F.Cu", SIG, [end("U2.7"), (69.2, 26.8), "J2.1"]),
-        Track("OUTL", "F.Cu", SIG, [end("U2.6"), (68.5, 27.6), (69.44, 28.54), "J2.2"]),
-        Track(
-            "CAPP",
-            "F.Cu",
-            SIG,
-            [end("U2.2"), (61.025, 30.8), "C13.1"],
-        ),
-        Track(
-            "CAPM",
-            "F.Cu",
-            SIG,
-            [end("U2.4"), (60.975, 29.2), "C13.2"],
-        ),
-    ]
-    # The boot bus has to swap sides between the FPGA and flash. SS and SO have
-    # independent front-layer lanes. SI crosses the fan on the back; SCK uses
-    # a narrow In2 lane through the +3V3 pour, both referenced to solid In1.
-    tracks += [
-        Track(
-            "SPI_SS",
-            "F.Cu",
-            SIG,
-            [end("U1.16"), (25.0, 41.0), end("U4.1")],
-        ),
-        Track(
-            "SPI_SO",
-            "F.Cu",
-            SIG,
-            [end("U1.14"), (23.0, 41.4), (23.0, 43.0), end("U4.2")],
-        ),
-        Track(
-            "SPI_SO",
-            "F.Cu",
-            SIG,
-            [
-                end("U4.2"),
-                (24.0, 44.5),
-                (24.0, 45.0),
-                (22.5, 46.5),
-                (25.5, 49.5),
-                (30.54, 49.5),
-                "J3.2",
-            ],
-        ),
-    ]
-    sck_source = (29.2, 35.2)
-    sck_destination = (40.5, 45.0)
-    vias += [
-        Via("SPI_SCK", x=sck_source[0], y=sck_source[1], size=0.58, drill=0.3),
-        Via("SPI_SCK", x=sck_destination[0], y=sck_destination[1]),
-    ]
-    tracks += [
-        Track("SPI_SCK", "F.Cu", SIG, [end("U1.15"), sck_source]),
-        Track(
-            "SPI_SCK",
-            "In2.Cu",
-            SIG,
-            [sck_source, (39.0, 35.2), (39.0, 43.5), sck_destination],
-            keep_layer=True,
-        ),
-        Track("SPI_SCK", "F.Cu", SIG, [sck_destination, end("U4.6")]),
-        Track(
-            "SPI_SCK",
-            "In2.Cu",
-            SIG,
-            [sck_destination, (35.62, 49.88), (35.62, 50.5)],
-            keep_layer=True,
-        ),
-        Track("SPI_SCK", "F.Cu", SIG, [(35.62, 50.5), "J3.4"]),
-    ]
-    vias.append(Via("SPI_SCK", x=35.62, y=50.5))
-    si_source = end("U1.17")
-    si_destination = (40.5, 47.0)
-    vias += [
-        Via("SPI_SI", x=si_source[0], y=si_source[1], size=0.58, drill=0.3),
-        Via("SPI_SI", x=si_destination[0], y=si_destination[1]),
-    ]
-    tracks += [
-        Track(
-            "SPI_SI",
-            "B.Cu",
-            SIG,
-            [si_source, (30.8, 37.3), si_destination],
-            keep_layer=True,
-        ),
-        Track("SPI_SI", "F.Cu", SIG, [si_destination, end("U4.5")]),
-        Track(
-            "CRESET",
-            "F.Cu",
-            SIG,
-            [end("U1.8"), "R1.2"],
-        ),
-        Track(
-            "CDONE",
-            "F.Cu",
-            SIG,
-            [end("U1.7"), (20.225, 28.4), "R2.2"],
-        ),
-    ]
     routes = [
-        ("+3V3", POWER, [("J1.1", "C1.1"), ("C1.1", "U3.1"), ("C1.1", "C2.1"), ("C2.1", "U3.3")]),
+        ("VIN", POWER, [("J1.1", "F1.1")]),
+        # The input rail is wide as far as the capacitors; into the regulator
+        # it goes at the SOT-23-5's own escape width, because a 0.4 mm run
+        # landing on a 0.2 mm neck steps down in the open, and the neck is
+        # what sets the current anyway. The whole board draws under 100 mA.
+        ("+3V3", POWER, [("F1.2", "D3.1"), ("F1.2", "C1.1"), ("C1.1", "C2.1")]),
+        ("+3V3", SIG, [("C1.1", "U3.1"), ("C2.1", "U3.3")]),
         (
             "+3V3",
             SIG,
             [
+                ("C2.1", "R1.1"),
+                ("R1.1", "R2.1"),
+                ("R2.1", "U1.1"),
+                ("U1.22", "C6.1"),
+                ("C6.1", "U1.33"),
+                ("U1.33", "C7.1"),
+                ("C7.1", "U1.24"),
+                ("C7.1", "C10.1"),
+                ("C10.1", "U2.20"),
+                ("C10.1", "C11.1"),
+                ("C11.1", "U2.8"),
+                ("C11.1", "C16.1"),
+                ("C16.1", "U2.1"),
+                ("R2.1", "C8.1"),
+                # ...and this is what joins the input side to the bank supplies.
+                # Without it +3V3 is two islands that the schematic calls one net.
+                ("C8.1", "U1.22"),
+                ("C8.1", "U4.8"),
+                ("C8.1", "U4.3"),
+                ("U4.3", "U4.7"),
+                ("C8.1", "C9.1"),
                 ("C9.1", "X1.4"),
                 ("C9.1", "X1.1"),
             ],
@@ -9614,19 +9506,37 @@ def fpga_audio() -> Design:
             [
                 ("U3.5", "C3.1"),
                 ("C3.1", "C4.1"),
+                ("C4.1", "U1.5"),
                 # ...one link into each end of the stated spine, in place of
                 # the C4-to-C15 haul that had to cross the SPI comb. (The
                 # east tap is stated separately below: it has to leave on
                 # the back.)
+                ("C4.1", SPINE_1V2[0]),
                 ("C15.1", "U1.30"),
                 ("C15.1", "R3.1"),
             ],
         ),
-        ("VCCPLL", SIG, [("R3.2", "C17.1"), ("C17.1", "C5.1")]),
-        ("SPI_SS", SIG, [("U4.1", "J3.1"), ("J3.1", "R4.2")]),
-        ("SPI_SI", SIG, [("U4.5", "J3.5")]),
-        ("CRESET", SIG, [("R1.2", "J3.3")]),
-        ("CLK12", SIG, [("X1.3", "U1.37")]),
+        ("VCCPLL", SIG, [("R3.2", "C17.1"), ("C17.1", "C5.1"), ("C5.1", "U1.29")]),
+        ("SPI_SS", SIG, [("U1.16", "U4.1"), ("U4.1", "J3.1"), ("J3.1", "R4.2")]),
+        ("+3V3", SIG, [("C8.1", "R4.1")]),
+        ("SPI_SCK", SIG, [("U1.15", "U4.6"), ("U4.6", "J3.2")]),
+        ("SPI_SI", SIG, [("U1.17", "U4.5"), ("U4.5", "J3.3")]),
+        ("SPI_SO", SIG, [("U1.14", "U4.2"), ("U4.2", "J3.4")]),
+        ("CRESET", SIG, [("U1.8", "R1.2"), ("R1.2", "J3.5")]),
+        ("CDONE", SIG, [("U1.7", "R2.2")]),
+        ("OSC_OUT", SIG, [("X1.3", "R5.1")]),
+        ("CLK12", SIG, [("R5.2", "U1.37")]),
+        ("XSMT", SIG, [("U1.31", "R6.1"), ("R6.1", "U2.17")]),
+        ("I2S_SCK", SIG, [("U1.36", "U2.12")]),
+        ("I2S_BCK", SIG, [("U1.35", "U2.13")]),
+        ("I2S_DIN", SIG, [("U1.34", "U2.14")]),
+        ("I2S_LRCK", SIG, [("U1.32", "U2.15")]),
+        ("OUTL", SIG, [("U2.6", "J2.3")]),
+        ("OUTR", SIG, [("U2.7", "J2.1")]),
+        ("LDOO", SIG, [("U2.18", "C12.1")]),
+        ("CAPP", SIG, [("U2.2", "C13.1")]),
+        ("CAPM", SIG, [("U2.4", "C13.2")]),
+        ("VNEG", SIG, [("U2.5", "C14.1")]),
     ]
     for net, width, pairs in routes:
         for a, b in pairs:
@@ -9636,83 +9546,43 @@ def fpga_audio() -> Design:
     # the pocket between the QFN's own pad rows, and on the front the rows
     # are the wall - the first regeneration proved there is no lane. The
     # goal stays on the front because C15's pad is front copper.
-    tracks.append(
-        Track(
-            "+1V2",
-            "B.Cu",
-            SIG,
-            [SPINE_1V2[1], "C15.1"],
-            auto=True,
-            goal_layer="F.Cu",
-        )
-    )
+    tracks.append(Track("+1V2", "B.Cu", SIG, [SPINE_1V2[1], "C15.1"], auto=True, goal_layer="F.Cu"))
 
     # A capacitor appears here only if nothing legal stood beside its ground
     # pad: normally its via is placed against the pad above, which is the loop
     # the part exists to close. The rest are the grounds a stub genuinely has
     # to carry - a connector pin, an oscillator can, the codec's own pads.
     for pad, target in (
-        ("C4.2", (20.0, 28.0)),
-        ("C5.2", (43.0, 40.5)),
-        ("C17.2", (46.0, 40.5)),
-        ("C6.2", (43.0, 20.0)),
-        ("C7.2", (43.0, 25.0)),
-        ("C8.2", (38.0, 47.0)),
-        ("C16.2", (60.0, 42.0)),
-        ("C12.2", (48.0, 37.0)),
-        ("C14.2", (68.0, 36.0)),
-        ("J1.2", (10.0, 12.0)),
-        ("U3.2", (6.0, 20.0)),
-        ("X1.2", (28.0, 8.0)),
-        ("U4.4", (24.0, 48.0)),
+        ("C4.2", (22.5, 36.0)),
+        ("C5.2", (56.0, 40.8)),
+        ("C17.2", (59.0, 40.8)),
+        ("C6.2", (59.0, 43.5)),
+        ("C7.2", (60.5, 46.5)),
+        ("C8.2", (46.0, 71.0)),
+        ("C16.2", (89.0, 52.0)),
+        ("C12.2", (60.0, 53.0)),
+        ("C14.2", (91.5, 47.0)),
+        ("J1.2", (12.0, 12.0)),
+        ("D3.2", (27.0, 10.0)),
+        ("R6.2", (58.5, 33.5)),
+        ("U3.2", (6.0, 24.0)),
+        ("X1.2", (30.0, 10.0)),
+        ("U4.4", (30.0, 76.0)),
         # The codec's grounds - two real ones and three mode pins strapped low -
         # drop through beside their own escapes rather than walking west into a
         # corridor that four other nets are already using.
-        ("U2.19", (42.5, 31.5)),
-        ("U2.11", (42.5, 23.5)),
-        ("U2.16", (42.5, 28.4)),
-        ("U2.10", (62.0, 21.5)),
-        ("U2.9", (62.0, 25.5)),
-        ("U2.3", (62.0, 30.5)),
-        ("J2.3", (71.0, 34.0)),
-        ("J3.6", (43.0, 54.0)),
+        ("U2.19", (62.5, 43.5)),
+        ("U2.11", (62.5, 35.5)),
+        ("U2.16", (62.5, 40.5)),
+        ("U2.10", (86.0, 33.5)),
+        ("U2.9", (86.0, 37.5)),
+        ("U2.3", (86.0, 42.5)),
+        ("J2.2", (95.5, 45.5)),
+        ("J3.6", (78.0, 70.0)),
     ):
         if pad.partition(".")[0] in placed:
             continue
-        if pad == "U2.19":
-            # The codec's digital-ground pin returns through the ground side
-            # of its nearest 3.3 V bypass.  Reusing C10's anchored plane via is
-            # both shorter and cleaner than placing a second via beside it.
-            tracks.append(Track("GND", "F.Cu", SIG, [end(pad), (40.575, 30.8), "C10.2"]))
-            continue
-        if pad == "U2.11":
-            # The low-strapped filter pin continues the 0.8 mm via row used by
-            # the I2S fan; a 0.58 mm land leaves the board's 0.2 mm clearance.
-            site = end(pad)
-            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
-            continue
-        if pad == "U2.3":
-            # The analogue ground pin sits between the flying-capacitor pins.
-            # Their two explicit lanes leave a 1.6 mm slot, just enough for a
-            # centred via and a short ground neck.
-            site = (58.8, 30.0)
-            tracks.append(Track("GND", "F.Cu", SIG, [end(pad), site]))
-            vias.append(Via("GND", x=site[0], y=site[1]))
-            continue
-        if pad == "U2.16":
-            site = end(pad)
-            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
-            continue
-        if pad in {"U2.9", "U2.10"}:
-            site = end(pad)
-            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
-            continue
-        if pad == "U4.4":
-            site = end(pad)
-            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
-            continue
-        width = SIG if pad.startswith("U2.") else 0.4
-        tracks.append(Track("GND", "F.Cu", width, [end(pad), target], auto=True, goal_layer="B.Cu"))
+        tracks.append(Track("GND", "F.Cu", 0.4, [end(pad), target], auto=True, goal_layer="B.Cu"))
     return replace(design, tracks=tracks, vias=vias)
 
 

@@ -106,14 +106,10 @@ THRESHOLDS = {
     # What a connector wants beyond its courtyard: the mating shell, the wires
     # leaving a screw terminal, and the fingers that fit both.
     "connector_access_mm": 2.0,
-    # The band of pour just inside its own outline that has to survive as one
-    # unbroken ring. It is the board's outermost copper: the shield the edge
-    # radiates into, the return every edge-hugging track leans on, and the
-    # copper balance a fabricator reads when it plates the panel.
-    "pour_edge_band_mm": 1.0,
-    # How long a bite out of that ring may be before it stops being a hole and
-    # starts being a cut. A mounting hole and its clearance make a legitimate
-    # gap of a few millimetres; a track laid along the edge makes a longer one.
+    # How long a bite out of the pour's outer ring may be before it stops being
+    # a hole and starts being a cut. A mounting hole and its clearance make a
+    # legitimate gap of a few millimetres; a track laid along the edge makes a
+    # longer one.
     "max_pour_edge_gap_mm": 3.0,
 }
 
@@ -419,16 +415,17 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "warning",
     ),
     "route.via_under_package": RuleSpec(
-        "a via under the body of an integrated circuit or a connector. It "
-        "cannot be inspected once the part is down, its barrel sits against "
-        "whatever the package's underside is, and on a part with an exposed "
-        "pad it is a solder path out of the joint. Thermal vias inside the "
-        "part's own pad are what the pad is for and are not counted",
+        "a via of another net under the body of an integrated circuit or a "
+        "connector. It cannot be inspected once the part is down, its barrel "
+        "sits against whatever the package's underside is, and on a part with "
+        "an exposed pad it is a solder path out of the joint. Vias on the "
+        "part's own nets, and thermal vias inside its own pads, are what that "
+        "copper is for and are not counted",
         "warning",
     ),
     "layout.pour_edge_cut": RuleSpec(
-        "a track that eats through the outermost `pour_edge_band_mm` of the "
-        "ground pour, leaving a gap in that ring longer than "
+        "a track that eats through the outermost millimetre of the ground "
+        "pour, leaving a gap in that ring longer than "
         "`max_pour_edge_gap_mm`. The rim is the copper the board radiates "
         "into and the return every edge-hugging track leans on; a mounting "
         "hole may interrupt it, a route may not",
@@ -1515,21 +1512,26 @@ def rule_via_under_package(ctx: PcbContext) -> list[Finding]:
     fine-pitch part, it belongs just outside the body, which is where the
     escape fan is going anyway.
 
-    The exception is the thermal via array a part's own exposed pad is *for*:
-    a via that lands inside one of that footprint's own pads is doing the job
-    the pad asks of it, and is not counted.
+    Two things under there are not this: a via on a net the part itself
+    carries - the ground stitching under a connector, the return under a
+    package's own corner - which is the part's own copper the same way its
+    escapes are, and a via inside one of the part's own pads, which is the
+    thermal array an exposed pad exists to have. What is left is somebody
+    else's net, dropped through the one gap that looked free.
     """
     board = ctx.board
     by_fp: dict[str, list[str]] = {}
     positions: list[tuple[float, float]] = []
-    for fp, body, _own in _bodies_to_keep_clear(board):
+    for fp, body, own in _bodies_to_keep_clear(board):
         pads = [pad.bbox(angle_offset=fp.angle) for pad in fp.pads]
         for via in board.vias:
+            if via.net in own or not via.net:
+                continue
             if not _point_in_box((via.x, via.y), body):
                 continue
             if any(_point_in_box((via.x, via.y), pad) for pad in pads):
                 continue  # a thermal via in the part's own pad
-            by_fp.setdefault(fp.ref, []).append(via.net or "<no net>")
+            by_fp.setdefault(fp.ref, []).append(via.net)
             positions.append((via.x, via.y))
     if not by_fp:
         return []
@@ -2086,6 +2088,13 @@ def rule_pour_coverage(ctx: PcbContext) -> list[Finding]:
 # track cuts, coarse enough that a whole perimeter is a few hundred points.
 RIM_STEP_MM = 0.5
 
+# The band of pour just inside its own outline that has to survive as one
+# unbroken ring: the board's outermost copper, the shield the edge radiates
+# into, and the return every edge-hugging track leans on. A constant, like the
+# hairpin window, because it and `max_pour_edge_gap_mm` tune one finding and
+# only the length of an acceptable interruption is a house decision.
+POUR_RIM_BAND_MM = 1.0
+
 
 @rule
 def rule_pour_edge_cut(ctx: PcbContext) -> list[Finding]:
@@ -2105,10 +2114,8 @@ def rule_pour_edge_cut(ctx: PcbContext) -> list[Finding]:
     routing decision, and the fix is to move the route inboard. So a gap is
     only reported when a track or a via of another net is standing in it.
     """
-    band = ctx.thresholds["pour_edge_band_mm"]
+    band = POUR_RIM_BAND_MM
     limit = ctx.thresholds["max_pour_edge_gap_mm"]
-    if band <= 0:
-        return []
     findings = []
     for zone in ctx.board.zones:
         if zone.keepout or not zone.filled or not netlist_helpers_is_ground(zone.net):
@@ -2146,9 +2153,7 @@ def rule_pour_edge_cut(ctx: PcbContext) -> list[Finding]:
     return findings
 
 
-def _rim_samples(
-    outline: list[tuple[float, float]], band: float
-) -> list[tuple[float, float]]:
+def _rim_samples(outline: list[tuple[float, float]], band: float) -> list[tuple[float, float]]:
     """Points walking the pour's outline, stepped inward into the rim band.
 
     The inward direction is the polygon's own: the interior lies to the left
@@ -2166,9 +2171,7 @@ def _rim_samples(
         nx, ny = -dy / length * inward, dx / length * inward
         for index in range(max(1, int(length / RIM_STEP_MM))):
             t = index * RIM_STEP_MM / length
-            samples.append(
-                (ax + dx * t + nx * band / 2.0, ay + dy * t + ny * band / 2.0)
-            )
+            samples.append((ax + dx * t + nx * band / 2.0, ay + dy * t + ny * band / 2.0))
     return samples
 
 

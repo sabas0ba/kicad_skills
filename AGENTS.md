@@ -69,10 +69,13 @@ belongs in `_AI_BLOCKING` in the same file. `tests/test_gate.py` covers both.
 ## Regenerating the worked examples
 
 `tools/make_examples.py` builds both variants of every design in `examples/`.
-Routing is what it spends its time on: the FPGA board is a 48-pin QFN on four
-layers, with two outer routing layers and two inner planes. The motor-driver
-also uses four layers. Cold regeneration of the five examples takes tens of
-minutes on CI, and a net that finds no room sends the routing pass round again.
+Routing is what it spends its time on: the FPGA board is a 48-pin QFN escaped
+on two layers, which is the hardest board in the set. **All five examples are
+two-layer**, and are meant to stay that way: layer count is the one board
+parameter that changes the price of a prototype run outright, so a design that
+will not close on two layers grows a few millimetres before it grows a stack.
+Cold regeneration of the five examples takes tens of minutes on CI, and a net
+that finds no room sends the routing pass round again.
 
 So the routed copper is cached under `.cache/routes/` (git-ignored), keyed by
 everything the router reads — the outline, the parts and their pads, every

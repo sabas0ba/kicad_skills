@@ -1041,6 +1041,99 @@ def test_a_foreign_track_under_a_package_is_reported():
     assert pcb_review.rule_route_under_package(ctx_for(around)) == []
 
 
+def two_pin_connector(ref="J1", x=10.0, y=10.0):
+    """A screw terminal: two pads, and a body that reaches well past them."""
+    part = footprint(ref, x, y, [pad("1", x, y, "VIN"), pad("2", x + 5, y, "GND")])
+    part.courtyard = [(x - 3, y - 5), (x + 8, y - 5), (x + 8, y + 5), (x - 3, y + 5)]
+    return part
+
+
+def test_a_foreign_track_under_a_connector_is_reported():
+    """Two pads, but a body a cable plugs into: the copper under it is hidden."""
+    terminal = two_pin_connector()
+    under = board_from(footprints=[terminal], tracks=[track(0, 12, 30, 12, net="OTHER")])
+    assert [f.rule for f in pcb_review.rule_route_under_package(ctx_for(under))] == [
+        "route.under_package"
+    ]
+    # its own nets belong there - that is what a pad escape is
+    own = board_from(footprints=[terminal], tracks=[track(0, 12, 30, 12, net="VIN")])
+    assert pcb_review.rule_route_under_package(ctx_for(own)) == []
+    clear = board_from(footprints=[terminal], tracks=[track(0, 20, 30, 20, net="OTHER")])
+    assert pcb_review.rule_route_under_package(ctx_for(clear)) == []
+
+
+def test_a_foreign_via_under_a_package_is_reported():
+    ic = footprint("U1", 20, 20, [pad(str(i), 16 + i, 16, "OWN") for i in range(1, 9)])
+    ic.pads += [pad(str(i + 8), 16 + i, 24, "OWN") for i in range(1, 9)]
+    foreign = pcb.Via(20, 20, 0.8, 0.4, ["F.Cu", "B.Cu"], 1, "OTHER")
+    board = board_from(footprints=[ic], vias=[foreign])
+    assert [f.rule for f in pcb_review.rule_via_under_package(ctx_for(board))] == [
+        "route.via_under_package"
+    ]
+    # the part's own net under its own body is the stitching it wants
+    mine = pcb.Via(20, 20, 0.8, 0.4, ["F.Cu", "B.Cu"], 1, "OWN")
+    assert pcb_review.rule_via_under_package(ctx_for(board_from([ic], vias=[mine]))) == []
+    # and so is a thermal via inside one of its pads, whatever the net
+    exposed = footprint("U2", 20, 20, [pad("1", 20, 20, "OWN", size=(4.0, 4.0))])
+    exposed.pads += [pad(str(i + 1), 16 + i, 26, "OWN") for i in range(1, 9)]
+    thermal = pcb.Via(20, 20, 0.4, 0.2, ["F.Cu", "B.Cu"], 1, "GND")
+    assert pcb_review.rule_via_under_package(ctx_for(board_from([exposed], vias=[thermal]))) == []
+
+
+def ring_zone(net="GND", layer="B.Cu", gap=None):
+    """A square pour, optionally with a stretch of its rim missing."""
+    outline = [(2.0, 2.0), (48.0, 2.0), (48.0, 38.0), (2.0, 38.0)]
+    if gap is None:
+        fill = list(outline)
+    else:
+        # the fill stops short of the left edge between the two gap heights,
+        # which is what a track laid up that edge leaves behind
+        low, high = gap
+        fill = [
+            (2.0, 2.0),
+            (48.0, 2.0),
+            (48.0, 38.0),
+            (2.0, 38.0),
+            (2.0, high),
+            (6.0, high),
+            (6.0, low),
+            (2.0, low),
+        ]
+    return pcb.Zone(net=net, layers=[layer], filled=True, outline=outline, fills=[(layer, fill)])
+
+
+def test_a_route_that_eats_the_pours_outer_ring_is_an_error():
+    intact = board_from(zones=[ring_zone()])
+    assert pcb_review.rule_pour_edge_cut(ctx_for(intact)) == []
+    # a bite with nothing in it is a mounting hole's business, not this rule's
+    bitten = board_from(zones=[ring_zone(gap=(10.0, 30.0))])
+    assert pcb_review.rule_pour_edge_cut(ctx_for(bitten)) == []
+    # the same bite with a foreign track standing in it is the finding
+    cut = board_from(
+        zones=[ring_zone(gap=(10.0, 30.0))],
+        tracks=[track(3.0, 10.0, 3.0, 30.0, width=0.5, net="SIG", layer="B.Cu")],
+    )
+    findings = pcb_review.rule_pour_edge_cut(ctx_for(cut))
+    assert [f.rule for f in findings] == ["layout.pour_edge_cut"]
+    assert findings[0].severity == "error"
+    assert findings[0].details["longest_gap_mm"] >= 20.0
+    # a track on the other face removes no copper from this one
+    other_face = board_from(
+        zones=[ring_zone(gap=(10.0, 30.0))],
+        tracks=[track(3.0, 10.0, 3.0, 30.0, width=0.5, net="SIG", layer="F.Cu")],
+    )
+    assert pcb_review.rule_pour_edge_cut(ctx_for(other_face)) == []
+
+
+def test_a_short_bite_out_of_the_rim_is_not_a_cut():
+    """A through-hole land at the edge interrupts the ring and is allowed to."""
+    nibbled = board_from(
+        zones=[ring_zone(gap=(20.0, 22.0))],
+        tracks=[track(3.0, 20.0, 3.0, 22.0, width=0.5, net="SIG", layer="B.Cu")],
+    )
+    assert pcb_review.rule_pour_edge_cut(ctx_for(nibbled)) == []
+
+
 def test_a_keepout_left_at_the_origin_is_reported():
     """A footprint zone is stored in board coordinates, so a placer that moves
     the pads and forgets the zone leaves the keep-out where the library drew
