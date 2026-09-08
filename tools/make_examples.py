@@ -9133,11 +9133,12 @@ def fpga_audio() -> Design:
         # arrives once rather than ringing. R6 holds the codec muted until
         # the FPGA is configured and drives XSMT high itself.
         res("R5", "33R", (71.12, 149.86), (31.0, 18.5, 0.0), "RC0603FR-0733RL"),
-        # R6 sits at XSMT's own pin. At (61, 33.5) it was thirteen
-        # millimetres away with the codec's bypass bank in between, and the
-        # router spent ninety-seven millimetres of copper getting there -
-        # `route.wander` at 7.1x, and `route.detour` on the whole net.
-        res("R6", "10k", (287.02, 127.0), (55.0, 40.0, 90.0), "RC0603FR-0710KL"),
+        # R6 stays north of the corridor between the FPGA and the codec.
+        # In the corridor it is nearer XSMT's own escape and blocks the lane
+        # four other nets use to cross - the router could not seat its own
+        # ground stub there, let alone the rest. The distance costs XSMT a
+        # `route.wander`; the corridor would cost five nets a detour each.
+        res("R6", "10k", (287.02, 127.0), (61.0, 33.5, 0.0), "RC0603FR-0710KL"),
         cap("C10", "100n", (244.0, 132.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C11", "100n", (300.0, 62.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C16", "100n", (328.0, 62.0), (89.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
@@ -9621,7 +9622,7 @@ def fpga_audio() -> Design:
         ("C14.2", (91.5, 47.0)),
         ("J1.2", (12.0, 12.0)),
         ("D3.2", (27.0, 10.0)),
-        ("R6.2", (52.5, 37.5)),
+        ("R6.2", (58.5, 33.5)),
         ("U3.2", (6.0, 24.0)),
         ("X1.2", (30.0, 10.0)),
         ("U4.4", (32.0, 66.0)),
