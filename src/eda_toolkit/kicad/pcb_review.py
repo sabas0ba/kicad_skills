@@ -428,8 +428,11 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "pour, leaving a gap in that ring longer than "
         "`max_pour_edge_gap_mm`. The rim is the copper the board radiates "
         "into and the return every edge-hugging track leans on; a mounting "
-        "hole may interrupt it, a route may not",
-        "error",
+        "hole may interrupt it, a route may not. A warning because a shipped "
+        "board can have a nibbled rim and work - five of KiCad's own eighteen "
+        "demo boards do - and an error under `ai-generated`, where the fix is "
+        "to move the route inboard and nothing is costing anyone a respin",
+        "warning",
         threshold="max_pour_edge_gap_mm",
     ),
     "layout.pour_coverage": RuleSpec(
@@ -2134,7 +2137,7 @@ def rule_pour_edge_cut(ctx: PcbContext) -> list[Finding]:
             findings.append(
                 Finding(
                     "layout.pour_edge_cut",
-                    "error",
+                    "warning",
                     f"{len(cuts)} route(s) cut through the outer {band:.1f} mm ring "
                     f"of the {zone.net} pour on {layer}; the longest gap is "
                     f"{longest:.1f} mm (limit {limit:.1f} mm) - the rim stops being "

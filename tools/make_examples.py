@@ -5714,7 +5714,7 @@ def _stitch_vias(design: Design) -> list[Via]:
     for track in design.tracks:
         points = [resolve(design, point) for point in track.points]
         segments.extend((track.net, track.width, a, b) for a, b in pairwise(points))
-    holes = [via_position(design, via) for via in design.vias]
+    holes = [(via_position(design, via), via.size) for via in design.vias]
 
     def clears(vx: float, vy: float) -> bool:
         radius = 0.4
@@ -5741,7 +5741,17 @@ def _stitch_vias(design: Design) -> list[Via]:
             pad = (vx - radius, vy - radius, vx + radius, vy + radius)
             if _segment_to_box(a, b, pad) < width / 2 + 0.45:
                 return False
-        return all(math.dist((vx, vy), hole) >= 1.2 for hole in holes)
+        # Square to `check_board`, so square here as well - and measured
+        # against each existing via's own size rather than a flat distance.
+        # A stitching via 1.25 mm from a 0.8 mm routing via passes any
+        # centre-to-centre rule written for two 0.8 mm holes and still shorts:
+        # what has to clear is the gap between their edges along whichever
+        # axis is tighter, and on the diagonal that is not the distance
+        # between their centres.
+        return all(
+            max(abs(vx - hx), abs(vy - hy)) >= (size + 2 * radius) / 2 + 0.25
+            for (hx, hy), size in holes
+        )
 
     kept: list[Via] = []
 
@@ -5770,7 +5780,7 @@ def _stitch_vias(design: Design) -> list[Via]:
     for vx, vy, along, inward in ring:
         placed = _room_on_the_rim(vx, vy, along, inward)
         if placed is not None:
-            holes.append(placed)
+            holes.append((placed, VIA_SIZE))
             seated.append(placed)
             kept.append(Via(POUR_NET, x=placed[0], y=placed[1]))
 
@@ -5826,7 +5836,7 @@ def _stitch_vias(design: Design) -> list[Via]:
             middle = (start + end) / 2
             placed = _room_on_the_rim(*_station_at(middle), reach=(end - start) / 2)
             if placed is not None:
-                holes.append(placed)
+                holes.append((placed, VIA_SIZE))
                 kept.append(Via(POUR_NET, x=placed[0], y=placed[1]))
                 added.append(_arc_of(*placed))
         if not added:
@@ -5835,7 +5845,7 @@ def _stitch_vias(design: Design) -> list[Via]:
 
     for vx, vy in rim:
         if clears(vx, vy):
-            holes.append((vx, vy))
+            holes.append(((vx, vy), VIA_SIZE))
             kept.append(Via(POUR_NET, x=vx, y=vy))
 
     # Then the guarantee the mesh cannot give: every piece of the front pour
@@ -5898,7 +5908,7 @@ def _stitch_vias(design: Design) -> list[Via]:
                     continue
                 vx, vy = round(vx, 2), round(vy, 2)
                 if clears(vx, vy):
-                    holes.append((vx, vy))
+                    holes.append(((vx, vy), VIA_SIZE))
                     kept.append(Via(POUR_NET, x=vx, y=vy))
                     ground.append((vx, vy))
                     placed = True

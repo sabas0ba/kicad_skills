@@ -1651,7 +1651,7 @@ layers.
 Taking the planes away made two questions worth asking of every board, and the
 merge made a third overdue.
 
-`layout.pour_edge_cut` is an **error**. It walks the ground pour's own outline,
+`layout.pour_edge_cut` walks the ground pour's own outline,
 half a millimetre inside it, and asks whether the fill still reaches all the way
 round. The outer ring is the board's outermost copper: the shield the edge
 radiates into, the return every edge-hugging track leans on, and part of what a
@@ -1660,8 +1660,13 @@ halves of the rim meet only by going the long way round through the middle of
 the plane — which is the loop the rim was closing. Things are allowed to
 interrupt it: a mounting hole and its clearance, a through-hole land at the
 edge, the board's own outline where it steps. A *route* is not, so the rule only
-reports a gap with a foreign track or via standing in it. That distinction is
-what makes an error severity honest here.
+reports a gap with a foreign track or via standing in it.
+
+It reports as a warning and blocks under `ai-generated`. Five of KiCad's own
+eighteen demo boards trip it, and those boards ship: a nibbled rim is a thing a
+human judges, not a thing that is broken on its face. On a board this
+repository generates there is nothing to judge - the fix is to move the route
+inboard, it costs nobody a respin, and the policy makes it an error.
 
 `route.via_under_package` is a warning, and `route.under_package` grew to cover
 connectors as well as chips. Under an integrated circuit there is no plane

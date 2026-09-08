@@ -88,13 +88,15 @@ a 10 mm limit, on two logic lanes crossing under the bridge outputs — and the
 waiver says what a faster design should do instead. CI checks the two-layer
 stack and that the ground pour on B.Cu is still mostly one piece.
 
-Two rules keep the rest of it honest. `layout.pour_edge_cut` refuses copper
+Two rules keep the rest of it honest. `layout.pour_edge_cut` reports copper
 that eats through the outermost millimetre of the ground pour: the rim is what
 the board radiates into and what every edge-hugging track returns through, and
 a mounting hole may interrupt it where a route may not. `route.under_package`
 and `route.via_under_package` keep other nets' tracks and vias out from under
 the integrated circuits and connectors, where nothing can be probed, inspected
-or reworked once the part is down.
+or reworked once the part is down. All three are warnings that the
+`ai-generated` policy blocks on: a shipped board may carry them and be right,
+a generated one has no argument for them.
 
 All five carry what a board needs to be *made* as well as to work: the ground
 pour is filled by KiCad's own filler against the board's own rules, every

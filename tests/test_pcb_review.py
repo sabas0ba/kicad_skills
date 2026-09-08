@@ -1102,7 +1102,7 @@ def ring_zone(net="GND", layer="B.Cu", gap=None):
     return pcb.Zone(net=net, layers=[layer], filled=True, outline=outline, fills=[(layer, fill)])
 
 
-def test_a_route_that_eats_the_pours_outer_ring_is_an_error():
+def test_a_route_that_eats_the_pours_outer_ring_is_reported():
     intact = board_from(zones=[ring_zone()])
     assert pcb_review.rule_pour_edge_cut(ctx_for(intact)) == []
     # a bite with nothing in it is a mounting hole's business, not this rule's
@@ -1115,7 +1115,7 @@ def test_a_route_that_eats_the_pours_outer_ring_is_an_error():
     )
     findings = pcb_review.rule_pour_edge_cut(ctx_for(cut))
     assert [f.rule for f in findings] == ["layout.pour_edge_cut"]
-    assert findings[0].severity == "error"
+    assert findings[0].severity == "warning"
     assert findings[0].details["longest_gap_mm"] >= 20.0
     # a track on the other face removes no copper from this one
     other_face = board_from(
