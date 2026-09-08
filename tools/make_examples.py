@@ -8959,7 +8959,10 @@ def fpga_audio() -> Design:
             "W25Q32JV",
             "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
             sheet=(196.0, 258.0),
-            board=(40.0, 72.0, 0.0),
+            # 62, not 72: the SPI port is on the FPGA's south edge, and at
+            # 72 the bus needed 29 mm to reach it - `layout.connection_span`
+            # before a single track was drawn.
+            board=(40.0, 62.0, 0.0),
             fields={
                 "MPN": "W25Q32JVSSIQ",
                 "Manufacturer": "Winbond",
@@ -9061,7 +9064,10 @@ def fpga_audio() -> Design:
             "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
             # Clear of the title block, which owns the bottom right corner.
             sheet=(268.0, 240.0),
-            board=(74.0, 66.0, 0.0),
+            # 66, not 74: eight millimetres west, still at the bottom edge
+            # the cable arrives from, and it is eight millimetres off every
+            # span this header is one end of.
+            board=(66.0, 66.0, 0.0),
             mirror="y",
             fields={
                 "MPN": "61300611121",
@@ -9118,7 +9124,7 @@ def fpga_audio() -> Design:
         res("R4", "10k", (276.0, 232.0), (56.0, 74.0, 0.0), "RC0603FR-0710KL"),
         cap("C6", "100n", (244.0, 84.0), (57.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C7", "100n", (244.0, 108.0), (61.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C8", "100n", (236.0, 258.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C8", "100n", (236.0, 258.0), (46.0, 66.0, 0.0), "25V", "CL10B104KB8NNNC"),
         # C9 sits clear of R5's label on the sheet; on the board it stays
         # against the oscillator's supply pin.
         cap("C9", "100n", (96.52, 150.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
@@ -9127,14 +9133,22 @@ def fpga_audio() -> Design:
         # arrives once rather than ringing. R6 holds the codec muted until
         # the FPGA is configured and drives XSMT high itself.
         res("R5", "33R", (71.12, 149.86), (31.0, 18.5, 0.0), "RC0603FR-0733RL"),
-        res("R6", "10k", (287.02, 127.0), (61.0, 33.5, 0.0), "RC0603FR-0710KL"),
+        # R6 sits at XSMT's own pin. At (61, 33.5) it was thirteen
+        # millimetres away with the codec's bypass bank in between, and the
+        # router spent ninety-seven millimetres of copper getting there -
+        # `route.wander` at 7.1x, and `route.detour` on the whole net.
+        res("R6", "10k", (287.02, 127.0), (55.0, 40.0, 90.0), "RC0603FR-0710KL"),
         cap("C10", "100n", (244.0, 132.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C11", "100n", (300.0, 62.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C16", "100n", (328.0, 62.0), (89.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C12", "2u2", (296.0, 158.0), (60.0, 54.0, 0.0), "16V", "CL10A225KO8NNNC"),
         cap("C13", "2u2", (324.0, 158.0), (89.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
         cap("C14", "2u2", (352.0, 158.0), (89.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
-        res("R1", "10k", (112.0, 232.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
+        # CRESET runs from the header to the FPGA, and on a board this wide
+        # that is one 46 mm hop however the two are placed. Its pull-up is
+        # the third node on the net, so standing it between them makes the
+        # hop two, and a 10k pull-up does not care where it sits.
+        res("R1", "10k", (112.0, 232.0), (52.0, 58.0, 0.0), "RC0603FR-0710KL"),
         res("R2", "10k", (140.0, 232.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
         cap("C15", "100n", (148.0, 62.0), (57.0, 54.0, 180.0), "25V", "CL10B104KB8NNNC"),
     ]
@@ -9411,7 +9425,7 @@ def fpga_audio() -> Design:
         lead=36.1,
         column=33.5,
         pitch=2.0,
-        centre=72.0,
+        centre=62.0,
         width=SIG,
     )
     escape(
@@ -9420,7 +9434,7 @@ def fpga_audio() -> Design:
         lead=43.9,
         column=46.5,
         pitch=2.0,
-        centre=72.0,
+        centre=62.0,
         width=SIG,
     )
 
@@ -9500,20 +9514,25 @@ def fpga_audio() -> Design:
     # Every endpoint goes through `end`, which returns the far end of a pin's
     # escape when it has one and the pad itself when it does not.
     tracks = [*escapes, *anchored]
+    # The fused rail reaches the bulk capacitor round the terminal's right-hand
+    # side, stated rather than searched for: the short way is under J1's body.
+    tracks.append(Track("+3V3", "F.Cu", POWER, ["F1.2", (18.4, 20.0), "C1.1"]))
     routes = [
         ("VIN", POWER, [("J1.1", "F1.1")]),
         # The input rail is wide as far as the capacitors; into the regulator
         # it goes at the SOT-23-5's own escape width, because a 0.4 mm run
         # landing on a 0.2 mm neck steps down in the open, and the neck is
         # what sets the current anyway. The whole board draws under 100 mA.
-        ("+3V3", POWER, [("F1.2", "D3.1"), ("F1.2", "C1.1"), ("C1.1", "C2.1")]),
+        # Down the right of the terminal and in from below: sent straight at
+        # C1 the rail crosses J1's own body, and a screw terminal has to come
+        # off the board before anyone can see the copper under it.
+        ("+3V3", POWER, [("F1.2", "D3.1"), ("C1.1", "C2.1")]),
         ("+3V3", SIG, [("C1.1", "U3.1"), ("C2.1", "U3.3")]),
         (
             "+3V3",
             SIG,
             [
-                ("C2.1", "R1.1"),
-                ("R1.1", "R2.1"),
+                ("C2.1", "R2.1"),
                 ("R2.1", "U1.1"),
                 ("U1.22", "C6.1"),
                 ("C6.1", "U1.33"),
@@ -9531,6 +9550,7 @@ def fpga_audio() -> Design:
                 ("C8.1", "U1.22"),
                 ("C8.1", "U4.8"),
                 ("C8.1", "U4.3"),
+                ("C8.1", "R1.1"),
                 ("U4.3", "U4.7"),
                 ("C8.1", "C9.1"),
                 ("C9.1", "X1.4"),
@@ -9595,16 +9615,16 @@ def fpga_audio() -> Design:
         ("C17.2", (59.0, 40.8)),
         ("C6.2", (59.0, 43.5)),
         ("C7.2", (60.5, 46.5)),
-        ("C8.2", (46.0, 71.0)),
+        ("C8.2", (46.0, 68.5)),
         ("C16.2", (89.0, 52.0)),
         ("C12.2", (60.0, 53.0)),
         ("C14.2", (91.5, 47.0)),
         ("J1.2", (12.0, 12.0)),
         ("D3.2", (27.0, 10.0)),
-        ("R6.2", (58.5, 33.5)),
+        ("R6.2", (52.5, 37.5)),
         ("U3.2", (6.0, 24.0)),
         ("X1.2", (30.0, 10.0)),
-        ("U4.4", (30.0, 76.0)),
+        ("U4.4", (32.0, 66.0)),
         # The codec's grounds - two real ones and three mode pins strapped low -
         # drop through beside their own escapes rather than walking west into a
         # corridor that four other nets are already using.

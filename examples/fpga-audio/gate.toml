@@ -32,3 +32,17 @@ externally supplied rail is driven. A flag is an assertion, not a driver, so \
 any IO tied to a flagged rail produces this pair. The alternative is a pull-up \
 resistor on each pin, which buys the ability to drive them from a fabric this \
 design does not wire to them."""
+
+[[waivers]]
+rule = "layout.connection_span"
+reason = """The four I2S runs between the FPGA and the codec measure 25.7 mm \
+against a 25 mm limit, and the 0.7 mm is the two packages, not the placement. \
+U1 is a QFN-48 and U2 a TSSOP-20; each needs its escape fan and its bypass \
+bank on the side facing the other, and the pads the rule measures are on the \
+outer rows of two parts already as close as their own escapes allow. The bus \
+is four parallel ordered runs that cross nothing, which is the shape this \
+rule exists to produce. Everything else the rule found on this board was a \
+placement fault and was fixed by moving the part: the boot flash came up ten \
+millimetres to meet the FPGA's SPI port, the configuration header came eight \
+west along the bottom edge, and CRESET's pull-up now stands between its two \
+ends instead of beside CDONE's."""
