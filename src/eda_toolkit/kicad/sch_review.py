@@ -940,17 +940,26 @@ def rule_unprotected_power_input(ctx: ReviewContext) -> list[Finding]:
     """
     findings = []
     limit = int(ctx.thresholds["power_connector_max_pins"])
+    reach = {net["name"]: len(net["nodes"]) for net in ctx.nets}
     for ref in sorted(ctx.pins_by_ref):
         if ctx.prefix(ref) not in CONNECTOR_PREFIXES:
             continue
         pins = ctx.pins_by_ref[ref]
         if len(pins) > limit:
             continue
-        kinds = {pin["pin"]: netlist_mod.classify_net(pin["net"]) for pin in pins}
+        # A contact that goes nowhere is not a signal, whatever its auto-named
+        # net is called: a switched barrel jack brings out three pins and one
+        # of them is the switch contact nobody wired. Counted as a signal it
+        # would excuse the whole connector from being asked about its fuse.
+        kinds = {
+            pin["pin"]: netlist_mod.classify_net(pin["net"])
+            for pin in pins
+            if not (AUTO_NET_NAME.match(pin["net"]) and reach.get(pin["net"], 0) <= 1)
+        }
         if "ground" not in kinds.values() or "signal" in kinds.values():
             continue
         for pin in pins:
-            if kinds[pin["pin"]] != "power":
+            if kinds.get(pin["pin"]) != "power":
                 continue
             driven, arrivals = _walk_supply(ctx, pin["net"])
             if driven or not arrivals:

@@ -2188,15 +2188,29 @@ def _rim_cuts(
     if not samples:
         return []
     covered = [any(_point_in_polygon(point, poly) for poly in polygons) for point in samples]
+    # The rim is a loop, and the sample list is a loop cut open at the outline's
+    # first vertex. A gap sitting on that cut would otherwise be measured as two
+    # short runs, one at each end of the list, and a 3.5 mm cut would pass a
+    # 3 mm limit twice over. Rotating the list to start on covered copper puts
+    # the whole of that gap in one run; a rim with no copper at all is one run
+    # by definition and needs no rotation.
+    if any(covered) and not covered[0]:
+        first = covered.index(True)
+        samples = samples[first:] + samples[:first]
+        covered = covered[first:] + covered[:first]
     obstacles = [
         (track.start, track.end, track.width, track.net)
         for track in board.tracks
         if track.layer == layer and track.net and track.net != zone.net
     ]
+    # Only vias that actually reach this face remove copper from it. A blind
+    # via between two other layers is drilled somewhere else entirely as far as
+    # this pour is concerned, and blaming it would turn a mounting hole's own
+    # interruption into an error.
     obstacles += [
         ((via.x, via.y), (via.x, via.y), via.size, via.net or "an unnamed via")
         for via in board.vias
-        if via.net != zone.net
+        if via.net != zone.net and _via_reaches(via, layer)
     ]
     cuts = []
     index = 0
@@ -2217,6 +2231,25 @@ def _rim_cuts(
             middle = run[len(run) // 2]
             cuts.append((length, (round(middle[0], 2), round(middle[1], 2)), blame))
     return cuts
+
+
+def _via_reaches(via, layer: str) -> bool:
+    """Whether a via's barrel is drilled through the given copper layer.
+
+    A through via states `F.Cu` and `B.Cu` and passes everything between them,
+    so the span is read as a range over the board's layer order rather than as
+    the two names it happens to list. A via with no layers stated is a through
+    via: that is what the format's default means.
+    """
+    if not via.layers:
+        return True
+    order = ["F.Cu", "In1.Cu", "In2.Cu", "In3.Cu", "In4.Cu", "B.Cu"]
+    if layer not in order:
+        return True
+    spanned = [order.index(name) for name in via.layers if name in order]
+    if not spanned:
+        return True
+    return min(spanned) <= order.index(layer) <= max(spanned)
 
 
 def _what_is_in_the_gap(run, obstacles, band: float) -> str:

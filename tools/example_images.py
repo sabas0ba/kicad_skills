@@ -98,6 +98,14 @@ def make_images(design: Path, variant: str, scratch: Path) -> list[Path]:
         target = images / name
         to_jpeg(png, target)
         written.append(target)
+    # A design that used to have inner layers still has their pictures, and
+    # nothing in this run would have overwritten them: they would sit there
+    # looking like current evidence for a stack the board no longer has. The
+    # `*-first.jpg` editions are the exception - they are recovered history and
+    # nothing regenerates them.
+    for stale in images.glob(f"*-{variant}.jpg"):
+        if stale not in written:
+            stale.unlink()
     return written
 
 

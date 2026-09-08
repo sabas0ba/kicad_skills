@@ -951,6 +951,26 @@ def test_a_fuse_and_a_clamp_across_the_rail_protect_it():
     assert sch_review.rule_unprotected_power_input(_power_board()) == []
 
 
+def test_an_unwired_contact_does_not_excuse_the_connector():
+    """A switched barrel jack's third pin is a contact nobody used.
+
+    KiCad auto-names its net `unconnected-(J1-Pad3)`, which reads as a signal.
+    Counted as one, it would make the jack look like a signal connector and the
+    rule would never ask it about its fuse.
+    """
+    ctx = _power_board(fuse=False, clamp=False)
+    ctx.nets.append({"name": "unconnected-(J1-Pad3)", "nodes": [node("J1", "3")]})
+    ctx.pins_by_ref["J1"].append({**node("J1", "3"), "net": "unconnected-(J1-Pad3)"})
+    findings = sch_review.rule_unprotected_power_input(ctx)
+    assert [f.location for f in findings] == ["J1.1 / +12V"]
+
+    # a third pin that really does carry a signal is a signal connector, and
+    # this rule is not about those
+    ctx.nets[-1] = {"name": "SENSE", "nodes": [node("J1", "3"), node("U1", "4")]}
+    ctx.pins_by_ref["J1"][-1] = {**node("J1", "3"), "net": "SENSE"}
+    assert sch_review.rule_unprotected_power_input(ctx) == []
+
+
 def test_a_fuse_alone_still_asks_for_the_diode():
     findings = sch_review.rule_unprotected_power_input(_power_board(clamp=False))
     assert len(findings) == 1

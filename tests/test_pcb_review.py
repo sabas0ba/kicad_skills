@@ -1125,6 +1125,42 @@ def test_a_route_that_eats_the_pours_outer_ring_is_an_error():
     assert pcb_review.rule_pour_edge_cut(ctx_for(other_face)) == []
 
 
+def test_a_cut_sitting_on_the_outlines_first_vertex_is_measured_whole():
+    """The rim is a loop; the sample list is that loop cut open somewhere.
+
+    The missing copper here is 2 mm along the top edge and 2 mm down the left,
+    meeting at the corner the outline starts from. Measured as two runs both
+    clear the 3 mm limit; measured as the one gap it is, it does not.
+    """
+    outline = [(2.0, 2.0), (48.0, 2.0), (48.0, 38.0), (2.0, 38.0)]
+    fill = [(4.0, 2.0), (48.0, 2.0), (48.0, 38.0), (2.0, 38.0), (2.0, 4.0), (4.0, 4.0)]
+    board = board_from(
+        zones=[
+            pcb.Zone(
+                net="GND",
+                layers=["B.Cu"],
+                filled=True,
+                outline=outline,
+                fills=[("B.Cu", fill)],
+            )
+        ],
+        tracks=[track(2.5, 2.5, 3.9, 2.5, width=0.5, net="SIG", layer="B.Cu")],
+    )
+    findings = pcb_review.rule_pour_edge_cut(ctx_for(board))
+    assert [f.rule for f in findings] == ["layout.pour_edge_cut"]
+    assert findings[0].details["longest_gap_mm"] > 3.0
+
+
+def test_a_via_that_does_not_reach_the_pours_layer_is_not_blamed():
+    """A blind via drilled between two other faces removes no copper here."""
+    zone = ring_zone(gap=(10.0, 30.0))
+    blind = pcb.Via(3.0, 20.0, 0.8, 0.4, ["F.Cu", "In1.Cu"], 1, "SIG")
+    assert pcb_review.rule_pour_edge_cut(ctx_for(board_from(zones=[zone], vias=[blind]))) == []
+    through = pcb.Via(3.0, 20.0, 0.8, 0.4, ["F.Cu", "B.Cu"], 1, "SIG")
+    findings = pcb_review.rule_pour_edge_cut(ctx_for(board_from(zones=[zone], vias=[through])))
+    assert [f.rule for f in findings] == ["layout.pour_edge_cut"]
+
+
 def test_a_short_bite_out_of_the_rim_is_not_a_cut():
     """A through-hole land at the edge interrupts the ring and is allowed to."""
     nibbled = board_from(
