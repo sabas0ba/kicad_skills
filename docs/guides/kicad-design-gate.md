@@ -288,8 +288,9 @@ For the worked examples, CI applies a stricter project contract as well:
 unavailable ERC/DRC and internally failed review rules,
 rejects unwaived native DRC warnings in reviewed designs,
 requires the intended negative-control blockers, checks the motor driver's
-datasheet-derived values/connections, and protects the two four-layer boards'
-reserved inner GND region. These are explicit project requirements, not
+datasheet-derived values/connections, and protects every board's two-layer
+stack and the ground pour on its back. These are explicit project
+requirements, not
 capabilities inferred by the generic gate. The golden job also compares cold
 generation with a required cache hit, using KiCad 9 for every stage.
 

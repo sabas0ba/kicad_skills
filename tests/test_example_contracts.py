@@ -111,57 +111,50 @@ def test_motor_rejects_vint_external_load(motor):
 
 
 @pytest.fixture
-def plane():
+def stackup():
     outline = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
     return NS(
-        copper_layers=["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"],
+        copper_layers=["F.Cu", "B.Cu"],
         tracks=[],
         zones=[
             NS(
                 keepout=False,
-                layers=["In1.Cu"],
+                layers=["B.Cu"],
                 net="GND",
                 outline=outline,
-                fills=[("In1.Cu", outline[:])],
+                fills=[("B.Cu", outline[:])],
             ),
         ],
     )
 
 
-def test_plane_contract_checks_real_filled_region(plane):
-    assert contracts.plane_contract(plane) == []
-    plane.zones[0].fills = []
-    assert contracts.plane_contract(plane)
+def test_stackup_contract_checks_real_filled_region(stackup):
+    assert contracts.stackup_contract(stackup) == []
+    stackup.zones[0].fills = []
+    assert contracts.stackup_contract(stackup)
 
 
-def test_inner_power_zone_must_match_exact_pad_net_name(plane):
-    plane.zones.append(NS(keepout=False, layers=["In2.Cu"], net="VM"))
-    assert any("exact" in e for e in contracts.plane_contract(plane, power_net="/VM"))
-    plane.zones[-1].net = "/VM"
-    assert contracts.plane_contract(plane, power_net="/VM") == []
-
-
-def test_plane_contract_rejects_fragmented_fill(plane):
-    # Total coverage is 95%, but neither island carries 90%: summing them
-    # would miss the plane split which this regression check protects against.
-    plane.zones[0].fills = [
-        ("In1.Cu", [(0, 0), (10, 0), (10, 4.75), (0, 4.75)]),
-        ("In1.Cu", [(0, 5.25), (10, 5.25), (10, 10), (0, 10)]),
+def test_stackup_contract_rejects_a_shredded_pour(stackup):
+    # Total coverage is 95%, but neither island carries 70%: summing them
+    # would miss the split this regression check protects against.
+    stackup.zones[0].fills = [
+        ("B.Cu", [(0, 0), (10, 0), (10, 4.75), (0, 4.75)]),
+        ("B.Cu", [(0, 5.25), (10, 5.25), (10, 10), (0, 10)]),
     ]
-    assert contracts.plane_contract(plane)
+    assert contracts.stackup_contract(stackup)
 
 
-@pytest.mark.parametrize("change", ["two_layers", "foreign_track", "foreign_zone", "no_zone"])
-def test_plane_contract_rejects_structural_regressions(plane, change):
-    if change == "two_layers":
-        plane.copper_layers = ["F.Cu", "B.Cu"]
-    elif change == "foreign_track":
-        plane.tracks.append(NS(layer="In1.Cu", net="CLK"))
+@pytest.mark.parametrize("change", ["four_layers", "foreign_zone", "no_zone"])
+def test_stackup_contract_rejects_structural_regressions(stackup, change):
+    if change == "four_layers":
+        # The one this repository exists to catch: a board that answered a
+        # routing problem by buying two more copper layers.
+        stackup.copper_layers = ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]
     elif change == "foreign_zone":
-        plane.zones[0].net = "+3V3"
+        stackup.zones[0].net = "+3V3"
     else:
-        plane.zones.clear()
-    assert contracts.plane_contract(plane)
+        stackup.zones.clear()
+    assert contracts.stackup_contract(stackup)
 
 
 def test_verdict_requires_both_halves_and_specific_negative_controls():
@@ -206,9 +199,25 @@ def test_verdict_rejects_failed_checks_even_if_informational_or_waived(rule, buc
 def test_single_example_and_reviewed_only_cli_scope(tmp_path, monkeypatch):
     parsed = []
 
+    outline = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+
     def parse(path):
+        # The stack-up contract runs for every example, so the stub board has
+        # to be a board rather than an empty namespace.
         parsed.append(path)
-        return NS()
+        return NS(
+            copper_layers=["F.Cu", "B.Cu"],
+            tracks=[],
+            zones=[
+                NS(
+                    keepout=False,
+                    layers=["B.Cu"],
+                    net="GND",
+                    outline=outline,
+                    fills=[("B.Cu", outline[:])],
+                )
+            ],
+        )
 
     monkeypatch.setattr(contracts.pcb, "parse", parse)
     verdict = {"pass": True, "schematic": {"schematic": {}}, "board": {"board": {}}}

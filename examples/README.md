@@ -77,14 +77,24 @@ historical walkthrough, are the authority for each revision.
 What each of them still carries is a waiver, and a waiver here is a decision
 with the argument attached rather than a finding hidden. Package escape necks,
 board-only decoupling heuristics and deliberately exposed module rails remain
-visible there. The former FPGA and motor return-path waivers do not. Both
-rebuilt baselines reserve In1 for GND; the FPGA puts +3V3 on In2, and the motor
-driver puts VM there. **This is not a multilayer return-path sign-off.**
-`route.return_path` only evaluates two-layer boards. In2, not In1, is adjacent
-to B.Cu, and the FPGA also routes one SPI clock through the In2 pour. CI checks
-the four-layer structure, absence of foreign routing on In1 and a dominant
-filled GND region, and publishes individual copper layers for inspection.
-Reference transitions, actual dielectric stack-up and EMC still need review.
+visible there.
+
+**All five are two-layer boards, and that is a requirement rather than an
+outcome.** Layer count is the one board parameter that changes the price of a
+prototype run outright, so a design that will not close on two layers grows a
+few millimetres of FR4 before it grows a stack. The motor driver pays for that
+with one waiver — `route.return_path`, measured at 12.8 mm and 10.4 mm against
+a 10 mm limit, on two logic lanes crossing under the bridge outputs — and the
+waiver says what a faster design should do instead. CI checks the two-layer
+stack and that the ground pour on B.Cu is still mostly one piece.
+
+Two rules keep the rest of it honest. `layout.pour_edge_cut` refuses copper
+that eats through the outermost millimetre of the ground pour: the rim is what
+the board radiates into and what every edge-hugging track returns through, and
+a mounting hole may interrupt it where a route may not. `route.under_package`
+and `route.via_under_package` keep other nets' tracks and vias out from under
+the integrated circuits and connectors, where nothing can be probed, inspected
+or reworked once the part is down.
 
 All five carry what a board needs to be *made* as well as to work: the ground
 pour is filled by KiCad's own filler against the board's own rules, every

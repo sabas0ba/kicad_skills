@@ -462,9 +462,12 @@ three are visible in one glance at the `interf_u` demo:
 * **A waiver is not a place to put a review comment.** Everything a reviewer
   raised on the worked examples is fixed in the geometry, not argued away.
   The waivers that remain state package geometry, pin semantics or deliberate
-  drawing conventions with measurements a reviewer can challenge; the FPGA
-  and motor boards use the four-layer answer instead of waiving a broken
-  return path.
+  drawing conventions with measurements a reviewer can challenge. The one
+  waiver that buys something rather than explaining something is the motor
+  board's return path: an inner ground plane removes it outright, and a
+  four-layer stack costs more per prototype run than that board's whole
+  bill of materials. The waiver states the two measurements and what a
+  faster design should do instead.
 
 ## Where the rules live
 

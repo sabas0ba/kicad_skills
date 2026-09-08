@@ -128,6 +128,11 @@ class Part:
     # needs, and one more string to collide with a wire. The libraries leave
     # both visible, so this is the design's call rather than theirs.
     show_value: bool = True
+    # Whether the designator prints on the board's silkscreen. A fiducial's
+    # does not: it names a target the assembly machine finds optically, nobody
+    # reads it on a bare board, and on a small board it competes for the same
+    # edge strip the board's own name needs.
+    show_reference: bool = True
     # Which unit of a multi-unit symbol this is. A design lists the same
     # reference once per unit, each with its own place on the sheet; the board
     # only ever sees the first of them, because there is one footprint.
@@ -2509,6 +2514,21 @@ def _move_reference_off_pads(
     if printed is not None:
         printed.append((bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y))
     return
+
+
+def _hide_property(node: SNode, name: str) -> None:
+    """Keep a footprint property in the file but off the silkscreen.
+
+    KiCad's parity check compares the symbol's fields with the footprint's, so
+    the property has to stay; only its `hide` flag changes.
+    """
+    for prop in node.children("property"):
+        if str(prop.atom(0, "")) != name:
+            continue
+        for child in list(prop.children("hide")):
+            prop.args.remove(child)
+        prop.args.append(SNode("hide", [Bare("yes")]))
+        return
 
 
 def _set_property(node: SNode, name: str, value: str, *, add: bool = False) -> None:
@@ -6039,7 +6059,10 @@ def emit_board(design: Design, path: Path) -> None:
         node.args.insert(2, _uuid_node(stable_uuid(design.name, "fp", part.ref)))
         _place_footprint_zones(node, ox + bx, oy + by, angle)
         _set_property(node, "Reference", part.ref)
-        _move_reference_off_pads(design, part, node, all_pads, printed)
+        if part.show_reference:
+            _move_reference_off_pads(design, part, node, all_pads, printed)
+        else:
+            _hide_property(node, "Reference")
         _set_property(node, "Value", part.value)
         for key, value in part.fields.items():
             _set_property(node, key, value, add=True)
@@ -8701,6 +8724,11 @@ def opamp_filter() -> Design:
         nets=nets,
         power_flags=[("+5V", "F1.2"), ("GND", "J2.2")],
         board_size=(58.0, 42.0),
+        # The strip under the supply terminal's body, below its own pads. The
+        # rail to the second amplifier reaches for it every time - it is the
+        # short way across - and copper under a screw terminal cannot be
+        # probed or reworked without taking the terminal off the board.
+        keepouts=((6.0, 8.5, 17.0, 12.1),),
         tracks=[],
         vias=[
             # mid-board ties between the faces: the signal row slices the
@@ -8801,8 +8829,7 @@ def opamp_filter() -> Design:
         # row, then left. Sent straight at C7 the rail cuts the corner off J2's
         # courtyard, and copper under a screw terminal cannot be probed or
         # reworked without taking the terminal off - `route.under_package`.
-        Track("+5V", "F.Cu", POWER, ["C5.1", (19.0, 13.8)], auto=True),
-        Track("+5V", "F.Cu", POWER, [(19.0, 13.8), "C7.1"], auto=True),
+        Track("+5V", "F.Cu", POWER, ["C5.1", "C7.1"], auto=True),
         Track("+5V", "F.Cu", POWER, ["C7.1", u2w["2"]], auto=True),
         # ...and the divider's feed keeps the rail's width to the junction:
         # a 0.3 branch butt-joined onto 0.5 trunk mid-run is the same
@@ -9784,6 +9811,7 @@ def place_fiducials(design: Design) -> Design:
                 sheet=(sheet_x + (index - 1) * 12.7, sheet_y),
                 board=(x, y, 0.0),
                 show_value=False,
+                show_reference=False,
                 fields={"MPN": "n/a", "Manufacturer": "n/a"},
             )
         )
