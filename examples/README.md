@@ -14,7 +14,7 @@ what they report converges.
 
 **Gate acceptance is not production sign-off.** These are worked examples,
 not hardware-validated reference designs. In particular, the FPGA still has
-16 decoupling-distance exceptions; multilayer signal return, application-specific
+decoupling-distance exceptions; signal return paths, application-specific
 power/thermal budgets and EMC remain engineering review and measurement work.
 
 ```bash
@@ -244,20 +244,19 @@ regulation; overcurrent fault shutdown is not a 0.5 A current regulator.
 | ![board front, first edition](motor-driver/images/board-front-first.jpg) | ![board front, as generated](motor-driver/images/board-front-as-generated.jpg) | ![board front, reviewed](motor-driver/images/board-front-reviewed.jpg) |
 | ![board back, first edition](motor-driver/images/board-back-first.jpg) | ![board back, as generated](motor-driver/images/board-back-as-generated.jpg) | ![board back, reviewed](motor-driver/images/board-back-reviewed.jpg) |
 
-The back layer carries logic crossings, leaving room for local supply bypass
-on the front. Its adjacent inner layer is In2 (VM), not In1 (GND); inspect the
-inner-layer images and reference transitions as well as the outer tracks.
-
-| In1: GND | In2: VM |
-| --- | --- |
-| ![Motor inner ground](motor-driver/images/board-in1-reviewed.jpg) | ![Motor inner supply](motor-driver/images/board-in2-reviewed.jpg) |
+The back layer is the ground pour and the four logic lanes that cross under
+the bridge outputs, which leaves the front free for the supply row and the
+local bypass. VM reaches the driver down a stated front-side spine rather than
+through a plane: the board is two-layer on purpose, and the spine is what that
+decision looks like in copper.
 
 ### What this one is honest about
 
 The first rebuild still placed C2/C3/C4 about 12 mm from their IC pins. That
 was a consequence of the chosen long escape fan, not an unavoidable TSSOP
 constraint. The follow-up puts all three capacitors beside the supply row,
-drops the logic locally to B.Cu, and connects the IC grounds directly to In1.
+drops the logic locally to B.Cu, and takes the IC grounds straight into the
+back-layer pour through their own vias.
 The decoupling-distance waiver is removed; the normal 5 mm limit applies.
 The generated board measures 2.69 mm from VM to C2, 2.88 mm from VINT to C4,
 and 3.37 mm from VCP to C3 (pad centres, not complete current-loop lengths).
@@ -408,15 +407,14 @@ DAC's mute is held by a pull-down until the configured FPGA releases it.
 | first edition | **FAIL**, 34 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
-unconnected, no schematic-parity findings. The rebuilt floorplan is 76 x 58 mm
-instead of 100 x 84 mm. The FPGA, codec, flash and regulator form one compact
-signal-flow block; the line-out and configuration headers sit on the edges they
-serve. Four ordered I2S runs cross on B.Cu; In2 power, not In1 GND, is adjacent
-to those tracks. The +3V3 distribution uses an In2 plane instead of a long
-outer-layer trunk. The short +1V2 spine remains on B.Cu beneath its own FPGA
-block. No two-layer return-path finding is evidence of multilayer signal
-integrity: that rule skips this stack. The inner-layer renders and structural
-GND-plane check are regression evidence, not an impedance/EMC assessment.
+unconnected, no schematic-parity findings. This is the board that pays for the
+two-layer rule in area: a 48-pin QFN, a codec, a boot flash and an oscillator
+escaped on two layers need 100 x 84 mm, where four layers fitted the same
+circuit into 76 x 58 mm. Area is the cheaper currency. The FPGA, codec, flash
+and regulator still form one signal-flow block; the line-out and configuration
+headers sit on the edges they serve, and the +3V3 distribution is outer-layer
+copper rather than a plane. Four ordered I2S runs cross on B.Cu, and the short
++1V2 spine runs there under its own FPGA block.
 
 The earlier engineering pass also fixed four electrical faults that the new
 floorplan retains: the PCM5102A charge pump is CAPP–CAPM with a VNEG reservoir,
@@ -428,10 +426,6 @@ pull-up, and the LDO reservoir is 2.2 uF.
 | ![schematic, first edition](fpga-audio/images/schematic-first.jpg) | ![schematic, as generated](fpga-audio/images/schematic-as-generated.jpg) | ![schematic, reviewed](fpga-audio/images/schematic-reviewed.jpg) |
 | ![board front, first edition](fpga-audio/images/board-front-first.jpg) | ![board front, as generated](fpga-audio/images/board-front-as-generated.jpg) | ![board front, reviewed](fpga-audio/images/board-front-reviewed.jpg) |
 | ![board back, first edition](fpga-audio/images/board-back-first.jpg) | ![board back, as generated](fpga-audio/images/board-back-as-generated.jpg) | ![board back, reviewed](fpga-audio/images/board-back-reviewed.jpg) |
-
-| In1: GND | In2: +3V3 and SPI clock lane |
-| --- | --- |
-| ![FPGA inner ground](fpga-audio/images/board-in1-reviewed.jpg) | ![FPGA inner power](fpga-audio/images/board-in2-reviewed.jpg) |
 
 These are actual KiCad copper renders. The image utility only removes the
 empty page margin and converts the format; it does not redraw or rescale copper.

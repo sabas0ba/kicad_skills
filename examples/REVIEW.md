@@ -1609,3 +1609,78 @@ this round's network reached the TI datasheet the ESR field is derived from and
 nothing else, so those pages are cited, not read, and the ratings on the
 sheets are the ones the design asks for rather than numbers copied from a
 table.
+
+## 27. The reviewer's pass, round twenty-two: what a layer costs
+
+Rounds twenty and twenty-one were written against the same baseline by two
+different hands, and both landed. Merging them was the first half of this
+round; the second half was a question the merge exposed.
+
+Round twenty had answered two findings — the motor driver's return path and the
+FPGA's reference plane — by moving both boards to four copper layers. That is a
+real answer, and on a board that needs it, the right one. It is also the single
+most expensive change either board could have made. A two-layer prototype run
+is priced as a commodity; a four-layer run is not, and the difference on the
+motor driver exceeded its entire bill of materials. Nothing about a DRV8833 and
+five capacitors asks for an inner plane.
+
+So both boards went back to two layers, and the round is about what that cost
+and what it did not.
+
+### It cost less than the four-layer answer implied
+
+The motor driver kept round twenty's floorplan exactly — 68 × 46 mm, the bypass
+capacitors hard against the package, every `layout.connection_span` and
+`layout.decoupling_distance` finding still at zero. Only the supply changed:
+with no In2 plane to disappear into, VM is a stated front-side spine down the
+free column right of the capacitors, threaded between the two ground vias at
+x = 45.15. The gap between their barrels is 1.7 mm and the arm needs 0.9 of it.
+
+What is left is one finding, and it is now a waiver with both measurements in
+it: `route.return_path` at 12.8 mm and 10.4 mm against a 10 mm limit, where the
+four logic lanes cross under the four bridge outputs on the back. The waiver
+says what a design running those lanes faster should do instead of copying it.
+
+The FPGA board is the honest half of the trade. A 48-pin QFN, a codec, a boot
+flash and an oscillator escaped on two layers do not fit in 76 × 58 mm; the
+board is 100 × 84 mm, and that is the shape of paying in area rather than in
+layers.
+
+### Three rules came out of it
+
+Taking the planes away made two questions worth asking of every board, and the
+merge made a third overdue.
+
+`layout.pour_edge_cut` is an **error**. It walks the ground pour's own outline,
+half a millimetre inside it, and asks whether the fill still reaches all the way
+round. The outer ring is the board's outermost copper: the shield the edge
+radiates into, the return every edge-hugging track leans on, and part of what a
+fabricator reads as copper balance when it plates the panel. Broken, the two
+halves of the rim meet only by going the long way round through the middle of
+the plane — which is the loop the rim was closing. Things are allowed to
+interrupt it: a mounting hole and its clearance, a through-hole land at the
+edge, the board's own outline where it steps. A *route* is not, so the rule only
+reports a gap with a foreign track or via standing in it. That distinction is
+what makes an error severity honest here.
+
+`route.via_under_package` is a warning, and `route.under_package` grew to cover
+connectors as well as chips. Under an integrated circuit there is no plane
+between the copper and the die and no way to probe or rework it; under a
+connector the shell has to come off before anyone can even see it, which is why
+the connector case measures against the courtyard rather than the pad box. Both
+exempt the part's own nets — its escapes and its ground stitching belong there —
+and the via rule also exempts a thermal via inside the part's own pad, which is
+what an exposed pad exists to have.
+
+The connector case earned itself immediately. On opamp-filter the 5 V rail was
+cutting the corner off J2's courtyard on its way to the second amplifier: the
+short way across, and copper nobody could have probed. The strip under the
+terminal's body is now fenced and the rail goes round it.
+
+### The smallest change in the round
+
+Fiducial designators no longer print. A fiducial names a target the assembly
+machine finds optically; nobody reads its designator on a bare board, and on a
+68 mm board it was competing with the board's own name for the same edge strip —
+`silk.text_over_text`, on the one string that could have been deleted instead of
+moved.
