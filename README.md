@@ -262,7 +262,7 @@ carrying the sentence that excuses it.
 **[examples/](examples/README.md) is the long version**: all five designs, both
 faces of every board, a third column showing what the generator produces *today*
 (the reviews went into the generator, not into patches on its output), and
-[REVIEW.md](examples/REVIEW.md) — nineteen rounds of a reviewer reading the
+[REVIEW.md](examples/REVIEW.md) — twenty rounds of a reviewer reading the
 boards, and what each finding became: a rule, a fix, or a waiver with its
 argument.
 

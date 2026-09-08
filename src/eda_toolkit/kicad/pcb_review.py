@@ -106,6 +106,15 @@ THRESHOLDS = {
     # What a connector wants beyond its courtyard: the mating shell, the wires
     # leaving a screw terminal, and the fingers that fit both.
     "connector_access_mm": 2.0,
+    # The band of pour just inside its own outline that has to survive as one
+    # unbroken ring. It is the board's outermost copper: the shield the edge
+    # radiates into, the return every edge-hugging track leans on, and the
+    # copper balance a fabricator reads when it plates the panel.
+    "pour_edge_band_mm": 1.0,
+    # How long a bite out of that ring may be before it stops being a hole and
+    # starts being a cut. A mounting hole and its clearance make a legitimate
+    # gap of a few millimetres; a track laid along the edge makes a longer one.
+    "max_pour_edge_gap_mm": 3.0,
 }
 
 # Copper geometry is stored in nm; anything below this is file noise.
@@ -404,9 +413,27 @@ RULE_SPEC: dict[str, RuleSpec] = {
         threshold="width_step_free_mm",
     ),
     "route.under_package": RuleSpec(
-        "a track of another net threaded under a package's body, where there "
-        "is no plane between it and the die and no way to probe or rework it",
+        "a track of another net threaded under the body of an integrated "
+        "circuit or a connector, where there is no plane between it and the "
+        "die and no way to probe or rework it",
         "warning",
+    ),
+    "route.via_under_package": RuleSpec(
+        "a via under the body of an integrated circuit or a connector. It "
+        "cannot be inspected once the part is down, its barrel sits against "
+        "whatever the package's underside is, and on a part with an exposed "
+        "pad it is a solder path out of the joint. Thermal vias inside the "
+        "part's own pad are what the pad is for and are not counted",
+        "warning",
+    ),
+    "layout.pour_edge_cut": RuleSpec(
+        "a track that eats through the outermost `pour_edge_band_mm` of the "
+        "ground pour, leaving a gap in that ring longer than "
+        "`max_pour_edge_gap_mm`. The rim is the copper the board radiates "
+        "into and the return every edge-hugging track leans on; a mounting "
+        "hole may interrupt it, a route may not",
+        "error",
+        threshold="max_pour_edge_gap_mm",
     ),
     "layout.pour_coverage": RuleSpec(
         "a ground pour that fills less than `min_pour_coverage` of its own "
@@ -1400,30 +1427,56 @@ def rule_track_width_steps(ctx: PcbContext) -> list[Finding]:
     ]
 
 
+def _bodies_to_keep_clear(board) -> list[tuple]:
+    """The footprints nothing else should be routed under, and their bodies.
+
+    Two kinds qualify. An integrated circuit, where the body is the strip
+    between its pad rows - a track there has no plane between it and the die,
+    cannot be probed or reworked, and on a part with an exposed pad runs under
+    grounded metal. And a connector, where the body is the courtyard rather
+    than the pad box: a screw terminal's shell reaches well past its pads, and
+    it is the shell that has to come off before anyone can look underneath.
+
+    Yielded as ``(footprint, body, own_nets)``. A body narrower than a
+    millimetre either way is skipped - there is nothing meaningful under a
+    two-pad passive, and the inset would have inverted the box.
+    """
+    bodies = []
+    for fp in board.footprints:
+        connector = fp.ref.startswith(("J", "P")) and len(fp.pads) >= 2
+        chip = fp.ref.startswith(("U", "IC")) or len(fp.pads) >= 8
+        if not (connector or chip):
+            continue
+        if connector:
+            box = fp.courtyard_box() or _footprint_pad_box(fp)
+            body = box
+        else:
+            box = _footprint_pad_box(fp)
+            # the body between the pad rows, not the pads themselves
+            inset = 0.6
+            body = (box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset) if box else None
+        if body is None:
+            continue
+        if body[2] - body[0] < 1.0 or body[3] - body[1] < 1.0:
+            continue
+        bodies.append((fp, body, {pad.net for pad in fp.pads if pad.net}))
+    return bodies
+
+
 @rule
 def rule_route_under_package(ctx: PcbContext) -> list[Finding]:
-    """Foreign copper threaded under a package's body.
+    """Foreign copper threaded under a package's or a connector's body.
 
     Under an integrated circuit there is no plane between the track and the
     die, the track cannot be probed or reworked, and on anything with an
-    exposed pad it is running under grounded metal. Its own escapes belong
-    there; nobody else's does.
+    exposed pad it is running under grounded metal. Under a connector the
+    shell has to come off before anyone can even see it. Its own escapes
+    belong there; nobody else's does.
     """
     board = ctx.board
     findings_by_fp: dict[str, list[str]] = {}
     positions: list[tuple[float, float]] = []
-    for fp in board.footprints:
-        if len(fp.pads) < 8:
-            continue  # a package, not a passive
-        box = _footprint_pad_box(fp)
-        if box is None:
-            continue
-        # the body between the pad rows, not the pads themselves
-        inset = 0.6
-        body = (box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset)
-        if body[2] - body[0] < 1.0 or body[3] - body[1] < 1.0:
-            continue
-        own = {pad.net for pad in fp.pads if pad.net}
+    for fp, body, own in _bodies_to_keep_clear(board):
         for track in board.tracks:
             if track.net in own or not track.net:
                 continue
@@ -1446,6 +1499,52 @@ def rule_route_under_package(ctx: PcbContext) -> list[Finding]:
             f"{total} track segment(s) of another net pass under "
             f"{len(findings_by_fp)} package(s) - no plane between the track and "
             "the die, and no way to probe or rework it",
+            details={"count": total, "examples": examples, "positions": positions},
+        )
+    ]
+
+
+@rule
+def rule_via_under_package(ctx: PcbContext) -> list[Finding]:
+    """A via drilled under a package's or a connector's body.
+
+    Once the part is down nobody can see it. The barrel sits against whatever
+    the package's underside is - a plastic body, a metal shell, an exposed pad
+    - and under a part with an exposed pad it is also a path for the solder to
+    leave the joint at reflow. Where a via has to change layer near a
+    fine-pitch part, it belongs just outside the body, which is where the
+    escape fan is going anyway.
+
+    The exception is the thermal via array a part's own exposed pad is *for*:
+    a via that lands inside one of that footprint's own pads is doing the job
+    the pad asks of it, and is not counted.
+    """
+    board = ctx.board
+    by_fp: dict[str, list[str]] = {}
+    positions: list[tuple[float, float]] = []
+    for fp, body, _own in _bodies_to_keep_clear(board):
+        pads = [pad.bbox(angle_offset=fp.angle) for pad in fp.pads]
+        for via in board.vias:
+            if not _point_in_box((via.x, via.y), body):
+                continue
+            if any(_point_in_box((via.x, via.y), pad) for pad in pads):
+                continue  # a thermal via in the part's own pad
+            by_fp.setdefault(fp.ref, []).append(via.net or "<no net>")
+            positions.append((via.x, via.y))
+    if not by_fp:
+        return []
+    examples = [
+        f"{ref}: {len(nets)} via(s) ({', '.join(sorted(set(nets))[:4])})"
+        for ref, nets in sorted(by_fp.items())
+    ]
+    total = sum(len(v) for v in by_fp.values())
+    return [
+        Finding(
+            "route.via_under_package",
+            "warning",
+            f"{total} via(s) sit under {len(by_fp)} package(s) or connector(s) - "
+            "they cannot be inspected once the part is down, and on a part with "
+            "an exposed pad they drain the joint at reflow",
             details={"count": total, "examples": examples, "positions": positions},
         )
     ]
@@ -1981,6 +2080,150 @@ def rule_pour_coverage(ctx: PcbContext) -> list[Finding]:
                 )
             )
     return findings
+
+
+# How finely the pour's rim is walked. Finer than any clearance channel a
+# track cuts, coarse enough that a whole perimeter is a few hundred points.
+RIM_STEP_MM = 0.5
+
+
+@rule
+def rule_pour_edge_cut(ctx: PcbContext) -> list[Finding]:
+    """A route that eats through the outermost ring of the ground pour.
+
+    The band of pour just inside its own outline is the board's outermost
+    copper. It is the shield the edge radiates into, the return every
+    edge-hugging track leans on, and part of what a fabricator reads as copper
+    balance when it plates the panel. Broken, the two halves of the rim meet
+    only by going the long way round through the middle of the plane - which
+    is the loop the rim was closing.
+
+    Things are allowed to interrupt it. A mounting hole and its clearance take
+    a few millimetres; so does a through-hole land at the edge, and so does
+    the board's own outline where it steps. What is not allowed is a *track*
+    laid along the rim, taking its clearance channel with it: that is a
+    routing decision, and the fix is to move the route inboard. So a gap is
+    only reported when a track or a via of another net is standing in it.
+    """
+    band = ctx.thresholds["pour_edge_band_mm"]
+    limit = ctx.thresholds["max_pour_edge_gap_mm"]
+    if band <= 0:
+        return []
+    findings = []
+    for zone in ctx.board.zones:
+        if zone.keepout or not zone.filled or not netlist_helpers_is_ground(zone.net):
+            continue
+        if len(zone.outline) < 3:
+            continue
+        by_layer: dict[str, list[list[tuple[float, float]]]] = {}
+        for layer, points in zone.fills:
+            if len(points) >= 3:
+                by_layer.setdefault(layer, []).append(points)
+        for layer, polygons in sorted(by_layer.items()):
+            cuts = _rim_cuts(ctx.board, zone, layer, polygons, band, limit)
+            if not cuts:
+                continue
+            longest = max(length for length, _where, _blame in cuts)
+            findings.append(
+                Finding(
+                    "layout.pour_edge_cut",
+                    "error",
+                    f"{len(cuts)} route(s) cut through the outer {band:.1f} mm ring "
+                    f"of the {zone.net} pour on {layer}; the longest gap is "
+                    f"{longest:.1f} mm (limit {limit:.1f} mm) - the rim stops being "
+                    "a ring and the return has to cross the board to close",
+                    details={
+                        "layer": layer,
+                        "count": len(cuts),
+                        "longest_gap_mm": round(longest, 2),
+                        "examples": sorted(
+                            f"{blame} over {length:.1f} mm" for length, _where, blame in cuts
+                        )[:8],
+                        "positions": [where for _length, where, _blame in cuts],
+                    },
+                )
+            )
+    return findings
+
+
+def _rim_samples(
+    outline: list[tuple[float, float]], band: float
+) -> list[tuple[float, float]]:
+    """Points walking the pour's outline, stepped inward into the rim band.
+
+    The inward direction is the polygon's own: the interior lies to the left
+    of each edge for one winding and to the right for the other, so the sign
+    of the signed area picks it. Half the band puts the sample in the middle
+    of the ring rather than on either of its edges.
+    """
+    inward = 1.0 if _polygon_area(outline) > 0 else -1.0
+    samples: list[tuple[float, float]] = []
+    for (ax, ay), (bx, by) in zip(outline, [*outline[1:], outline[0]], strict=True):
+        dx, dy = bx - ax, by - ay
+        length = math.hypot(dx, dy)
+        if length < GEOM_TOL:
+            continue
+        nx, ny = -dy / length * inward, dx / length * inward
+        for index in range(max(1, int(length / RIM_STEP_MM))):
+            t = index * RIM_STEP_MM / length
+            samples.append(
+                (ax + dx * t + nx * band / 2.0, ay + dy * t + ny * band / 2.0)
+            )
+    return samples
+
+
+def _rim_cuts(
+    board, zone, layer: str, polygons, band: float, limit: float
+) -> list[tuple[float, tuple[float, float], str]]:
+    """Runs of missing rim that a foreign route is standing in.
+
+    Returns one entry per run: its length along the rim, where it is, and what
+    is in it. A run nothing is routed through is a mounting hole or an edge
+    land, and is not this rule's business.
+    """
+    samples = _rim_samples(zone.outline, band)
+    if not samples:
+        return []
+    covered = [any(_point_in_polygon(point, poly) for poly in polygons) for point in samples]
+    obstacles = [
+        (track.start, track.end, track.width, track.net)
+        for track in board.tracks
+        if track.layer == layer and track.net and track.net != zone.net
+    ]
+    obstacles += [
+        ((via.x, via.y), (via.x, via.y), via.size, via.net or "an unnamed via")
+        for via in board.vias
+        if via.net != zone.net
+    ]
+    cuts = []
+    index = 0
+    count = len(samples)
+    while index < count:
+        if covered[index]:
+            index += 1
+            continue
+        start = index
+        while index < count and not covered[index]:
+            index += 1
+        run = samples[start:index]
+        length = len(run) * RIM_STEP_MM
+        if length <= limit:
+            continue
+        blame = _what_is_in_the_gap(run, obstacles, band)
+        if blame:
+            middle = run[len(run) // 2]
+            cuts.append((length, (round(middle[0], 2), round(middle[1], 2)), blame))
+    return cuts
+
+
+def _what_is_in_the_gap(run, obstacles, band: float) -> str:
+    """Which net is sitting in a missing stretch of rim, named for the report."""
+    for start, end, width, net in obstacles:
+        reach = band / 2.0 + width / 2.0
+        for point in run:
+            if _point_to_segment(point, start, end) <= reach:
+                return net
+    return ""
 
 
 def _fill_coverage(

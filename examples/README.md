@@ -30,15 +30,14 @@ docker run --rm -u $(id -u):$(id -g) -v "$PWD:/work" -w /work \
   --entrypoint python3 eda-toolkit:9.0.9 tools/make_examples.py examples/
 ```
 
-and the images below with:
+and the images below with
+[`tools/example_images.py`](https://github.com/sabas0ba/kicad_skills/blob/main/tools/example_images.py),
+which runs the same two renders for every variant and writes them as JPEG:
 
 ```bash
-KICAD_VERSION=9.0.9 ./bin/eda.sh sch render examples/buck-5v/reviewed \
-    -o build/render/reviewed/schematic --dpi 150
-KICAD_VERSION=9.0.9 ./bin/eda.sh pcb render examples/buck-5v/reviewed \
-    -o build/render/reviewed/pcb --dpi 300 --views front back --per-layer --no-3d --no-sheet
-uv run --frozen python tools/update_example_images.py \
-    build/render/reviewed examples/buck-5v/images reviewed
+docker run --rm -u $(id -u):$(id -g) -v "$PWD:/work" -w /work \
+  -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+  --entrypoint python3 eda-toolkit:9.0.9 tools/example_images.py examples/
 ```
 
 The generator reads KiCad's own symbol and footprint libraries, so these are the
@@ -105,7 +104,7 @@ Both variants carry it in their title block, in the comment fields, on the
 schematic and on the board:
 
 ```
-(comment 1 "generated 2026-09-05 by OpenAI Codex")
+(comment 1 "generated 2026-09-05 by Claude Code")
 (comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
 ```
 
@@ -122,7 +121,8 @@ findings, and the stamp deliberately does not paper over it.
 
 ## buck-5v — 12 V to 5 V at 2 A
 
-LM2596S-5, catch diode, output inductor, screw terminals in and out.
+LM2596S-5, catch diode, output inductor, screw terminals in and out, and a fuse
+and a TVS between the input terminal and everything else.
 
 Under KiCad's own ERC and DRC, and the `ai-generated` policy:
 
@@ -182,6 +182,7 @@ What separates them, and which check finds it:
 | no title block, no design notes | `readability.title_block`, `spec.no_design_notes` |
 | no tolerance / voltage / current rating, no MPN | `spec.missing_rating`, `spec.missing_part_number` |
 | capacitors chosen without derating the rail | `spec.voltage_derating` |
+| no ESR stated on the output capacitor the regulator's loop depends on | `spec.missing_esr` |
 | no ground pour | `layout.no_ground_plane` |
 | parts off the placement grid, turned to 37 degrees | `layout.off_grid_placement`, `layout.odd_rotation` |
 | power routed at signal width | `track.thin_power` |
@@ -207,10 +208,11 @@ Laying out a real board found four things the rules and the parser had wrong:
 
 ## motor-driver — dual H-bridge, DRV8833PW, 2 × 0.5 A RMS
 
-Two brushed DC motors, screw terminals out, an eight pin logic header, and the
-charge pump and bypass capacitors. The PW package is rated at 0.5 A RMS per
-bridge at VM = 5 V and 25 °C, not the 1.5 A of the thermally enhanced PWP/RTY
-packages. Confirm temperature and motor stall current for the actual load.
+Two brushed DC motors, screw terminals out, an eight pin logic header, the
+charge pump and bypass capacitors, and a fuse and a TVS on the motor supply.
+The PW package is rated at 0.5 A RMS per bridge at VM = 5 V and 25 °C, not the
+1.5 A of the thermally enhanced PWP/RTY packages. Confirm temperature and motor
+stall current for the actual load.
 [TI DRV8833 datasheet](https://www.ti.com/lit/ds/symlink/drv8833.pdf).
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
@@ -273,7 +275,8 @@ protection or EMC; those remain application-specific design work.
 ## pico-carrier — Raspberry Pi Pico, every pin broken out
 
 A carrier board: the module, two twenty-pin headers beside it, and a 5 V input
-that reaches VSYS the way the Pico datasheet asks for.
+that reaches VSYS through a resettable fuse and then the Schottky the Pico
+datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
@@ -334,7 +337,9 @@ few places where it is not:
 ## opamp-filter — 1 kHz Sallen-Key low pass, single 5 V
 
 Two MCP6001 singles: one is the filter, the other buffers the half-rail the
-filter is referenced to.
+filter is referenced to. The supply comes in through a fuse and a TVS, and the
+output leaves through a 100 ohm isolation resistor before its coupling
+capacitor.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
@@ -382,7 +387,9 @@ new `analog.no_dc_path` rule now catches from the netlist alone.
 ## fpga-audio — iCE40UP5K to PCM5102A, I2S out
 
 An FPGA, an I2S DAC, the SPI flash the FPGA boots from, a 12 MHz oscillator and
-a 1.2 V regulator for the core — on four layers.
+a 1.2 V regulator for the core — on two layers. The 3.3 V input is fused and
+clamped, the clock leaves the oscillator through a series resistor, and the
+DAC's mute is held by a pull-down until the configured FPGA releases it.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |

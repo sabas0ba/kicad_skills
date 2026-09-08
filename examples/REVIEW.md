@@ -66,18 +66,20 @@ the point of writing them down is to say which:
 
 ### Open
 
-* No input protection anywhere: no reverse-polarity device or fuse behind any
-  of the screw terminals (all five), no ESD or current-limit resistor on the
-  op-amp filter's input jack. Deliberate scope on a demonstration set, but a
-  production review would ask.
-* The buck's LM2596 wants its output capacitor's ESR inside a stated window —
-  an all-ceramic substitution would ring, and no rule reads ESR.
+Four of the five items that stood here were closed in round twenty (§25): the
+power inputs are fused and clamped, the buck's output capacitor states its ESR,
+the FPGA's clock leaves its oscillator through a series resistor, and the DAC's
+mute is under the FPGA's control. Three of the four became rules. What is still
+open:
+
 * Motor outputs leave the board unfiltered (motor-driver); fine on the bench,
   an EMC gamble on a metre of cable.
-* No series termination on CLK12 (fpga-audio) — 12 MHz over ~30 mm forgives
-  it, and a rule would need to know which nets are clocks.
-* PCM5102A XSMT is strapped high, so the DAC un-mutes with the rail rather
-  than under control: the power-up pop is accepted, not managed.
+* No ESD or current-limit resistor on the op-amp filter's input jack. The
+  op-amp sits behind 10 k and a coupling capacitor, so the part at risk is a
+  passive; a production review would still ask.
+* The fuses and clamps state the rating the design chose, and the rule checks
+  only that they exist: whether 3 A is the right fuse for a 2 A converter is a
+  judgement the sheet notes make and nothing verifies.
 
 ## 2. Electromagnetics and layout physics
 
@@ -1491,3 +1493,119 @@ edge lists on 200 seeded, randomized multi-pad/tied-distance cases. On the same
 host, a 500-footprint single-pad net took 16.557 s before and 0.288 s after.
 These are illustrative timings; CI enforces operation counts and correctness,
 not a wall-clock threshold tied to one machine.
+## 26. The reviewer's pass, round twenty-one: the parts a bench never asks for
+
+Nineteen rounds had made five boards that pass their own gate, and §1 still
+listed five things a production review would ask about that no rule did:
+nothing between any screw terminal and the circuit behind it, an output
+capacitor whose ESR the regulator's loop depends on and nothing states, a clock
+leaving its oscillator with nothing to damp it, a DAC that un-mutes with the
+rail, and motor leads that leave unfiltered. This round redesigned the circuits
+for four of them and asked, for each, the question the whole set exists to
+answer: what does the rule look like, and does the netlist carry enough to
+write it.
+
+### What changed in the designs
+
+* **Every power input is fused and clamped.** A 1206 fuse in series with the
+  terminal, then a unidirectional TVS from the fused rail to ground - SMAJ18A
+  on the 12 V buck input, SMAJ12A on the motor supply that may reach 10.8 V,
+  SMAJ5.0A on the two 5 V boards and on the 3.3 V FPGA input, where it is the
+  lowest standoff the series comes in. Reversed leads forward-bias the TVS and
+  the fuse opens; a transient above the standoff is clamped. The Pico carrier
+  gets a 0.75 A resettable fuse instead, because a short on a carrier should
+  trip something that comes back, and its Schottky already blocks a reversed
+  supply. Each sheet says what the clamp does *not* do: the SMAJ5.0A clamps at
+  9 V, which is no protection for a 7 V op-amp or a 3.6 V FPGA against a
+  sustained overvoltage, only against a reversal and a surge.
+* **The buck's output capacitor states its ESR.** The LM2596 datasheet
+  (SNVS124G §9.1.3) gives the output capacitor's ESR both an upper limit, for
+  ripple, and a lower one, for loop stability - "the ESR value is the most
+  important parameter" - and C3 said nothing about it. It now carries
+  `ESR: 150mR max @100kHz`, derived from the 0.6 A pk-pk ripple already on the
+  sheet and the 2 % of output the datasheet allows, and the note beside it says
+  why an all-ceramic substitute is the wrong part.
+* **The FPGA's clock leaves through 33 Ω.** R5 sits at X1's output; the run to
+  the QFN is 30 mm, and a packaged oscillator's edge into 30 mm of track rings
+  without something at the source to damp it.
+* **The DAC's mute is a signal, not a strap.** XSMT was tied to 3.3 V, so the
+  PCM5102A un-muted with the rail and the power-up pop was accepted. It is now
+  driven from an FPGA I/O with a 10 k pull-down, so the DAC comes up muted and
+  the configured design releases it.
+* **The op-amp does not meet the cable directly.** R8 (100 Ω) sits between U1's
+  output and the coupling capacitor: a cable's capacitance, and a short at the
+  jack, now land on a resistor rather than on the amplifier. No rule came of
+  this one - a series element on an output is right for a line driver and
+  wrong for an H-bridge, and the netlist cannot tell them apart.
+
+### What went into the tool
+
+Three rules, each written from what the netlist alone can carry:
+
+| rule | what it reads | fires on the demo corpus |
+| --- | --- | --- |
+| `analog.unprotected_power_input` | a connector of four pins or fewer with a ground and a supply and nothing else is where power comes on. From its supply pin the rule walks inward through two-terminal series parts - fuse, diode, inductor, bead - and asks whether it passed a fuse and whether a diode stands in the path or across it. A rail an `output` or `power_out` pin drives is the board's own, and a connector on it is an output | once (`multichannel`, a 12 V terminal with nothing behind it) |
+| `analog.clock_no_series_resistor` | an oscillator module's `output` pin on a net with no resistor | once (`tiny_tapeout`) |
+| `spec.missing_esr` | a polarised capacitor on a net an inductor also reaches - a switching regulator's output - with no ESR field | 18, fourteen of them one design's row of electrolytics, graded `info` and collapsed |
+
+The first needed the walk. A fuse is not *on* the rail the IC sees - it is one
+net upstream - and a Schottky in series is as much reverse-polarity protection
+as a TVS across, so the rule follows the supply through whatever two-terminal
+parts it passes and judges what it collected. The buck's own output terminal is
+what made the direction test necessary: a 5 V screw terminal with a ground and
+a supply and no fuse looks exactly like an unprotected input until the walk
+reaches, one inductor away, the pin that drives it.
+
+### What the tool then made us fix
+
+All five `as-generated` variants now carry one finding more than they did -
+`spec.missing_esr` on the buck's C3, because `degrade` strips every field - and
+the `reviewed` variants had to earn their new parts:
+
+* **Two pin stubs closer than 7.62 mm draw over each other.** Every pin runs a
+  2.54 mm stub before its wire, so a fuse placed 5 mm from the terminal it
+  feeds puts two stubs on one line and the planner's wire over both -
+  `readability.overlapping_wires` and `readability.missing_junction`, on four
+  of the five sheets. The fix is spacing, and the generator's own comments now
+  say what the spacing is for.
+* **A supply drawn as symbols, facing itself.** Two pins of one power net
+  facing each other across a fuse each get a supply symbol, and the two taps
+  run into each other along the same row. The carrier's `+5V` is drawn as the
+  wire it is (`wired_power`) instead.
+* **A tap into the middle of a back-layer spine has no run ending at it.**
+  `_surfaced` lifts a short back-layer hop to the front when the finished board
+  has room, and then drops any via that no longer has a back-layer *end*
+  beside it. The FPGA's 1.2 V spine is tapped mid-run, and the first lift on
+  this board took the tap's via with it - a 1.2 V rail in two pieces, which
+  KiCad's DRC reported and `route.stub` beside it. The via test now asks
+  whether any back-layer run of the net passes under the via, not whether one
+  ends there.
+* **A 0.4 mm run landing on a 0.2 mm neck steps down in the open.** Routing
+  the fused 3.3 V into the regulator at power width met the SOT-23-5's 0.2 mm
+  escape a quarter-millimetre short of its end - `route.width_step`. The
+  regulator's supply now arrives at the escape's own width from the
+  capacitors beside it, which is what a rail drawing 100 mA wants anyway.
+* **A chamfer can cut the copper out from under a via.** `_chamfer_tracks`
+  leaves a corner alone when something is pinned to it, and a via the router
+  dropped a quarter-millimetre along the leg is pinned to nothing: the cut
+  shortened the leg past it and KiCad's DRC reported a via joined to one face
+  (`drc.via_dangling`) on the re-routed 3.3 V rail. A corner now stays square
+  when a via of its own net sits within the cut of it.
+
+### Where the five stand
+
+| design | as-generated | reviewed |
+| --- | --- | --- |
+| buck-5v | 32 blocking | PASS |
+| motor-driver | 33 | PASS |
+| pico-carrier | 27 | PASS |
+| opamp-filter | 38 | PASS |
+| fpga-audio | 34 | PASS |
+
+The waivers are the ones the rounds before left, unchanged in number and in
+reason. The `Datasheet` fields on the new parts are the TVS link KiCad's own
+Diode library carries for the SMAJ series and the fuse makers' family pages;
+this round's network reached the TI datasheet the ESR field is derived from and
+nothing else, so those pages are cited, not read, and the ratings on the
+sheets are the ones the design asks for rather than numbers copied from a
+table.

@@ -5,7 +5,7 @@ import pytest
 from PIL import Image, ImageDraw
 
 SPEC = importlib.util.spec_from_file_location(
-    "example_images", Path(__file__).parents[1] / "tools/update_example_images.py"
+    "example_images", Path(__file__).parents[1] / "tools/example_images.py"
 )
 assert SPEC and SPEC.loader
 images = importlib.util.module_from_spec(SPEC)

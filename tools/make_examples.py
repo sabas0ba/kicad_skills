@@ -71,7 +71,7 @@ NAMESPACE = uuid.UUID("6f1a0f3e-0000-4000-8000-000000000000")
 # of what a generator of this vintage actually wrote, and a year from now that
 # is the only thing that dates it.
 GENERATED_ON = "2026-09-05"
-GENERATED_BY = "OpenAI Codex"
+GENERATED_BY = "Claude Code"
 
 GEOM_EPS = 1e-6
 GEOM_TOL = 0.001  # two points this close on the sheet are the same point
@@ -4873,20 +4873,23 @@ def _surfaced(design: Design) -> Design:
                 break
     if not lifted:
         return design
-    # A via joins two faces, and a face with nothing left on it needs no join.
-    non_front: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    # A via joins two faces, and a face with nothing left under it needs no
+    # join. Under it, not only at a run's end: a tap dropped into the middle of
+    # a stated back-layer spine has no run ending at it and is still the only
+    # way that tap reaches the spine.
+    non_front: dict[str, list[tuple[tuple[float, float], tuple[float, float]]]] = defaultdict(list)
     for track in tracks:
         if track.layer == "F.Cu":
             continue
         points = [resolve(design, point) for point in track.points]
-        non_front[track.net].extend((points[0], points[-1]))
+        non_front[track.net].extend(pairwise(points))
     vias = [
         via
         for via in design.vias
         if via.net in {POUR_NET, design.power_plane}
         or any(
-            math.dist(via_position(design, via), end) <= via.size / 2 + GEOM_EPS
-            for end in non_front.get(via.net, ())
+            _segment_to_point(a, b, via_position(design, via)) <= via.size / 2 + GEOM_EPS
+            for a, b in non_front.get(via.net, ())
         )
     ]
     print(
@@ -5459,6 +5462,13 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
     # corner. All three have to be asked, and the answer for all three is the
     # same: leave the corner square rather than build a short.
     foreign_vias = [(via.net, _via_box(design, via)) for via in design.vias]
+    # And the net's own vias: a via the router dropped a fraction off a corner
+    # sits under the leg, not on the corner point, so nothing pins it - and a
+    # cut that shortens that leg past the via leaves the via joined to one
+    # face. The FPGA board's 3.3 V rail lost a via that way.
+    own_vias: dict[str, list[tuple[tuple[float, float], float]]] = defaultdict(list)
+    for via in design.vias:
+        own_vias[via.net].append((via_position(design, via), via.size))
     # Bucketed by a coarse grid: a board this size carries thousands of
     # segments and a corner only cares about the ones beside it, so asking all
     # of them turns a minute into an hour.
@@ -5524,6 +5534,10 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
                 )
                 blocked = (
                     any(
+                        math.dist(corner, centre) <= c + size / 2 + GEOM_EPS
+                        for centre, size in own_vias[track.net]
+                    )
+                    or any(
                         net != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
                         for net, box in foreign_vias
                     )
@@ -6896,6 +6910,7 @@ two symbols are placed on top of each other       -> readability.overlapping_sym
 no title block, no design notes                   -> readability.title_block, spec.no_design_notes
 no tolerance / voltage / power ratings, no MPN    -> spec.missing_rating, spec.missing_part_number
 capacitors picked without derating the rail       -> spec.voltage_derating
+no ESR stated on the regulator's output capacitor -> spec.missing_esr
 no PWR_FLAG on the externally supplied rails      -> erc.power_pin_not_driven
 footprints off the placement grid, odd rotations  -> layout.off_grid_placement, layout.odd_rotation
 power routed at signal width                      -> track.thin_power
@@ -6957,6 +6972,14 @@ def degrade(design: Design) -> Design:
 # Values a generator picks by capacitance alone, ignoring the rail they sit on.
 UNDERRATED = {"C1": "220u", "C3": "220u"}
 
+# The parts every board's power input carries, and where their datasheets are.
+# The TVS link is the one KiCad's own Diode library states for the SMAJ series.
+LITTELFUSE_466 = "https://www.littelfuse.com/products/fuses/surface-mount-fuses/thin-film-fuses/466"
+LITTELFUSE_SMAJ = (
+    "https://www.littelfuse.com/media?resourcetype=datasheets"
+    "&itemid=75e32973-b177-4ee3-a0ff-cedaf1abdb93&filename=smaj-datasheet"
+)
+
 
 # ---------------------------------------------------------------------------
 # the designs
@@ -6987,7 +7010,9 @@ def buck_5v() -> Design:
             "Connector:Screw_Terminal_01x02",
             "12V IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            sheet=(38.1, 63.5),
+            # Far enough left of the fuse that the two pin stubs between them
+            # do not overlap: each pin runs 2.54 mm before its wire.
+            sheet=(30.48, 63.5),
             mirror="y",
             board=(6.0, 20.0, 270.0),
             fields={
@@ -6996,12 +7021,53 @@ def buck_5v() -> Design:
                 "Datasheet": "https://www.phoenixcontact.com/product/1729128",
             },
         ),
+        # The input is protected before anything else sees it: a fuse in
+        # series, then a TVS across the fused rail. Reversed leads forward-bias
+        # the TVS and the fuse opens; a transient above the regulator's rating
+        # is clamped. Neither exists on a bench, both exist in a box.
+        #
+        # On the board they take the corridor between the terminal and the
+        # regulator's tab via ring - the one strip the rebuilt floorplan left
+        # empty, and the strip the input rail crosses anyway.
+        Part(
+            "F1",
+            "Device:Fuse",
+            "3A",
+            "Fuse:Fuse_1206_3216Metric",
+            sheet=(46.99, 63.5),
+            angle=90.0,
+            board=(15.0, 20.0, 0.0),
+            fields={
+                "Current": "3A",
+                "MPN": "0466003.NR",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_466,
+            },
+        ),
+        Part(
+            "D3",
+            "Device:D_Zener",
+            "SMAJ18A",
+            "Diode_SMD:D_SMA",
+            sheet=(60.96, 69.85),
+            angle=270.0,
+            # Cathode up to the fused rail, anode down to its own via: the
+            # clamp's return is the shortest one on the board.
+            board=(15.0, 27.0, 270.0),
+            fields={
+                "Voltage": "18V",
+                "Power": "400W",
+                "MPN": "SMAJ18A",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_SMAJ,
+            },
+        ),
         Part(
             "C1",
             "Device:C_Polarized",
             "220u",
             "Capacitor_SMD:CP_Elec_8x10.5",
-            sheet=(63.5, 69.85),
+            sheet=(73.66, 69.85),
             board=(30.0, 29.0, 270.0),
             fields={
                 "Voltage": "35V",
@@ -7096,6 +7162,12 @@ def buck_5v() -> Design:
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
+                # The output capacitor's ESR is a design value here, not an
+                # accident of the part picked: the LM2596's loop is designed
+                # around it (SNVS124G section 9.1.3 gives it both an upper and
+                # a lower limit), so a substitute has to meet it as surely as
+                # the voltage rating.
+                "ESR": "150mR max @100kHz",
                 "MPN": "EEE-FK1C221P",
                 "Manufacturer": "Panasonic",
                 "Datasheet": "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf",
@@ -7152,8 +7224,21 @@ def buck_5v() -> Design:
     ]
 
     nets = {
-        "+12V": ["J1.1", "C1.1", "C2.1", "U1.1"],
-        "GND": ["J1.2", "C1.2", "C2.2", "U1.3", "U1.5", "D1.2", "C3.2", "C4.2", "J2.2", "D2.1"],
+        "VIN": ["J1.1", "F1.1"],
+        "+12V": ["F1.2", "D3.1", "C1.1", "C2.1", "U1.1"],
+        "GND": [
+            "J1.2",
+            "D3.2",
+            "C1.2",
+            "C2.2",
+            "U1.3",
+            "U1.5",
+            "D1.2",
+            "C3.2",
+            "C4.2",
+            "J2.2",
+            "D2.1",
+        ],
         "SW": ["U1.2", "D1.1", "L1.1"],
         "+5V": ["L1.2", "U1.4", "C3.1", "C4.1", "J2.1", "R1.1"],
         "LED_A": ["R1.2", "D2.2"],
@@ -7166,8 +7251,11 @@ def buck_5v() -> Design:
     W, SIG = 1.0, 0.4
     tracks = [
         # The input connector may be remote; the energy-storage parts may not.
-        # C1, C2 and VIN form one compact branch at the regulator pin.
-        Track("+12V", "F.Cu", W, ["J1.1", (11.3, 25.3), "C1.1"]),
+        # C1, C2 and VIN form one compact branch at the regulator pin - now
+        # with the fuse in the way of it and the clamp hanging off it.
+        Track("VIN", "F.Cu", W, ["J1.1", "F1.1"]),
+        Track("+12V", "F.Cu", W, ["F1.2", (16.4, 23.0), "D3.1"]),
+        Track("+12V", "F.Cu", W, ["F1.2", (18.0, 20.0), (18.0, 25.3), "C1.1"]),
         Track("+12V", "F.Cu", W, ["C1.1", (30.0, 24.0), "C2.1"]),
         Track("+12V", "F.Cu", W, ["C2.1", (35.05, 20.8), (34.65, 20.4), "U1.1"]),
         # Turning the TO-263 puts its pin field toward D1 and L1. The hot switch
@@ -7203,6 +7291,7 @@ def buck_5v() -> Design:
         Track("GND", "F.Cu", W, ["U1.3", (39.5, 15.0)]),
         Track("GND", "F.Cu", W, ["U1.5", (37.5, 11.6)]),
         Track("GND", "F.Cu", W, [(25.5, 15.0), (25.5, 21.8)]),  # the TO-263 tab
+        Track("GND", "F.Cu", W, ["D3.2", (15.0, 31.0)]),
         Track("GND", "F.Cu", W, ["C1.2", (30.0, 34.0)]),
         Track("GND", "F.Cu", W, ["C2.2", (38.5, 22.0)]),
         Track("GND", "F.Cu", W, ["D1.2", (42.0, 26.5)]),
@@ -7226,6 +7315,7 @@ def buck_5v() -> Design:
         Via("GND", x=39.5, y=15.0),
         Via("GND", x=37.5, y=11.6),
         Via("GND", x=25.5, y=21.8),
+        Via("GND", x=15.0, y=31.0),
         Via("GND", x=30.0, y=34.0),
         Via("GND", x=38.5, y=22.0),
         Via("GND", x=42.0, y=26.5),
@@ -7244,8 +7334,9 @@ def buck_5v() -> Design:
             (
                 (30.48, 87.63),
                 [
-                    "Input: C1 220u/35V bulk, C2 100n/50V bypass -",
-                    "both above 1.5x the 12 V they sit on.",
+                    "Input: F1 3 A opens on a fault or reversed leads; D3 clamps",
+                    "above 18 V and is the diode the reversed supply flows through.",
+                    "C1 220u/35V bulk, C2 100n/50V bypass - both above 1.5x the 12 V.",
                 ],
             ),
             (
@@ -7261,6 +7352,9 @@ def buck_5v() -> Design:
                     "D1 SS34 (3 A / 40 V) catches the inductor current.",
                     "L1 33 uH, 3 A saturation: ripple 0.6 A pk-pk at 2 A out.",
                     "C3 220u/16V bulk, C4 100n/25V bypass on the 5 V rail.",
+                    "C3's ESR is part of the design: 0.6 A x 150 mR = 90 mV",
+                    "ripple, and the LM2596 loop needs ESR in the output",
+                    "capacitor - an all-ceramic substitute rings.",
                 ],
             ),
             (
@@ -7274,7 +7368,7 @@ def buck_5v() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=[("+12V", "J1.1"), ("GND", "J1.2"), ("+5V", "L1.2")],
+        power_flags=[("+12V", "F1.2"), ("GND", "J1.2"), ("+5V", "L1.2")],
         board_size=(92.0, 38.0),
         tracks=tracks,
         vias=vias,
@@ -7823,7 +7917,9 @@ def pico_carrier() -> Design:
             "Connector:Screw_Terminal_01x02",
             "5V IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+            # Mirrored so the pins face the fuse to the right of it.
             sheet=(60.0, 40.0),
+            mirror="y",
             board=(72.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
@@ -7831,14 +7927,44 @@ def pico_carrier() -> Design:
                 "Datasheet": "https://www.phoenixcontact.com/product/1729128",
             },
         ),
+        # The resettable fuse between the terminal and the diode: a short on
+        # the carrier trips it instead of the bench supply, and it comes back
+        # by itself. D1 already blocks a reversed supply, so this board gets a
+        # fuse and no clamp.
+        Part(
+            "F1",
+            "Device:Polyfuse",
+            "0.75A",
+            "Fuse:Fuse_1812_4532Metric",
+            # 7.62 mm pin to pin on either side: each pin runs a 2.54 mm stub
+            # before its wire, and two stubs closer than that draw over each
+            # other.
+            sheet=(76.2, 39.37),
+            # Pin 2 towards the terminal on both the sheet and the board: the
+            # footprint's pad 2 is the right-hand one, the symbol's pin 2 at
+            # 270 degrees is the left-hand one, and the terminal is right of
+            # the fuse on the board and left of it on the sheet.
+            angle=270.0,
+            board=(62.0, 8.0, 0.0),
+            fields={
+                "Current": "0.75A",
+                "MPN": "MF-MSMF075-2",
+                "Manufacturer": "Bourns",
+                "Datasheet": "https://www.bourns.com/docs/product-datasheets/mfmsmf.pdf",
+            },
+        ),
         Part(
             "D1",
             "Device:D_Schottky",
             "SS14",
             "Diode_SMD:D_SMA",
-            sheet=(90.17, 39.37),
+            sheet=(91.44, 39.37),
             mirror="y",
-            board=(58.0, 8.0, 180.0),
+            # Anode towards the fuse, cathode towards the module: the supply
+            # enters from the right, so the diode faces the way the current
+            # flows and nothing has to loop round it. At 180 degrees it faced
+            # the other way and the rail crossed its own body to get there.
+            board=(54.0, 8.0, 0.0),
             fields={
                 "Voltage": "40V",
                 "Current": "1A",
@@ -7925,7 +8051,8 @@ def pico_carrier() -> Design:
     for index, number in enumerate(right, start=1):
         nets.setdefault(pico_net(pins[number]), []).extend([f"U1.{number}", f"J4.{index}"])
 
-    nets["+5V"] = ["J1.1", "D1.2"]
+    nets["+5V"] = ["J1.1", "F1.2"]
+    nets["5V_FUSED"] = ["F1.1", "D1.2"]
     nets["VSYS"] += ["D1.1", "C1.1"]
     nets["+3V3"] += ["C2.1", "R1.1"]
     nets["GND"] += ["J1.2", "C1.2", "C2.2", "D3.1"]
@@ -7939,11 +8066,15 @@ def pico_carrier() -> Design:
         notes=[],
         note_blocks=[
             (
-                (71.12, 17.78),
+                # Right of the fuse's own flag and symbol, which want the room
+                # above the supply row.
+                (104.14, 17.78),
                 [
-                    "5 V in feeds VSYS through D1 - the datasheet's own arrangement:",
-                    "it keeps USB and the external supply from fighting when both are",
-                    "plugged in. C1 22 uF / 16 V is the bulk that goes with it.",
+                    "5 V in feeds VSYS through F1 and D1. D1 is the datasheet's own",
+                    "arrangement: it keeps USB and the external supply from fighting",
+                    "when both are plugged in, and blocks a reversed supply. F1 is a",
+                    "0.75 A resettable fuse: a short on the carrier trips it, not the",
+                    "bench supply. C1 22 uF / 16 V is the bulk that goes with them.",
                 ],
             ),
             (
@@ -7986,6 +8117,10 @@ def pico_carrier() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("+5V", "J1.1"), ("VSYS", "D1.1"), ("ADC_VREF", "U1.35")],
+        # The input rail is two pins facing each other across the fuse: drawn
+        # as the wire it is, not as two supply symbols whose taps would run
+        # into each other along the same line.
+        wired_power=("+5V",),
         board_size=(80.0, 60.0),
         tracks=[],
         vias=[],
@@ -8018,7 +8153,11 @@ def pico_carrier() -> Design:
 
     # The supply, placed by hand.
     tracks += [
-        Track("+5V", "F.Cu", POWER, ["J1.1", "D1.2"], auto=True),
+        # Terminal, fuse and diode sit in one line at y = 8 with a few
+        # millimetres between pads - less than the search wants to leave a
+        # 3.4 mm pad by - so both links are stated rather than searched for.
+        Track("+5V", "F.Cu", POWER, ["J1.1", "F1.2"]),
+        Track("5V_FUSED", "F.Cu", POWER, ["F1.1", "D1.2"]),
         Track("VSYS", "F.Cu", POWER, ["D1.1", "J4.2"], auto=True),
         Track("VSYS", "F.Cu", POWER, ["C1.1", "D1.1"], auto=True),
         Track("+3V3", "F.Cu", POWER, ["C2.1", "J4.5"], auto=True),
@@ -8201,13 +8340,33 @@ def opamp_filter() -> Design:
             Manufacturer="Samsung",
             Datasheet=SAMSUNG.format("CL21B104KBCNNNC"),
         ),
+        # The amplifier does not meet the cable directly: R8 isolates its
+        # output from whatever capacitance hangs on the far side of J3, and
+        # from a short there. 100 ohms against C6's 1 uF is nothing at 1 kHz
+        # and against the 100k bleed it is not a divider.
+        _passive(
+            "R8",
+            "Device:R",
+            "100R",
+            "Resistor_SMD:R_0805_2012Metric",
+            # U1 draws a 6.35 mm stub off its output pin; R8's own stub has
+            # to start clear of the end of it.
+            (182.88, 100.33),
+            (41.0, 17.0, 270.0),
+            angle=90.0,
+            Tolerance="1%",
+            Power="0.125W",
+            MPN="RC0805FR-07100RL",
+            Manufacturer="Yageo",
+            Datasheet=YAGEO,
+        ),
         _passive(
             "C6",
             "Device:C",
             "1u",
             "Capacitor_SMD:C_0805_2012Metric",
-            (195.0, 100.0),
-            (41.0, 17.0, 90.0),
+            (199.39, 100.33),
+            (44.5, 17.0, 90.0),
             angle=90.0,
             Voltage="25V",
             Tolerance="10%",
@@ -8232,11 +8391,45 @@ def opamp_filter() -> Design:
             "Connector:Screw_Terminal_01x02",
             "5V",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            (205.0, 35.0),
+            # Far enough from the fuse that the two VIN labels between them
+            # do not print over each other.
+            (210.82, 35.56),
             (9.0, 7.0, 0.0),
             MPN="1729128",
             Manufacturer="Phoenix Contact",
             Datasheet="https://www.phoenixcontact.com/product/1729128",
+        ),
+        # Fuse and TVS on the supply. The op-amps draw microamps, so 500 mA is
+        # already generous; the TVS stands off 5 V and is what a reversed
+        # supply flows through on its way to opening the fuse. It does not
+        # hold the rail under the MCP6001's 7 V maximum against a sustained
+        # overvoltage - nothing this small does - and the sheet says so.
+        _passive(
+            "F1",
+            "Device:Fuse",
+            "500mA",
+            "Fuse:Fuse_1206_3216Metric",
+            (185.42, 35.56),
+            (20.0, 5.0, 0.0),
+            angle=270.0,
+            Current="500mA",
+            MPN="0466.500NR",
+            Manufacturer="Littelfuse",
+            Datasheet=LITTELFUSE_466,
+        ),
+        _passive(
+            "D3",
+            "Device:D_Zener",
+            "SMAJ5.0A",
+            "Diode_SMD:D_SMA",
+            (168.91, 41.91),
+            (26.5, 5.0, 0.0),
+            angle=270.0,
+            Voltage="5V",
+            Power="400W",
+            MPN="SMAJ5.0A",
+            Manufacturer="Littelfuse",
+            Datasheet=LITTELFUSE_SMAJ,
         ),
         _passive(
             "R3",
@@ -8347,7 +8540,10 @@ def opamp_filter() -> Design:
             "Connector:TestPoint",
             "TP",
             "TestPoint:TestPoint_Pad_D1.5mm",
-            sheet=(186.69, 87.63),
+            # Between the amplifier and R8 on the sheet, so it reads what the
+            # amplifier makes rather than what the cable sees; on the wire
+            # between the two pins' stubs, not on either stub.
+            sheet=(175.26, 87.63),
             board=(44.0, 12.0, 0.0),
             no_connect=False,
         ),
@@ -8363,9 +8559,11 @@ def opamp_filter() -> Design:
     ]
 
     nets = {
-        "+5V": ["J2.1", "R3.1", "C5.1", "C7.1", "U1.2", "U2.2"],
+        "VIN": ["J2.1", "F1.1"],
+        "+5V": ["F1.2", "D3.1", "R3.1", "C5.1", "C7.1", "U1.2", "U2.2"],
         "GND": [
             "J2.2",
+            "D3.2",
             "J1.2",
             "J3.2",
             "R4.2",
@@ -8381,7 +8579,8 @@ def opamp_filter() -> Design:
         "IN_DC": ["C3.2", "R5.1", "R1.1"],
         "X": ["R1.2", "R2.1", "C1.1"],
         "FILT_IN": ["R2.2", "C2.1", "U1.3", "TP1.1"],
-        "OUT": ["U1.1", "U1.4", "C1.2", "C6.1", "TP2.1"],
+        "OUT": ["U1.1", "U1.4", "C1.2", "R8.1", "TP2.1"],
+        "OUT_R": ["R8.2", "C6.1"],
         "OUT_AC": ["C6.2", "J3.1", "R6.1"],
         "MID": ["R3.2", "R4.1", "C4.1", "U2.3"],
         "VREF": ["U2.1", "U2.4", "R5.2", "C2.2", "TP3.1"],
@@ -8417,6 +8616,16 @@ def opamp_filter() -> Design:
                     "C3/C6 couple in and out: the header sees no DC.",
                     "R5 sets the input's operating point at VREF;",
                     "R7/R6 bleed the coupling caps so nothing pops.",
+                    "R8 100R keeps the cable's capacitance, and a short",
+                    "at J3, off U1's output.",
+                ],
+            ),
+            (
+                (150.0, 25.4),
+                [
+                    "F1 500 mA and D3 (5 V standoff): reversed leads flow",
+                    "through D3 and open F1. D3 does not hold the rail under",
+                    "the op-amps' 7 V maximum against a sustained overvoltage.",
                 ],
             ),
             (
@@ -8429,7 +8638,7 @@ def opamp_filter() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=[("+5V", "J2.1"), ("GND", "J2.2")],
+        power_flags=[("+5V", "F1.2"), ("GND", "J2.2")],
         board_size=(58.0, 42.0),
         tracks=[],
         vias=[
@@ -8499,7 +8708,7 @@ def opamp_filter() -> Design:
         Track("X", "F.Cu", SIG, ["R2.1", "C1.1"], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["R2.2", u1w["3"]], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["TP1.1", "R2.2"], auto=True),
-        Track("OUT", "F.Cu", SIG, ["TP2.1", "C6.1"], auto=True),
+        Track("OUT", "F.Cu", SIG, ["TP2.1", "R8.1"], auto=True),
         # VREF and its taps run at signal width end to end: the escape from
         # the SOT-23-5 is 0.3 mm whatever the link says, and a run that steps
         # to 0.5 at the first corner past it is a step nobody chose. The
@@ -8513,7 +8722,8 @@ def opamp_filter() -> Design:
         # asked for between the columns there, the wrap went round the board.
         Track("OUT", "F.Cu", SIG, [u1w["1"], u1e["4"]], auto=True),
         Track("OUT", "F.Cu", SIG, [u1w["1"], "C1.2"], auto=True),
-        Track("OUT", "F.Cu", SIG, [u1e["4"], "C6.1"], auto=True),
+        Track("OUT", "F.Cu", SIG, [u1e["4"], "R8.1"], auto=True),
+        Track("OUT_R", "F.Cu", SIG, ["R8.2", "C6.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["C6.2", "J3.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["J3.1", "R6.1"], auto=True),
         Track("VREF", "F.Cu", SIG, ["U2.1", "U2.4"], auto=True),
@@ -8522,7 +8732,9 @@ def opamp_filter() -> Design:
         Track("MID", "F.Cu", SIG, ["R3.2", "R4.1"], auto=True),
         Track("MID", "F.Cu", SIG, ["R4.1", "C4.1"], auto=True),
         Track("MID", "F.Cu", SIG, ["C4.1", u2w["3"]], auto=True),
-        Track("+5V", "F.Cu", POWER, ["J2.1", "C5.1"], auto=True),
+        Track("VIN", "F.Cu", POWER, ["J2.1", "F1.1"], auto=True),
+        Track("+5V", "F.Cu", POWER, ["F1.2", "D3.1"], auto=True),
+        Track("+5V", "F.Cu", POWER, ["F1.2", "C5.1"], auto=True),
         Track("+5V", "F.Cu", POWER, ["C5.1", u1w["2"]], auto=True),
         Track("+5V", "F.Cu", POWER, ["C5.1", "C7.1"], auto=True),
         Track("+5V", "F.Cu", POWER, ["C7.1", u2w["2"]], auto=True),
@@ -8538,6 +8750,7 @@ def opamp_filter() -> Design:
     # 0.65 mm row it left is what set the width in the first place.
     for pad, target, width in (
         ("J1.2", (8.0, 22.0), POWER),
+        ("D3.2", (31.0, 5.0), POWER),
         ("J3.2", (49.0, 22.0), POWER),
         ("R6.2", (46.0, 20.0), POWER),
         ("R7.2", (9.0, 30.0), POWER),
