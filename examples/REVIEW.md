@@ -1,5 +1,10 @@
 # An engineer's pass over the five examples
 
+This is a chronological record, not a claim that every earlier conclusion
+still holds. Section 26 corrects the motor package rating, bypass network,
+decoupling placement and the scope of multilayer return-path checks; it
+supersedes the corresponding claims and measurements in earlier rounds.
+
 The five projects under [`examples/`](README.md) were generated to be reviewed.
 This is the review: the five designs read the way an electrical engineer would
 read them — circuit theory first, then the physics of the layout, then whether
@@ -76,8 +81,8 @@ the point of writing them down is to say which:
 
 ## 2. Electromagnetics and layout physics
 
-* **Return paths** — the strongest physical criticism of the set. On a
-  two-layer board with the ground plane on the back, every bottom-layer track
+* **Return paths** — the strongest physical criticism of a two-layer layout.
+  On a two-layer board with the ground plane on the back, every bottom-layer track
   cuts a channel through the plane, and any top-layer signal crossing that
   channel has its return current detoured around the gap: the loop area, and
   with it emission and coupling, grows by the detour. Now the **rule**
@@ -86,10 +91,12 @@ the point of writing them down is to say which:
 * **Decoupling geometry** (already ruled: `layout.decoupling_distance`,
   `layout.decoupling_via`). The three fine-pitch boards all fail the distance
   rule for the same reason — the escape from the package spends the distance
-  budget before a capacitor can be placed. On two layers, with parts on one
-  side, this is a fact of the package, not a placement mistake; the real-world
-  fix is caps on the back under the pins, which this generator cannot yet
-  place. **Waived** per project, with that reason. The *via* half is now
+  budget before a capacitor can be placed. With parts on one side this is a
+  fact of the package rather than a loose placement; the closest mechanical
+  answer is caps on the back under the pins. The four-layer FPGA and motor
+  boards instead give the local supply and return paths a continuous nearby
+  inner plane.
+  **Waived** per project, with that reason. The *via* half is now
   **fixed** where it was failing: on the FPGA board every 0603's ground via
   is anchored against its own pad, on the far side from the supply pad, with
   the 1.2 mm stub as the whole loop — placed as a declared via next to the
@@ -98,10 +105,10 @@ the point of writing them down is to say which:
   its narrowest millimetre, which on a fine-pitch board is the escape neck it
   cannot avoid. Now it measures the longest *contiguous* narrow run against a
   `power_neck_mm` allowance — necks pass, thin trunks still fail. Where a
-  whole distribution stays narrow (the fpga board routes its rails at 0.2 mm
-  because nothing wider fits between the fans), the finding stands and the
-  waiver argues in numbers: an iCE40 draws tens of milliamps, and 0.2 mm
-  carries 0.74 A at a 10 °C rise.
+  whole distribution stays narrow, the finding stands. The FPGA now uses an
+  In2 +3V3 plane and a short +1V2 spine, but its QFN escape necks remain 0.2 mm;
+  the waiver argues in numbers that an iCE40 draws tens of milliamps while
+  0.2 mm carries 0.74 A at a 10 °C rise.
 * **Thermals, open**: nothing yet judges copper area under a TO-263 tab or a
   QFN's exposed pad against the watts the part dissipates (the buck and the
   motor driver both care); stitching-via count under the iCE40's pad is
@@ -1321,3 +1328,166 @@ renderer so the only difference is the design:
 The distance between the first two columns is the review turned into code,
 which arrives before anyone runs the gate. The distance between the second and
 the third is what the gate still had to catch on the day.
+
+## 25. The reviewer's pass, round twenty: floorplan before routing
+
+The previous rounds taught the router to make poor placement look orderly.
+That was useful, but it left the decision in the wrong place: once two parts
+that must talk are thirty millimetres apart, no choice of 45-degree corners can
+make the floorplan compact.
+
+`layout.connection_span` now asks the question before copper exists. For each
+non-ground net it collapses all pads on one footprint into one node, computes
+the nearest pad-to-pad distance between every pair of footprints, and builds a
+deterministic minimum spanning tree. Any edge over
+`max_connection_span_mm` (25 mm by default) is a placement finding. The use of
+a tree matters: a three-pin net needs two local connections, not every possible
+pair, and two far-apart pads inside one package must not accuse the package of
+being far from itself. The `ai-generated` policy promotes the rule to an error;
+a long backplane can raise the threshold in its own policy.
+
+Running that rule over the old reviewed baselines found 2 long logical hops on
+buck-5v, 10 on motor-driver and 13 on fpga-audio. It found none on
+opamp-filter or pico-carrier, which is also useful evidence: a rule intended to
+judge placement did not merely rediscover dense routing everywhere. Rebuilding
+the three floorplans took all 25 findings to zero:
+
+| design | old baseline | rebuilt baseline | consequence |
+| --- | --- | --- | --- |
+| buck-5v | 126 × 56 mm, 459.30 mm tracks, 124 vias | 92 × 38 mm, 284.04 mm, 87 vias | input switch loop and output filter become one power-flow row |
+| motor-driver | 88 × 50 mm, 654.06 mm tracks, 94 vias | 68 × 46 mm, four layers, 472.54 mm, 89 vias | supply capacitors share the package fan; logic header meets its lanes; In1 is continuous GND and In2 is VM |
+| pico-carrier | 88 × 62 mm, 90 vias | 80 × 60 mm, 78 vias | edge clearances retained while unused perimeter is removed |
+| opamp-filter | 58 × 42 mm | 58 × 42 mm | a smaller trial made the analogue feedback routing worse, so the honest optimum stayed put |
+| fpga-audio | 100 × 84 mm, two layers | 76 × 58 mm, four layers | the QFN gets a solid In1 reference and In2 +3V3 plane; return-path and routing-tour waivers disappear |
+
+The FPGA change is not a concession to the gate. It is the engineering result
+the gate exposed. A four-sided QFN-48, codec and boot flash can be forced onto
+two layers, but the resulting cuts in the only reference plane are not a good
+teaching baseline. The rebuilt board spends two inner layers on an uninterrupted
+ground reference and power distribution, leaving the outer layers for escape
+and signals. One SPI clock lane crosses the In2 pour, still referenced to In1;
+the +3V3 plane remains continuous around it rather than being mistaken for the
+signal's reference.
+
+That board also exposed one parser assumption: KiCad writes a through via as
+`F.Cu B.Cu` on a four-layer board. Those are the barrel's endpoints, not the
+only copper layers it reaches. The stub and via-in-pad checks now expand the
+inclusive layer range; a regression test puts an In2 track into a through via
+so the mistake cannot return.
+
+The cold KiCad passes found final defects that a no-CLI review could not close.
+Buck-5v's output electrolytic overlapped J2's assembly courtyard even though
+their copper was legal, so C3 moved 1.5 mm toward the inductor. On the motor
+board, D2 moved 2 mm into the space between R2 and C1 to clear both courtyards.
+Route straightening had also moved AIN2's first via back across its fixed fan,
+leaving a 0-degree foldback; that escape now stops at its declared 45-degree
+fan exit and stays on B.Cu until the through-hole header, instead of returning
+to the front above the cuts made by the other control lanes. None is waived:
+manufacturability, a non-self-reversing route and a local return path are
+properties of the baseline.
+
+Finally, regeneration itself is a gate. CI now rebuilds all five projects from
+an empty route cache inside the pinned KiCad 9 image, diffs every schematic,
+project and board file, runs each reviewed policy, and renders both drawings.
+The generated projects, verdicts and renders are uploaded together. A checked-in
+example therefore has to be reproducible as well as electrically and
+geometrically acceptable; a hand-edited golden file can no longer drift away
+from the generator that claims to own it.
+
+## 26. Follow-up audit: circuit requirements and reproducible evidence
+
+The previous green CI run did not establish all the claims made about the
+designs. This pass rechecked the selected components, actual layer ordering,
+cache semantics and the cost of the new placement rule.
+
+### Motor driver: fix the circuit and the placement
+
+The selected part is **DRV8833PWR**, the PW TSSOP package without an exposed
+thermal pad. Its stated rating is 0.5 A RMS per bridge at VM = 5 V and 25 °C;
+the 1.5 A headline applies to thermally enhanced packages. C2 changes from
+100 nF to 10 µF for VM, C4 from 1 µF to 2.2 µF for VINT, and C3 remains 10 nF
+between VCP and VM. R1 no longer uses VINT as an unspecified logic supply:
+the host must pull J4.7 nFAULT up to 3.3 V through 10 kΩ. Grounded AISEN/BISEN
+disable PWM current regulation; the internal overcurrent trip is fault
+protection, not regulation at the PW package's continuous-current rating.
+[TI DRV8833 datasheet, SLVSAR1E](https://www.ti.com/lit/ds/symlink/drv8833.pdf).
+
+The former 11.7–11.9 mm bypass distance was not an inevitable consequence of
+0.65 mm pin pitch. The redesigned east side puts C2/C3/C4 beside their supply
+pins; logic drops to B.Cu at the package, and the IC grounds drop directly to
+In1. VM reaches each local capacitor from In2, without a redundant long
+outer-layer trunk. The decoupling-distance waiver is deleted: the normal
+5 mm rule is now part of the acceptance criterion.
+The regenerated board's pad-centre distances are 2.69 mm (VM–C2), 2.88 mm
+(VINT–C4) and 3.37 mm (VCP–C3). These are the placement rule's measurements,
+not measurements of loop inductance or a substitute for power-integrity work.
+
+These changes do not certify the motor supply, wiring or thermal design.
+Effective ceramic capacitance at operating bias, transient/reverse-polarity
+protection, motor stall behavior and emissions still need application-specific
+assessment. The current rating is conditional, not a guarantee for any
+ambient temperature or enclosure.
+
+### Plane presence is not return-path verification
+
+Both four-layer examples use F.Cu / In1 GND / In2 power / B.Cu. **In2 is
+adjacent to B.Cu, not In1.** The FPGA's SPI clock also cuts a lane through In2.
+The existing `route.return_path` rule only checks two-layer boards, so removing
+its waivers did not prove multilayer reference continuity. CI now renders
+individual copper layers and checks that In1 has no foreign signal tracks and
+retains a single filled GND region covering at least 90% of its zone outline.
+That is a baseline regression guard, not an SI/EMC or impedance criterion.
+The real dielectric stack-up and reference transitions remain review items.
+The FPGA's 16 decoupling-distance exceptions also remain open design work.
+Their wording no longer claims that a better single-sided placement is
+impossible. Its former assumed 60 mA budget is likewise not a firmware-specific
+power analysis. These retained demonstration exceptions are not production
+sign-off, even when all automated acceptance checks pass.
+
+### Gates that test the stated requirements
+
+`tools/check_example_contracts.py` checks the motor component values, package
+rating and exact VINT/VCP/nFAULT connections on both schematic and board,
+alongside the four-layer GND contract. It also rejects a skipped schematic or
+board stage, unavailable ERC/DRC and crashed review rules (even when reported
+as info or waived), and requires each negative control to fail for the intended
+title/rating/part-number defects. An unrelated error is not sufficient proof
+that a negative control is still useful.
+Reviewed goldens also reject unwaived native DRC warnings, even if a policy
+demotes their severity. KiCad 9 exposed a redundant FPGA +1V2 via (a B.Cu-to-B.Cu
+bend, not a layer transition) and a buck output legend touching C3's body silk.
+The via is removed and the legend has an explicit clear position; neither
+diagnostic is dismissed as harmless simply because the generic gate passed.
+The motor rebuild also exposed an incorrect inner-power-zone name: `VM`
+instead of the schematic/pad net `/VM`. KiCad treated the plane as a different
+net; the former outer-layer trunk masked the missing power-plane connection.
+Pad and zone names now use one canonical naming helper, with regression tests
+for root labels and power symbols. The project contract checks the exact In2
+net name rather than normalizing away the distinguishing slash.
+
+Route caching previously discarded `Track.keep_layer`; the loop-removal and
+run-merging passes could also lose it on a cold run. All now preserve that
+intent. Cache version 2 invalidates older entries, and its key includes whole
+footprint definitions so an unconnected pad's size change invalidates routing
+too. CI requires a cold run and a cache-hit run to produce byte-identical
+projects. Generation, gates and renders all use pinned KiCad 9; the former
+workflow accidentally gated and rendered with the global KiCad 10 default.
+The version-matrix jobs also gate all five checked-in reviewed examples and
+apply their contracts, rather than relying on the small test fixture to prove
+example compatibility with both KiCad versions. Their JSON verdicts are
+uploaded separately for each version.
+Golden regeneration runs in five independent matrix jobs with fail-fast
+disabled. Each retains its own cold/warm comparison, both verdicts, contract
+checks and renders; one failed design cannot hide the other four results.
+
+Finally, `layout.connection_span` uses a maintained Prim frontier: O(n²)
+footprint-pair evaluations instead of rescanning every cut in O(n³). Pad-pair
+distance and deterministic tie behavior are retained. Regression tests check
+both fixed-layer preservation and operation counts, so a passing small example
+cannot hide the previous large-net performance problem.
+
+An independent comparison with the previous implementation returned identical
+edge lists on 200 seeded, randomized multi-pad/tied-distance cases. On the same
+host, a 500-footprint single-pad net took 16.557 s before and 0.288 s after.
+These are illustrative timings; CI enforces operation counts and correctness,
+not a wall-clock threshold tied to one machine.

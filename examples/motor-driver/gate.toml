@@ -4,23 +4,6 @@ name = "motor-driver"
 extends = "ai-generated"
 
 [[waivers]]
-rule = "layout.decoupling_distance"
-reason = """A TSSOP-16 at 0.65 mm pitch has to walk its rows out to a routable \
-pitch before anything can be placed against them, and that walk is the distance \
-the rule measures. On two layers with parts on one side these are the closest \
-positions that exist; the four-layer answer (caps on the back, under the pins) \
-is out of this generator's reach. U1.11 is also the charge pump: C3 sits \
-between VCP and VM because the datasheet says exactly that."""
-
-[[waivers]]
-rule = "layout.decoupling_via"
-location = "C1"
-reason = """C1 is the bulk electrolytic on VM. Its ground pad reaches the plane \
-through the pour-side via 4 mm away; a via inside that distance would sit in \
-the screw terminal's courtyard. The bypass loop that matters at switching \
-speed is C2's, which passes."""
-
-[[waivers]]
 rule = "readability.label_only"
 reason = """The six logic nets are named at both ends on purpose: drawn as \
 wires they lattice the power section with eight parallel crossings, which is \
@@ -35,8 +18,9 @@ sense inputs, and the package brings them out as general pins - and the GND \
 they sit on carries the PWR_FLAG that tells ERC the rail is driven. Every \
 board that ties an IO to a flagged rail gets this pair, because a PWR_FLAG is \
 an assertion and not a driver. The connection itself is the datasheet's: with \
-no external sense resistor the DRV8833 wants AISEN and BISEN at ground and \
-limits current internally, which is what the sheet note beside U1 says. The \
+no PWM current regulation, the DRV8833 specifies AISEN and BISEN at ground. \
+This disables current regulation: internal overcurrent fault protection is \
+not a 0.5 A motor-current limiter. The sheet states that distinction. The \
 alternative that satisfies ERC is a pair of zero-ohm links to ground, which \
 is two parts in the bill of materials to quiet a warning about a connection \
 nobody disputes."""

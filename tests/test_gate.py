@@ -27,6 +27,7 @@ def test_an_unknown_policy_names_the_ones_that_exist():
 def test_a_policy_promotes_the_severity_a_rule_reported():
     policy = gate.BUILTIN_POLICIES["ai-generated"]
     assert policy.effective_severity(finding("readability.diagonal_wire")) == "error"
+    assert policy.effective_severity(finding("layout.connection_span", "warning")) == "error"
     assert policy.effective_severity(finding("erc.power_pin_not_driven", "error")) == "error"
 
 

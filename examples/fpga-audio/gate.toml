@@ -5,22 +5,22 @@ extends = "ai-generated"
 
 [[waivers]]
 rule = "layout.decoupling_distance"
-reason = """A 0.5 mm QFN with pads on four sides spends the whole distance \
-budget escaping the package: every capacitor sits at the first place copper \
-can reach, and the rule measures the fan it took to get there. The 5 mm \
-answer is capacitors on the back under the pins, which needs the four-layer \
-board this example deliberately is not."""
+reason = """This demonstration floorplan retains 16 supply-pin distances over \
+the 5 mm heuristic. Local capacitor ground vias and the inner GND plane do \
+not prove that the full bypass loop is adequate. The existing top-side fan \
+is a baseline limitation, not a demonstrated minimum imposed by QFN pitch \
+or single-sided assembly. Closer placement and supply-loop verification \
+remain open work before treating this as a production reference layout."""
 
 [[waivers]]
 rule = "track.thin_power"
-reason = """0.2 mm is the width a 0.5 mm pin row admits, and on this board it \
-is also the width the current wants. 0.2 mm of 1 oz copper carries 0.745 A at \
-a 10 C rise (IPC-2221); the iCE40UP5K's two rails draw about 25 mA between \
-them at this clock, the PCM5102A about 10 mA, the flash and the oscillator \
-under 15 mA together - call it 60 mA for the board, and the widest single run \
-carries less than half of that. The rule measures width against a default \
-power budget because a track cannot state its own current; this design \
-states it here. The four-layer answer would widen these on a plane anyway."""
+reason = """The QFN escape uses 0.2 mm copper; +3V3 distribution uses In2 and \
+the +1V2 back-side spine remains narrow. The IPC-2221 estimate of 0.745 A at \
+a 10 C rise assumes 1 oz external copper and is a screening estimate, not \
+a validated power budget. FPGA consumption depends on the bitstream and \
+IO activity, which this example does not specify. This demonstration \
+exception requires actual rail-current, voltage-drop and thermal checks \
+before reuse; the previous assumed 60 mA board budget was not verified."""
 
 [[waivers]]
 rule = "erc.pin_to_pin"
@@ -32,28 +32,3 @@ externally supplied rail is driven. A flag is an assertion, not a driver, so \
 any IO tied to a flagged rail produces this pair. The alternative is a pull-up \
 resistor on each pin, which buys the ability to drive them from a fabric this \
 design does not wire to them."""
-
-[[waivers]]
-rule = "route.return_path"
-reason = """Three nets - SPI_SO at 19.3 mm, SPI_SS at 11.3 and CRESET at 10.2 \
-- run that far over cuts in the back layer's ground fill, and on two layers \
-that is what a 48-pin QFN costs. Every pin that cannot escape on the front \
-crosses on the back, and every back-layer crossing saws the plane under \
-somebody's return current. The router already prices a millimetre on the plane \
-side at thirty on the front; forty was tried and is a prohibition rather than a \
-preference - at forty one millimetre of crossing buys a forty millimetre tour \
-and `route.wander` fires instead. Thirty is where the pair is smallest, and \
-this is what is left at thirty. The fix is a four-layer stackup with a \
-dedicated plane, which this example deliberately is not: it exists to show \
-what two layers can and cannot do."""
-
-[[waivers]]
-rule = "route.wander"
-reason = """SPI_SCK runs 49 mm of copper between two points 24.2 mm apart on \
-its way past the codec's I2S group. The straight line is not on the 45 grid \
-and neither dogleg between those ends clears the copper that is there by the \
-end - both are tried, against the finished board, by `_straighten` and \
-`_doglegged`. What is left is the way round, and the way round is 2.0 times \
-the way through. The rip-up loop already routes this net first when it comes \
-out worst; on a board with one signal layer and a plane, some net has to be \
-the one that goes round."""

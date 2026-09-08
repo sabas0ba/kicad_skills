@@ -281,6 +281,7 @@ mismatches).
 | `layout.no_ground_plane` / `layout.unfilled_zone` | — | return path quality |
 | `layout.outside_outline` | — | footprints off the board |
 | `layout.zone_outside_outline` | — | a zone — a pour or a keep-out — drawn wholly off the board. A footprint may carry zones of its own and KiCad stores *those* in board coordinates while everything else in a footprint is stored relative to it, so a placer that moves the pads and forgets the zone leaves the keep-out at the origin. Nothing else complains: the keep-out keeps nothing out, DRC is silent because an empty region violates no rule, and the only visible sign is that every plot comes out at half scale in one corner |
+| `layout.connection_span` | 25 mm | an edge in a net's shortest possible footprint-to-footprint tree is longer than the limit. This is a placement lower bound, independent of how neatly the copper was routed: a direct 40 mm trace is still evidence that two circuit blocks were parked 40 mm apart. Pads on one footprint form one placement node, and ground is excluded because a plane is global. A deliberately long mechanical board should state its own threshold or waive the named net |
 | `layout.double_sided_assembly` | — | bottom side parts (assembly cost) |
 | `fab.no_fiducials` | 0.8 mm pitch | a board carrying parts at or below that pitch with no fiducial for the assembly machine to align to. It aligns to *copper*, not to the drawing: two or three dots in bare mask windows, and everything else measured from them. Without them it has the routed outline, cut to a tolerance ten times looser than the placement being asked for. Context, not a fault — plenty of boards are built one at a time with tweezers |
 | `fab.many_drill_sizes` | 6 | drill count drives fab cost |
@@ -324,7 +325,7 @@ Override any threshold: `--threshold min_track_mm=0.2 --threshold max_decoupling
 The full set: `min_track_mm`, `min_via_drill_mm`, `min_annular_ring_mm`,
 `min_edge_clearance_mm`, `max_decoupling_distance_mm`, `max_drill_sizes`,
 `min_silk_text_height_mm`, `placement_grid_mm`, `rotation_step_deg`,
-`max_decoupling_via_mm`, `min_track_angle_deg`, `min_pour_coverage`,
+`max_connection_span_mm`, `max_decoupling_via_mm`, `min_track_angle_deg`, `min_pour_coverage`,
 `min_pour_island_fraction`, `max_connector_edge_mm`, `width_step_free_mm`,
 `wander_ratio`, `crosstalk_run_mm`, `stitch_pitch_mm`.
 Use the fab's real capability, not the defaults, when the fab is known.

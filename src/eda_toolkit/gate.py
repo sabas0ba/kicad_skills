@@ -134,6 +134,7 @@ _AI_BLOCKING = (
     "silk.*",
     "layout.off_grid_placement",
     "layout.odd_rotation",
+    "layout.connection_span",
     "layout.pad_collision",
     "layout.outside_outline",
     "layout.zone_outside_outline",

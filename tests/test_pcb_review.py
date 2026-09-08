@@ -1,3 +1,4 @@
+from itertools import permutations
 from pathlib import Path
 
 from eda_toolkit.kicad import pcb, pcb_review
@@ -70,6 +71,101 @@ def test_missing_outline_is_an_error():
     findings = pcb_review.rule_outline(ctx)
     assert [f.rule for f in findings] == ["board.no_outline"]
     assert findings[0].severity == "error"
+
+
+def test_connection_span_flags_theoretical_distance_not_route_style():
+    parts = [
+        footprint("U1", 5, 5, [pad("1", 5, 5, "SIG")]),
+        footprint("R1", 15, 5, [pad("1", 15, 5, "SIG")]),
+        footprint("J1", 45, 5, [pad("1", 45, 5, "SIG")]),
+    ]
+    findings = pcb_review.rule_connection_span(ctx_for(board_from(parts)))
+    assert [f.rule for f in findings] == ["layout.connection_span"]
+    assert findings[0].location == "SIG"
+    assert findings[0].details["items"] == [{"from": "J1.1", "to": "R1.1", "span_mm": 30.0}]
+
+
+def test_connection_span_collapses_multiple_pads_inside_one_footprint():
+    parts = [
+        footprint(
+            "U1",
+            5,
+            5,
+            [pad("1", 5, 5, "+3V3"), pad("2", 45, 5, "+3V3")],
+        ),
+        footprint("C1", 46, 5, [pad("1", 46, 5, "+3V3")]),
+    ]
+    assert pcb_review.rule_connection_span(ctx_for(board_from(parts))) == []
+
+
+def test_connection_span_breaks_equal_distance_pad_ties_by_number():
+    parts = [
+        footprint(
+            "U1",
+            5,
+            5,
+            [pad("2", 5, 4, "SIG"), pad("1", 5, 6, "SIG")],
+        ),
+        footprint("J1", 45, 5, [pad("1", 45, 5, "SIG")]),
+    ]
+    finding = pcb_review.rule_connection_span(ctx_for(board_from(parts)))[0]
+    assert finding.details["items"] == [{"from": "J1.1", "to": "U1.1", "span_mm": 40.012}]
+
+
+def test_connection_span_is_configurable_and_ignores_ground():
+    signal = [
+        footprint("U1", 5, 5, [pad("1", 5, 5, "SIG")]),
+        footprint("J1", 24, 5, [pad("1", 24, 5, "SIG")]),
+    ]
+    assert pcb_review.rule_connection_span(ctx_for(board_from(signal))) == []
+    tight = ctx_for(board_from(signal), thresholds={"max_connection_span_mm": 15.0})
+    assert [f.rule for f in pcb_review.rule_connection_span(tight)] == ["layout.connection_span"]
+
+    ground = [
+        footprint("U1", 5, 5, [pad("1", 5, 5, "GND")]),
+        footprint("J1", 45, 5, [pad("1", 45, 5, "GND")]),
+    ]
+    assert pcb_review.rule_connection_span(ctx_for(board_from(ground))) == []
+
+
+def test_footprint_mst_frontier_keeps_deterministic_ties():
+    parts = [
+        footprint(ref, x, y, [pad("2", x, y, "SIG"), pad("1", x, y, "SIG")])
+        for ref, x, y in [("A", 0, 0), ("B", 1, 1), ("C", 1, 0), ("D", 0, 1)]
+    ]
+    expected = [(1.0, "A", "1", "C", "1"), (1.0, "A", "1", "D", "1"), (1.0, "C", "1", "B", "1")]
+    for order in permutations(parts):
+        assert (
+            pcb_review._footprint_mst_edges([(fp, p) for fp in order for p in reversed(fp.pads)])
+            == expected
+        )
+
+
+def test_footprint_mst_does_not_rescan_every_cut(monkeypatch):
+    # Count comparisons, not seconds: this catches cubic Prim without a flaky
+    # timing budget that depends on CI hardware or load.
+    comparisons = 0
+    distance_calls = 0
+    original = pcb_review.math.dist
+
+    class Distance(float):
+        def __lt__(self, other):
+            nonlocal comparisons
+            comparisons += 1
+            return float.__lt__(self, other)
+
+    def measured(a, b):
+        nonlocal distance_calls
+        distance_calls += 1
+        return Distance(original(a, b))
+
+    monkeypatch.setattr(pcb_review.math, "dist", measured)
+    size = 100
+    parts = [footprint(f"R{i:03}", i * i, i, [pad("1", i * i, i, "+3V3")]) for i in range(size)]
+    result = pcb_review._footprint_mst_edges([(fp, fp.pads[0]) for fp in parts])
+    assert len(result) == size - 1
+    assert distance_calls == size * (size - 1) // 2
+    assert comparisons < 2 * size * size
 
 
 def test_thin_tracks_are_errors():
@@ -624,6 +720,23 @@ def test_a_track_ending_in_a_pour_of_its_own_net_is_connected():
         tracks=[track(0, 0, 5, 0, net="GND")],
         zones=[pcb.Zone(net="GND", layers=["F.Cu"], filled=True)],
     )
+    assert pcb_review.rule_track_stubs(ctx_for(board)) == []
+
+
+def test_a_through_via_reaches_inner_copper_layers():
+    board = board_from(
+        tracks=[track(0, 0, 5, 0, net="S", layer="In2.Cu")],
+        vias=[
+            pcb.Via(0, 0, 0.6, 0.3, ["F.Cu", "B.Cu"], 1, "S"),
+            pcb.Via(5, 0, 0.6, 0.3, ["F.Cu", "B.Cu"], 1, "S"),
+        ],
+    )
+    board.layers = [
+        {"id": "0", "name": "F.Cu", "type": "signal", "user_name": ""},
+        {"id": "1", "name": "In1.Cu", "type": "power", "user_name": ""},
+        {"id": "2", "name": "In2.Cu", "type": "power", "user_name": ""},
+        {"id": "31", "name": "B.Cu", "type": "signal", "user_name": ""},
+    ]
     assert pcb_review.rule_track_stubs(ctx_for(board)) == []
 
 

@@ -70,8 +70,8 @@ NAMESPACE = uuid.UUID("6f1a0f3e-0000-4000-8000-000000000000")
 # --generated-by. They matter most on the `as-generated` variant: it is a record
 # of what a generator of this vintage actually wrote, and a year from now that
 # is the only thing that dates it.
-GENERATED_ON = "2026-08-12"
-GENERATED_BY = "Claude Code (claude-fable-5)"
+GENERATED_ON = "2026-09-05"
+GENERATED_BY = "OpenAI Codex"
 
 GEOM_EPS = 1e-6
 GEOM_TOL = 0.001  # two points this close on the sheet are the same point
@@ -120,6 +120,9 @@ class Part:
     # their net names automatically; this is for parts whose purpose the
     # reference alone does not state.
     silk_label: str = ""
+    # Reviewed exceptions to automatic connector legend placement, in board
+    # coordinates: pin number -> (x, y, justification). Does not move copper.
+    pin_legend_at: dict[str, tuple[float, float, str]] = field(default_factory=dict)
     # Whether to print the symbol's value on the sheet. A fiducial's value is
     # the word "Fiducial" and a screw hole's is its thread: nothing a reader
     # needs, and one more string to collide with a wire. The libraries leave
@@ -153,6 +156,10 @@ class Track:
     # point inside the pour, which is how it reaches the plane: the router has to
     # spend a via, and where it spends it is not worth choosing by hand.
     goal_layer: str | None = None
+    # Some back-layer runs are a deliberate part of the floorplan rather than
+    # leftovers from the maze router.  Keep those runs on the requested layer
+    # when the final clean-up pass looks for short hops it can surface.
+    keep_layer: bool = False
 
 
 @dataclass
@@ -237,6 +244,10 @@ class Design:
     power_flags: list[tuple[str, str]]  # (net, "REF.PIN")
     board_size: tuple[float, float]
     tracks: list[Track]
+    # The router uses the two outer signal layers. Fine-pitch designs may add
+    # two uninterrupted inner planes without changing that routing model.
+    copper_layers: int = 2
+    power_plane: str | None = None
     vias: list[Via] = field(default_factory=list)
     # The ground pour, as (x0, y0, x1, y1) in board coordinates. It is inset
     # from the board edge rather than being the whole board, because KiCad's own
@@ -640,9 +651,10 @@ def _title_block(design: Design, indent: str) -> list[str]:
         ("rev", design.rev),
         ("company", design.company),
     ]
-    body = [f'{indent}\t({name} "{value}")' for name, value in fields if value]
+    child_indent = f"{indent}  "
+    body = [f'{child_indent}({name} "{value}")' for name, value in fields if value]
     body += [
-        f'{indent}\t(comment {number} "{text}")'
+        f'{child_indent}(comment {number} "{text}")'
         for number, text in enumerate(design.provenance, start=1)
     ]
     return [f"{indent}(title_block", *body, f"{indent})"] if body else []
@@ -2385,6 +2397,20 @@ BOARD_LAYERS = """\
 		(33 "B.Fab" user)
 	)"""
 
+
+def board_layers(count: int, power_plane: str | None = None) -> str:
+    """KiCad's layer table for a two- or four-layer example board."""
+    if count == 2:
+        return BOARD_LAYERS
+    if count != 4:
+        raise ValueError(f"examples support two or four copper layers, got {count}")
+    power_name = f' "{power_plane}"' if power_plane else ""
+    return BOARD_LAYERS.replace(
+        '\t\t(2 "B.Cu" signal)',
+        f'\t\t(2 "In1.Cu" power "GND")\n\t\t(4 "In2.Cu" power{power_name})\n\t\t(6 "B.Cu" signal)',
+    )
+
+
 _footprint_cache: dict[str, SNode] = {}
 
 
@@ -3340,6 +3366,7 @@ def _route_all(
 
 
 ROUTE_CACHE = Path(__file__).resolve().parent.parent / ".cache" / "routes"
+ROUTE_CACHE_VERSION = 2
 
 
 def _track_signature(design: Design, track: Track) -> str:
@@ -3364,6 +3391,7 @@ def _routing_digest(design: Design) -> str:
     routes invalidates every answer it gave.
     """
     lines = [
+        str(ROUTE_CACHE_VERSION),
         design.name,
         repr(design.board_size),
         repr(design.keepouts),
@@ -3372,11 +3400,16 @@ def _routing_digest(design: Design) -> str:
     ]
     for part in sorted(design.footprints(), key=lambda p: p.ref):
         lines.append(f"P {part.ref}|{part.footprint}|{part.board}")
+        # Unrouted and unconnected pads are obstacles too. Endpoint positions
+        # alone do not capture a library pad's size, drill or layer changes.
+        lines.append(sexp.dumps(footprint_definition(part.footprint)))
     for name, nodes in sorted(design.nets.items()):
         lines.append(f"N {name}={','.join(sorted(nodes))}")
     for track in design.tracks:
         points = [tuple(round(v, 4) for v in resolve(design, point)) for point in track.points]
-        lines.append(f"T {_track_signature(design, track)}|{track.auto}|{points}")
+        lines.append(
+            f"T {_track_signature(design, track)}|{track.auto}|{track.keep_layer}|{points}"
+        )
     for via in design.vias:
         lines.append(f"V {via.net}|{via_position(design, via)}|{via.size}|{via.drill}")
     lines.append(Path(autoroute.__file__).read_text())
@@ -3392,6 +3425,8 @@ def _cache_read(name: str, digest: str) -> tuple[list[Track], list[Via]] | None:
         blob = json.loads(path.read_text())
     except (OSError, ValueError):
         return None
+    if not isinstance(blob, dict) or blob.get("version") != ROUTE_CACHE_VERSION:
+        return None
     tracks = [
         Track(
             net=t["net"],
@@ -3399,6 +3434,7 @@ def _cache_read(name: str, digest: str) -> tuple[list[Track], list[Via]] | None:
             width=t["width"],
             points=[tuple(point) for point in t["points"]],
             goal_layer=t.get("goal_layer"),
+            keep_layer=t["keep_layer"],
         )
         for t in blob["tracks"]
     ]
@@ -3415,6 +3451,7 @@ def _cache_write(design: Design, digest: str, done: Design, order: list[Track]) 
         (ROUTE_CACHE / f"{design.name}.{digest}.json").write_text(
             json.dumps(
                 {
+                    "version": ROUTE_CACHE_VERSION,
                     "tracks": [
                         {
                             "net": t.net,
@@ -3422,6 +3459,7 @@ def _cache_write(design: Design, digest: str, done: Design, order: list[Track]) 
                             "width": t.width,
                             "points": [list(resolve(done, p)) for p in t.points],
                             "goal_layer": t.goal_layer,
+                            "keep_layer": t.keep_layer,
                         }
                         for t in done.tracks
                     ],
@@ -3481,7 +3519,9 @@ def _learned_order(design: Design, order: list[Track]) -> list[Track]:
     return sorted(order, key=lambda t: rank.get(_track_signature(design, t), len(rank)))
 
 
-def resolve_routes(design: Design, use_cache: bool = True) -> Design:
+def resolve_routes(
+    design: Design, use_cache: bool = True, *, require_cache: bool = False
+) -> Design:
     """Replace every ``auto`` track with the path a router found for it.
 
     Done once, before anything looks at the geometry, so the clearance check and
@@ -3522,13 +3562,15 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
     )
     if not order:
         return _pipeline(design)
-    digest = _routing_digest(design) if use_cache else ""
+    digest = _routing_digest(design)
     if use_cache:
         cached = _cache_read(design.name, digest)
         if cached:
             print(f"{design.name}: routing unchanged, reusing {digest[:8]}", file=sys.stderr)
             done = replace(design, tracks=cached[0], vias=cached[1])
             return _pipeline(done)
+        if require_cache:
+            raise SystemExit(f"{design.name}: required route cache is missing for {digest}")
         order = _learned_order(design, order)
     ripped: list[Track] = []
     relaid: list[Track] = []
@@ -3598,8 +3640,9 @@ def resolve_routes(design: Design, use_cache: bool = True) -> Design:
         done = replace(
             design, tracks=[track for _, track in sorted(routed, key=lambda p: p[0])], vias=vias
         )
-        if use_cache:
-            _cache_write(design, digest, done, order)
+        # A cold run ignores both cached routes and the learned order, but
+        # records its fresh answer so the next run can verify the warm path.
+        _cache_write(design, digest, done, order)
         return _pipeline(done)
 
 
@@ -3645,7 +3688,14 @@ def _unlooped(design: Design) -> Design:
             if math.dist(a, b) < GEOM_EPS:
                 continue
             segs.append(
-                {"net": track.net, "layer": track.layer, "width": track.width, "a": a, "b": b}
+                {
+                    "net": track.net,
+                    "layer": track.layer,
+                    "width": track.width,
+                    "a": a,
+                    "b": b,
+                    "source": track,
+                }
             )
 
     def _cross_point(p1, p2, p3, p4):
@@ -3881,7 +3931,7 @@ def _unlooped(design: Design) -> Design:
 
     vias = [via for via in design.vias if via.net in keep_nets or touched(via)]
     tracks = passthrough + [
-        Track(seg["net"], seg["layer"], seg["width"], [seg["a"], seg["b"]]) for seg in kept_segs
+        replace(seg["source"], points=[seg["a"], seg["b"]]) for seg in kept_segs
     ]
     return replace(design, tracks=tracks, vias=vias)
 
@@ -4794,7 +4844,7 @@ def _surfaced(design: Design) -> Design:
 
     lifted = 0
     for index, track in enumerate(tracks):
-        if track.layer != "B.Cu" or track.net == POUR_NET:
+        if track.layer != "B.Cu" or track.net == POUR_NET or track.keep_layer:
             continue
         points = [resolve(design, point) for point in track.points]
         if sum(math.dist(a, b) for a, b in pairwise(points)) > SURFACE_MAX_MM:
@@ -4824,19 +4874,19 @@ def _surfaced(design: Design) -> Design:
     if not lifted:
         return design
     # A via joins two faces, and a face with nothing left on it needs no join.
-    back: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    non_front: dict[str, list[tuple[float, float]]] = defaultdict(list)
     for track in tracks:
-        if track.layer != "B.Cu":
+        if track.layer == "F.Cu":
             continue
         points = [resolve(design, point) for point in track.points]
-        back[track.net].extend((points[0], points[-1]))
+        non_front[track.net].extend((points[0], points[-1]))
     vias = [
         via
         for via in design.vias
-        if via.net == POUR_NET
+        if via.net in {POUR_NET, design.power_plane}
         or any(
             math.dist(via_position(design, via), end) <= via.size / 2 + GEOM_EPS
-            for end in back.get(via.net, ())
+            for end in non_front.get(via.net, ())
         )
     ]
     print(
@@ -4999,6 +5049,7 @@ def _join_runs(design: Design) -> Design:
                         continue
                     left = pa if a_end == -1 else pa[::-1]
                     right = pb if b_end == 0 else pb[::-1]
+                    runs[i][0] = replace(ta, keep_layer=ta.keep_layer or tb.keep_layer)
                     runs[i][1] = left + right[1:]
                     runs[j][0] = None
                     merged = True
@@ -5026,11 +5077,12 @@ def _corner_ok(p: tuple[float, float], a: tuple[float, float], c: tuple[float, f
 def _pinned_points(design: Design) -> set[tuple[float, float]]:
     """Every point on the copper that no clean-up pass may move.
 
-    Two kinds. The end of a track, because another track is joined to it and
-    moving one leaves the other in mid air - `route.stub`. And a pad, because
+    Three kinds. The end of a track, because another track is joined to it and
+    moving one leaves the other in mid air - `route.stub`. A via, because the
+    hole cannot follow a chamfer that cuts its corner away. And a pad, because
     once `_join_runs` has merged the run arriving at a pad with the one leaving
     it, the pad is an interior corner of one polyline like any other, and a
-    chamfer will happily cut it off the pad it was there to reach. That is one
+    chamfer will happily cut it off the pad it was there to reach. Each is one
     unconnected net per cut, and it is not visible in the shape.
     """
     pinned: set[tuple[float, float]] = set()
@@ -5038,6 +5090,9 @@ def _pinned_points(design: Design) -> set[tuple[float, float]]:
         points = [resolve(design, point) for point in track.points]
         for point in (points[0], points[-1]):
             pinned.add((round(point[0], 3), round(point[1], 3)))
+    for via in design.vias:
+        point = via_position(design, via)
+        pinned.add((round(point[0], 3), round(point[1], 3)))
     for part in design.footprints():
         node = footprint_definition(part.footprint)
         for pad in node.children("pad"):
@@ -5848,6 +5903,44 @@ def _reuuid(node: SNode, *salt: object) -> None:
     rewrite(node)
 
 
+def _canonicalize_board_uuids(path: Path) -> None:
+    """Undo the random UUIDs that pcbnew assigns while saving a board.
+
+    The emitter gives every object a stable UUID, but loading and saving for
+    zone fill replaces UUIDs inside library footprints. That makes two cold
+    generations differ even when their copper is identical. Re-key every UUID
+    by structural order after pcbnew is finished, and rewrite group membership
+    references with the same map. The order is KiCad's saved order, so the
+    result changes when the board changes and is identical when it does not.
+    """
+    root = sexp.load(path)
+    mapping: dict[str, str] = {}
+
+    def collect(node: SNode) -> None:
+        if node.name == "uuid":
+            for atom in node.atoms():
+                old = str(atom)
+                if old not in mapping:
+                    mapping[old] = stable_uuid(path.stem, "canonical-pcb", len(mapping))
+        for child in node.children():
+            collect(child)
+
+    def rewrite(node: SNode) -> None:
+        if node.name in ("uuid", "members"):
+            node.args = [mapping.get(str(atom), atom) for atom in node.args]
+        for child in node.children():
+            rewrite(child)
+
+    collect(root)
+    rewrite(root)
+    path.write_text(sexp.dumps(root) + "\n", encoding="utf-8")
+
+
+def board_net_name(design: Design, name: str) -> str:
+    """The exact net name KiCad derives from a power symbol or root-sheet label."""
+    return name if name in POWER_SYMBOLS and name not in design.wired_power else f"/{name}"
+
+
 def emit_board(design: Design, path: Path) -> None:
     ox, oy = design.origin
     net_of: dict[tuple[str, str], str] = {}
@@ -5862,10 +5955,7 @@ def emit_board(design: Design, path: Path) -> None:
     # plain label on the root sheet becomes "/NAME"; only a power symbol keeps
     # its bare name. Getting this wrong costs one `net_conflict` per pad in the
     # schematic-parity check, and nothing else notices.
-    labels = {
-        name: (name if name in POWER_SYMBOLS and name not in design.wired_power else f"/{name}")
-        for name in order
-    }
+    labels = {name: board_net_name(design, name) for name in order}
 
     # Every pin the design does not use gets the name KiCad's own netlister
     # gives it: reference, unit letter when the symbol has more than one, pin
@@ -5898,7 +5988,7 @@ def emit_board(design: Design, path: Path) -> None:
         "\t)",
         '\t(paper "A4")',
         *_title_block(design, "\t"),
-        BOARD_LAYERS,
+        board_layers(design.copper_layers, design.power_plane),
         "\t(setup",
         "\t\t(pad_to_mask_clearance 0)",
         "\t\t(allow_soldermask_bridges_in_footprints no)",
@@ -6011,6 +6101,19 @@ def emit_board(design: Design, path: Path) -> None:
         # neither face carries a floating island to act as an antenna.
         lines.append(_zone(design, codes["GND"], "B.Cu"))
         lines.append(_zone(design, codes["GND"], "F.Cu", smd_isolated=True))
+        if design.copper_layers == 4:
+            # The uninterrupted reference plane is why this stack-up exists;
+            # the outer pours still spread heat and collect local ground.
+            lines.append(_zone(design, codes["GND"], "In1.Cu", net_name="GND"))
+            if design.power_plane:
+                lines.append(
+                    _zone(
+                        design,
+                        codes[design.power_plane],
+                        "In2.Cu",
+                        net_name=design.power_plane,
+                    )
+                )
 
     lines.extend(_board_silk(design, printed))
 
@@ -6441,6 +6544,8 @@ def _board_silk(
                         design, _silk_box(net, side[0], side[1], 0.8, side[2]), others, all_pads
                     ),
                 )
+                if number in part.pin_legend_at:
+                    tx, ty, justify = part.pin_legend_at[number]
                 placed.append(_silk_box(net, tx, ty, 0.8, justify))
                 if legend_boxes is not None:
                     legend_boxes.append(_silk_box(net, tx, ty, 0.8, justify))
@@ -6716,8 +6821,14 @@ def _connected_islands(design, islands, layer: str, net: str):
     return [box for i, box in enumerate(islands) if find(i) == find(plane)]
 
 
-def _zone(design: Design, code: int, layer: str = "B.Cu", smd_isolated: bool = False) -> str:
-    """The ground pour, declared but not filled.
+def _zone(
+    design: Design,
+    code: int,
+    layer: str = "B.Cu",
+    smd_isolated: bool = False,
+    net_name: str = POUR_NET,
+) -> str:
+    """A plane pour, declared but not filled.
 
     The fill used to be computed here, by sweeping the outline and subtracting
     everything of another net, because KiCad's own filler was believed to need
@@ -6744,12 +6855,17 @@ def _zone(design: Design, code: int, layer: str = "B.Cu", smd_isolated: bool = F
     outline = [(ox + x0, oy + y0), (ox + x1, oy + y0), (ox + x1, oy + y1), (ox + x0, oy + y1)]
     pts = " ".join(f"(xy {round(x, 4)} {round(y, 4)})" for x, y in outline)
     connect = "\t\t(connect_pads thru_hole_only" if smd_isolated else "\t\t(connect_pads"
+    zone_uuid = (
+        stable_uuid(design.name, "zone", layer)
+        if net_name == POUR_NET
+        else stable_uuid(design.name, "zone", layer, net_name)
+    )
     lines = [
         "\t(zone",
         f"\t\t(net {code})",
-        f'\t\t(net_name "{POUR_NET}")',
+        f'\t\t(net_name "{board_net_name(design, net_name)}")',
         f'\t\t(layer "{layer}")',
-        f'\t\t(uuid "{stable_uuid(design.name, "zone", layer)}")',
+        f'\t\t(uuid "{zone_uuid}")',
         "\t\t(hatch edge 0.5)",
         connect,
         f"\t\t\t(clearance {ZONE_CLEARANCE})",
@@ -6873,7 +6989,7 @@ def buck_5v() -> Design:
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(38.1, 63.5),
             mirror="y",
-            board=(10.0, 12.0, 270.0),
+            board=(6.0, 20.0, 270.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -6886,7 +7002,7 @@ def buck_5v() -> Design:
             "220u",
             "Capacitor_SMD:CP_Elec_8x10.5",
             sheet=(63.5, 69.85),
-            board=(32.0, 12.0, 0.0),
+            board=(30.0, 29.0, 270.0),
             fields={
                 "Voltage": "35V",
                 "Tolerance": "20%",
@@ -6903,7 +7019,7 @@ def buck_5v() -> Design:
             sheet=(78.74, 69.85),
             # stood on end beside U1's VIN pin: the input loop is the one that
             # has to be short, and this is the only spot the fan-out leaves free
-            board=(50.0, 7.0, 90.0),
+            board=(36.0, 22.0, 0.0),
             fields={
                 "Voltage": "50V",
                 "Tolerance": "10%",
@@ -6918,7 +7034,7 @@ def buck_5v() -> Design:
             "LM2596S-5",
             "Package_TO_SOT_SMD:TO-263-5_TabPin3",
             sheet=(109.22, 66.04),
-            board=(62.0, 12.0, 0.0),
+            board=(27.0, 15.0, 180.0),
             fields={
                 "MPN": "LM2596SX-5.0/NOPB",
                 "Manufacturer": "Texas Instruments",
@@ -6932,7 +7048,7 @@ def buck_5v() -> Design:
             "Diode_SMD:D_SMA",
             sheet=(134.62, 74.93),
             angle=270.0,
-            board=(58.0, 36.0, 0.0),
+            board=(42.0, 22.0, 270.0),
             fields={
                 "MPN": "SS34",
                 "Manufacturer": "Vishay",
@@ -6946,7 +7062,7 @@ def buck_5v() -> Design:
             "Inductor_SMD:L_12x12mm_H8mm",
             sheet=(153.67, 68.58),
             angle=90.0,
-            board=(76.0, 36.0, 0.0),
+            board=(53.5, 16.5, 0.0),
             fields={
                 "Current": "3A",
                 "Tolerance": "20%",
@@ -6961,7 +7077,7 @@ def buck_5v() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(166.37, 74.93),
-            board=(90.0, 36.0, 0.0),
+            board=(64.0, 14.0, 90.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "10%",
@@ -6976,7 +7092,7 @@ def buck_5v() -> Design:
             "220u",
             "Capacitor_SMD:CP_Elec_8x10.5",
             sheet=(179.07, 74.93),
-            board=(100.0, 36.0, 0.0),
+            board=(72.5, 16.5, 0.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
@@ -6991,7 +7107,7 @@ def buck_5v() -> Design:
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(215.9, 93.98),
-            board=(100.0, 46.0, 0.0),
+            board=(74.0, 28.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -7006,7 +7122,7 @@ def buck_5v() -> Design:
             "green",
             "LED_SMD:LED_0805_2012Metric",
             sheet=(215.9, 107.95),
-            board=(107.0, 46.0, 180.0),
+            board=(80.0, 28.0, 180.0),
             angle=90.0,
             silk_label="5V OK",
             fields={
@@ -7023,7 +7139,10 @@ def buck_5v() -> Design:
             "5V OUT",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(200.66, 68.58),
-            board=(116.0, 36.0, 90.0),
+            board=(85.0, 16.5, 90.0),
+            # KiCad 9 catches the automatic +5V legend on C3's body silk.
+            # Put it below the output terminal, clear of both outlines.
+            pin_legend_at={"1": (80.0, 21.8, "right")},
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -7046,68 +7165,73 @@ def buck_5v() -> Design:
     # because they hang off a rail.
     W, SIG = 1.0, 0.4
     tracks = [
-        # Input rail across the top, stepping over each capacitor's ground pad.
-        Track("+12V", "F.Cu", W, ["J1.1", (10.0, 4.0), (28.3, 4.0), "C1.1"]),
-        Track("+12V", "F.Cu", W, [(28.3, 4.0), (47.0, 4.0), (47.0, 7.95), "C2.1"]),
-        Track("+12V", "F.Cu", W, ["C2.1", (52.0, 7.95), (52.0, 8.6), "U1.1"]),
-        # SW and FB leave the pin field into parallel channels and run down the
-        # board together - never across each other.
-        Track("SW", "F.Cu", W, ["U1.2", (44.0, 10.3), (44.0, 36.0), "D1.1"]),
-        Track("SW", "F.Cu", W, ["D1.1", (56.0, 44.0), (71.05, 44.0), "L1.1"]),
+        # The input connector may be remote; the energy-storage parts may not.
+        # C1, C2 and VIN form one compact branch at the regulator pin.
+        Track("+12V", "F.Cu", W, ["J1.1", (11.3, 25.3), "C1.1"]),
+        Track("+12V", "F.Cu", W, ["C1.1", (30.0, 24.0), "C2.1"]),
+        Track("+12V", "F.Cu", W, ["C2.1", (35.05, 20.8), (34.65, 20.4), "U1.1"]),
+        # Turning the TO-263 puts its pin field toward D1 and L1. The hot switch
+        # loop is now a few millimetres, not a trip across half the board.
+        Track("SW", "F.Cu", W, ["U1.2", (42.0, 16.7)]),
+        Track("SW", "F.Cu", W, [(42.0, 16.7), "L1.1"]),
+        Track("SW", "F.Cu", W, [(42.0, 16.7), "D1.1"]),
         # FB senses at the output capacitor, so it ends *on* that pad rather
         # than at a coordinate the output rail happens to pass through: a
         # junction that exists only because two numbers agree is one corner
         # away from being a dangling end.
-        Track("+5V", "F.Cu", SIG, ["U1.4", (47.0, 13.7), (47.0, 26.0), (88.0, 26.0), "C3.1"]),
-        # Output rail across the bottom row.
-        Track("+5V", "F.Cu", W, ["L1.2", "C4.1"]),
-        Track("+5V", "F.Cu", W, ["C4.1", (89.05, 30.0), (96.3, 30.0), "C3.1"]),
         Track(
-            "+5V", "F.Cu", W, [(96.3, 30.0), (107.0, 30.0), (107.0, 42.0), (110.0, 42.0), "J2.1"]
+            "+5V",
+            "F.Cu",
+            SIG,
+            ["U1.4", (37.35, 13.3), (42.35, 8.3), (65.8, 8.3), (70.3, 12.8), "C3.1"],
         ),
-        Track("+5V", "F.Cu", SIG, ["C3.1", (96.3, 42.0), (99.088, 42.0), "R1.1"]),
+        # Output rail is one short row: switch node, inductor, capacitors, load.
+        Track("+5V", "F.Cu", W, ["L1.2", "C3.1"]),
+        Track("+5V", "F.Cu", W, [(64.0, 16.5), "C4.1"]),
+        Track("+5V", "F.Cu", W, ["C3.1", (70.3, 13.0), (81.5, 13.0), "J2.1"]),
+        Track("+5V", "F.Cu", SIG, ["C3.1", (70.3, 24.0), (73.0875, 26.7875), "R1.1"]),
         Track("LED_A", "F.Cu", SIG, ["R1.2", "D2.2"]),
         # Ground: a stub from each pad to a via of its own, straight into the
         # pour. Only the two through-hole terminals, outside the pour, run far.
-        Track("GND", "F.Cu", W, ["J1.2", (10.0, 50.0), (16.0, 50.0)]),
-        Track("GND", "F.Cu", W, ["J2.2", (121.0, 36.0), (121.0, 50.0), (110.0, 50.0)]),
+        Track("GND", "F.Cu", W, ["J1.2", (6.0, 30.0), (10.0, 34.0)]),
+        Track("GND", "F.Cu", W, ["J2.2", (88.0, 14.5), (88.0, 29.0), (83.0, 34.0)]),
         # The explicit return: input ground to output ground at the same width
         # as the forward path, so the 2 A loop does not depend on the pour
         # alone. It rides the bottom edge, under the LED branch, crossing
         # nothing.
-        Track("GND", "F.Cu", W, [(16.0, 50.0), (110.0, 50.0)]),
-        Track("GND", "F.Cu", W, ["U1.3", (51.0, 12.0)]),
-        Track("GND", "F.Cu", W, ["U1.5", (54.35, 20.0)]),
-        Track("GND", "F.Cu", W, [(63.5, 12.0), (63.5, 20.0)]),  # the TO-263 tab
-        Track("GND", "F.Cu", W, ["C1.2", (35.7, 14.6)]),
-        Track("GND", "F.Cu", W, ["C2.2", (50.0, 4.4)]),
-        Track("GND", "F.Cu", W, ["D1.2", (60.0, 31.0)]),
-        Track("GND", "F.Cu", W, ["C4.2", (90.95, 38.0)]),
-        Track("GND", "F.Cu", W, ["C3.2", (103.7, 38.6)]),
-        Track("GND", "F.Cu", SIG, ["D2.1", (107.938, 50.0)]),
+        Track("GND", "F.Cu", W, [(10.0, 34.0), (83.0, 34.0)]),
+        Track("GND", "F.Cu", W, ["U1.3", (39.5, 15.0)]),
+        Track("GND", "F.Cu", W, ["U1.5", (37.5, 11.6)]),
+        Track("GND", "F.Cu", W, [(25.5, 15.0), (25.5, 21.8)]),  # the TO-263 tab
+        Track("GND", "F.Cu", W, ["C1.2", (30.0, 34.0)]),
+        Track("GND", "F.Cu", W, ["C2.2", (38.5, 22.0)]),
+        Track("GND", "F.Cu", W, ["D1.2", (42.0, 26.5)]),
+        Track("GND", "F.Cu", W, ["C4.2", (64.0, 11.5)]),
+        Track("GND", "F.Cu", W, ["C3.2", (77.7, 18.5)]),
+        Track("GND", "F.Cu", SIG, ["D2.1", (80.9375, 31.0)]),
     ]
     vias = [
         # The tab is the die's thermal path and the switch loop's return: a
         # ring of vias just off the pad ties it straight into both pours.
         # Off the pad, not on it - via-in-pad drinks the solder at reflow.
-        Via("GND", x=69.5, y=7.5),
-        Via("GND", x=69.5, y=12.0),
-        Via("GND", x=69.5, y=16.5),
-        Via("GND", x=60.5, y=5.2),
-        Via("GND", x=65.5, y=5.2),
-        Via("GND", x=60.5, y=18.8),
-        Via("GND", x=65.5, y=18.8),
-        Via("GND", x=16.0, y=50.0),
-        Via("GND", x=110.0, y=50.0),
-        Via("GND", x=51.0, y=12.0),
-        Via("GND", x=54.35, y=20.0),
-        Via("GND", x=63.5, y=20.0),
-        Via("GND", x=35.7, y=14.6),
-        Via("GND", x=50.0, y=4.4),
-        Via("GND", x=60.0, y=31.0),
-        Via("GND", x=90.95, y=38.0),
-        Via("GND", x=103.7, y=38.6),
-        Via("GND", x=107.938, y=50.0),
+        Via("GND", x=19.5, y=19.5),
+        Via("GND", x=19.5, y=15.0),
+        Via("GND", x=19.5, y=10.5),
+        Via("GND", x=28.5, y=21.8),
+        Via("GND", x=23.5, y=21.8),
+        Via("GND", x=28.5, y=8.2),
+        Via("GND", x=23.5, y=8.2),
+        Via("GND", x=10.0, y=34.0),
+        Via("GND", x=83.0, y=34.0),
+        Via("GND", x=39.5, y=15.0),
+        Via("GND", x=37.5, y=11.6),
+        Via("GND", x=25.5, y=21.8),
+        Via("GND", x=30.0, y=34.0),
+        Via("GND", x=38.5, y=22.0),
+        Via("GND", x=42.0, y=26.5),
+        Via("GND", x=64.0, y=11.5),
+        Via("GND", x=77.7, y=18.5),
+        Via("GND", x=80.9375, y=31.0),
     ]
 
     return Design(
@@ -7151,10 +7275,10 @@ def buck_5v() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("+12V", "J1.1"), ("GND", "J1.2"), ("+5V", "L1.2")],
-        board_size=(126.0, 56.0),
+        board_size=(92.0, 38.0),
         tracks=tracks,
         vias=vias,
-        pour=(1.2, 1.2, 124.8, 54.8),
+        pour=(1.2, 1.2, 90.8, 36.8),
         mounting=Mounting(),
         fiducials=3,
         wired_power=("+12V", "+5V"),
@@ -7179,11 +7303,10 @@ def motor_driver() -> Design:
     unpolarised - the silk says A and B - so the layout is allowed to decide,
     and the schematic says so rather than leaving a reviewer to wonder.
 
-    *The plane.* The ground pour is the back of the left two thirds, under the
-    driver and the four output tracks, which is where the current and the heat
-    are. It stops at x = 64 because the fill these examples write is the pour
-    outline itself - so no foreign copper may be inside it, and the back of the
-    right hand third is where the router is allowed to cross something.
+    *The blocks.* The motor terminals face the left edge, power enters at the
+    top-right edge and logic enters at the bottom. The driver sits between
+    them. Logic drops to the back near its pins so the three local capacitors
+    can sit beside the supply pins, without a twelve-millimetre escape fan.
     """
     parts = [
         Part(
@@ -7194,8 +7317,10 @@ def motor_driver() -> Design:
             # 38, not 30: mirrored, the connector prints its long value to the
             # left, and at 30 that string reached the sheet frame's ruler strip.
             sheet=(38.0, 80.0),
-            board=(82.0, 8.0, 270.0),
+            board=(62.0, 7.0, 270.0),
             mirror="y",
+            # Keep the supply legend above the nearby bulk capacitor's silk.
+            pin_legend_at={"1": (58.0, 3.0, "right")},
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -7208,7 +7333,7 @@ def motor_driver() -> Design:
             "100u",
             "Capacitor_SMD:CP_Elec_6.3x7.7",
             sheet=(55.88, 86.36),
-            board=(69.0, 8.0, 0.0),
+            board=(52.0, 8.0, 0.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "20%",
@@ -7220,16 +7345,16 @@ def motor_driver() -> Design:
         Part(
             "C2",
             "Device:C",
-            "100n",
+            "10u",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(68.58, 86.36),
-            board=(61.0, 26.9, 0.0),
+            board=(43.0, 26.0, 0.0),
             fields={
-                "Voltage": "50V",
+                "Voltage": "25V",
                 "Tolerance": "10%",
-                "MPN": "CL21B104KBCNNNC",
+                "MPN": "CL21A106KAYNNNE",
                 "Manufacturer": "Samsung",
-                "Datasheet": "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do",
+                "Datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A106KAYNNN",
             },
         ),
         Part(
@@ -7239,7 +7364,7 @@ def motor_driver() -> Design:
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(96.52, 72.39),
             angle=90.0,
-            board=(65.0, 28.7, 0.0),
+            board=(43.0, 28.5, 180.0),
             fields={
                 "Voltage": "50V",
                 "Tolerance": "10%",
@@ -7254,7 +7379,7 @@ def motor_driver() -> Design:
             "DRV8833PW",
             "Package_SO:TSSOP-16_4.4x5mm_P0.65mm",
             sheet=(130.0, 80.0),
-            board=(44.0, 26.0, 0.0),
+            board=(36.5, 25.5, 0.0),
             fields={
                 "MPN": "DRV8833PWR",
                 "Manufacturer": "Texas Instruments",
@@ -7264,31 +7389,16 @@ def motor_driver() -> Design:
         Part(
             "C4",
             "Device:C",
-            "1u",
+            "2u2",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(149.86, 60.96),
-            board=(61.0, 23.3, 0.0),
+            board=(43.0, 23.5, 0.0),
             fields={
-                "Voltage": "16V",
+                "Voltage": "25V",
                 "Tolerance": "10%",
-                "MPN": "CL21A105KBFNNNE",
+                "MPN": "CL21A225KAFNNNE",
                 "Manufacturer": "Samsung",
-                "Datasheet": "https://product.samsungsem.com/mlcc/CL21A105KBFNNNE.do",
-            },
-        ),
-        Part(
-            "R1",
-            "Device:R",
-            "10k",
-            "Resistor_SMD:R_0805_2012Metric",
-            sheet=(160.02, 60.96),
-            board=(66.0, 40.0, 0.0),
-            fields={
-                "Tolerance": "1%",
-                "Power": "0.125W",
-                "MPN": "RC0805FR-0710KL",
-                "Manufacturer": "Yageo",
-                "Datasheet": "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf",
+                "Datasheet": "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A225KAFNNN",
             },
         ),
         Part(
@@ -7297,7 +7407,7 @@ def motor_driver() -> Design:
             "4k7",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(81.28, 107.95),
-            board=(52.0, 6.0, 0.0),
+            board=(41.0, 6.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -7312,7 +7422,7 @@ def motor_driver() -> Design:
             "green",
             "LED_SMD:LED_0805_2012Metric",
             sheet=(81.28, 121.92),
-            board=(58.0, 6.0, 180.0),
+            board=(45.0, 6.0, 180.0),
             silk_label="VM OK",
             fields={
                 "Voltage": "2.1V",
@@ -7328,7 +7438,7 @@ def motor_driver() -> Design:
             "MOTOR A",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(172.72, 82.55),
-            board=(8.0, 20.0, 90.0),
+            board=(10.0, 22.5, 90.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -7341,7 +7451,7 @@ def motor_driver() -> Design:
             "MOTOR B",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(172.72, 95.25),
-            board=(8.0, 38.0, 90.0),
+            board=(10.0, 33.5, 90.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -7354,7 +7464,7 @@ def motor_driver() -> Design:
             "LOGIC",
             "Connector_PinHeader_2.54mm:PinHeader_1x08_P2.54mm_Vertical",
             sheet=(40.0, 45.0),
-            board=(82.0, 19.0, 0.0),
+            board=(42.0, 40.0, 270.0),
             fields={
                 "MPN": "61300811121",
                 "Manufacturer": "Wurth Elektronik",
@@ -7381,8 +7491,8 @@ def motor_driver() -> Design:
             "J4.8",
         ],
         "VCP": ["U1.11", "C3.2"],
-        "VINT": ["U1.14", "C4.1", "R1.1"],
-        "nFAULT": ["U1.8", "R1.2", "J4.7"],
+        "VINT": ["U1.14", "C4.1"],
+        "nFAULT": ["U1.8", "J4.7"],
         "nSLEEP": ["U1.1", "J4.2"],
         "AIN1": ["U1.16", "J4.3"],
         "AIN2": ["U1.15", "J4.4"],
@@ -7399,7 +7509,7 @@ def motor_driver() -> Design:
 
     design = Design(
         name="motor-driver",
-        title="Dual H-bridge, DRV8833, 2 x 1.5 A",
+        title="Dual H-bridge, DRV8833PW, 2 x 0.5 A RMS",
         rev="A",
         company="kicad_skills examples",
         notes=[],
@@ -7407,22 +7517,22 @@ def motor_driver() -> Design:
             (
                 (17.78, 115.57),
                 [
-                    "The bridge outputs run 0.4 mm end to end: that is all a",
-                    "0.65 mm pin row will take, and the escape sets the current",
-                    "whatever the rest of the run is widened to. 0.4 mm carries",
-                    "1.4 A at a 10 C rise, 1.9 A at 20 - the part's 1.5 A.",
+                    "PW package: 0.5 A RMS per bridge at VM=5 V, 25 C.",
+                    "Not the 1.5 A thermally enhanced PWP/RTY versions.",
+                    "0.4 mm outputs; verify temperature and stall current",
+                    "for the actual motor. OCP is not a 0.5 A limiter.",
                 ],
             ),
             (
                 (17.78, 102.87),
                 [
                     "C1 100 uF / 25 V bulk on a rail that can reach 10.8 V -",
-                    "1.5x headroom, and reserve for the motor current steps.",
+                    "C2 10 uF / 25 V ceramic is the local VM bypass.",
                 ],
             ),
             (
                 (93.98, 115.57),
-                ["VM present: 1.5 mA through R2."],
+                ["VM indicator: about 1.5 mA at VM=9 V."],
             ),
             (
                 (60.96, 55.88),
@@ -7434,15 +7544,15 @@ def motor_driver() -> Design:
             (
                 (147.32, 33.02),
                 [
-                    "C4 1 uF bypasses VINT, the internal 3.3 V",
-                    "regulator; R1 10k pulls up open-drain nFAULT.",
+                    "C4 2.2 uF bypasses VINT; no external load.",
+                    "nFAULT needs a host-side 10k pull-up to 3.3 V.",
                 ],
             ),
             (
                 (162.56, 106.68),
                 [
-                    "AISEN/BISEN grounded: no current sense,",
-                    "the part's internal limit only.",
+                    "AISEN/BISEN grounded: PWM current regulation",
+                    "disabled; OCP is fault protection, not regulation.",
                     "A lands on J2 reversed, B on J3 straight -",
                     "the package brings them out that way.",
                 ],
@@ -7455,10 +7565,12 @@ def motor_driver() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("VM", "J1.1"), ("GND", "J1.2"), ("VINT", "C4.1")],
-        board_size=(88.0, 50.0),
+        board_size=(68.0, 46.0),
+        copper_layers=4,
+        power_plane="VM",
         tracks=[],
         vias=[],
-        pour=(1.2, 1.2, 86.8, 48.8),
+        pour=(1.2, 1.2, 66.8, 44.8),
         # A motor's chassis is metal and the board bolts to it: the holes carry
         # ground so the enclosure is at the circuit's reference rather than
         # floating beside it.
@@ -7472,8 +7584,8 @@ def motor_driver() -> Design:
     design = design.snapped()
 
     # -- the escape from the package ---------------------------------------
-    # 1.5 A a bridge, so an output leaves at the width of its own pad and is
-    # widened by the router once it is clear; logic carries nothing.
+    # The PW package is rated at 0.5 A RMS per bridge under TI's stated
+    # conditions. Outputs use the full 0.4 mm the escape geometry admits.
     SIG, POWER = 0.3, 0.4
     # The output side spreads to 2.0 mm because four 0.8 mm tracks start there
     # and two of them are 0.8 mm apart from a ground via.
@@ -7481,74 +7593,94 @@ def motor_driver() -> Design:
         design,
         "U1",
         ["1", "2", "3", "4", "5", "6", "7", "8"],
-        lead=37.5,
-        column=32.0,
+        lead=30.0,
+        column=24.5,
         pitch=1.4,
-        centre=26.0,
+        centre=25.5,
         width=SIG,
         # the four bridge outputs leave at the width they keep: no step
         widths={"2": POWER, "4": POWER, "5": POWER, "7": POWER, "3": POWER, "6": POWER},
     )
-    right, east = fan(
-        design,
-        "U1",
-        ["16", "15", "14", "13", "12", "11", "10", "9"],
-        lead=50.5,
-        column=58.0,
-        pitch=1.8,
-        centre=26.0,
-        width=SIG,
-        # VINT, AISEN/GND, VM and VCP leave at the width the row allows;
-        # the logic pins beside them carry nothing and stay at 0.3.
-        widths={"14": POWER, "13": POWER, "12": POWER, "11": POWER},
-    )
-
-    # AISEN, BISEN and GND leave the fan and take one more step clear of it
-    # before dropping into the plane. On top of the fan the pour is whatever
-    # fits between two escape lanes and their clearance - a strip too thin to
-    # reach anything, which is a via connected to an island rather than to the
-    # plane. A millimetre and a half further out the pour is solid.
+    left = [track for track in left if track.net not in {"nSLEEP", "GND"}]
+    # A four-layer board need not fan every supply pin out to a common distant
+    # column. Drop GND into In1 under the non-exposed-pad body, and keep VINT,
+    # VM and VCP on short front-side connections to the three capacitors.
+    # The east lands begin at x=38.625. A 0.58 mm via at x=38.2 leaves
+    # 0.135 mm copper gap to its own land, so it does not require via-in-pad.
+    east = {"16": (38.2, 23.225), "15": (40.75, 23.625), "10": (38.2, 27.125), "9": (40.2, 28.3)}
+    right = [
+        Track("AIN1", "F.Cu", SIG, ["U1.16", east["16"]]),
+        Track("AIN2", "F.Cu", SIG, ["U1.15", (40.5, 23.875), east["15"]]),
+        Track("BIN2", "F.Cu", SIG, ["U1.10", east["10"]]),
+        Track("BIN1", "F.Cu", SIG, ["U1.9", (39.675, 27.775), east["9"]]),
+    ]
     stops = {
-        "3": (west["3"][0] - 1.5, west["3"][1]),
-        "6": (west["6"][0] - 1.5, west["6"][1]),
-        "13": (east["13"][0] + 1.5, east["13"][1]),
+        "3": (35.0, 24.525),
+        "6": (35.0, 26.475),
+        "13": (38.2, 25.175),
     }
     tracks = [
         *left,
         *right,
-        *(
-            Track("GND", "F.Cu", POWER, [end, stops[number]])
-            for number, end in (("3", west["3"]), ("6", west["6"]), ("13", east["13"]))
-        ),
+        *(Track("GND", "F.Cu", POWER, [f"U1.{number}", point]) for number, point in stops.items()),
     ]
-    vias = [Via("GND", x=point[0], y=point[1]) for point in stops.values()]
+    local_ground = (45.15, 26.0)
+    vint_ground = (45.15, 23.5)
+    vias = [
+        *(Via("GND", x=point[0], y=point[1], size=0.58, drill=0.3) for point in stops.values()),
+        Via("GND", x=local_ground[0], y=local_ground[1]),
+        Via("GND", x=vint_ground[0], y=vint_ground[1]),
+    ]
 
     # -- the supply, placed by hand ----------------------------------------
-    # Bulk, then bypass, then the pin: the loop closes at the part, so the
-    # bypass sits hard against the end of pin 12's escape.
-    # VM has to reach the middle of the east row, and the logic has to leave
-    # from either side of it. On two layers something crosses, and the choice
-    # is which: four signals going round the whole board to keep the front
-    # clear - which is what the router did, 190 mm of copper for a 40 mm net -
-    # or one stated link on the back for the rail. The rail is the right
-    # answer. It is low impedance, its own return is the plane it is crossing,
-    # and the signals cross the cut it leaves at right angles, which costs them
-    # a track width of return path each rather than a detour.
-    LINK = (71.0, 13.0), (71.0, 26.9)
-    vias += [Via("VM", x=LINK[0][0], y=LINK[0][1]), Via("VM", x=LINK[1][0], y=LINK[1][1])]
+    # The input feeds In2; C2 and C3 each pick it up locally. No redundant
+    # outer-layer supply trunk, and no logic escape between IC and bypass.
+    feed, vm_bypass, pump_supply = (57.5, 13.0), (42.05, 24.75), (45.15, 28.5)
+    vias += [
+        *(Via("VM", x=p[0], y=p[1]) for p in (feed, pump_supply)),
+        Via("VM", x=vm_bypass[0], y=vm_bypass[1], size=0.58, drill=0.3),
+    ]
     tracks += [
-        Track("VM", "F.Cu", POWER, [east["12"], "C2.1"]),
+        Track("VM", "F.Cu", POWER, ["U1.12", (41.875, 25.825), "C2.1"]),
+        Track("VM", "F.Cu", POWER, [vm_bypass, "C2.1"]),
         Track("VM", "F.Cu", POWER, ["J1.1", "C1.1"], auto=True),
-        Track("VM", "F.Cu", POWER, ["C1.1", LINK[0]], auto=True),
-        Track("VM", "B.Cu", POWER, [LINK[0], LINK[1]]),
-        Track("VM", "F.Cu", POWER, [LINK[1], "C2.1"], auto=True),
-        Track("VM", "F.Cu", POWER, ["C2.1", "C3.1"], auto=True),
+        Track("VM", "F.Cu", POWER, ["C1.1", feed], auto=True),
+        Track("VM", "F.Cu", POWER, ["C3.1", pump_supply]),
         Track("VM", "F.Cu", POWER, ["C1.1", "R2.1"], auto=True),
-        Track("VCP", "F.Cu", POWER, [east["11"], "C3.2"], auto=True),
-        Track("VINT", "F.Cu", POWER, [east["14"], "C4.1"], auto=True),
-        Track("VINT", "F.Cu", POWER, ["C4.1", "R1.1"], auto=True),
+        Track("VCP", "F.Cu", POWER, ["U1.11", (40.6, 26.475), (42.05, 27.925), "C3.2"]),
+        Track("VINT", "F.Cu", POWER, ["U1.14", (41.025, 24.525), "C4.1"]),
         Track("LED_A", "F.Cu", SIG, ["R2.2", "D2.2"], auto=True),
     ]
+    # The four logic inputs are boxed in by the supply fan on the front. A
+    # short, ordered row of drops is clearer than four tours around that fan.
+    for net, pin, header in (
+        ("AIN1", "16", "J4.3"),
+        ("AIN2", "15", "J4.4"),
+        ("BIN2", "10", "J4.5"),
+        ("BIN1", "9", "J4.6"),
+    ):
+        site = east[pin]
+        vias.append(Via(net, x=site[0], y=site[1], size=0.58, drill=0.3))
+        if net == "AIN2":
+            # One declared back-side lane avoids the router's expensive-front
+            # preference turning this connection into a 42 mm tour.
+            tracks.append(
+                Track(
+                    net, "B.Cu", SIG, [site, (41.2, 24.075), (41.2, 33.18), header], keep_layer=True
+                )
+            )
+            continue
+        tracks.append(
+            Track(
+                net,
+                "B.Cu",
+                SIG,
+                [site, header],
+                auto=True,
+                goal_layer="B.Cu",
+                keep_layer=True,
+            )
+        )
 
     # -- ground ------------------------------------------------------------
     # Routed before the signals, because a ground pad that has to walk to find a
@@ -7556,28 +7688,37 @@ def motor_driver() -> Design:
     # back of the board a couple of millimetres away and the router spends the
     # via; the plane is under all of it.
     tracks += [
-        Track("GND", "F.Cu", POWER, ["C2.2", (64.0, 26.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", POWER, ["C4.2", (64.0, 22.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", POWER, ["C1.2", (73.5, 12.5)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", POWER, ["J1.2", (76.0, 18.5)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", POWER, ["J4.1", (78.0, 19.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", POWER, ["J4.8", (78.0, 40.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", POWER, ["D2.1", (59.5, 9.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["C2.2", local_ground]),
+        Track("GND", "F.Cu", POWER, ["C4.2", vint_ground]),
+        Track("GND", "F.Cu", POWER, ["C1.2", (56.0, 12.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["J1.2", (60.0, 15.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["J4.1", (44.0, 42.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["J4.8", (22.0, 42.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["D2.1", (49.0, 9.5)], auto=True, goal_layer="B.Cu"),
     ]
 
     # -- everything that simply has to arrive ------------------------------
+    nsleep_pickup = (35.25, 22.75)
+    nsleep_landing = (37.1, 24.5)
+    vias += [
+        Via("nSLEEP", x=nsleep_pickup[0], y=nsleep_pickup[1]),
+        Via("nSLEEP", x=nsleep_landing[0], y=nsleep_landing[1]),
+    ]
     tracks += [
         Track("AOUT1", "F.Cu", POWER, [west["2"], "J2.2"], auto=True),
         Track("AOUT2", "F.Cu", POWER, [west["4"], "J2.1"], auto=True),
         Track("BOUT2", "F.Cu", POWER, [west["5"], "J3.2"], auto=True),
         Track("BOUT1", "F.Cu", POWER, [west["7"], "J3.1"], auto=True),
-        Track("nSLEEP", "F.Cu", SIG, [west["1"], "J4.2"], auto=True),
-        Track("nFAULT", "F.Cu", SIG, [west["8"], "R1.2"], auto=True),
-        Track("nFAULT", "F.Cu", SIG, ["R1.2", "J4.7"], auto=True),
-        Track("AIN1", "F.Cu", SIG, [east["16"], "J4.3"], auto=True),
-        Track("AIN2", "F.Cu", SIG, [east["15"], "J4.4"], auto=True),
-        Track("BIN2", "F.Cu", SIG, [east["10"], "J4.5"], auto=True),
-        Track("BIN1", "F.Cu", SIG, [east["9"], "J4.6"], auto=True),
+        Track("nSLEEP", "F.Cu", SIG, ["U1.1", (34.775, 23.225), nsleep_pickup]),
+        Track(
+            "nSLEEP",
+            "B.Cu",
+            SIG,
+            [nsleep_pickup, (35.35, 22.75), nsleep_landing],
+            keep_layer=True,
+        ),
+        Track("nSLEEP", "F.Cu", SIG, [nsleep_landing, (37.1, 37.64), "J4.2"]),
+        Track("nFAULT", "F.Cu", SIG, [west["8"], "J4.7"], auto=True),
     ]
 
     return replace(design, tracks=tracks, vias=vias)
@@ -7683,7 +7824,7 @@ def pico_carrier() -> Design:
             "5V IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(60.0, 40.0),
-            board=(78.0, 8.0, 270.0),
+            board=(72.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -7697,7 +7838,7 @@ def pico_carrier() -> Design:
             "Diode_SMD:D_SMA",
             sheet=(90.17, 39.37),
             mirror="y",
-            board=(62.0, 8.0, 180.0),
+            board=(58.0, 8.0, 180.0),
             fields={
                 "Voltage": "40V",
                 "Current": "1A",
@@ -7717,7 +7858,7 @@ def pico_carrier() -> Design:
             # the capacitor through a stub, which on a rail that is really a
             # transmission line is a tap, not a bypass. At 8.52 the supply pad
             # is *on* the line: current flows in one side and out the other.
-            board=(52.0, 8.52, 90.0),
+            board=(48.0, 10.02, 90.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
@@ -7732,7 +7873,7 @@ def pico_carrier() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(180.34, 60.96),
-            board=(52.0, 17.0, 0.0),
+            board=(48.0, 17.0, 0.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "10%",
@@ -7747,7 +7888,7 @@ def pico_carrier() -> Design:
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(203.2, 60.96),
-            board=(62.0, 17.0, 0.0),
+            board=(58.0, 17.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -7763,7 +7904,7 @@ def pico_carrier() -> Design:
             "LED_SMD:LED_0805_2012Metric",
             sheet=(196.85, 78.74),
             angle=90.0,
-            board=(70.0, 17.0, 180.0),
+            board=(66.0, 17.0, 180.0),
             silk_label="3V3 OK",
             fields={
                 "Voltage": "2.1V",
@@ -7845,10 +7986,10 @@ def pico_carrier() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("+5V", "J1.1"), ("VSYS", "D1.1"), ("ADC_VREF", "U1.35")],
-        board_size=(88.0, 62.0),
+        board_size=(80.0, 60.0),
         tracks=[],
         vias=[],
-        pour=(1.2, 1.2, 86.8, 60.8),
+        pour=(1.2, 1.2, 78.8, 58.8),
         mounting=Mounting(),
         fiducials=3,
         # High enough that the last line stays inside the sheet frame.
@@ -7886,10 +8027,10 @@ def pico_carrier() -> Design:
     ]
     # Ground: every pad drops straight through to the plane under it.
     for pad, target in (
-        ("C1.2", (55.0, 14.0)),
-        ("C2.2", (54.5, 17.0)),
-        ("D3.1", (74.0, 21.0)),
-        ("J1.2", (72.0, 14.0)),
+        ("C1.2", (51.0, 14.0)),
+        ("C2.2", (50.5, 17.0)),
+        ("D3.1", (70.0, 21.0)),
+        ("J1.2", (66.0, 14.0)),
     ):
         tracks.append(Track("GND", "F.Cu", 0.5, [pad, target], auto=True, goal_layer="B.Cu"))
     # The module's own ground pads are surface mount and reach the plane through
@@ -8417,21 +8558,14 @@ TI = "https://www.ti.com/lit/ds/symlink/pcm5102a.pdf"
 
 
 def fpga_audio() -> Design:
-    """An iCE40UP5K driving a PCM5102A over I2S, on two layers.
+    """An iCE40UP5K driving a PCM5102A over I2S, on four layers.
 
-    This one is here to be difficult, and the difficulty is worth stating
-    plainly: a 0.5 mm pitch QFN with pads on four sides is not a two layer
-    board. Real iCE40 designs are four layer, with the escape dropping straight
-    into an inner layer through via-in-pad or a dogbone per pin. This generator
-    knows two layers, so the escape has to be a fan out on the top - twelve pins
-    a side walked from 0.5 mm to 0.8 mm, at 0.2 mm track and 0.2 mm clearance,
-    which is a fine-line process and says so in the fabrication notes.
-
-    What that costs is visible in the plot: a 7 mm chip needs a 25 mm square of
-    board around it before anything else can be placed, and the parts that talk
-    to it are pushed to the edges. That is the honest answer to "can this be
-    done on two layers", and it is worth having as an example precisely because
-    the answer is "yes, and you would not want to".
+    A 0.5 mm pitch QFN with pads on four sides is the point where a two-layer
+    baseline stops being honest. This design therefore uses the normal answer:
+    two outer signal layers, an uninterrupted inner ground plane and a +3.3 V
+    inner power plane. The top escape still walks the 0.5 mm row to 0.8 mm at
+    0.2 mm track and clearance, but it no longer forces every bottom-layer hop
+    to cut the return plane.
 
     The rest is a normal small digital board. The FPGA boots from U4 over its
     own SPI port, runs from a 12 MHz oscillator, and clocks I2S out to U2. Two
@@ -8448,7 +8582,7 @@ def fpga_audio() -> Design:
                 "iCE40UP5K",
                 "Package_DFN_QFN:QFN-48-1EP_7x7mm_P0.5mm_EP3.5x3.5mm",
                 sheet=where,
-                board=(40.0, 40.0, 0.0),
+                board=(32.0, 28.0, 0.0),
                 stub=6.35,
                 no_connect=True,
                 unit=unit,
@@ -8470,7 +8604,7 @@ def fpga_audio() -> Design:
             "PCM5102A",
             "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
             sheet=(330.0, 110.0),
-            board=(72.0, 40.0, 180.0),
+            board=(52.0, 28.0, 180.0),
             stub=6.35,
             fields={
                 "MPN": "PCM5102APWR",
@@ -8484,7 +8618,7 @@ def fpga_audio() -> Design:
             "AP2112K-1.2",
             "Package_TO_SOT_SMD:SOT-23-5",
             sheet=(56.0, 40.0),
-            board=(14.0, 24.0, 0.0),
+            board=(14.0, 20.0, 0.0),
             fields={
                 "Voltage": "1.2V",
                 "Current": "600mA",
@@ -8499,7 +8633,7 @@ def fpga_audio() -> Design:
             "W25Q32JV",
             "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
             sheet=(196.0, 258.0),
-            board=(40.0, 72.0, 0.0),
+            board=(32.0, 44.0, 0.0),
             fields={
                 "MPN": "W25Q32JVSSIQ",
                 "Manufacturer": "Winbond",
@@ -8512,7 +8646,7 @@ def fpga_audio() -> Design:
             "12MHz",
             "Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm",
             sheet=(56.0, 150.0),
-            board=(30.0, 14.0, 0.0),
+            board=(28.0, 12.0, 0.0),
             fields={
                 "Tolerance": "50ppm",
                 "MPN": "ASE-12.000MHZ-L-C-T",
@@ -8529,7 +8663,7 @@ def fpga_audio() -> Design:
             # its name printed left of that again, and anywhere nearer the edge
             # the name reaches into the sheet frame's ruler strip.
             sheet=(42.0, 40.0),
-            board=(8.0, 8.0, 270.0),
+            board=(6.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -8544,7 +8678,7 @@ def fpga_audio() -> Design:
             # 388, not 395: the GND symbol lands to the connector's right, and
             # at 395 its printed name crossed the right frame strip of the A3.
             sheet=(388.0, 110.0),
-            board=(95.0, 38.0, 0.0),
+            board=(70.0, 26.0, 0.0),
             fields={
                 "MPN": "61300311121",
                 "Manufacturer": "Wurth Elektronik",
@@ -8558,7 +8692,7 @@ def fpga_audio() -> Design:
             "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
             # Clear of the title block, which owns the bottom right corner.
             sheet=(268.0, 240.0),
-            board=(74.0, 66.0, 0.0),
+            board=(28.0, 52.0, 90.0),
             mirror="y",
             fields={
                 "MPN": "61300611121",
@@ -8605,27 +8739,29 @@ def fpga_audio() -> Design:
         )
 
     parts += [
-        cap("C1", "10u", (84.0, 48.0), (7.5, 17.5, 0.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C2", "100n", (100.0, 48.0), (7.5, 21.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C3", "10u", (56.0, 62.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C4", "100n", (72.0, 62.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C5", "100n", (196.0, 48.0), (56.0, 47.0, 270.0), "25V", "CL10B104KB8NNNC"),
-        cap("C17", "10u", (180.0, 48.0), (59.0, 47.0, 270.0), "16V", "CL10A106MQ8NNNC"),
-        res("R3", "100R", (164.0, 48.0), (63.0, 54.0, 90.0), "RC0603FR-07100RL"),
-        res("R4", "10k", (276.0, 232.0), (56.0, 74.0, 0.0), "RC0603FR-0710KL"),
-        cap("C6", "100n", (244.0, 84.0), (57.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C7", "100n", (244.0, 108.0), (61.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C8", "100n", (236.0, 258.0), (46.0, 68.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C9", "100n", (84.0, 150.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C10", "100n", (244.0, 132.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C11", "100n", (300.0, 62.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C16", "100n", (328.0, 62.0), (89.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C12", "2u2", (296.0, 158.0), (60.0, 54.0, 0.0), "16V", "CL10A225KO8NNNC"),
-        cap("C13", "2u2", (324.0, 158.0), (89.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
-        cap("C14", "2u2", (352.0, 158.0), (89.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
-        res("R1", "10k", (112.0, 232.0), (28.5, 22.0, 0.0), "RC0603FR-0710KL"),
-        res("R2", "10k", (140.0, 232.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
-        cap("C15", "100n", (148.0, 62.0), (57.0, 54.0, 180.0), "25V", "CL10B104KB8NNNC"),
+        # Supply lands face U3; with the default orientation their ground
+        # lands stood between the regulator and the rail they were bypassing.
+        cap("C1", "10u", (84.0, 48.0), (7.5, 17.5, 180.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C2", "100n", (100.0, 48.0), (7.5, 21.0, 180.0), "25V", "CL10B104KB8NNNC"),
+        cap("C3", "10u", (56.0, 62.0), (20.0, 22.0, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C4", "100n", (72.0, 62.0), (22.0, 26.0, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C5", "100n", (196.0, 48.0), (43.0, 38.0, 270.0), "25V", "CL10B104KB8NNNC"),
+        cap("C17", "10u", (180.0, 48.0), (46.0, 38.0, 270.0), "16V", "CL10A106MQ8NNNC"),
+        res("R3", "100R", (164.0, 48.0), (43.0, 34.0, 90.0), "RC0603FR-07100RL"),
+        res("R4", "10k", (276.0, 232.0), (18.0, 48.0, 0.0), "RC0603FR-0710KL"),
+        cap("C6", "100n", (244.0, 84.0), (38.0, 18.0, 180.0), "25V", "CL10B104KB8NNNC"),
+        cap("C7", "100n", (244.0, 108.0), (42.0, 18.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C8", "100n", (236.0, 258.0), (43.0, 41.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C9", "100n", (84.0, 150.0), (34.0, 12.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C10", "100n", (244.0, 132.0), (40.0, 31.0, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C11", "100n", (300.0, 62.0), (62.0, 23.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C16", "100n", (328.0, 62.0), (60.0, 39.0, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C12", "2u2", (296.0, 158.0), (48.0, 34.0, 90.0), "16V", "CL10A225KO8NNNC"),
+        cap("C13", "2u2", (324.0, 158.0), (63.0, 32.0, 90.0), "16V", "CL10A225KO8NNNC"),
+        cap("C14", "2u2", (352.0, 158.0), (66.0, 36.0, 0.0), "16V", "CL10A225KO8NNNC"),
+        res("R1", "10k", (112.0, 232.0), (18.0, 29.2, 0.0), "RC0603FR-0710KL"),
+        res("R2", "10k", (140.0, 232.0), (18.0, 27.0, 0.0), "RC0603FR-0710KL"),
+        cap("C15", "100n", (148.0, 62.0), (40.0, 34.0, 90.0), "25V", "CL10B104KB8NNNC"),
     ]
 
     nets = {
@@ -8683,16 +8819,16 @@ def fpga_audio() -> Design:
             "C16.2",
             "C12.2",
             "C14.2",
-            "J2.2",
+            "J2.3",
             "J3.6",
         ],
         # R4 holds the flash deselected while the FPGA is in reset and its
         # pins are still floating - without it the boot bus is a lottery
         "SPI_SS": ["U1.16", "U4.1", "J3.1", "R4.2"],
-        "SPI_SCK": ["U1.15", "U4.6", "J3.2"],
-        "SPI_SI": ["U1.17", "U4.5", "J3.3"],
-        "SPI_SO": ["U1.14", "U4.2", "J3.4"],
-        "CRESET": ["U1.8", "R1.2", "J3.5"],
+        "SPI_SCK": ["U1.15", "U4.6", "J3.4"],
+        "SPI_SI": ["U1.17", "U4.5", "J3.5"],
+        "SPI_SO": ["U1.14", "U4.2", "J3.2"],
+        "CRESET": ["U1.8", "R1.2", "J3.3"],
         "CDONE": ["U1.7", "R2.2"],
         "CLK12": ["X1.3", "U1.37"],
         # On the east side, in the order the codec wants them: a bus that
@@ -8701,7 +8837,7 @@ def fpga_audio() -> Design:
         "I2S_BCK": ["U1.35", "U2.13"],
         "I2S_DIN": ["U1.34", "U2.14"],
         "I2S_LRCK": ["U1.32", "U2.15"],
-        "OUTL": ["U2.6", "J2.3"],
+        "OUTL": ["U2.6", "J2.2"],
         "OUTR": ["U2.7", "J2.1"],
         "LDOO": ["U2.18", "C12.1"],
         # the flying capacitor sits between CAPP and CAPM; the reservoir from
@@ -8744,11 +8880,10 @@ def fpga_audio() -> Design:
             (
                 (17.78, 232.0),
                 [
-                    "A 0.5 mm pitch QFN with pads on four sides is not a two layer",
-                    "board. A real iCE40 design drops each pin into an inner layer;",
-                    "this one has no inner layer, so all 48 escape on the top at",
-                    "0.2 mm track and 0.2 mm clearance - a fine-line process, and",
-                    "the reason a 7 mm chip needs 25 mm of board around it.",
+                    "The 0.5 mm QFN uses a four-layer stack: outer signal layers,",
+                    "an uninterrupted In1 ground plane and a +3V3 In2 power plane.",
+                    "Its 0.2 mm top escape spreads to 0.8 mm before routing; bottom",
+                    "signal hops no longer cut the reference plane beneath it.",
                 ],
             ),
             (
@@ -8792,18 +8927,19 @@ def fpga_audio() -> Design:
         # GND has no power-output pin on it either: every ground here is a
         # power *input*, and without a flag ERC says so.
         power_flags=[("+3V3", "J1.1"), ("GND", "J1.2")],
-        board_size=(100.0, 84.0),
+        board_size=(76.0, 58.0),
         label_nets=("I2S_SCK", "I2S_BCK", "I2S_DIN", "I2S_LRCK"),
         # No foreign copper under the boot flash or the DAC: their bellies
         # are the strips a rail sneaks through when everything else is full,
-        # and a rail under a part it does not feed is `route.under_package` -
-        # the plane cannot get between them on two layers. Fencing U4 alone
-        # just moved the 1.2 V rail under U2, which is the worse place: the
-        # DAC is the one analogue part on the board.
+        # and a rail under a part it does not feed is `route.under_package`.
+        # Fencing U4 alone moved the 1.2 V rail under U2, which is the worse
+        # place: the DAC is the one analogue part on the board.
         route_keepout=("U4", "U2"),
         tracks=[],
+        copper_layers=4,
+        power_plane="+3V3",
         vias=[],
-        pour=(1.2, 1.2, 98.8, 82.8),
+        pour=(1.2, 1.2, 74.8, 56.8),
         mounting=Mounting(),
         fiducials=3,
         # Four units of one symbol and twenty-odd parts do not fit on A4.
@@ -8815,17 +8951,17 @@ def fpga_audio() -> Design:
     # to squeeze between two of its neighbours. Only the input, which never goes
     # near the chip, is wider.
     FINE, SIG, POWER = 0.2, 0.2, 0.4
-    cx, cy = 40.0, 40.0
+    cx, cy = 32.0, 28.0
     sides = {
         # Each row runs the way the pads do, not the way the numbers do: a QFN
         # counts anticlockwise, so its east and north rows are bottom-to-top and
         # right-to-left. Handing them over the other way round makes every
         # escape on that side cross every other one, and the fan is legal
         # nowhere.
-        "west": ([str(n) for n in range(1, 13)], "x", 35.55, 27.0),
-        "south": ([str(n) for n in range(13, 25)], "y", 44.45, 53.0),
-        "east": ([str(n) for n in range(36, 24, -1)], "x", 44.45, 53.0),
-        "north": ([str(n) for n in range(48, 36, -1)], "y", 35.55, 27.0),
+        "west": ([str(n) for n in range(1, 13)], "x", 27.55, 24.0),
+        "south": ([str(n) for n in range(13, 25)], "y", 32.45, 36.0),
+        "east": ([str(n) for n in range(36, 24, -1)], "x", 36.45, 40.0),
+        "north": ([str(n) for n in range(48, 36, -1)], "y", 23.55, 20.0),
     }
     escapes: list[Track] = []
     pad_of: dict[str, tuple[float, float]] = {}
@@ -8844,7 +8980,7 @@ def fpga_audio() -> Design:
             pins,
             lead=lead,
             column=column,
-            pitch=1.0,
+            pitch=0.8,
             centre=cy if axis == "x" else cx,
             axis=axis,
             width=FINE,
@@ -8857,39 +8993,39 @@ def fpga_audio() -> Design:
     escape(
         "U2",
         [str(n) for n in range(11, 21)],
-        lead=67.6,
-        column=64.0,
-        pitch=1.0,
-        centre=40.0,
+        lead=47.6,
+        column=44.0,
+        pitch=0.8,
+        centre=28.0,
         width=SIG,
     )
     escape(
         "U2",
         [str(n) for n in range(10, 0, -1)],
-        lead=76.4,
-        column=82.5,
-        pitch=1.0,
-        centre=40.0,
+        lead=56.4,
+        column=60.0,
+        pitch=0.8,
+        centre=28.0,
         width=SIG,
     )
-    escape("U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=24.0, width=SIG)
-    escape("U3", ["5", "4"], lead=16.6, column=19.0, pitch=2.8, centre=24.0, width=SIG)
+    escape("U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=20.0, width=SIG)
+    escape("U3", ["5", "4"], lead=16.6, column=19.0, pitch=2.8, centre=20.0, width=SIG)
     escape(
         "U4",
         ["1", "2", "3", "4"],
-        lead=36.1,
-        column=33.5,
+        lead=28.1,
+        column=25.5,
         pitch=2.0,
-        centre=72.0,
+        centre=44.0,
         width=SIG,
     )
     escape(
         "U4",
         ["8", "7", "6", "5"],
-        lead=43.9,
-        column=46.5,
+        lead=35.9,
+        column=38.5,
         pitch=2.0,
-        centre=72.0,
+        centre=44.0,
         width=SIG,
     )
 
@@ -8940,63 +9076,321 @@ def fpga_audio() -> Design:
         anchored.append(Track("GND", "F.Cu", 0.4, [f"{cref}.2", site]))
         placed.add(cref)
 
-    # The 1.2 V rail gets a stated spine, the way the motor board states its
-    # VM link. Its consumers sit on both sides of the FPGA, and every
-    # east-west lane south of the package is a comb of SPI escapes - routed
-    # link by link the rail toured the south edge of the board to get
-    # across (122 mm for 39). The one corridor nothing else can use is under
-    # the FPGA's own die: the QFN's pads are surface copper, the strip
-    # between its south pad row and its ground-via grid is empty on the
-    # back, and the rail is the package's own supply, so nothing foreign
-    # runs under anything. One straight stroke, back side, a via at each
-    # end; the links then tap it wherever is nearest.
-    # The west via sits west of the escape column (x = 27), because the
-    # column is a comb of horizontal escape lines at every half-millimetre
-    # of y and a through via parked in the comb lands on whichever line owns
-    # that lane. The east via stops short of the east pad row by its own
-    # clearance, and the whole stroke sits at 42.25 - a quarter-millimetre
-    # off the south pad row's reach (their inner ends are at y = 43.01, and
-    # at 42.5 the via missed them by a tenth), and still on the router's
-    # grid, which is what lets a tee land on the stroke at all.
-    SPINE_1V2 = ((25.5, 42.25), (42.2, 42.25))
-    vias.append(Via("+1V2", x=SPINE_1V2[0][0], y=SPINE_1V2[0][1]))
-    # No via on the east end: the exposed pad owns the die centre on the
-    # front - a through via there is a short against U1's ground paddle -
-    # and none is needed, because the east tap is a back-side link that
-    # starts exactly where the stroke ends.
-    anchored.append(Track("+1V2", "B.Cu", POWER, [SPINE_1V2[0], SPINE_1V2[1]]))
+    # The 1.2 V rail gets a stated back-side spine. Its west bend sits outside
+    # the FPGA escape comb, while the east end stops before the exposed-pad
+    # via field. Local consumers tap this short trunk instead of touring the
+    # board edge around the SPI fanout.
+    SPINE_1V2 = ((24.0, 30.25), (34.2, 30.25))
+    # Both ends join B.Cu runs: neither needs a layer-change via. A via on
+    # the west bend was redundant once the feed's fixed-layer intent survived
+    # cleanup (KiCad 9 reports it as via_dangling).
+    anchored.append(Track("+1V2", "B.Cu", SIG, [SPINE_1V2[0], SPINE_1V2[1]]))
 
     # Every endpoint goes through `end`, which returns the far end of a pin's
     # escape when it has one and the pad itself when it does not.
     tracks = [*escapes, *anchored]
+    core_feed = (20.525, 26.775)
+    tracks += [
+        Track("+1V2", "F.Cu", SIG, ["C4.1", core_feed]),
+        Track("+1V2", "B.Cu", SIG, [core_feed, SPINE_1V2[0]], keep_layer=True),
+    ]
+    vias.append(Via("+1V2", x=core_feed[0], y=core_feed[1]))
+    tracks.append(Track("+1V2", "F.Cu", SIG, ["C4.1", end("U1.5")]))
+    # The inner 3.3 V plane replaces the long outer-layer trunk. Each local
+    # island reaches it through a via beside (never inside) its bypass land.
+    for pad, site in (("C1.1", (8.275, 15.75)), ("C10.1", (42.0, 31.775))):
+        tracks.append(Track("+3V3", "F.Cu", POWER, [pad, site]))
+        vias.append(Via("+3V3", x=site[0], y=site[1]))
+    for pad, site in (("C6.1", (38.775, 16.75)), ("C7.1", (41.225, 16.75))):
+        tracks.append(Track("+3V3", "F.Cu", SIG, [pad, site]))
+        vias.append(Via("+3V3", x=site[0], y=site[1]))
+    tracks.append(Track("+3V3", "F.Cu", SIG, ["C8.1", (42.225, 42.25)]))
+    vias.append(Via("+3V3", x=42.225, y=42.25))
+    for pad, site in (("R1.1", (16.0, 29.2)), ("R2.1", (16.0, 27.0))):
+        tracks.append(Track("+3V3", "F.Cu", SIG, [pad, site]))
+        vias.append(Via("+3V3", x=site[0], y=site[1]))
+    reset_bank_site = end("U1.1")
+    vias.append(
+        Via(
+            "+3V3",
+            x=reset_bank_site[0],
+            y=reset_bank_site[1],
+            size=0.58,
+            drill=0.3,
+        )
+    )
+    tracks += [
+        Track("+3V3", "F.Cu", SIG, ["C8.1", end("U4.8")]),
+        Track("+3V3", "F.Cu", SIG, ["C8.1", end("U4.7")]),
+    ]
+    for pad, site in (
+        ("C9.1", (33.225, 10.75)),
+        ("R4.1", (17.225, 46.75)),
+        ("C16.1", (60.0, 41.025)),
+    ):
+        tracks.append(Track("+3V3", "F.Cu", SIG, [pad, site]))
+        vias.append(Via("+3V3", x=site[0], y=site[1]))
+    bank_plane_site = (42.5, 29.2)
+    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.17"), bank_plane_site]))
+    vias.append(
+        Via(
+            "+3V3",
+            x=bank_plane_site[0],
+            y=bank_plane_site[1],
+            size=0.58,
+            drill=0.3,
+        )
+    )
+    fpga_bank_site = (37.2, 36.0)
+    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U1.24"), fpga_bank_site]))
+    vias.append(
+        Via(
+            "+3V3",
+            x=fpga_bank_site[0],
+            y=fpga_bank_site[1],
+            size=0.58,
+            drill=0.3,
+        )
+    )
+    south_bank_site = (34.8, 36.8)
+    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U1.22"), south_bank_site]))
+    vias.append(
+        Via(
+            "+3V3",
+            x=south_bank_site[0],
+            y=south_bank_site[1],
+            size=0.58,
+            drill=0.3,
+        )
+    )
+    # Stay west of the diagonal I2S bundle on B.Cu. At x=40.8 this through
+    # via had only 0.20 mm clearance once fixed-layer intent was preserved.
+    east_bank_site = (40.0, 26.0)
+    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U1.33"), east_bank_site]))
+    vias.append(
+        Via(
+            "+3V3",
+            x=east_bank_site[0],
+            y=east_bank_site[1],
+            size=0.58,
+            drill=0.3,
+        )
+    )
+    codec_bank_site = (58.8, 32.8)
+    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.1"), codec_bank_site]))
+    vias.append(
+        Via(
+            "+3V3",
+            x=codec_bank_site[0],
+            y=codec_bank_site[1],
+            size=0.58,
+            drill=0.3,
+        )
+    )
+    flash_hold_site = (24.7, 45.0)
+    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U4.3"), flash_hold_site]))
+    vias.append(
+        Via(
+            "+3V3",
+            x=flash_hold_site[0],
+            y=flash_hold_site[1],
+            size=0.58,
+            drill=0.3,
+        )
+    )
+    codec_supply_site = end("U2.8")
+    vias.append(
+        Via(
+            "+3V3",
+            x=codec_supply_site[0],
+            y=codec_supply_site[1],
+            size=0.58,
+            drill=0.3,
+        )
+    )
+    codec_bypass_site = (61.225, 21.5)
+    tracks.append(Track("+3V3", "F.Cu", SIG, ["C11.1", codec_bypass_site]))
+    vias.append(Via("+3V3", x=codec_bypass_site[0], y=codec_bypass_site[1]))
+    ldo_link = ((42.5, 30.0), (46.75, 34.775))
+    vias += [
+        Via("LDOO", x=ldo_link[0][0], y=ldo_link[0][1], size=0.58, drill=0.3),
+        Via("LDOO", x=ldo_link[1][0], y=ldo_link[1][1]),
+    ]
+    tracks += [
+        Track("LDOO", "F.Cu", SIG, [end("U2.18"), ldo_link[0]]),
+        Track(
+            "LDOO",
+            "B.Cu",
+            SIG,
+            [ldo_link[0], (46.75, 34.25), ldo_link[1]],
+            keep_layer=True,
+        ),
+        Track("LDOO", "F.Cu", SIG, [ldo_link[1], "C12.1"]),
+    ]
+    # The PLL bypass is directly below its east-side pin but the intervening
+    # outer-layer corridor carries the codec bus. A short back-side link uses
+    # the new inner reference plane instead of cutting the return path.
+    pll_link = ((40.8, 29.2), (41.75, 37.225))
+    vias += [
+        Via("VCCPLL", x=pll_link[0][0], y=pll_link[0][1], size=0.58, drill=0.3),
+        Via("VCCPLL", x=pll_link[1][0], y=pll_link[1][1]),
+    ]
+    tracks += [
+        Track("VCCPLL", "F.Cu", SIG, [end("U1.29"), pll_link[0]]),
+        Track(
+            "VCCPLL",
+            "B.Cu",
+            SIG,
+            [pll_link[0], (39.0, 31.0), (39.0, 34.475), pll_link[1]],
+            keep_layer=True,
+        ),
+        Track("VCCPLL", "F.Cu", SIG, [pll_link[1], "C5.1"]),
+    ]
+    # C10's lands follow the neighbouring codec pins: supply above, ground
+    # below.  These two short parallel entries are the bypass loop; leaving
+    # them to a grid search made the ground land look like a wall in front of
+    # the supply land.
+    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.20"), (40.175, 31.6), "C10.1"]))
+    # The I2S pins face each other in the same order. They drop at the ends of
+    # their two escape fans and cross on B.Cu as four parallel 45-degree runs;
+    # In2 power is the adjacent inner layer, not In1 GND. Multilayer reference
+    # continuity still needs stack-up/return-transition review; the two-layer
+    # return-path heuristic does not certify these lanes.
+    for net, source, sink, knee in (
+        ("I2S_SCK", "U1.36", "U2.12", ((41.0, 23.6), (42.6, 25.2))),
+        ("I2S_BCK", "U1.35", "U2.13", ((41.0, 24.4), (42.6, 26.0))),
+        ("I2S_DIN", "U1.34", "U2.14", ((41.0, 25.2), (42.6, 26.8))),
+        ("I2S_LRCK", "U1.32", "U2.15", ((41.0, 26.8), (41.8, 27.6))),
+    ):
+        source_site, sink_site = end(source), end(sink)
+        vias += [
+            Via(net, x=source_site[0], y=source_site[1], size=0.58, drill=0.3),
+            Via(net, x=sink_site[0], y=sink_site[1], size=0.58, drill=0.3),
+        ]
+        tracks.append(
+            Track(
+                net,
+                "B.Cu",
+                SIG,
+                [source_site, *knee, sink_site],
+                keep_layer=True,
+            )
+        )
+    tracks.append(
+        Track(
+            "VNEG",
+            "F.Cu",
+            SIG,
+            [end("U2.5"), (62.0, 28.4), (65.225, 31.625), "C14.1"],
+        )
+    )
+    tracks += [
+        Track("OUTR", "F.Cu", SIG, [end("U2.7"), (69.2, 26.8), "J2.1"]),
+        Track("OUTL", "F.Cu", SIG, [end("U2.6"), (68.5, 27.6), (69.44, 28.54), "J2.2"]),
+        Track(
+            "CAPP",
+            "F.Cu",
+            SIG,
+            [end("U2.2"), (61.025, 30.8), "C13.1"],
+        ),
+        Track(
+            "CAPM",
+            "F.Cu",
+            SIG,
+            [end("U2.4"), (60.975, 29.2), "C13.2"],
+        ),
+    ]
+    # The boot bus has to swap sides between the FPGA and flash. SS and SO have
+    # independent front-layer lanes. SI crosses the fan on the back; SCK uses
+    # a narrow In2 lane through the +3V3 pour, both referenced to solid In1.
+    tracks += [
+        Track(
+            "SPI_SS",
+            "F.Cu",
+            SIG,
+            [end("U1.16"), (25.0, 41.0), end("U4.1")],
+        ),
+        Track(
+            "SPI_SO",
+            "F.Cu",
+            SIG,
+            [end("U1.14"), (23.0, 41.4), (23.0, 43.0), end("U4.2")],
+        ),
+        Track(
+            "SPI_SO",
+            "F.Cu",
+            SIG,
+            [
+                end("U4.2"),
+                (24.0, 44.5),
+                (24.0, 45.0),
+                (22.5, 46.5),
+                (25.5, 49.5),
+                (30.54, 49.5),
+                "J3.2",
+            ],
+        ),
+    ]
+    sck_source = (29.2, 35.2)
+    sck_destination = (40.5, 45.0)
+    vias += [
+        Via("SPI_SCK", x=sck_source[0], y=sck_source[1], size=0.58, drill=0.3),
+        Via("SPI_SCK", x=sck_destination[0], y=sck_destination[1]),
+    ]
+    tracks += [
+        Track("SPI_SCK", "F.Cu", SIG, [end("U1.15"), sck_source]),
+        Track(
+            "SPI_SCK",
+            "In2.Cu",
+            SIG,
+            [sck_source, (39.0, 35.2), (39.0, 43.5), sck_destination],
+            keep_layer=True,
+        ),
+        Track("SPI_SCK", "F.Cu", SIG, [sck_destination, end("U4.6")]),
+        Track(
+            "SPI_SCK",
+            "In2.Cu",
+            SIG,
+            [sck_destination, (35.62, 49.88), (35.62, 50.5)],
+            keep_layer=True,
+        ),
+        Track("SPI_SCK", "F.Cu", SIG, [(35.62, 50.5), "J3.4"]),
+    ]
+    vias.append(Via("SPI_SCK", x=35.62, y=50.5))
+    si_source = end("U1.17")
+    si_destination = (40.5, 47.0)
+    vias += [
+        Via("SPI_SI", x=si_source[0], y=si_source[1], size=0.58, drill=0.3),
+        Via("SPI_SI", x=si_destination[0], y=si_destination[1]),
+    ]
+    tracks += [
+        Track(
+            "SPI_SI",
+            "B.Cu",
+            SIG,
+            [si_source, (30.8, 37.3), si_destination],
+            keep_layer=True,
+        ),
+        Track("SPI_SI", "F.Cu", SIG, [si_destination, end("U4.5")]),
+        Track(
+            "CRESET",
+            "F.Cu",
+            SIG,
+            [end("U1.8"), "R1.2"],
+        ),
+        Track(
+            "CDONE",
+            "F.Cu",
+            SIG,
+            [end("U1.7"), (20.225, 28.4), "R2.2"],
+        ),
+    ]
     routes = [
         ("+3V3", POWER, [("J1.1", "C1.1"), ("C1.1", "U3.1"), ("C1.1", "C2.1"), ("C2.1", "U3.3")]),
         (
             "+3V3",
             SIG,
             [
-                ("C2.1", "R1.1"),
-                ("R1.1", "R2.1"),
-                ("R2.1", "U1.1"),
-                ("U1.22", "C6.1"),
-                ("C6.1", "U1.33"),
-                ("U1.33", "C7.1"),
-                ("C7.1", "U1.24"),
-                ("C7.1", "C10.1"),
-                ("C10.1", "U2.20"),
-                ("C10.1", "C11.1"),
-                ("C11.1", "U2.8"),
-                ("C11.1", "C16.1"),
-                ("C16.1", "U2.1"),
-                ("C10.1", "U2.17"),
-                ("R2.1", "C8.1"),
-                # ...and this is what joins the input side to the bank supplies.
-                # Without it +3V3 is two islands that the schematic calls one net.
-                ("C8.1", "U1.22"),
-                ("C8.1", "U4.8"),
-                ("C8.1", "U4.3"),
-                ("U4.3", "U4.7"),
-                ("C8.1", "C9.1"),
                 ("C9.1", "X1.4"),
                 ("C9.1", "X1.1"),
             ],
@@ -9007,35 +9401,19 @@ def fpga_audio() -> Design:
             [
                 ("U3.5", "C3.1"),
                 ("C3.1", "C4.1"),
-                ("C4.1", "U1.5"),
                 # ...one link into each end of the stated spine, in place of
                 # the C4-to-C15 haul that had to cross the SPI comb. (The
                 # east tap is stated separately below: it has to leave on
                 # the back.)
-                ("C4.1", SPINE_1V2[0]),
                 ("C15.1", "U1.30"),
                 ("C15.1", "R3.1"),
             ],
         ),
-        ("VCCPLL", SIG, [("R3.2", "C17.1"), ("C17.1", "C5.1"), ("C5.1", "U1.29")]),
-        ("SPI_SS", SIG, [("U1.16", "U4.1"), ("U4.1", "J3.1"), ("J3.1", "R4.2")]),
-        ("+3V3", SIG, [("C8.1", "R4.1")]),
-        ("SPI_SCK", SIG, [("U1.15", "U4.6"), ("U4.6", "J3.2")]),
-        ("SPI_SI", SIG, [("U1.17", "U4.5"), ("U4.5", "J3.3")]),
-        ("SPI_SO", SIG, [("U1.14", "U4.2"), ("U4.2", "J3.4")]),
-        ("CRESET", SIG, [("U1.8", "R1.2"), ("R1.2", "J3.5")]),
-        ("CDONE", SIG, [("U1.7", "R2.2")]),
+        ("VCCPLL", SIG, [("R3.2", "C17.1"), ("C17.1", "C5.1")]),
+        ("SPI_SS", SIG, [("U4.1", "J3.1"), ("J3.1", "R4.2")]),
+        ("SPI_SI", SIG, [("U4.5", "J3.5")]),
+        ("CRESET", SIG, [("R1.2", "J3.3")]),
         ("CLK12", SIG, [("X1.3", "U1.37")]),
-        ("I2S_SCK", SIG, [("U1.36", "U2.12")]),
-        ("I2S_BCK", SIG, [("U1.35", "U2.13")]),
-        ("I2S_DIN", SIG, [("U1.34", "U2.14")]),
-        ("I2S_LRCK", SIG, [("U1.32", "U2.15")]),
-        ("OUTL", SIG, [("U2.6", "J2.3")]),
-        ("OUTR", SIG, [("U2.7", "J2.1")]),
-        ("LDOO", SIG, [("U2.18", "C12.1")]),
-        ("CAPP", SIG, [("U2.2", "C13.1")]),
-        ("CAPM", SIG, [("U2.4", "C13.2")]),
-        ("VNEG", SIG, [("U2.5", "C14.1")]),
     ]
     for net, width, pairs in routes:
         for a, b in pairs:
@@ -9045,41 +9423,83 @@ def fpga_audio() -> Design:
     # the pocket between the QFN's own pad rows, and on the front the rows
     # are the wall - the first regeneration proved there is no lane. The
     # goal stays on the front because C15's pad is front copper.
-    tracks.append(Track("+1V2", "B.Cu", SIG, [SPINE_1V2[1], "C15.1"], auto=True, goal_layer="F.Cu"))
+    tracks.append(
+        Track(
+            "+1V2",
+            "B.Cu",
+            SIG,
+            [SPINE_1V2[1], "C15.1"],
+            auto=True,
+            goal_layer="F.Cu",
+        )
+    )
 
     # A capacitor appears here only if nothing legal stood beside its ground
     # pad: normally its via is placed against the pad above, which is the loop
     # the part exists to close. The rest are the grounds a stub genuinely has
     # to carry - a connector pin, an oscillator can, the codec's own pads.
     for pad, target in (
-        ("C4.2", (22.5, 36.0)),
-        ("C5.2", (56.0, 40.8)),
-        ("C17.2", (59.0, 40.8)),
-        ("C6.2", (59.0, 43.5)),
-        ("C7.2", (60.5, 46.5)),
-        ("C8.2", (46.0, 71.0)),
-        ("C16.2", (89.0, 52.0)),
-        ("C12.2", (60.0, 53.0)),
-        ("C14.2", (91.5, 47.0)),
-        ("J1.2", (12.0, 12.0)),
-        ("U3.2", (6.0, 24.0)),
-        ("X1.2", (30.0, 10.0)),
-        ("U4.4", (30.0, 76.0)),
+        ("C4.2", (20.0, 28.0)),
+        ("C5.2", (43.0, 40.5)),
+        ("C17.2", (46.0, 40.5)),
+        ("C6.2", (43.0, 20.0)),
+        ("C7.2", (43.0, 25.0)),
+        ("C8.2", (38.0, 47.0)),
+        ("C16.2", (60.0, 42.0)),
+        ("C12.2", (48.0, 37.0)),
+        ("C14.2", (68.0, 36.0)),
+        ("J1.2", (10.0, 12.0)),
+        ("U3.2", (6.0, 20.0)),
+        ("X1.2", (28.0, 8.0)),
+        ("U4.4", (24.0, 48.0)),
         # The codec's grounds - two real ones and three mode pins strapped low -
         # drop through beside their own escapes rather than walking west into a
         # corridor that four other nets are already using.
-        ("U2.19", (62.5, 43.5)),
-        ("U2.11", (62.5, 35.5)),
-        ("U2.16", (62.5, 40.5)),
-        ("U2.10", (86.0, 33.5)),
-        ("U2.9", (86.0, 37.5)),
-        ("U2.3", (86.0, 42.5)),
-        ("J2.2", (95.5, 45.5)),
-        ("J3.6", (78.0, 70.0)),
+        ("U2.19", (42.5, 31.5)),
+        ("U2.11", (42.5, 23.5)),
+        ("U2.16", (42.5, 28.4)),
+        ("U2.10", (62.0, 21.5)),
+        ("U2.9", (62.0, 25.5)),
+        ("U2.3", (62.0, 30.5)),
+        ("J2.3", (71.0, 34.0)),
+        ("J3.6", (43.0, 54.0)),
     ):
         if pad.partition(".")[0] in placed:
             continue
-        tracks.append(Track("GND", "F.Cu", 0.4, [end(pad), target], auto=True, goal_layer="B.Cu"))
+        if pad == "U2.19":
+            # The codec's digital-ground pin returns through the ground side
+            # of its nearest 3.3 V bypass.  Reusing C10's anchored plane via is
+            # both shorter and cleaner than placing a second via beside it.
+            tracks.append(Track("GND", "F.Cu", SIG, [end(pad), (40.575, 30.8), "C10.2"]))
+            continue
+        if pad == "U2.11":
+            # The low-strapped filter pin continues the 0.8 mm via row used by
+            # the I2S fan; a 0.58 mm land leaves the board's 0.2 mm clearance.
+            site = end(pad)
+            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
+            continue
+        if pad == "U2.3":
+            # The analogue ground pin sits between the flying-capacitor pins.
+            # Their two explicit lanes leave a 1.6 mm slot, just enough for a
+            # centred via and a short ground neck.
+            site = (58.8, 30.0)
+            tracks.append(Track("GND", "F.Cu", SIG, [end(pad), site]))
+            vias.append(Via("GND", x=site[0], y=site[1]))
+            continue
+        if pad == "U2.16":
+            site = end(pad)
+            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
+            continue
+        if pad in {"U2.9", "U2.10"}:
+            site = end(pad)
+            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
+            continue
+        if pad == "U4.4":
+            site = end(pad)
+            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
+            continue
+        width = SIG if pad.startswith("U2.") else 0.4
+        tracks.append(Track("GND", "F.Cu", width, [end(pad), target], auto=True, goal_layer="B.Cu"))
     return replace(design, tracks=tracks, vias=vias)
 
 
@@ -9403,11 +9823,12 @@ def _kicad_fill(board: Path) -> None:
             "(run the generator in the container)",
             file=sys.stderr,
         )
-        return
-    loaded = pcbnew.LoadBoard(str(board))
-    if not pcbnew.ZONE_FILLER(loaded).Fill(loaded.Zones()):
-        raise SystemExit(f"{board.stem}: KiCad's zone filler refused the board")
-    loaded.Save(str(board))
+    else:
+        loaded = pcbnew.LoadBoard(str(board))
+        if not pcbnew.ZONE_FILLER(loaded).Fill(loaded.Zones()):
+            raise SystemExit(f"{board.stem}: KiCad's zone filler refused the board")
+        loaded.Save(str(board))
+    _canonicalize_board_uuids(board)
 
 
 def write_variant(design: Design, root: Path, *, check: bool = True) -> None:
@@ -9433,9 +9854,11 @@ def write_variant(design: Design, root: Path, *, check: bool = True) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    global ROUTE_CACHE
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", help="directory to write the examples into")
-    parser.add_argument("--only", help="generate just this design")
+    parser.add_argument("--only", choices=sorted(DESIGNS), help="generate just this design")
     parser.add_argument(
         "--generated-on",
         default=GENERATED_ON,
@@ -9446,12 +9869,25 @@ def main(argv: list[str] | None = None) -> int:
         default=GENERATED_BY,
         help="what to credit the output to (default: %(default)s)",
     )
-    parser.add_argument(
+    cache_mode = parser.add_mutually_exclusive_group()
+    cache_mode.add_argument(
         "--no-route-cache",
         action="store_true",
         help="route from scratch, ignoring what an earlier run found",
     )
+    cache_mode.add_argument(
+        "--require-route-cache",
+        action="store_true",
+        help="fail on a route-cache miss instead of silently routing again",
+    )
+    parser.add_argument(
+        "--route-cache-dir",
+        type=Path,
+        default=ROUTE_CACHE,
+        help="directory for route results and learned orders (default: %(default)s)",
+    )
     args = parser.parse_args(argv)
+    ROUTE_CACHE = args.route_cache_dir
 
     stamp = (
         f"generated {args.generated_on} by {args.generated_by}",
@@ -9473,6 +9909,7 @@ def main(argv: list[str] | None = None) -> int:
                 mount_holes(replace(builder().snapped(), provenance=stamp, date=args.generated_on))
             ),
             use_cache=not args.no_route_cache,
+            require_cache=args.require_route_cache,
         )
         write_variant(design, out / name / "reviewed")
         # the degraded variant is *meant* to be wrong, so it is not checked
