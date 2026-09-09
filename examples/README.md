@@ -434,10 +434,11 @@ empty page margin and converts the format; it does not redraw or rescale copper.
 
 ### What this one is honest about
 
-**Four layers are this example's design choice, not a law imposed by QFN pitch.**
-The earlier two-layer version paid in plane cuts, routing tours and board area.
-The present design separates an inner GND layer from signal routing, but its
-long fan and capacitor placement still have room for improvement.
+**Two layers are this example's design choice, and the area is what it costs.**
+A four-layer stack fits the same circuit into 76 x 58 mm and gives the return
+path an uncut plane; this board buys neither, and pays in plane cuts, routing
+tours and 100 x 84 mm of laminate. The trade is stated rather than engineered
+away, and its long fan and capacitor placement still have room for improvement.
 
 The findings that follow from it, at the scale a 48-pin part gives them:
 
