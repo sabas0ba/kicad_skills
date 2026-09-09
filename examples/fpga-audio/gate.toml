@@ -6,17 +6,18 @@ extends = "ai-generated"
 [[waivers]]
 rule = "layout.decoupling_distance"
 reason = """This demonstration floorplan retains 16 supply-pin distances over \
-the 5 mm heuristic. Local capacitor ground vias and the inner GND plane do \
-not prove that the full bypass loop is adequate. The existing top-side fan \
+the 5 mm heuristic. Local capacitor ground vias and the back-side GND pour \
+do not prove that the full bypass loop is adequate. The existing top-side fan \
 is a baseline limitation, not a demonstrated minimum imposed by QFN pitch \
 or single-sided assembly. Closer placement and supply-loop verification \
 remain open work before treating this as a production reference layout."""
 
 [[waivers]]
 rule = "track.thin_power"
-reason = """The QFN escape uses 0.2 mm copper; +3V3 distribution uses In2 and \
-the +1V2 back-side spine remains narrow. The IPC-2221 estimate of 0.745 A at \
-a 10 C rise assumes 1 oz external copper and is a screening estimate, not \
+reason = """The QFN escape uses 0.2 mm copper, and both the +3V3 distribution \
+and the +1V2 back-side spine remain narrow on two layers. The IPC-2221 \
+estimate of 0.745 A at a 10 C rise assumes 1 oz external copper and is a \
+screening estimate, not \
 a validated power budget. FPGA consumption depends on the bitstream and \
 IO activity, which this example does not specify. This demonstration \
 exception requires actual rail-current, voltage-drop and thermal checks \
