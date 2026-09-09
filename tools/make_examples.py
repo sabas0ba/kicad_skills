@@ -38,7 +38,7 @@ import uuid
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from itertools import pairwise
+from itertools import combinations, pairwise
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -76,6 +76,11 @@ GENERATED_BY = "Claude Code"
 GEOM_EPS = 1e-6
 GEOM_TOL = 0.001  # two points this close on the sheet are the same point
 VIA_SIZE = 0.8  # what the router drops when it has to change layer
+# How near two drilled holes may be, centre to centre. KiCad's own constraint
+# on these boards is 0.2495 mm between the barrels, which for the 0.4 mm drills
+# here is 0.65 mm between centres; the round number above it is what the
+# generator places to.
+HOLE_TO_HOLE_MM = 0.7
 POUR_NET = "GND"  # the net every ground pour in these examples belongs to
 
 
@@ -4589,6 +4594,7 @@ def _pipeline(design: Design) -> Design:
     design = _unspiked(design)
     design = _welded(design)
     design = _surfaced(design)
+    design = _uncrowded(design)
     design = _teardrops(design)
     return _stitched(design)
 
@@ -4918,6 +4924,73 @@ def _surfaced(design: Design) -> Design:
         file=sys.stderr,
     )
     return replace(design, tracks=tracks, vias=vias)
+
+
+def _uncrowded(design: Design) -> Design:
+    """Merge same-net vias drilled closer than a fabricator will place them.
+
+    Two barrels 0.5 mm apart is `drc.hole_to_hole`, and the FPGA board's +3V3
+    came back with a pair: the search spends a via at each end of a hop, and two
+    hops that turn round within half a millimetre of each other each get one.
+    The reshaping passes then slide the copper without ever bringing the holes
+    back together.
+
+    They are the same net and their copper already overlaps, so the pair is
+    electrically one hole drilled twice. This replaces it with one via at the
+    centre of everything the two were serving - the track ends whose copper each
+    of them covers - and only if that one still covers all of it. A via anchored
+    to a pad is left alone: it was placed beside that pad on purpose.
+    """
+    ends: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        for end in (points[0], points[-1]):
+            ends[track.net].append((round(end[0], 3), round(end[1], 3)))
+
+    def serving(via: Via) -> list[tuple[float, float]]:
+        centre = via_position(design, via)
+        return [
+            end
+            for end in ends.get(via.net, ())
+            if math.dist(end, centre) <= via.size / 2 + GEOM_EPS
+        ]
+
+    vias = list(design.vias)
+    merged = 0
+    while True:
+        for left, right in combinations(range(len(vias)), 2):
+            one, two = vias[left], vias[right]
+            if one.net != two.net or one.pad or two.pad:
+                continue
+            if math.dist(via_position(design, one), via_position(design, two)) >= HOLE_TO_HOLE_MM:
+                continue
+            wanted = [*serving(one), *serving(two)] or [
+                via_position(design, one),
+                via_position(design, two),
+            ]
+            middle = (
+                round(sum(p[0] for p in wanted) / len(wanted), 3),
+                round(sum(p[1] for p in wanted) / len(wanted), 3),
+            )
+            size = min(one.size, two.size)
+            if any(math.dist(p, middle) > size / 2 + GEOM_EPS for p in wanted):
+                continue
+            vias[left] = replace(
+                one, x=middle[0], y=middle[1], size=size, drill=min(one.drill, two.drill)
+            )
+            del vias[right]
+            merged += 1
+            break
+        else:
+            break
+    if not merged:
+        return design
+    print(
+        f"{design.name}: {merged} pair(s) of same-net vias were drilled too close "
+        "to each other, merged",
+        file=sys.stderr,
+    )
+    return replace(design, vias=vias)
 
 
 def _stitched(design: Design) -> Design:
@@ -5741,15 +5814,25 @@ def _stitch_vias(design: Design) -> list[Via]:
             pad = (vx - radius, vy - radius, vx + radius, vy + radius)
             if _segment_to_box(a, b, pad) < width / 2 + 0.45:
                 return False
-        # Square to `check_board`, so square here as well - and measured
-        # against each existing via's own size rather than a flat distance.
-        # A stitching via 1.25 mm from a 0.8 mm routing via passes any
-        # centre-to-centre rule written for two 0.8 mm holes and still shorts:
-        # what has to clear is the gap between their edges along whichever
-        # axis is tighter, and on the diagonal that is not the distance
-        # between their centres.
+        # Two rules, and a via has to satisfy both, because they measure
+        # different things in different metrics.
+        #
+        # The copper is square to `check_board`, so it is square here as well,
+        # and it is measured against each existing via's own size: a stitching
+        # via 1.25 mm from a 0.8 mm routing via clears any centre-to-centre
+        # rule written for two 0.8 mm holes and still shorts, because what has
+        # to clear is the gap between their edges along whichever axis is
+        # tighter, and on the diagonal that is not the distance between their
+        # centres.
+        #
+        # The drills are round, and hole-to-hole is the fabricator's rule
+        # rather than the artwork's: two barrels that clear each other's copper
+        # on the diagonal can still be nearer than a drill bit may be placed to
+        # its neighbour. Replacing this radial check with the square one above
+        # is what put `drc.hole_to_hole` on the FPGA board.
         return all(
             max(abs(vx - hx), abs(vy - hy)) >= (size + 2 * radius) / 2 + 0.25
+            and math.dist((vx, vy), (hx, hy)) >= 1.2
             for (hx, hy), size in holes
         )
 

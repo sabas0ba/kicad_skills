@@ -1493,7 +1493,7 @@ edge lists on 200 seeded, randomized multi-pad/tied-distance cases. On the same
 host, a 500-footprint single-pad net took 16.557 s before and 0.288 s after.
 These are illustrative timings; CI enforces operation counts and correctness,
 not a wall-clock threshold tied to one machine.
-## 26. The reviewer's pass, round twenty-one: the parts a bench never asks for
+## 27. The reviewer's pass, round twenty-one: the parts a bench never asks for
 
 Nineteen rounds had made five boards that pass their own gate, and §1 still
 listed five things a production review would ask about that no rule did:
@@ -1610,7 +1610,7 @@ nothing else, so those pages are cited, not read, and the ratings on the
 sheets are the ones the design asks for rather than numbers copied from a
 table.
 
-## 27. The reviewer's pass, round twenty-two: what a layer costs
+## 28. The reviewer's pass, round twenty-two: what a layer costs
 
 Rounds twenty and twenty-one were written against the same baseline by two
 different hands, and both landed. Merging them was the first half of this
@@ -1681,6 +1681,23 @@ The connector case earned itself immediately. On opamp-filter the 5 V rail was
 cutting the corner off J2's courtyard on its way to the second amplifier: the
 short way across, and copper nobody could have probed. The strip under the
 terminal's body is now fenced and the rail goes round it.
+
+### One hole drilled twice
+
+Moving the FPGA board onto two layers put every layer change on the same pair of
+faces, and the search spends a via at each end of a hop. Two hops that turned
+round within half a millimetre of each other got a barrel apiece: 0.5 mm between
+centres, 0.1 mm between the holes, against the 0.2495 mm a fabricator here will
+place. KiCad's own DRC reported it as `hole_to_hole` — the gate did not, because
+this is a manufacturing constraint the board setup carries rather than a rule
+this toolkit writes, which is why CI checks both.
+
+The pair is one hole on one net whose copper already overlaps, so the generator
+now merges it. `_uncrowded` runs after the copper has stopped moving, finds
+same-net vias closer together than a drill will go, and puts one via at the
+centre of every track end the two were serving — but only if that one still
+reaches all of them. A via anchored to a pad never moves: it was placed beside
+that pad on purpose.
 
 ### The smallest change in the round
 

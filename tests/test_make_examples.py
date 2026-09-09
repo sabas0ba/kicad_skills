@@ -184,6 +184,59 @@ def test_chamfer_does_not_cut_a_track_away_from_its_via():
     assert corner in chamfered.tracks[0].points
 
 
+def _two_hops(examples, first, second):
+    """Two same-net layer changes, each with its own via, at the given points."""
+    return _design(
+        examples,
+        tracks=[
+            examples.Track("SIG", layer, 0.3, [point, (point[0] + 3.0, point[1])])
+            for point in (first, second)
+            for layer in ("F.Cu", "B.Cu")
+        ],
+        vias=[examples.Via("SIG", x=point[0], y=point[1]) for point in (first, second)],
+    )
+
+
+def test_vias_drilled_too_close_together_become_one():
+    examples = _generator()
+    design = _two_hops(examples, (10.0, 10.0), (10.0, 10.5))
+
+    merged = examples._uncrowded(design)
+
+    assert [(via.x, via.y) for via in merged.vias] == [(10.0, 10.25)]
+
+
+def test_a_via_that_would_stop_reaching_its_copper_is_left_where_it_is():
+    examples = _generator()
+    # The first via already spans two ends 0.35 mm either side of it. Pulling it
+    # 0.2 mm towards the second takes the far one past the 0.4 mm copper radius,
+    # so the pair stays as it is even though the holes are 0.6 mm apart.
+    design = _design(
+        examples,
+        tracks=[
+            examples.Track("SIG", "F.Cu", 0.3, [(9.65, 10.0), (5.0, 10.0)]),
+            examples.Track("SIG", "B.Cu", 0.3, [(10.35, 10.0), (15.0, 10.0)]),
+            examples.Track("SIG", "F.Cu", 0.3, [(10.0, 10.6), (10.0, 15.0)]),
+            examples.Track("SIG", "B.Cu", 0.3, [(10.0, 10.6), (13.0, 10.6)]),
+        ],
+        vias=[examples.Via("SIG", x=10.0, y=10.0), examples.Via("SIG", x=10.0, y=10.6)],
+    )
+
+    assert examples._uncrowded(design).vias == design.vias
+
+
+def test_vias_of_different_nets_are_never_merged():
+    examples = _generator()
+    design = _two_hops(examples, (10.0, 10.0), (10.0, 10.5))
+    design = replace(
+        design,
+        nets={"SIG": [], "OTHER": []},
+        vias=[design.vias[0], replace(design.vias[1], net="OTHER")],
+    )
+
+    assert examples._uncrowded(design).vias == design.vias
+
+
 def test_board_uuid_canonicalization_ignores_random_input_ids(tmp_path):
     examples = _generator()
     first = tmp_path / "same.kicad_pcb"
