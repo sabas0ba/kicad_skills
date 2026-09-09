@@ -291,6 +291,15 @@ class Design:
     # space between the pad rows is closed to everything but the pads' own
     # entries.
     route_keepout: tuple[str, ...] = ()
+    # Footprints whose whole courtyard is closed to copper of any net but their
+    # own. `route_keepout` fences the strip *between* two rows of pads, which a
+    # single-row part does not have: a 1xN header's body is one column of pads
+    # and the board either side of it, and a rail crossing it is exactly the
+    # `route.under_package` a connector reports - under the shell, where nobody
+    # can probe it and the housing has to come off to see it. The part's own
+    # escapes still leave, which is why this is not a plain rectangle in
+    # `keepouts`.
+    body_keepout: tuple[str, ...] = ()
     # Rectangles of board, in board coordinates, closed to the router on both
     # faces. A part at the edge of a board leaves a strip behind it that is
     # routable and never the right answer: a search that finds it comes at the
@@ -3243,6 +3252,19 @@ def _route_all(
         y0 = min(b[1] for b in boxes)
         y1 = max(b[3] for b in boxes)
         router.add(autoroute.Obstacle(left + 0.4, y0, right - 0.4, y1, "", None))
+    # The courtyard of a part nothing else may cross, open to the nets the part
+    # itself is on so its own escapes still leave.
+    for ref in design.body_keepout:
+        part = next(p for p in design.footprints() if p.ref == ref)
+        box = _courtyard_box(design, part)
+        if box is None:
+            continue
+        own = frozenset(
+            name
+            for name, nodes in design.nets.items()
+            if any(node.split(".")[0] == ref for node in nodes)
+        )
+        router.add(autoroute.Obstacle(*box, "", None, open_to=own))
     for x0, y0, x1, y1 in design.keepouts:
         router.add(autoroute.Obstacle(x0, y0, x1, y1, "", None))
     for via in design.vias:
@@ -3421,6 +3443,7 @@ def _routing_digest(design: Design) -> str:
         repr(design.board_size),
         repr(design.keepouts),
         repr(design.route_keepout),
+        repr(design.body_keepout),
         repr((VIA_SIZE, POUR_NET)),
     ]
     for part in sorted(design.footprints(), key=lambda p: p.ref):
@@ -9430,6 +9453,12 @@ def fpga_audio() -> Design:
         # just moved the 1.2 V rail under U2, which is the worse place: the
         # DAC is the one analogue part on the board.
         route_keepout=("U4", "U2"),
+        # The two headers, whole. Both are 1x0N verticals, so there is no strip
+        # between pad rows for `route_keepout` to close, and the cold route put
+        # +3V3 under J3's shell on its way south and across J2's on its way to
+        # the audio pins - nine segments of `route.under_package`. The rail goes
+        # round them now.
+        body_keepout=("J2", "J3"),
         # The outer ring of the pour, closed to the router. On the widest
         # board in the set the perimeter is the emptiest lane there is, and
         # the router took it twice - 20.5 mm of the bottom edge for SPI_SS
