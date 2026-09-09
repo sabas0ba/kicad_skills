@@ -109,6 +109,15 @@ change that does invalidate the cache: it is what an afternoon of rip-up
 attempts learned, and starting from it is usually the difference between
 seventeen attempts and none.
 
+Both the cache and that order are git-ignored, so **CI routes cold and without
+them, and the copper checked in here has to be what a cold route finds** — the
+drift check compares the two. On the FPGA board a different starting order finds
+a different valid solution, so a board regenerated from a warm local cache can
+pass every gate here and still fail CI. Before committing a change that moves
+that board's copper, reproduce the CI conditions:
+`tools/make_examples.py build/golden --no-route-cache --only fpga-audio
+--route-cache-dir build/golden-cache`, and commit what that writes.
+
 `tools/example_images.py` re-renders the pictures `examples/README.md` shows
 from the regenerated projects (sheet at 150 dpi, board at 300 dpi, as JPEG). It
 leaves the `*-first.jpg` first editions alone; nothing regenerates those.

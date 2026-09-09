@@ -1699,6 +1699,28 @@ centre of every track end the two were serving — but only if that one still
 reaches all of them. A via anchored to a pad never moves: it was placed beside
 that pad on purpose.
 
+### What the cold route said that the cached one did not
+
+The rule was not enough. `route.under_package` was clean on the board this
+checkout held, and the golden CI job — which routes from scratch, with none of
+the rip-up order an afternoon of attempts had learned — found a different
+solution and put +3V3 under both headers, nine segments of it. The property was
+luck, not design: the same board, routed twice, was clean once.
+
+`route_keepout` could not have caught it. It closes the strip *between* two rows
+of pads, and a 1×N header has one row, so J2 and J3 were never fenced at all.
+What a connector needs is its whole courtyard closed — to every net but its own,
+because its escapes still have to leave. An obstacle could not say that: it
+carries one net, and a part has as many nets as it has pins. So `Obstacle` grew
+`open_to`, a set of nets it does not block, and `Design.body_keepout` names the
+parts whose courtyard is fenced that way. The FPGA board fences its two headers,
+and the rail goes round them.
+
+The cold route is the one that counts. A board is only reproducible if the
+copper checked in here is what the router finds with an empty cache, because
+that is what CI regenerates and compares against — the learned order makes the
+answer arrive sooner, never differently enough to commit.
+
 ### The smallest change in the round
 
 Fiducial designators no longer print. A fiducial names a target the assembly
