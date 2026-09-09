@@ -9572,7 +9572,7 @@ def fpga_audio() -> Design:
                 ("C8.1", "U4.3"),
                 ("C8.1", "R1.1"),
                 ("U4.3", "U4.7"),
-                ("C8.1", "C9.1"),
+                ("R2.1", "C9.1"),
                 ("C9.1", "X1.4"),
                 ("C9.1", "X1.1"),
             ],
@@ -9584,15 +9584,17 @@ def fpga_audio() -> Design:
                 ("U3.5", "C3.1"),
                 ("C3.1", "C4.1"),
                 ("C4.1", "U1.5"),
-                # ...one link into each end of the stated spine, in place of
-                # the C4-to-C15 haul that had to cross the SPI comb. (The
-                # east tap is stated separately below: it has to leave on
-                # the back.)
-                ("C4.1", SPINE_1V2[0]),
                 ("C15.1", "U1.30"),
                 ("C15.1", "R3.1"),
             ],
         ),
+        # One link into each end of the stated spine, in place of the
+        # C4-to-C15 haul that had to cross the SPI comb. (The east tap is
+        # stated separately above: it has to leave on the back.) At power
+        # width, because that is what it lands on - routed at signal width it
+        # stepped 0.20 to 0.40 mm four millimetres short of the spine, which
+        # is `route.width_step`: a change nobody chose, in the open.
+        ("+1V2", POWER, [("C4.1", SPINE_1V2[0])]),
         ("VCCPLL", SIG, [("R3.2", "C17.1"), ("C17.1", "C5.1"), ("C5.1", "U1.29")]),
         ("SPI_SS", SIG, [("U1.16", "U4.1"), ("U4.1", "J3.1"), ("J3.1", "R4.2")]),
         ("+3V3", SIG, [("C8.1", "R4.1")]),
