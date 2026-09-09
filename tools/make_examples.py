@@ -9347,6 +9347,19 @@ def fpga_audio() -> Design:
         # just moved the 1.2 V rail under U2, which is the worse place: the
         # DAC is the one analogue part on the board.
         route_keepout=("U4", "U2"),
+        # The outer ring of the pour, closed to the router. On the widest
+        # board in the set the perimeter is the emptiest lane there is, and
+        # the router took it twice - 20.5 mm of the bottom edge for SPI_SS
+        # and 11.5 mm of the right for SPI_SO, which is `layout.pour_edge_cut`
+        # and the reason that rule exists. Reporting it after the fact is the
+        # review's job; not building it is this file's. 1.7 mm so a track of
+        # any width these boards use still leaves the ring its millimetre.
+        keepouts=(
+            (1.2, 1.2, 2.9, 82.8),
+            (97.1, 1.2, 98.8, 82.8),
+            (1.2, 1.2, 98.8, 2.9),
+            (1.2, 81.1, 98.8, 82.8),
+        ),
         tracks=[],
         vias=[],
         pour=(1.2, 1.2, 98.8, 82.8),
@@ -9515,9 +9528,6 @@ def fpga_audio() -> Design:
     # Every endpoint goes through `end`, which returns the far end of a pin's
     # escape when it has one and the pad itself when it does not.
     tracks = [*escapes, *anchored]
-    # The fused rail reaches the bulk capacitor round the terminal's right-hand
-    # side, stated rather than searched for: the short way is under J1's body.
-    tracks.append(Track("+3V3", "F.Cu", POWER, ["F1.2", (18.4, 20.0), "C1.1"]))
     routes = [
         ("VIN", POWER, [("J1.1", "F1.1")]),
         # The input rail is wide as far as the capacitors; into the regulator
@@ -9527,7 +9537,16 @@ def fpga_audio() -> Design:
         # Down the right of the terminal and in from below: sent straight at
         # C1 the rail crosses J1's own body, and a screw terminal has to come
         # off the board before anyone can see the copper under it.
-        ("+3V3", POWER, [("F1.2", "D3.1"), ("C1.1", "C2.1")]),
+        # Round the terminal's right-hand side and in from below. The short
+        # way from the fuse to the bulk capacitor is under J1's body, and a
+        # screw terminal has to come off the board before anyone can see the
+        # copper under it - `route.under_package`. The waypoint is what makes
+        # the search go round rather than through.
+        (
+            "+3V3",
+            POWER,
+            [("F1.2", "D3.1"), ("F1.2", (18.4, 20.0)), ((18.4, 20.0), "C1.1"), ("C1.1", "C2.1")],
+        ),
         ("+3V3", SIG, [("C1.1", "U3.1"), ("C2.1", "U3.3")]),
         (
             "+3V3",
