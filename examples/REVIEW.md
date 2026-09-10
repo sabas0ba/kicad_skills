@@ -1721,6 +1721,76 @@ copper checked in here is what the router finds with an empty cache, because
 that is what CI regenerates and compares against — the learned order makes the
 answer arrive sooner, never differently enough to commit.
 
+### Who pays for a tour
+
+The reviewer circled a column of ten vias on the motor driver, between the
+package's escape fan and the two motor terminals, and asked for a principle:
+route the nets with something to lose first — current, a clock, a bus, a pair —
+and never let the miscellaneous routing add stubs and vias to them; place the
+parts so those routes are easy.
+
+The column was exactly that inversion. The four 0.4 mm bridge outputs run a
+clear corridor west to the terminals. One 0.3 mm logic input, AIN1, with both
+ends on the package's east side, found its straight lane taken and toured the
+whole west end of the board instead — and the chase for tidiness then promoted
+it to the *front*, so the outputs, routed after it, hopped under it: two vias
+apiece, and nFAULT the same. The tour itself had two causes. The design had put
+AIN1's drop on the back on purpose, and the search still charged it the plane
+surcharge — thirty on the front for a millimetre on the back — so seventeen
+millimetres on B.Cu cost more than seventy-five on F.Cu with two vias. And its
+header pin sat on the far side of AIN2's stated lane from its via, so it could
+not have dropped straight even for free: the header's pin order did not match
+the order the drops arrive in.
+
+Three things changed. The routing order now has two classes: a link wider than
+the board's thinnest, or on a net the design names in `priority_nets`, is
+routed while the board is empty, and a failure or a tour promotes a plain link
+only to the front of the plain links — it never moves ahead of a net with a
+claim. A link the design declares on the back and keeps there pays the router's
+ordinary rate, not the plane surcharge. And J4's pins were reordered so the
+four drops leave the via column in the order they land — GND, nSLEEP, AIN2,
+BIN1, AIN1, BIN2, nFAULT, GND — with AIN2's lane turning where its last leg to
+the new pin is a 45.
+
+Cold, under CI's conditions, the motor board now routes on the first pass with
+no rip-up and no chase. The four outputs and nFAULT: zero vias, all on the
+front. AIN1 crosses BIN2's drop and pays two vias for it, which is the plain
+net paying.
+
+The op-amp filter said what the width heuristic cannot: the filter's own signal
+path is at signal width, and routed after the rail's links its two filter
+nodes toured 6.5x and 7.7x under both terminals. On a filter that path is what
+the board is for, so the design names it — `IN`, `IN_DC`, `X`, `FILT_IN`,
+`OUT`, `VREF` — and the bias divider's midpoint and the output coupling are the
+plain links that go round. Its rail, routed first, then took the short way
+under the input terminal's shell; the three connectors are fenced whole now,
+the way the FPGA board's headers are. The FPGA board says the same of its rails: +3V3 and
++1V2 are distributed at signal width there (the `track.thin_power` waiver is
+about exactly that), and routed after the clocks and the bus the codec's own
+supply pickup had no lane left between the package and the jack. Named, they
+route first, as a rail should.
+
+That board also found the classes' limit. XSMT — the mute line, whose only
+possible seat for R6 the detour waiver already describes — has no lane at all
+behind the priority nets, and neither has LDOO, the codec's regulator output
+into its reservoir. Feasibility is the hard constraint and the classes are not:
+a plain link that fails from the front of its class is lifted ahead of the
+priority nets, and the log says so — three times on this board, both XSMT
+links and LDOO. That is a floorplan with no room for them, and the placement's
+problem to fix; it is not a reason to call the nets special.
+
+### A loop that never existed
+
+The op-amp board's new copper also found a defect in the loop cutter. MID had a
+stub from a pad up to a via and the back-side run coming down from that via,
+passing under the pad on its way. The cutter splits a run at a pad of its own
+net it passes over, because the overlap feeds the pad — but it split the
+*back-side* run at a *front-side* pad, manufactured a node there, and the stub
+ending on that pad then shared it: a cycle. It cut the stub and the via and
+left the run starting at the pad on the wrong layer, with no way up to it —
+two of KiCad's `unconnected_items`. The split now respects the pad's layer,
+and the test runs the same copper through the old cutter to show the via go.
+
 ### The smallest change in the round
 
 Fiducial designators no longer print. A fiducial names a target the assembly

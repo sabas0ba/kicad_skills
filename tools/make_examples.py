@@ -3671,9 +3671,15 @@ def resolve_routes(
     # measures. (The learned order below overrides this where it applies;
     # this is what a fresh clone, which has no learned order, starts from.)
     thinnest = min(track.width for track in auto)
+    # Plain links the board turned out to have no lane for behind the nets
+    # with first pick. Feasibility is the hard constraint and the classes are
+    # not: such a link is lifted ahead of them, once, and the log says so -
+    # that is a floorplan with no room for it, which is the placement's
+    # problem to fix and not something to hide by declaring the net special.
+    lifted: set[int] = set()
 
     def rank(track: Track) -> int:
-        return _route_rank(design, track, thinnest)
+        return 0 if id(track) in lifted else _route_rank(design, track, thinnest)
 
     order = sorted(
         auto,
@@ -3712,6 +3718,18 @@ def resolve_routes(
             # and an order to be found, not a floorplan with no lane. What
             # is not cheap is doing this forever, so it is counted.
             if ripped.count(blocked.track) >= RIPUP_TRIES:
+                if rank(blocked.track) > 0:
+                    lifted.add(id(blocked.track))
+                    ripped = [t for t in ripped if t is not blocked.track]
+                    order = _promoted(order, blocked.track, rank)
+                    _save_order(design, order)
+                    print(
+                        f"{design.name}: {blocked.track.net} {blocked.track.points} has no "
+                        "lane behind the nets with first pick - lifting it ahead of them; "
+                        "the floorplan leaves it no other room",
+                        file=sys.stderr,
+                    )
+                    continue
                 if safe_order is not None:
                     print(
                         f"{design.name}: re-ordering for tidiness left {blocked.track.net} "
@@ -3870,7 +3888,7 @@ def _unlooped(design: Design) -> Design:
             if owner:
                 centre = pad_position_of(design, part, pad)
                 pad_nodes[owner].add(key(centre))
-                pad_geometry[owner].append((centre, pad_box(design, part, pad)))
+                pad_geometry[owner].append((centre, pad_box(design, part, pad), pad_layer(pad)))
 
     # A segment that passes *over* a pad of its own net feeds that pad by the
     # overlap - KiCad's connectivity is geometric, this graph is endpoint
@@ -3878,6 +3896,14 @@ def _unlooped(design: Design) -> Design:
     # cutter ran: the only chain feeding R1 crossed the pad mid-run, the graph
     # had no node there, and the chain looked redundant. Split the segment at
     # the pad and the feed becomes an anchor the cut has to respect.
+    #
+    # Over it on the pad's own layer. A run on the back passing under a
+    # front-side land touches nothing, and splitting it there manufactures a
+    # node the front-side copper ending on that land then shares - which is
+    # a cycle that never existed. The cutter closed one on the op-amp board:
+    # a stub from a pad up to a via and the back-side run coming down from
+    # that via read as a loop, the stub and the via went, and the run was
+    # left starting at the pad on the wrong layer with no way up to it.
     for net, geometry in pad_geometry.items():
         index = 0
         while index < len(segs):
@@ -3888,9 +3914,11 @@ def _unlooped(design: Design) -> Design:
             a, b = seg["a"], seg["b"]
             length = math.dist(a, b)
             split_at = None
-            for centre, box in geometry:
+            for centre, box, layer in geometry:
                 if length < GEOM_EPS:
                     break
+                if layer is not None and layer != seg["layer"]:
+                    continue
                 t = ((centre[0] - a[0]) * (b[0] - a[0]) + (centre[1] - a[1]) * (b[1] - a[1])) / (
                     length * length
                 )
@@ -3921,7 +3949,7 @@ def _unlooped(design: Design) -> Design:
         The first version of this cutter read one of those hooks as a
         dangling loop and amputated a pad's only feed with it.
         """
-        for _centre, box in pad_geometry.get(net, ()):
+        for _centre, box, _layer in pad_geometry.get(net, ()):
             if box[0] - 0.05 <= node[0] <= box[2] + 0.05 and (
                 box[1] - 0.05 <= node[1] <= box[3] + 0.05
             ):
@@ -8922,6 +8950,20 @@ def opamp_filter() -> Design:
         # short way across - and copper under a screw terminal cannot be
         # probed or reworked without taking the terminal off the board.
         keepouts=((6.0, 8.5, 17.0, 12.1),),
+        # The three connectors, whole, closed to every net but their own.
+        # With the rail routed first it took the short way under the input
+        # terminal's shell to reach the regulator side - one segment of
+        # `route.under_package`, and the reason the rule measures a
+        # connector against its courtyard.
+        body_keepout=("J1", "J2", "J3"),
+        # First pick of the board, beyond the rail the widths already give
+        # it: the signal path. On a filter that is what the board is for -
+        # the input, the two filter nodes, the output and the reference it
+        # is all measured against. Routed after the rail's own links the
+        # two filter nodes toured, 6.5x and 7.7x, under both terminals. The
+        # bias divider's midpoint and the output coupling are the plain
+        # links and go round.
+        priority_nets=("IN", "IN_DC", "X", "FILT_IN", "OUT", "VREF"),
         tracks=[],
         vias=[
             # mid-board ties between the faces: the signal row slices the
@@ -9536,20 +9578,25 @@ def fpga_audio() -> Design:
         # the audio pins - nine segments of `route.under_package`. The rail goes
         # round them now.
         body_keepout=("J2", "J3"),
-        # First pick of the board, beyond what the widths already give the
-        # rails: the 12 MHz clock and its buffered copy, the four I2S lines
-        # that have to arrive together, and the two analogue outputs. The
-        # boot bus is not among them - it runs once at power-up, and the
-        # return-path waiver says so.
+        # First pick of the board. The three rails have to be named: on this
+        # board +3V3 and +1V2 are distributed at signal width (the
+        # `track.thin_power` waiver says why), so the width alone does not
+        # mark them, and routed after the clocks and the bus the codec's own
+        # supply pickup found no lane left between the package and the jack.
+        # Then the 12 MHz clock and its buffered copy, and the four I2S lines
+        # that have to arrive together. The boot bus is not among them - it
+        # runs once at power-up, and the return-path waiver says so - and
+        # neither are the line outputs, which are audio-rate analogue.
         priority_nets=(
+            "+3V3",
+            "+1V2",
+            "VCCPLL",
             "CLK12",
             "OSC_OUT",
             "I2S_SCK",
             "I2S_BCK",
             "I2S_DIN",
             "I2S_LRCK",
-            "OUTL",
-            "OUTR",
         ),
         # The outer ring of the pour, closed to the router. On the widest
         # board in the set the perimeter is the emptiest lane there is, and

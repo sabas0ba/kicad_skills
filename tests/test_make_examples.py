@@ -115,6 +115,32 @@ def test_fixed_layer_survives_loop_cleanup_and_merging(reverse):
     assert result.tracks[0].layer == "B.Cu"
 
 
+def test_a_back_run_under_a_front_pad_is_not_a_loop(monkeypatch):
+    """The cutter once read a stub up to a via and the back run coming down
+    from it as a cycle, because it split the back run at a front-side pad it
+    passed under and then shared the node with the stub's end. The stub and
+    the via went, and the run was left on the wrong layer with no way up."""
+    examples = _generator()
+    part = examples.Part("R1", "test:r", "1k", "test:fp", (0.0, 0.0), (10.0, 10.0, 0.0))
+    node = examples.sexp.loads(
+        '(footprint "fp" (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu" "F.Mask")))'
+    )
+    monkeypatch.setattr(examples, "footprint_definition", lambda _name: node)
+    tracks = [
+        examples.Track("N", "F.Cu", 0.3, [(10.0, 10.0), (10.0, 8.0)]),
+        examples.Track("N", "B.Cu", 0.3, [(10.0, 8.0), (10.0, 14.0)]),
+        examples.Track("N", "F.Cu", 0.3, [(10.0, 14.0), (14.0, 14.0)]),
+    ]
+    vias = [examples.Via("N", x=10.0, y=8.0), examples.Via("N", x=10.0, y=14.0)]
+    design = _design(examples, parts=[part], nets={"N": ["R1.1"]}, tracks=tracks, vias=vias)
+
+    cut = examples._unlooped(design)
+
+    assert sorted((v.x, v.y) for v in cut.vias) == [(10.0, 8.0), (10.0, 14.0)]
+    assert any(t.layer == "F.Cu" and (10.0, 8.0) in t.points for t in cut.tracks)
+    assert any(t.layer == "B.Cu" and t.points == [(10.0, 8.0), (10.0, 14.0)] for t in cut.tracks)
+
+
 def test_route_digest_includes_fixed_layer_intent():
     examples = _generator()
     track = examples.Track("SIG", "B.Cu", 0.3, [(5.0, 5.0), (8.0, 5.0)])

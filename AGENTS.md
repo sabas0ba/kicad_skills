@@ -92,6 +92,10 @@ net the design names in `priority_nets`, has something to lose — current, a
 clock, a bus — and is routed while the board is empty; nothing routed later
 may push it aside, so a plain link that fails or tours is promoted only to the
 front of the plain links and goes round. Within a class it is shortest first.
+A plain link that still has no lane from the front of its class is lifted
+ahead of the priority nets and the log says so: that is a floorplan with no
+room for it, which is the placement's problem to fix, not a reason to declare
+the net special.
 
 The golden CI matrix uses KiCad 9.0.9 for generation, gates and renders. Each
 example runs independently with fail-fast disabled, so a failed or slow FPGA

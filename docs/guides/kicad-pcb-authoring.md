@@ -139,7 +139,10 @@ has its return current detoured around it: the loop grows by the detour
   out long, **rip it up and route it first among its own kind** — the same
   loop that handles a net with no room at all handles a net with no
   *sensible* room, and a track that still tours from first pick has nowhere
-  better to be. The motor driver is what the classes cost without them: one
+  better to be. A plain net with no lane even from the front of its class
+  is lifted ahead of the priority nets, and the log says so — read that as
+  a floorplan with no room for it, not as a net that deserved first pick.
+  The motor driver is what the classes cost without them: one
   0.3 mm logic input toured the west end of the board, was promoted to the
   very front for it, and the four 0.4 mm bridge outputs then hopped under
   it — two vias apiece, ten barrels in a column, on the nets that mattered.
