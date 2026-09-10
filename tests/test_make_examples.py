@@ -237,6 +237,59 @@ def test_vias_of_different_nets_are_never_merged():
     assert examples._uncrowded(design).vias == design.vias
 
 
+def _links(examples, *specs):
+    """Auto links as (net, width) pairs, all between the same two points."""
+    return [
+        examples.Track(net, "F.Cu", width, [(0.0, 0.0), (5.0, 0.0)], auto=True)
+        for net, width in specs
+    ]
+
+
+def test_a_wider_link_outranks_the_thinnest():
+    examples = _generator()
+    design = _design(examples)
+    power, signal = _links(examples, ("VM", 0.4), ("AIN1", 0.3))
+
+    assert examples._route_rank(design, power, 0.3) == 0
+    assert examples._route_rank(design, signal, 0.3) == 1
+
+
+def test_a_named_priority_net_outranks_its_width():
+    examples = _generator()
+    design = _design(examples, priority_nets=("CLK",))
+    (clock,) = _links(examples, ("CLK", 0.2))
+
+    assert examples._route_rank(design, clock, 0.2) == 0
+
+
+def test_a_plain_link_is_promoted_only_to_the_front_of_its_class():
+    examples = _generator()
+    design = _design(examples)
+    vm, aout, ain1, ain2 = _links(
+        examples, ("VM", 0.4), ("AOUT1", 0.4), ("AIN1", 0.3), ("AIN2", 0.3)
+    )
+    order = [vm, aout, ain2, ain1]
+
+    def rank(track):
+        return examples._route_rank(design, track, 0.3)
+
+    promoted = examples._promoted(order, ain1, rank)
+
+    assert promoted == [vm, aout, ain1, ain2]
+
+
+def test_a_priority_link_is_promoted_to_the_very_front():
+    examples = _generator()
+    design = _design(examples)
+    vm, aout, ain1 = _links(examples, ("VM", 0.4), ("AOUT1", 0.4), ("AIN1", 0.3))
+    order = [vm, ain1, aout]
+
+    def rank(track):
+        return examples._route_rank(design, track, 0.3)
+
+    assert examples._promoted(order, aout, rank) == [aout, vm, ain1]
+
+
 def test_board_uuid_canonicalization_ignores_random_input_ids(tmp_path):
     examples = _generator()
     first = tmp_path / "same.kicad_pcb"

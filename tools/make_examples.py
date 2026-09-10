@@ -36,7 +36,7 @@ import re
 import sys
 import uuid
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from itertools import combinations, pairwise
 from pathlib import Path
@@ -300,6 +300,13 @@ class Design:
     # escapes still leave, which is why this is not a plain rectangle in
     # `keepouts`.
     body_keepout: tuple[str, ...] = ()
+    # Nets the rest of the board is routed around, beyond the ones the widths
+    # already say. A track wider than the board's thinnest carries current and
+    # has first pick by that alone; a clock, a bus that must arrive together,
+    # a pair that has to stay a pair, carry nothing extra and have to be named.
+    # See `_route_rank`: a net in this class is routed first and is never moved
+    # behind a plain one to make room, so the plain one goes round instead.
+    priority_nets: tuple[str, ...] = ()
     # Rectangles of board, in board coordinates, closed to the router on both
     # faces. A part at the edge of a board leaves a strip behind it that is
     # routable and never the right answer: a search that finds it comes at the
@@ -3363,7 +3370,18 @@ def _route_all(
             # plane under the same net's own front copper, and
             # `route.return_path` picks that up instead. Thirty is where
             # neither fires. GND is not charged: its own copper is the plane.
-            back_cost=None if track.net == POUR_NET else 30.0,
+            #
+            # Nor is a link the design has put on the back itself - declared
+            # on B.Cu, asked to finish there, and kept there. That is the
+            # floorplan's decision, made where the front is full: the motor
+            # driver's logic drops leave a via column on the package's east
+            # side for a header ten millimetres south, and at thirty the
+            # search preferred a seventy-five millimetre tour of the front
+            # over seventeen on the back, round both motor terminals and
+            # across every bridge output on the way.
+            back_cost=None
+            if track.net == POUR_NET or (track.keep_layer and track.layer != "F.Cu")
+            else 30.0,
             follow=bus_paths.get(_bus_of(track.net) or ""),
             tee=[(layer, points) for layer, points, _index in component] or None,
             # ...and the rest of the net's copper - laid but not joined to
@@ -3444,6 +3462,7 @@ def _routing_digest(design: Design) -> str:
         repr(design.keepouts),
         repr(design.route_keepout),
         repr(design.body_keepout),
+        repr(design.priority_nets),
         repr((VIA_SIZE, POUR_NET)),
     ]
     for part in sorted(design.footprints(), key=lambda p: p.ref):
@@ -3462,6 +3481,11 @@ def _routing_digest(design: Design) -> str:
         lines.append(f"V {via.net}|{via_position(design, via)}|{via.size}|{via.drill}")
     lines.append(Path(autoroute.__file__).read_text())
     lines.append(inspect.getsource(_route_all))
+    # The order the links are offered in is as much the question as the
+    # search: the classes and how a failure or a tour moves a link live here.
+    lines.append(inspect.getsource(resolve_routes))
+    lines.append(inspect.getsource(_route_rank))
+    lines.append(inspect.getsource(_promoted))
     lines.append(inspect.getsource(_tee_component))
     lines.append(inspect.getsource(_absorb_tee))
     return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:32]
@@ -3567,6 +3591,42 @@ def _learned_order(design: Design, order: list[Track]) -> list[Track]:
     return sorted(order, key=lambda t: rank.get(_track_signature(design, t), len(rank)))
 
 
+def _route_rank(design: Design, track: Track, thinnest: float) -> int:
+    """Which class a link is routed in: 0 goes first, 1 goes round it.
+
+    The board is routed around the nets that have something to lose - the
+    ones carrying current, a clock, a bus, a pair - and the rest go wherever
+    is left. Width says most of it: a link wider than the thinnest on the
+    board is wide because of what it carries, and the widths here are stated
+    on purpose. What width cannot say, `Design.priority_nets` does.
+
+    The motor driver is why the classes exist. Its four 0.4 mm bridge outputs
+    run a clear corridor west to the terminals; one 0.3 mm logic input with
+    both ends on the east side found its straight lane taken and toured the
+    whole west end of the board instead, and the chase for tidiness put it
+    *first* - so the outputs then hopped under it, two vias apiece, ten
+    barrels in a column. A logic input that has to tour tours; the outputs
+    it tours across are not the ones that pay for it.
+    """
+    if track.net in design.priority_nets or track.width > thinnest + GEOM_EPS:
+        return 0
+    return 1
+
+
+def _promoted(order: list[Track], track: Track, rank: Callable[[Track], int]) -> list[Track]:
+    """`order` with `track` moved to the front of its own class.
+
+    The front of its class, not of the board: a plain link that failed or
+    toured is given first pick among the plain links, and still routes after
+    every link with a claim on the board. Where the classes meet is the only
+    place the two orders touch.
+    """
+    rest = [t for t in order if t is not track]
+    at = next((i for i, t in enumerate(rest) if rank(t) >= rank(track)), len(rest))
+    rest.insert(at, track)
+    return rest
+
+
 def resolve_routes(
     design: Design, use_cache: bool = True, *, require_cache: bool = False
 ) -> Design:
@@ -3598,18 +3658,27 @@ def resolve_routes(
     move copper and the FPGA board takes the better part of an hour to route.
     """
     design = _straighten(design)
-    # Shortest first. A thirteen millimetre connection has few ways to be made
-    # and a forty millimetre one has many, so the short ones are the ones that
-    # have to choose while there is still room - and a short net forced into a
-    # long path is exactly the ratio `route.wander` measures. (The learned
-    # order below overrides this where it applies; this is what a fresh clone,
-    # which has no learned order, starts from.)
-    order = sorted(
-        (track for track in design.tracks if track.auto),
-        key=lambda t: math.dist(*(resolve(design, point) for point in t.points)),
-    )
-    if not order:
+    auto = [track for track in design.tracks if track.auto]
+    if not auto:
         return _pipeline(design)
+    # Two classes, and shortest first within each. The nets with something
+    # to lose - current, a clock, a bus - are routed while the board is empty
+    # and nothing routed later may push them aside (see `_route_rank`); the
+    # rest go round them. A thirteen millimetre connection has few ways to be
+    # made and a forty millimetre one has many, so within a class the short
+    # ones are the ones that have to choose while there is still room - and a
+    # short net forced into a long path is exactly the ratio `route.wander`
+    # measures. (The learned order below overrides this where it applies;
+    # this is what a fresh clone, which has no learned order, starts from.)
+    thinnest = min(track.width for track in auto)
+
+    def rank(track: Track) -> int:
+        return _route_rank(design, track, thinnest)
+
+    order = sorted(
+        auto,
+        key=lambda t: (rank(t), math.dist(*(resolve(design, point) for point in t.points))),
+    )
     digest = _routing_digest(design)
     if use_cache:
         cached = _cache_read(design.name, digest)
@@ -3619,7 +3688,9 @@ def resolve_routes(
             return _pipeline(done)
         if require_cache:
             raise SystemExit(f"{design.name}: required route cache is missing for {digest}")
-        order = _learned_order(design, order)
+        # What was learned holds within a class; it does not put a plain
+        # link ahead of one with a claim. A stable sort keeps the rest.
+        order = sorted(_learned_order(design, order), key=rank)
     ripped: list[Track] = []
     relaid: list[Track] = []
     # An order that routed everything, and whether tours may still be chased.
@@ -3656,8 +3727,7 @@ def resolve_routes(
                     "the floorplan has no lane for it"
                 ) from None
             ripped.append(blocked.track)
-            order.remove(blocked.track)
-            order.insert(0, blocked.track)
+            order = _promoted(order, blocked.track, rank)
             _save_order(design, order)
             print(
                 f"{design.name}: ripping up for {blocked.track.net} "
@@ -3677,8 +3747,7 @@ def resolve_routes(
         if chase and worst is not None and len(relaid) < WANDER_ATTEMPTS:
             ratio, track = worst
             relaid.append(track)
-            order.remove(track)
-            order.insert(0, track)
+            order = _promoted(order, track, rank)
             print(
                 f"{design.name}: {track.net} {track.points} came out {ratio:.1f}x "
                 f"the straight line - routing it first (attempt {len(relaid)})",
@@ -7761,6 +7830,12 @@ def motor_driver() -> Design:
         # J4 is in the order the tracks arrive, so that nothing has to cross to
         # reach it: ground at both ends, then the two signals that come round
         # the outside of the package and the four that come straight out of it.
+        # The four leave the package's east side from two columns of vias, at
+        # x = 40.2-40.75 and at x = 38.2, and drop south on the back: the east
+        # column lands first, the west column after it, and within a column
+        # the upper via lands nearer. Any other order has two drops crossing,
+        # and the one that loses has to go round the whole west end of the
+        # board - which is what AIN1 did when it was on pin 3.
         "GND": [
             "J1.2",
             "D3.2",
@@ -7778,10 +7853,10 @@ def motor_driver() -> Design:
         "VINT": ["U1.14", "C4.1"],
         "nFAULT": ["U1.8", "J4.7"],
         "nSLEEP": ["U1.1", "J4.2"],
-        "AIN1": ["U1.16", "J4.3"],
-        "AIN2": ["U1.15", "J4.4"],
-        "BIN2": ["U1.10", "J4.5"],
-        "BIN1": ["U1.9", "J4.6"],
+        "AIN2": ["U1.15", "J4.3"],
+        "BIN1": ["U1.9", "J4.4"],
+        "AIN1": ["U1.16", "J4.5"],
+        "BIN2": ["U1.10", "J4.6"],
         # The package brings A out 1-then-2 down the row and B out 2-then-1, so
         # a fan that does not cross itself lands them on opposite terminals.
         "AOUT1": ["U1.2", "J2.2"],
@@ -7884,9 +7959,10 @@ def motor_driver() -> Design:
         widths={"2": POWER, "4": POWER, "5": POWER, "7": POWER, "3": POWER, "6": POWER},
     )
     left = [track for track in left if track.net not in {"nSLEEP", "GND"}]
-    # A four-layer board need not fan every supply pin out to a common distant
-    # column. Drop GND into In1 under the non-exposed-pad body, and keep VINT,
-    # VM and VCP on short front-side connections to the three capacitors.
+    # The east side does not fan: the three supply pins reach their
+    # capacitors on short front-side runs, GND drops to the back pour through
+    # its own via, and the four logic inputs each get a via of their own at
+    # the land's edge and go south on the back from there.
     # The east lands begin at x=38.625. A 0.58 mm via at x=38.2 leaves
     # 0.135 mm copper gap to its own land, so it does not require via-in-pad.
     east = {"16": (38.2, 23.225), "15": (40.75, 23.625), "10": (38.2, 27.125), "9": (40.2, 28.3)}
@@ -7948,19 +8024,20 @@ def motor_driver() -> Design:
     # The four logic inputs are boxed in by the supply fan on the front. A
     # short, ordered row of drops is clearer than four tours around that fan.
     for net, pin, header in (
-        ("AIN1", "16", "J4.3"),
-        ("AIN2", "15", "J4.4"),
-        ("BIN2", "10", "J4.5"),
-        ("BIN1", "9", "J4.6"),
+        ("AIN2", "15", "J4.3"),
+        ("BIN1", "9", "J4.4"),
+        ("AIN1", "16", "J4.5"),
+        ("BIN2", "10", "J4.6"),
     ):
         site = east[pin]
         vias.append(Via(net, x=site[0], y=site[1], size=0.58, drill=0.3))
         if net == "AIN2":
             # One declared back-side lane avoids the router's expensive-front
-            # preference turning this connection into a 42 mm tour.
+            # preference turning this connection into a 42 mm tour. It turns
+            # at 35.72 so the last leg to pin 3 is a 45.
             tracks.append(
                 Track(
-                    net, "B.Cu", SIG, [site, (41.2, 24.075), (41.2, 33.18), header], keep_layer=True
+                    net, "B.Cu", SIG, [site, (41.2, 24.075), (41.2, 35.72), header], keep_layer=True
                 )
             )
             continue
@@ -9459,6 +9536,21 @@ def fpga_audio() -> Design:
         # the audio pins - nine segments of `route.under_package`. The rail goes
         # round them now.
         body_keepout=("J2", "J3"),
+        # First pick of the board, beyond what the widths already give the
+        # rails: the 12 MHz clock and its buffered copy, the four I2S lines
+        # that have to arrive together, and the two analogue outputs. The
+        # boot bus is not among them - it runs once at power-up, and the
+        # return-path waiver says so.
+        priority_nets=(
+            "CLK12",
+            "OSC_OUT",
+            "I2S_SCK",
+            "I2S_BCK",
+            "I2S_DIN",
+            "I2S_LRCK",
+            "OUTL",
+            "OUTR",
+        ),
         # The outer ring of the pour, closed to the router. On the widest
         # board in the set the perimeter is the emptiest lane there is, and
         # the router took it twice - 20.5 mm of the bottom edge for SPI_SS

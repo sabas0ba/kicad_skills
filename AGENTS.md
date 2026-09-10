@@ -80,11 +80,18 @@ that finds no room sends the routing pass round again.
 So the routed copper is cached under `.cache/routes/` (git-ignored), keyed by
 everything the router reads — the outline, the parts and their pads, every
 stated track (including its fixed-layer intent) and via, the footprint library
-definitions, and the source of `tools/autoroute.py` and `_route_all`
-themselves. Editing where a designator prints or how a legend picks its side
-does not move copper, so those runs reuse the answer and finish in seconds;
-editing the router invalidates every answer it ever gave. `--no-route-cache`
-routes from scratch.
+definitions, the nets a design names in `priority_nets`, and the source of
+`tools/autoroute.py`, `_route_all` and `resolve_routes` themselves. Editing
+where a designator prints or how a legend picks its side does not move copper,
+so those runs reuse the answer and finish in seconds; editing the router, or
+the order it offers the links in, invalidates every answer it ever gave.
+`--no-route-cache` routes from scratch.
+
+That order has two classes. A link wider than the board's thinnest, or on a
+net the design names in `priority_nets`, has something to lose — current, a
+clock, a bus — and is routed while the board is empty; nothing routed later
+may push it aside, so a plain link that fails or tours is promoted only to the
+front of the plain links and goes round. Within a class it is shortest first.
 
 The golden CI matrix uses KiCad 9.0.9 for generation, gates and renders. Each
 example runs independently with fail-fast disabled, so a failed or slow FPGA

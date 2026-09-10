@@ -127,13 +127,29 @@ has its return current detoured around it: the loop grows by the detour
 * **Order is the other half of it.** Routing one net at a time means an early
   net takes the lane a later one needed, and the later one then goes round —
   the op-amp's feedback wrap had thirteen millimetres to cover and took
-  fifty-six of them, because everything nearer was already spoken for. Two
-  things fix most of it. Route **shortest first**: a thirteen millimetre
-  connection has few ways to be made and a forty millimetre one has many, so
-  the short ones should choose while there is still room. And when a track
-  does come out long, **rip it up and route it first** — the same loop that
-  handles a net with no room at all handles a net with no *sensible* room,
-  and a track that still tours from first pick has nowhere better to be.
+  fifty-six of them, because everything nearer was already spoken for. Three
+  things fix most of it. Route the nets **with something to lose first** —
+  the ones carrying current, a clock, a bus that has to arrive together, a
+  pair — while the board is empty, and never move one of them behind a
+  plain net to make room: the plain net goes round. Width says most of
+  which is which; what it cannot say, the design names in `priority_nets`.
+  Within a class route **shortest first**: a thirteen millimetre connection
+  has few ways to be made and a forty millimetre one has many, so the short
+  ones should choose while there is still room. And when a track does come
+  out long, **rip it up and route it first among its own kind** — the same
+  loop that handles a net with no room at all handles a net with no
+  *sensible* room, and a track that still tours from first pick has nowhere
+  better to be. The motor driver is what the classes cost without them: one
+  0.3 mm logic input toured the west end of the board, was promoted to the
+  very front for it, and the four 0.4 mm bridge outputs then hopped under
+  it — two vias apiece, ten barrels in a column, on the nets that mattered.
+* **A link the design puts on the back is not charged for being there.** The
+  search prices a millimetre on the plane side at thirty on the front, so
+  that a signal does not cut the plane casually. A link declared on B.Cu,
+  asked to finish there and kept there is the floorplan's decision, made
+  where the front is full, and pays the router's ordinary rate instead —
+  otherwise a seventeen millimetre drop to a header becomes a seventy-five
+  millimetre tour of the front.
 * **Price a wrap against going round, not through.** A run from one side of a
   package to the other cannot take the straight line, because the straight
   line is through the package: a SOT-23-5's feedback wrap is three
