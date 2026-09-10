@@ -3849,7 +3849,7 @@
     (descr "Fuse SMD 1206 (3216 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: http://www.tortai-tech.com/upload/download/2011102023233369053.pdf), generated with kicad-footprint-generator")
     (tags "fuse")
     (property "Reference" "F1"
-      (at 2.376 2.376 0)
+      (at 0 4.77 0)
       (layer "F.SilkS")
       (uuid "8bdf7663-aba3-5d77-a057-bdcd37979791")
       (effects
@@ -3871,7 +3871,7 @@
       )
     )
     (property "Datasheet" "https://www.littelfuse.com/products/fuses/surface-mount-fuses/thin-film-fuses/466"
-      (at 2.376 2.376 0)
+      (at 0 4.77 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "89486e80-d0bc-5f38-986c-d3da5fe3a3de")
@@ -3895,7 +3895,7 @@
       )
     )
     (property "Current" "3A"
-      (at 2.376 2.376 0)
+      (at 0 4.77 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0d15302f-a088-57ab-9705-5b46bbe2ddec")
@@ -3907,7 +3907,7 @@
       )
     )
     (property "MPN" "0466003.NR"
-      (at 2.376 2.376 0)
+      (at 0 4.77 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6e7a9c5f-10b7-5a8a-8a54-685d62fe3e6e")
@@ -3919,7 +3919,7 @@
       )
     )
     (property "Manufacturer" "Littelfuse"
-      (at 2.376 2.376 0)
+      (at 0 4.77 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2a9bc4a9-45f9-5400-86d7-94205f27b22d")
@@ -4517,98 +4517,10 @@
       (justify left)
     )
   )
-  (gr_text "GND"
-    (at 121.68 102.97 0)
-    (layer "F.SilkS")
-    (uuid "4df61c88-203b-5978-a6ac-661cd0c8faf9")
-    (effects
-      (font
-        (size 0.8 0.8)
-        (thickness 0.12)
-      )
-    )
-  )
-  (gr_text "nFAULT"
-    (at 126.76 102.97 0)
-    (layer "F.SilkS")
-    (uuid "54f11da9-07ac-5deb-bf0e-b3ca5c750e25")
-    (effects
-      (font
-        (size 0.8 0.8)
-        (thickness 0.12)
-      )
-    )
-  )
-  (gr_text "BIN2"
-    (at 129.3 97.03 0)
-    (layer "F.SilkS")
-    (uuid "966dc1f6-b51b-5335-86e5-b93f77cf5da6")
-    (effects
-      (font
-        (size 0.8 0.8)
-        (thickness 0.12)
-      )
-    )
-  )
-  (gr_text "AIN1"
-    (at 131.84 102.97 0)
-    (layer "F.SilkS")
-    (uuid "7a1d7860-c231-53f8-bf29-79d3d776959c")
-    (effects
-      (font
-        (size 0.8 0.8)
-        (thickness 0.12)
-      )
-    )
-  )
-  (gr_text "BIN1"
-    (at 134.38 97.03 0)
-    (layer "F.SilkS")
-    (uuid "db5a0f07-ed08-5659-a777-ada0ab6d9dd9")
-    (effects
-      (font
-        (size 0.8 0.8)
-        (thickness 0.12)
-      )
-    )
-  )
-  (gr_text "AIN2"
-    (at 136.92 102.97 0)
-    (layer "F.SilkS")
-    (uuid "15e6cd7d-fc21-5d9a-9afc-5b559d87d4a6")
-    (effects
-      (font
-        (size 0.8 0.8)
-        (thickness 0.12)
-      )
-    )
-  )
-  (gr_text "nSLEEP"
-    (at 139.46 97.03 0)
-    (layer "F.SilkS")
-    (uuid "77d885d2-6726-51a3-97aa-0470cf435bdc")
-    (effects
-      (font
-        (size 0.8 0.8)
-        (thickness 0.12)
-      )
-    )
-  )
-  (gr_text "GND"
-    (at 142 102.97 0)
-    (layer "F.SilkS")
-    (uuid "d9df57f5-bff7-5d25-81b3-4da4e6e53ff0")
-    (effects
-      (font
-        (size 0.8 0.8)
-        (thickness 0.12)
-      )
-    )
-  )
   (gr_text "VM OK"
     (at 162 77.4 0)
     (layer "F.SilkS")
-    (uuid "9d28bc06-0796-5da2-a95b-3870e06abaca")
+    (uuid "4df61c88-203b-5978-a6ac-661cd0c8faf9")
     (effects
       (font
         (size 0.8 0.8)
@@ -4619,7 +4531,7 @@
   (gr_text "GND"
     (at 151.1 73.27 0)
     (layer "F.SilkS")
-    (uuid "f456af61-c652-542d-a2a8-f3f4bcc9565b")
+    (uuid "54f11da9-07ac-5deb-bf0e-b3ca5c750e25")
     (effects
       (font
         (size 0.8 0.8)
@@ -4629,7 +4541,103 @@
     )
   )
   (gr_text "VIN"
-    (at 157 65 0)
+    (at 155.3 65.73 0)
+    (layer "F.SilkS")
+    (uuid "966dc1f6-b51b-5335-86e5-b93f77cf5da6")
+    (effects
+      (font
+        (size 0.8 0.8)
+        (thickness 0.12)
+      )
+      (justify right)
+    )
+  )
+  (gr_text "GND"
+    (at 124.22 97.03 90)
+    (layer "F.SilkS")
+    (uuid "7a1d7860-c231-53f8-bf29-79d3d776959c")
+    (effects
+      (font
+        (size 0.8 0.8)
+        (thickness 0.12)
+      )
+      (justify left)
+    )
+  )
+  (gr_text "nFAULT"
+    (at 126.76 97.03 90)
+    (layer "F.SilkS")
+    (uuid "db5a0f07-ed08-5659-a777-ada0ab6d9dd9")
+    (effects
+      (font
+        (size 0.8 0.8)
+        (thickness 0.12)
+      )
+      (justify left)
+    )
+  )
+  (gr_text "BIN2"
+    (at 129.3 97.03 90)
+    (layer "F.SilkS")
+    (uuid "15e6cd7d-fc21-5d9a-9afc-5b559d87d4a6")
+    (effects
+      (font
+        (size 0.8 0.8)
+        (thickness 0.12)
+      )
+      (justify left)
+    )
+  )
+  (gr_text "AIN1"
+    (at 131.84 97.03 90)
+    (layer "F.SilkS")
+    (uuid "77d885d2-6726-51a3-97aa-0470cf435bdc")
+    (effects
+      (font
+        (size 0.8 0.8)
+        (thickness 0.12)
+      )
+      (justify left)
+    )
+  )
+  (gr_text "BIN1"
+    (at 134.38 97.03 90)
+    (layer "F.SilkS")
+    (uuid "d9df57f5-bff7-5d25-81b3-4da4e6e53ff0")
+    (effects
+      (font
+        (size 0.8 0.8)
+        (thickness 0.12)
+      )
+      (justify left)
+    )
+  )
+  (gr_text "AIN2"
+    (at 136.92 97.03 90)
+    (layer "F.SilkS")
+    (uuid "9d28bc06-0796-5da2-a95b-3870e06abaca")
+    (effects
+      (font
+        (size 0.8 0.8)
+        (thickness 0.12)
+      )
+      (justify left)
+    )
+  )
+  (gr_text "nSLEEP"
+    (at 139.46 97.03 90)
+    (layer "F.SilkS")
+    (uuid "f456af61-c652-542d-a2a8-f3f4bcc9565b")
+    (effects
+      (font
+        (size 0.8 0.8)
+        (thickness 0.12)
+      )
+      (justify left)
+    )
+  )
+  (gr_text "GND"
+    (at 142 97.03 90)
     (layer "F.SilkS")
     (uuid "e4437736-e7b1-5f1a-bbe5-37b8e4b7e0bd")
     (effects
@@ -4637,7 +4645,7 @@
         (size 0.8 0.8)
         (thickness 0.12)
       )
-      (justify right)
+      (justify left)
     )
   )
   (gr_text "kicad_skills examples"

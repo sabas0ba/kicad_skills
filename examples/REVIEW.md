@@ -1805,6 +1805,34 @@ with the slide gone they printed on the capacitors' pads instead. The
 capacitors moved out of the strip; the review had been reporting the wrong
 pin's name over the right pin as clean silk.
 
+### A pinout is read down a column
+
+Two more things the reviewer asked of the silk. A connector's pin names should
+line up — the same side, the same distance, and turned to suit — so their
+positions can be read at a glance; and no designator or description should
+stand where a fitted part will hide it.
+
+The legends are now laid out a row at a time. Every pin of a connector gets
+the same side and the same distance from the pad row, anchored on its own
+pin; where the names are wider than the pitch, as on any 2.54 mm header, they
+turn a quarter and stand up from their pins in one line. Only a row that
+cannot be lined up clean — the Pico carrier's supply terminal, with the fuse
+in its strip and the board's edge on the other side — falls back to placing
+each pin on its own, and then a legend steps along the row only as far as
+still names its pin.
+
+For the hiding, the placer had been weighing another part's courtyard as
+merely close — a grazed outline cost a fraction of what a covered pad did —
+and so the motor driver's fuse had its name a millimetre inside the bulk
+capacitor's outline, and the op-amp board's own name ran across a test point
+standing in the strip the name is written in. Other parts' bodies now weigh
+as much as pads for every string the generator places, the test point moved
+out of the name's strip, and `silk.under_part` reports whatever slips
+through: a string inside a foreign courtyard on its own side. The review's
+own estimate of a string's extent learned where its anchor is at the same
+time — a legend anchored at the end nearest its pin had been measured as if
+centred, half a string away from where it prints.
+
 ### A loop that never existed
 
 The op-amp board's new copper also found a defect in the loop cutter. MID had a

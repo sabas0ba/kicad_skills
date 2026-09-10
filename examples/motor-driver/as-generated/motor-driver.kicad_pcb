@@ -1427,7 +1427,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R2"
-      (at 0 -2.858 0)
+      (at 0 2.858 0)
       (layer "F.SilkS")
       (uuid "a7e1fa51-8cf7-5a05-9860-2be533a60c43")
       (effects
@@ -1449,7 +1449,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -2.858 0)
+      (at 0 2.858 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6c7a0239-7900-5825-a7f3-9603b7ea0648")
@@ -1570,7 +1570,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C2"
-      (at 0 4.645 0)
+      (at 4.645 0 0)
       (layer "F.SilkS")
       (uuid "1d6f2907-554b-58a5-b697-0ebeccaac93c")
       (effects
@@ -1592,7 +1592,7 @@
       )
     )
     (property "Datasheet" "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A106KAYNNN"
-      (at 0 4.645 0)
+      (at 4.645 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "b71922e4-0138-55e2-a716-8b3fe1514920")
@@ -3516,7 +3516,7 @@
     (descr "LED SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "LED")
     (property "Reference" "D2"
-      (at 0 -2.232 0)
+      (at 0 2.232 0)
       (layer "F.SilkS")
       (uuid "91a7e8e6-ae70-5d7e-b237-526f43bcf5ae")
       (effects
@@ -3538,7 +3538,7 @@
       )
     )
     (property "Datasheet" "https://optoelectronics.liteon.com/upload/download/DS-22-98-0002/LTST-C170KGKT.pdf"
-      (at 0 -2.232 0)
+      (at 0 2.232 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "8f475d0d-c995-5301-bdf9-479f2ededb7e")

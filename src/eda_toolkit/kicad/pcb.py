@@ -373,6 +373,8 @@ def _silk_text(node: SNode, text: str, fp: Footprint | None) -> dict[str, Any]:
         rx, ry = _rotate(tx, ty, fp.angle)
         tx, ty = fp.x + rx, fp.y + ry
     height, width, thickness = _text_effects(node)
+    effects = node.child("effects")
+    justify = effects.child("justify") if effects is not None else None
     return {
         "text": text,
         "layer": str(node.value("layer", default="")),
@@ -382,6 +384,10 @@ def _silk_text(node: SNode, text: str, fp: Footprint | None) -> dict[str, Any]:
         "height": height,
         "width": width,
         "thickness": thickness,
+        # "left", "right" or "" - where the anchor sits along the string.
+        # A legend beside a connector is anchored at the end nearest the
+        # pin, and measuring it as centred puts it half a string away.
+        "justify": " ".join(str(a) for a in justify.atoms()) if justify is not None else "",
         "hidden": _is_hidden(node),
         "footprint": fp.ref if fp is not None else "",
     }

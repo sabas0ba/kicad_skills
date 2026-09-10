@@ -366,6 +366,12 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "labels printed through each other document nothing",
         "warning",
     ),
+    "silk.under_part": RuleSpec(
+        "a visible silkscreen string whose estimated extent lies inside the "
+        "courtyard of a footprint other than its own, on the same side; it prints "
+        "on the bare board and is hidden once that part is fitted",
+        "warning",
+    ),
     "silk.over_pad": RuleSpec(
         "a visible silkscreen string whose estimated extent overlaps a pad on the "
         "same side; ink on a pad keeps solder off it",
@@ -3049,11 +3055,20 @@ def _silk_bbox(text: dict[str, Any]) -> tuple[float, ...] | None:
     thickness = float(text.get("thickness") or 0.0)
     span = len(body) * width * 0.75 + thickness
     extent = height + thickness
-    half_x, half_y = span / 2, extent / 2
-    if round(abs(float(text.get("angle") or 0.0)) % 180) == 90:
-        half_x, half_y = half_y, half_x
     x, y = float(text["x"]), float(text["y"])
-    return (x - half_x, y - half_y, x + half_x, y + half_y)
+    justify = str(text.get("justify") or "")
+    # Where the anchor sits along the string: at its start for left-justified
+    # text, at its end for right-justified, in the middle otherwise. Turned a
+    # quarter, "along" runs up the board for left-justified text.
+    if "left" in justify:
+        along = (0.0, span)
+    elif "right" in justify:
+        along = (-span, 0.0)
+    else:
+        along = (-span / 2, span / 2)
+    if round(abs(float(text.get("angle") or 0.0)) % 180) == 90:
+        return (x - extent / 2, y - along[1], x + extent / 2, y - along[0])
+    return (x + along[0], y - extent / 2, x + along[1], y + extent / 2)
 
 
 def _pad_layers(pad: pcb.Pad, board: pcb.Board) -> set[str]:
@@ -3224,6 +3239,50 @@ def rule_silk_over_pad(ctx: PcbContext) -> list[Finding]:
             "warning",
             f"{len(collisions)} silkscreen item(s) print across a pad",
             details={"count": len(collisions), "examples": collisions[:8]},
+        )
+    ]
+
+
+@rule
+def rule_silk_under_part(ctx: PcbContext) -> list[Finding]:
+    """Silkscreen text inside another footprint's courtyard.
+
+    Ink under a neighbour's body prints perfectly on the bare board and is
+    gone the moment that neighbour is fitted: a designator a millimetre inside
+    the bulk capacitor's outline, a board name under a module. A string's own
+    footprint is not its neighbour - a designator sits inside its own
+    courtyard by convention - and only the side the part is on counts.
+    """
+    board = ctx.board
+    courts = [
+        (fp.ref, box, fp.layer)
+        for fp in board.footprints
+        if (box := fp.courtyard_box()) is not None
+    ]
+    hidden = []
+    for text in board.silk_texts:
+        if text.get("hidden"):
+            continue
+        box = _silk_bbox(text)
+        if not box:
+            continue
+        side = "B." if str(text.get("layer", "")).startswith("B.") else "F."
+        owner = str(text.get("footprint") or "")
+        for ref, court, layer in courts:
+            if ref == owner or not str(layer).startswith(side):
+                continue
+            if _boxes_overlap(box, court):
+                hidden.append(f"{text['text']!r} under {ref}")
+    hidden = sorted(set(hidden))
+    if not hidden:
+        return []
+    return [
+        Finding(
+            "silk.under_part",
+            "warning",
+            f"{len(hidden)} silkscreen string(s) lie inside another part's courtyard - "
+            "readable on the bare board, hidden on the assembled one",
+            details={"count": len(hidden), "examples": hidden[:8]},
         )
     ]
 

@@ -2467,6 +2467,7 @@ def _move_reference_off_pads(
     node: SNode,
     all_pads: list[tuple[float, float, float, float]] | None = None,
     printed: list[tuple[float, float, float, float]] | None = None,
+    bodies: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
     """Put the designator somewhere it can still be read after assembly.
 
@@ -2475,6 +2476,11 @@ def _move_reference_off_pads(
     bottom is the middle of a pad. Silk over a pad is not a designator: the
     mask opens there, the ink is scraped off in fabrication, and what is left
     is a pad that will not wet.
+
+    ``bodies`` are the other parts' courtyards, and they weigh as much as a
+    pad: a designator under a neighbour's shell prints fine on the bare board
+    and is gone the moment that neighbour is fitted. The fuse on the motor
+    driver had its name a millimetre inside the bulk capacitor's outline.
 
     Measured on the board rather than in the footprint's own frame, because
     the two disagree the moment the part is turned: the anchor rotates with
@@ -2527,7 +2533,7 @@ def _move_reference_off_pads(
     def cost(spot: tuple[float, float]) -> float:
         rx, ry = _rotate(spot[0], spot[1], angle)
         box = (bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y)
-        return _silk_intrusion(design, box, obstacles)
+        return _silk_intrusion(design, box, obstacles, bodies)
 
     _rank, (cx, cy) = min(enumerate(candidates), key=lambda item: (cost(item[1]), item[0]))
     rx, ry = _rotate(cx, cy, angle)
@@ -6262,6 +6268,9 @@ def emit_board(design: Design, path: Path) -> None:
     legend_boxes: list[tuple[float, float, float, float]] = []
     _board_silk(design, legend_boxes=legend_boxes)
     printed: list[tuple[float, float, float, float]] = list(legend_boxes)
+    # Where every part's body will be, so no designator is put under a
+    # neighbour's: readable on the bare board, hidden on the assembled one.
+    extents = {part.ref: _part_extent(design, part) for part in design.footprints()}
     for part in design.footprints():
         node = footprint_definition(part.footprint)
         bx, by, angle = part.board
@@ -6273,7 +6282,8 @@ def emit_board(design: Design, path: Path) -> None:
         _place_footprint_zones(node, ox + bx, oy + by, angle)
         _set_property(node, "Reference", part.ref)
         if part.show_reference:
-            _move_reference_off_pads(design, part, node, all_pads, printed)
+            bodies = [box for ref, box in extents.items() if ref != part.ref]
+            _move_reference_off_pads(design, part, node, all_pads, printed, bodies)
         else:
             _hide_property(node, "Reference")
         _set_property(node, "Value", part.value)
@@ -6379,12 +6389,13 @@ def _silk_text_item(
     key: object,
     size: float = 0.8,
     justify: str = "",
+    angle: float = 0.0,
 ) -> str:
     ox, oy = design.origin
     thickness = round(size * 0.15, 3)
     where = f" (justify {justify})" if justify else ""
     return (
-        f'\t(gr_text "{text}" (at {round(ox + x, 4)} {round(oy + y, 4)} 0) '
+        f'\t(gr_text "{text}" (at {round(ox + x, 4)} {round(oy + y, 4)} {round(angle, 1):g}) '
         f'(layer "F.SilkS") (uuid "{stable_uuid(design.name, "silk", key)}") '
         f"(effects (font (size {size} {size}) (thickness {thickness})){where}))"
     )
@@ -6548,17 +6559,24 @@ def _text_extent(text: str, size: float, thickness: float = 0.0) -> tuple[float,
 
 
 def _silk_box(
-    text: str, x: float, y: float, size: float, justify: str = ""
+    text: str, x: float, y: float, size: float, justify: str = "", angle: float = 0.0
 ) -> tuple[float, float, float, float]:
-    """What a silk string covers on the board, for keeping it off things."""
+    """What a silk string covers on the board, for keeping it off things.
+
+    Turned a quarter (``angle`` 90) the string runs up the board: KiCad reads
+    it bottom to top, so left-justified text starts at the anchor and extends
+    upward, right-justified text ends there and extends downward.
+    """
     half_x, half_y = _text_extent(text, size)
     if justify == "left":
-        x0, x1 = x - SILK_CLEARANCE, x + 2 * half_x - SILK_CLEARANCE
+        along = (-SILK_CLEARANCE, 2 * half_x - SILK_CLEARANCE)
     elif justify == "right":
-        x0, x1 = x - 2 * half_x + SILK_CLEARANCE, x + SILK_CLEARANCE
+        along = (-2 * half_x + SILK_CLEARANCE, SILK_CLEARANCE)
     else:
-        x0, x1 = x - half_x, x + half_x
-    return (x0, y - half_y, x1, y + half_y)
+        along = (-half_x, half_x)
+    if abs(angle) % 180 == 90:
+        return (x - half_y, y - along[1], x + half_y, y - along[0])
+    return (x + along[0], y - half_y, x + along[1], y + half_y)
 
 
 def _part_extent(design: Design, part: Part) -> tuple[float, float, float, float]:
@@ -6697,10 +6715,12 @@ def _board_silk(
     # goes - so it is the one that moves. Scored rather than first-clear, so a
     # crowded board still gets the least bad strip instead of the first one in
     # the list.
+    # The parts' bodies weigh as much as their pads: a board name under a
+    # fitted part is a board with no name.
     at = min(
         spots,
         key=lambda spot: (
-            _silk_intrusion(design, stack_box(spot), [*taken, *(printed or [])], all_pads),
+            _silk_intrusion(design, stack_box(spot), list(printed or []), [*all_pads, *taken]),
             spots.index(spot),
         ),
     )
@@ -6725,104 +6745,147 @@ def _board_silk(
             # clear the whole footprint - a screw terminal's body silk would
             # swallow a pad-edge offset
             row_along_x = (max(xs) - min(xs)) >= (max(ys) - min(ys))
-            clear = courtyards[part.ref]
+            bx0, by0, bx1, by1 = courtyards[part.ref]
+            # One pin, one name. A connector that brings a pin out twice
+            # (a shield, a mounting tab) names it once.
             seen: set[str] = set()
+            entries: list[tuple[str, float, float, str]] = []
             for number, _pad, (px, py) in pads:
                 net = net_of.get((part.ref, number))
                 if not net or number in seen:
                     continue
                 seen.add(number)
-                bx0, by0, bx1, by1 = clear
-                # Either side of the pad row will do; which one is a question
-                # of what is already there. A connector at an edge has an
-                # empty strip on the outboard side and the rest of the board
-                # on the other, so the measurement picks outboard on its own -
-                # and on a carrier, where the module is inboard, it has to,
-                # because inboard is a pad and silk over a pad is a pad that
-                # will not wet.
-                # Either side of the pad row, and then further out along it.
-                # Two spots is not a choice when a chip part sits in the strip
-                # beside the connector: both are occupied and the legend takes
-                # the least bad one, which is still ink on ink.
-                #
-                # Along the row only as far as still names the pin. A legend
-                # slid a whole pitch sits on the neighbour, and one slid half
-                # a pitch sits exactly between two pins and names neither: on
-                # the motor driver's 2.54 mm header the lower row of legends
-                # had each moved one pin along to clear the upper row, and a
-                # reader saw two names over every other pin. A legend may
-                # slide only while the pin it names is still the nearest one
-                # (see `names_this_pin`), and a label that does not fit
-                # beside its neighbour goes to the other side of the row
-                # instead, where it is still on its pin.
-                here = px if row_along_x else py
-                elsewhere = [
-                    (qx if row_along_x else qy)
-                    for _n, _p, (qx, qy) in pads
-                    if abs((qx if row_along_x else qy) - here) > GEOM_EPS
+                entries.append((number, px, py, net))
+            if not entries:
+                continue
+            along = sorted(px if row_along_x else py for _n, px, py, _net in entries)
+            pitch = min((b - a for a, b in pairwise(along) if b - a > GEOM_EPS), default=2.54)
+            # The whole row is laid out at once, and every legend of it gets
+            # the same side and the same distance from the row: a column of
+            # names that line up is a pinout a person can read down, and one
+            # that staggers to dodge its neighbours is not. Across the row a
+            # name has to fit within the pitch, so on a 2.54 mm header the
+            # names turn a quarter and stand up from their pins; along a
+            # vertical row they lie flat beside it, one per pin, and a name
+            # that does not fit the pitch there is a name that has to turn.
+            # Each legend is anchored on its own pin and never slides along
+            # the row: the pin it names is the nearest one by construction.
+            widest = max(2 * _text_extent(net, 0.8)[0] for _n, _px, _py, net in entries)
+            # Flat names beside a vertical row stack by their height, and
+            # 1.24 mm fits any pitch a connector has.
+            angle = 90.0 if row_along_x and widest > pitch - GEOM_EPS else 0.0
+            # Either side of the pad row will do; which one is a question
+            # of what is already there. A connector at an edge has an empty
+            # strip on the outboard side and the rest of the board on the
+            # other, so the measurement picks outboard on its own - and on a
+            # carrier, where the module is inboard, it has to, because
+            # inboard is a pad and silk over a pad is a pad that will not
+            # wet. Then further out, for the row with a chip part standing
+            # in the strip beside it.
+            if row_along_x:
+                # above the row the names hang up from the anchor (left-
+                # justified when turned), below it down from the anchor
+                above = [
+                    (lambda px, py, g=gap, y=by0: (px, y - g), "left" if angle else "")
+                    for gap in (1.2, 2.6, 4.0, 5.4, 6.8)
                 ]
+                below = [
+                    (lambda px, py, g=gap, y=by1: (px, y + g), "right" if angle else "")
+                    for gap in (1.2, 2.6, 4.0, 5.4, 6.8)
+                ]
+                outboard_first = height / 2 - (by0 + by1) / 2 > 0
+                layouts = above + below if outboard_first else below + above
+            else:
+                left = [
+                    (lambda px, py, g=gap, x=bx0: (x - g, py), "right")
+                    for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
+                ]
+                right = [
+                    (lambda px, py, g=gap, x=bx1: (x + g, py), "left")
+                    for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
+                ]
+                outboard_first = width / 2 - (bx0 + bx1) / 2 < 0
+                layouts = right + left if outboard_first else left + right
+            # Deliberately *not* the designators. A legend names one pin of
+            # one connector and has to sit against it; a designator can go
+            # anywhere legible. So the legend is placed first and the
+            # designator gets out of its way - the same order the schematic
+            # side uses for a label and a field. The other parts' bodies
+            # weigh as much as a pad: a name under a neighbour's shell is
+            # readable on the bare board and gone on the assembled one. This
+            # connector's own pads count too - "against" is not "on".
+            bodies = [box for ref, box in courtyards.items() if ref != part.ref]
 
-                # A legend names the pin nearest to it, so it may slide only
-                # while this pin is still that: not at all between the pins
-                # of a 2.54 mm header, half a pitch either way on a 5 mm
-                # terminal block, and as far as it likes past the end of a
-                # row, where there is no other pin to name.
-                slides = [
-                    s
-                    for s in (0.0, -1.27, 1.27, -2.54, 2.54)
-                    if not elsewhere
-                    or abs(s) < min(abs(other - (here + s)) for other in elsewhere) - GEOM_EPS
-                ]
-                if row_along_x:
-                    above = [
-                        (px + s, by0 - gap, "") for gap in (1.2, 2.6, 4.0, 5.4, 6.8) for s in slides
-                    ]
-                    below = [
-                        (px + s, by1 + gap, "") for gap in (1.2, 2.6, 4.0, 5.4, 6.8) for s in slides
-                    ]
-                    # Outboard first, so a tie goes to the empty strip at the
-                    # edge rather than into the board.
-                    sides = above + below if height / 2 - py > 0 else below + above
-                else:
-                    left = [
-                        (bx0 - gap, py + s, "right")
-                        for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
-                        for s in slides
-                    ]
-                    right = [
-                        (bx1 + gap, py + s, "left")
-                        for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
-                        for s in slides
-                    ]
-                    sides = right + left if width / 2 - px < 0 else left + right
-                # Deliberately *not* the designators. A legend names one pin
-                # of one connector and has to sit against it; a designator can
-                # go anywhere legible. So the legend is placed first and the
-                # designator gets out of its way - the same order the schematic
-                # side uses for a label and a field.
-                others = [
-                    *(box for ref, box in courtyards.items() if ref != part.ref),
-                    # ...and this connector's *own* pads. Its courtyard is left
-                    # out because the legend has to sit against the part it
-                    # names, but "against" is not "on": ink on a pad is a pad
-                    # that will not wet, which is what reaching further out
-                    # along the row started doing.
-                    *own_pads,
-                    *placed,
-                ]
-                tx, ty, justify = min(
-                    sides,
-                    key=lambda side: _silk_intrusion(
-                        design, _silk_box(net, side[0], side[1], 0.8, side[2]), others, all_pads
-                    ),
+            def cost(
+                layout, entries=entries, bodies=bodies, angle=angle, own_pads=own_pads
+            ) -> float:
+                anchor, justify = layout
+                return sum(
+                    _silk_intrusion(
+                        design,
+                        _silk_box(net, *anchor(px, py), 0.8, justify, angle),
+                        [*own_pads, *placed],
+                        [*all_pads, *bodies],
+                    )
+                    for _n, px, py, net in entries
                 )
+
+            anchor, justify = min(layouts, key=cost)
+            # A row that cannot be lined up clean - a chip part standing in
+            # the strip at one pin's height, with the board's edge on the
+            # other side - falls back to naming each pin on its own: the
+            # same sides and distances, and a slide along the row that
+            # stops while the pin it names is still the nearest one. The
+            # Pico carrier's supply terminal has the fuse in its strip, and
+            # its 5 V legend steps a quarter pitch up the row to clear the
+            # fuse's pad rather than print across it.
+            aligned = cost((anchor, justify)) <= GEOM_EPS
+            for number, px, py, net in entries:
+                tx, ty = anchor(px, py)
+                text_justify, text_angle = justify, angle
+                if not aligned:
+                    here = px if row_along_x else py
+                    elsewhere = [q for q in along if abs(q - here) > GEOM_EPS]
+                    slides = [
+                        s
+                        for s in (0.0, -1.27, 1.27, -2.54, 2.54)
+                        if not elsewhere
+                        or abs(s) < min(abs(q - (here + s)) for q in elsewhere) - GEOM_EPS
+                    ]
+                    spots = [
+                        (
+                            (lambda px, py, a=a, s=s: (a(px, py)[0] + s, a(px, py)[1]))
+                            if row_along_x
+                            else (lambda px, py, a=a, s=s: (a(px, py)[0], a(px, py)[1] + s)),
+                            j,
+                        )
+                        for a, j in layouts
+                        for s in slides
+                    ]
+                    spot_anchor, text_justify = min(
+                        spots,
+                        key=lambda spot, n=number, px=px, py=py, net=net: cost(
+                            spot, entries=[(n, px, py, net)]
+                        ),
+                    )
+                    tx, ty = spot_anchor(px, py)
                 if number in part.pin_legend_at:
-                    tx, ty, justify = part.pin_legend_at[number]
-                placed.append(_silk_box(net, tx, ty, 0.8, justify))
+                    tx, ty, text_justify = part.pin_legend_at[number]
+                    text_angle = 0.0
+                box = _silk_box(net, tx, ty, 0.8, text_justify, text_angle)
+                placed.append(box)
                 if legend_boxes is not None:
-                    legend_boxes.append(_silk_box(net, tx, ty, 0.8, justify))
+                    legend_boxes.append(box)
                 out.append(
-                    _silk_text_item(design, net, tx, ty, (part.ref, number), justify=justify)
+                    _silk_text_item(
+                        design,
+                        net,
+                        tx,
+                        ty,
+                        (part.ref, number),
+                        justify=text_justify,
+                        angle=text_angle,
+                    )
                 )
     for part in design.footprints():
         if part.silk_label:
@@ -7673,12 +7736,6 @@ def motor_driver() -> Design:
             sheet=(33.02, 80.01),
             board=(62.0, 7.0, 270.0),
             mirror="y",
-            # Keep the supply legend above the nearby bulk capacitor's silk,
-            # within half the terminal's pitch of the pin it names - at y=3 it
-            # stood four millimetres up the row from pin 1, which on a 5 mm
-            # pitch is nearer pin 1 than pin 2 but names neither outright -
-            # and ending short of the terminal's own body outline at x=57.3.
-            pin_legend_at={"1": (57.0, 5.0, "right")},
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -8896,7 +8953,12 @@ def opamp_filter() -> Design:
             "TP",
             "TestPoint:TestPoint_Pad_D1.5mm",
             sheet=(168.91, 168.91),
-            board=(31.0, 36.0, 0.0),
+            # Beside the reference buffer, not in the strip along the bottom
+            # edge: that strip is where the board writes its own name, and at
+            # (31, 36) the test point stood in the middle of it, so the name
+            # printed across the pad - readable on the bare board, and under
+            # the probe the moment anyone used it.
+            board=(36.0, 30.0, 0.0),
             no_connect=False,
         ),
     ]

@@ -469,6 +469,23 @@ three are visible in one glance at the `interf_u` demo:
   label that does not fit beside its neighbour goes to the other side of the
   row, still on its pin; a part standing in the legend strip at that row
   moves, as the Pico carrier's two capacitors did.
+* **A pinout is read down a column.** Lay a connector's legends out as one
+  row: the same side and the same distance from the pad row for every pin,
+  each anchored on its own pin, and turned a quarter to stand up from the
+  pins when the names are wider than the pitch — a 2.54 mm header's names
+  cannot lie flat side by side, and a row that staggers to dodge itself is
+  not a pinout anyone can follow. Only when the aligned row cannot be clean
+  — a chip part in the strip at one pin's height and the board's edge on
+  the other side — does a legend step along the row on its own, and then
+  only as far as still names its pin.
+* **Ink under a fitted part is ink nobody will read.** A designator, a
+  legend or the board's own name inside a neighbour's courtyard prints on
+  the bare board and disappears at assembly. Weigh other parts' courtyards
+  as heavily as pads when placing any string; `silk.under_part` reports
+  what slips through. The motor driver's fuse had its name a millimetre
+  inside the bulk capacitor's outline, and the op-amp board's name ran
+  across a test point standing in the strip the name is written in — the
+  test point moved.
 * **Never draw one run on top of another.** Two runs of a net that meet at a
   point and leave it along the same line are one run drawn twice: the shorter
   carries nothing the longer does not, and on the plot it reads as a track

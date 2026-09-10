@@ -688,7 +688,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C4"
-      (at 0 -2.47 0)
+      (at -3.07 0 0)
       (layer "F.SilkS")
       (uuid "11aff4da-0206-508a-a17a-536b2c688cbc")
       (effects
@@ -710,7 +710,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
-      (at 0 -2.47 0)
+      (at -3.07 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "dc5df515-b8fa-55ba-ac3e-5b8f2a39284b")
@@ -734,7 +734,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -2.47 0)
+      (at -3.07 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0a76b3a3-b5a4-5b82-a8dd-07cc8d14626d")
@@ -746,7 +746,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -2.47 0)
+      (at -3.07 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "4b1365c5-f852-547c-ae91-55e0ad82e1fd")
@@ -758,7 +758,7 @@
       )
     )
     (property "MPN" "CL21B104KBCNNNC"
-      (at 0 -2.47 0)
+      (at -3.07 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "8a7e90e4-095d-5bea-bfc0-0b768aaa7596")
@@ -770,7 +770,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -2.47 0)
+      (at -3.07 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "25726dc0-86f8-514e-aefa-b41e8ab9bce8")
@@ -1186,7 +1186,7 @@
     (descr "Fuse SMD 1206 (3216 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: http://www.tortai-tech.com/upload/download/2011102023233369053.pdf), generated with kicad-footprint-generator")
     (tags "fuse")
     (property "Reference" "F1"
-      (at 0 -4.77 0)
+      (at 0 -2.37 0)
       (layer "F.SilkS")
       (uuid "0ad038a8-c319-5080-9bb0-4fb16e2799f9")
       (effects
@@ -1208,7 +1208,7 @@
       )
     )
     (property "Datasheet" "https://www.littelfuse.com/products/fuses/surface-mount-fuses/thin-film-fuses/466"
-      (at 0 -4.77 0)
+      (at 0 -2.37 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "3625d0fe-fbe6-5207-943b-ddc83d3ae032")
@@ -1232,7 +1232,7 @@
       )
     )
     (property "Current" "3A"
-      (at 0 -4.77 0)
+      (at 0 -2.37 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "60f7fb37-61f6-5b0e-8f46-54bde57f2547")
@@ -1244,7 +1244,7 @@
       )
     )
     (property "MPN" "0466003.NR"
-      (at 0 -4.77 0)
+      (at 0 -2.37 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "14cc8970-cf18-5faf-993a-68771f72199b")
@@ -1256,7 +1256,7 @@
       )
     )
     (property "Manufacturer" "Littelfuse"
-      (at 0 -4.77 0)
+      (at 0 -2.37 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "b9ab8262-695e-5fa8-8352-ce8bd47dba1e")
@@ -5293,7 +5293,7 @@
     (uuid "fc663179-4eae-5bf3-9138-3fdf3f31b75a")
   )
   (gr_text "VIN"
-    (at 113.31 77.46 0)
+    (at 117.51 80 0)
     (layer "F.SilkS")
     (uuid "baada4eb-56bd-5911-b638-155128f469f9")
     (effects

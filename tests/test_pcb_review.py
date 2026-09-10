@@ -596,6 +596,35 @@ def test_silkscreen_clear_of_the_pad_is_quiet():
     assert pcb_review.rule_silk_over_pad(ctx_for(board)) == []
 
 
+def _with_courtyard(fp, x0, y0, x1, y1):
+    fp.courtyard = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    return fp
+
+
+def test_silkscreen_under_a_neighbours_body():
+    fuse = footprint("F1", 10, 10, [pad("1", 10, 10, "VIN")])
+    cap = _with_courtyard(footprint("C1", 16, 10, [pad("1", 16, 10, "VIN")]), 13, 7, 19, 13)
+    board = board_from(
+        footprints=[fuse, cap],
+        # F1's designator, a millimetre inside C1's outline
+        silk=[silk("F1", 14, 10, height=1.0, footprint="F1")],
+    )
+    findings = pcb_review.rule_silk_under_part(ctx_for(board))
+    assert findings[0].details["examples"] == ["'F1' under C1"]
+
+
+def test_silkscreen_inside_its_own_courtyard_is_the_convention():
+    cap = _with_courtyard(footprint("C1", 16, 10, [pad("1", 16, 10, "VIN")]), 13, 7, 19, 13)
+    board = board_from(footprints=[cap], silk=[silk("C1", 16, 8, height=1.0, footprint="C1")])
+    assert pcb_review.rule_silk_under_part(ctx_for(board)) == []
+
+
+def test_back_silkscreen_is_not_under_a_front_part():
+    cap = _with_courtyard(footprint("C1", 16, 10, [pad("1", 16, 10, "VIN")]), 13, 7, 19, 13)
+    board = board_from(footprints=[cap], silk=[silk("R9", 16, 10, layer="B.SilkS")])
+    assert pcb_review.rule_silk_under_part(ctx_for(board)) == []
+
+
 def test_back_silkscreen_is_not_matched_against_front_pads():
     board = board_from(
         footprints=[footprint("R1", 10, 10, [pad("1", 10, 10, "SIG", size=(2.0, 2.0))])],

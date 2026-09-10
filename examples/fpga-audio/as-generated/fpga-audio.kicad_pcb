@@ -3917,7 +3917,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C14"
-      (at 0 -2.73 0)
+      (at -5.13 0 0)
       (layer "F.SilkS")
       (uuid "63a214d3-2706-5452-b2bb-ae6c3d9e52aa")
       (effects
@@ -3939,7 +3939,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A225KO8NNNC.do"
-      (at 0 -2.73 0)
+      (at -5.13 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -6280,7 +6280,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C7"
-      (at 0 2.195 0)
+      (at 2.795 0 0)
       (layer "F.SilkS")
       (uuid "c2c6a90b-f74f-570a-827f-b1051c34259d")
       (effects
@@ -6302,7 +6302,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0 2.195 0)
+      (at 2.795 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
