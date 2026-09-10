@@ -1779,6 +1779,32 @@ priority nets, and the log says so — three times on this board, both XSMT
 links and LDOO. That is a floorplan with no room for them, and the placement's
 problem to fix; it is not a reason to call the nets special.
 
+### Two names over every other pin
+
+The reviewer then read the motor driver's header silk and could not tell which
+name went with which pin. The placer had been clearing each legend of its
+neighbour by sliding it along the row, up to a whole pitch — and a whole pitch
+on a 2.54 mm header is the next pin. The lower row of legends had each moved
+one pin along, so BIN2 printed under nFAULT's pin, BIN1 under AIN1's, nSLEEP
+under AIN2's: two names over every other pin, and nothing to say which was
+whose.
+
+A legend names the pin nearest to it, so it may slide only while the pin it
+names is still that: not at all between the pins of a 2.54 mm header, half a
+pitch either way on a 5 mm terminal block, and as far as it likes past the end
+of a row, where there is no other pin to name. A label that does not fit
+beside its neighbour goes to the other side of the row instead, still on its
+pin. All 73 connector legends on the five boards now sit nearer the pin they
+name than any other.
+
+What that rule could no longer hide, it exposed. On the Pico carrier a 22 uF
+capacitor stood in the header's legend strip across the rows of pins 3 and 4,
+and a 100 nF across pin 6's — the legend `ADC_VREF`, the longest name on the
+board — so those legends had been printing one pin along to avoid them, and
+with the slide gone they printed on the capacitors' pads instead. The
+capacitors moved out of the strip; the review had been reporting the wrong
+pin's name over the right pin as clean silk.
+
 ### A loop that never existed
 
 The op-amp board's new copper also found a defect in the loop cutter. MID had a

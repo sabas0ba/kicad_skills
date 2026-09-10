@@ -5859,7 +5859,7 @@
     )
   )
   (gr_text "OUT_AC"
-    (at 142.03 79.54 0)
+    (at 142.03 74.46 0)
     (layer "F.SilkS")
     (uuid "58323b88-7335-508f-b0cc-7e65552cdef1")
     (effects

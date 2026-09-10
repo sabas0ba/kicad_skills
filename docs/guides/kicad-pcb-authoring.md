@@ -460,7 +460,15 @@ three are visible in one glance at the `interf_u` demo:
   designators get out of their way — the same order the schematic side uses
   for a label and a field. And weigh a pad far above a courtyard when choosing
   where a string goes: a legend a little close to a part is still readable,
-  and ink on a pad is a pad that will not wet.
+  and ink on a pad is a pad that will not wet. "Against it" means the pin it
+  names is the nearest pin: a legend may slide along the row only while that
+  stays true — not at all between the pins of a 2.54 mm header, half a pitch
+  on a 5 mm terminal, as far as it likes past the end of a row. The motor
+  driver's header once had its lower row of legends each slid one pin along
+  to clear the upper row, and a reader saw two names over every other pin. A
+  label that does not fit beside its neighbour goes to the other side of the
+  row, still on its pin; a part standing in the legend strip at that row
+  moves, as the Pico carrier's two capacitors did.
 * **Never draw one run on top of another.** Two runs of a net that meet at a
   point and leave it along the same line are one run drawn twice: the shorter
   carries nothing the longer does not, and on the plot it reads as a track

@@ -99,6 +99,32 @@ def test_connector_legend_can_be_placed_explicitly_without_moving_copper(monkeyp
     assert part.board == (10.0, 10.0, 0.0)
 
 
+def test_a_header_legend_stays_on_the_pin_it_names(monkeypatch):
+    """Four long names on a 2.54 mm header cannot sit side by side on one
+    side of the row. The placer once cleared them by sliding every other
+    legend one pin along, onto its neighbour; it now keeps each on its own
+    pin and uses the other side of the row instead."""
+    examples = _generator()
+    part = examples.Part("J1", "test:hdr", "IO", "test:fp", (0.0, 0.0), (20.0, 20.0, 0.0))
+    node = examples.sexp.loads(
+        '(footprint "fp"'
+        ' (pad "1" thru_hole circle (at 0 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask"))'
+        ' (pad "2" thru_hole circle (at 2.54 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask"))'
+        ' (pad "3" thru_hole circle (at 5.08 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask"))'
+        ' (pad "4" thru_hole circle (at 7.62 0) (size 1.7 1.7) (drill 1) (layers "*.Cu" "*.Mask")))'
+    )
+    monkeypatch.setattr(examples, "footprint_definition", lambda _name: node)
+    nets = {f"SIGNAL{n}": [f"J1.{n}"] for n in (1, 2, 3, 4)}
+    design = _design(examples, parts=[part], nets=nets, rev="A", board_size=(50.0, 40.0))
+
+    root = examples.sexp.loads("(root " + "\n".join(examples._board_silk(design)) + ")")
+
+    for n in (1, 2, 3, 4):
+        legend = next(t for t in root.children("gr_text") if t.atom(0) == f"SIGNAL{n}")
+        x = next(iter(legend.child("at").atoms())) - design.origin[0]
+        assert x == pytest.approx(20.0 + (n - 1) * 2.54, abs=1e-6)
+
+
 @pytest.mark.parametrize("reverse", [False, True])
 def test_fixed_layer_survives_loop_cleanup_and_merging(reverse):
     examples = _generator()

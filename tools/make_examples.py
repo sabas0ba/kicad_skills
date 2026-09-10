@@ -6744,35 +6744,57 @@ def _board_silk(
                 # Two spots is not a choice when a chip part sits in the strip
                 # beside the connector: both are occupied and the legend takes
                 # the least bad one, which is still ink on ink.
+                #
+                # Along the row only as far as still names the pin. A legend
+                # slid a whole pitch sits on the neighbour, and one slid half
+                # a pitch sits exactly between two pins and names neither: on
+                # the motor driver's 2.54 mm header the lower row of legends
+                # had each moved one pin along to clear the upper row, and a
+                # reader saw two names over every other pin. A legend may
+                # slide only while the pin it names is still the nearest one
+                # (see `names_this_pin`), and a label that does not fit
+                # beside its neighbour goes to the other side of the row
+                # instead, where it is still on its pin.
+                here = px if row_along_x else py
+                elsewhere = [
+                    (qx if row_along_x else qy)
+                    for _n, _p, (qx, qy) in pads
+                    if abs((qx if row_along_x else qy) - here) > GEOM_EPS
+                ]
+
+                # A legend names the pin nearest to it, so it may slide only
+                # while this pin is still that: not at all between the pins
+                # of a 2.54 mm header, half a pitch either way on a 5 mm
+                # terminal block, and as far as it likes past the end of a
+                # row, where there is no other pin to name.
+                slides = [
+                    s
+                    for s in (0.0, -1.27, 1.27, -2.54, 2.54)
+                    if not elsewhere
+                    or abs(s) < min(abs(other - (here + s)) for other in elsewhere) - GEOM_EPS
+                ]
                 if row_along_x:
-                    sides = [
-                        (px + slide, by0 - gap, "")
-                        for gap in (1.2, 2.6, 4.0, 5.4, 6.8)
-                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
-                    ] + [
-                        (px + slide, by1 + gap, "")
-                        for gap in (1.2, 2.6, 4.0, 5.4, 6.8)
-                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
+                    above = [
+                        (px + s, by0 - gap, "") for gap in (1.2, 2.6, 4.0, 5.4, 6.8) for s in slides
                     ]
-                    if height / 2 - py > 0:
-                        sides = sides[3:] + sides[:3]
+                    below = [
+                        (px + s, by1 + gap, "") for gap in (1.2, 2.6, 4.0, 5.4, 6.8) for s in slides
+                    ]
+                    # Outboard first, so a tie goes to the empty strip at the
+                    # edge rather than into the board.
+                    sides = above + below if height / 2 - py > 0 else below + above
                 else:
-                    # Along the row as well as away from it: a legend has to
-                    # sit against the pin it names, and half a pin pitch either
-                    # way is still against it - which is the difference between
-                    # a legend beside a capacitor and one printed across its
-                    # land.
-                    sides = [
-                        (bx0 - gap, py + slide, "right")
+                    left = [
+                        (bx0 - gap, py + s, "right")
                         for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
-                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
-                    ] + [
-                        (bx1 + gap, py + slide, "left")
-                        for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
-                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
+                        for s in slides
                     ]
-                    if width / 2 - px < 0:
-                        sides = sides[25:] + sides[:25]
+                    right = [
+                        (bx1 + gap, py + s, "left")
+                        for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
+                        for s in slides
+                    ]
+                    sides = right + left if width / 2 - px < 0 else left + right
                 # Deliberately *not* the designators. A legend names one pin
                 # of one connector and has to sit against it; a designator can
                 # go anywhere legible. So the legend is placed first and the
@@ -7651,8 +7673,12 @@ def motor_driver() -> Design:
             sheet=(33.02, 80.01),
             board=(62.0, 7.0, 270.0),
             mirror="y",
-            # Keep the supply legend above the nearby bulk capacitor's silk.
-            pin_legend_at={"1": (58.0, 3.0, "right")},
+            # Keep the supply legend above the nearby bulk capacitor's silk,
+            # within half the terminal's pitch of the pin it names - at y=3 it
+            # stood four millimetres up the row from pin 1, which on a 5 mm
+            # pitch is nearer pin 1 than pin 2 but names neither outright -
+            # and ending short of the terminal's own body outline at x=57.3.
+            pin_legend_at={"1": (57.0, 5.0, "right")},
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -8284,12 +8310,15 @@ def pico_carrier() -> Design:
             "22u",
             "Capacitor_SMD:C_1210_3225Metric",
             sheet=(127.0, 45.72),
-            # 8.52, not 9.54: VSYS runs along y = 10, and at 9.54 the pad sat
-            # a millimetre south of it - the line passed straight by and fed
-            # the capacitor through a stub, which on a rail that is really a
-            # transmission line is a tap, not a bypass. At 8.52 the supply pad
-            # is *on* the line: current flows in one side and out the other.
-            board=(48.0, 10.02, 90.0),
+            # Out of the header's legend strip. Every one of J4's twenty pins
+            # carries its net name in the strip to its right, and at x=48
+            # this capacitor stood across the rows of pins 3 and 4, so those
+            # two legends had nowhere to print but on it - or, before the
+            # placer was told a legend has to name the nearest pin, one pin
+            # along, where they named the wrong one. Below the diode at
+            # 53.5, its supply pad is the one nearest the diode's, three and
+            # a half millimetres straight up.
+            board=(53.5, 11.5, 0.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
@@ -8304,7 +8333,9 @@ def pico_carrier() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(180.34, 60.96),
-            board=(48.0, 17.0, 0.0),
+            # 54.5, not 48: pin 6's legend is ADC_VREF, the longest name on
+            # the header, and it needs the strip clear to x=52.4 on its row.
+            board=(54.5, 17.0, 0.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "10%",
@@ -8319,7 +8350,9 @@ def pico_carrier() -> Design:
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(203.2, 60.96),
-            board=(58.0, 17.0, 0.0),
+            # 60, not 58: two millimetres east with the capacitor, so the two
+            # courtyards keep their gap.
+            board=(60.0, 17.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -8463,6 +8496,11 @@ def pico_carrier() -> Design:
         # 3.4 mm pad by - so both links are stated rather than searched for.
         Track("+5V", "F.Cu", POWER, ["J1.1", "F1.2"]),
         Track("5V_FUSED", "F.Cu", POWER, ["F1.1", "D1.2"]),
+        # The capacitor hangs off the diode's pad, three and a half
+        # millimetres straight down. Not diode-to-capacitor-to-header: a
+        # 1210's pad sits 0.02 mm off the routing grid, and two links landing
+        # on it from opposite sides meet in a 0.02 mm zigzag at the pad
+        # centre that `route.odd_angle` reads as a 92 degree corner.
         Track("VSYS", "F.Cu", POWER, ["D1.1", "J4.2"], auto=True),
         Track("VSYS", "F.Cu", POWER, ["C1.1", "D1.1"], auto=True),
         Track("+3V3", "F.Cu", POWER, ["C2.1", "J4.5"], auto=True),
