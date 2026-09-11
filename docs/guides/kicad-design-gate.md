@@ -227,7 +227,8 @@ rating.
 | Rule | Why it matters |
 | --- | --- |
 | `silk.over_pad` | ink on a pad keeps solder off it |
-| `silk.under_part` | a string inside another part's courtyard is hidden once that part is fitted |
+| `silk.under_part` | a string a fitted part covers: inside a neighbour's courtyard, or inside its own part's fabrication outline |
+| `silk.pin_legend` | a connector legend with another part's pad nearer to it names that pad, unless a leader says otherwise |
 | `silk.text_too_small` | below the screen printer's limit it comes back a smudge |
 | `layout.pad_collision` | pads of two footprints sharing copper — parts placed on top of each other |
 | `layout.off_grid_placement` / `layout.odd_rotation` | free electrically, and most of why a generated layout looks generated |

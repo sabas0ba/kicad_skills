@@ -208,6 +208,22 @@ SILK_CLEARANCE = 0.2
 SILK_EDGE_ROOM = 1.0
 SILK_EDGE_MARGIN = 0.5
 
+# The generator's own silk graphics: the frame round a relocated pin legend and
+# the leader that ties it back to its pad. 0.12 is what KiCad's own libraries
+# draw their outlines at.
+SILK_LINE_WIDTH = 0.12
+# The air between a framed label's text and its frame.
+SILK_FRAME_ROOM = 0.3
+# How finely a leader is sampled when asking whether it crosses anything, and
+# how long it has to be drawn before it reads as a pointer rather than a tick.
+SILK_LEADER_STEP = 0.3
+SILK_LEADER_MIN = 1.5
+# How many of a connector's legends have to sit at one offset from their own
+# pins before the row is a column a person reads by position rather than by
+# proximity. Two names are two names; three in a line are a pinout, and taking
+# one of them out of the line to point at its pin makes the pinout worse.
+LEGEND_COLUMN_MIN = 3
+
 # When a surface pad is a heat sink rather than a land: the same two numbers
 # the review rules use to tell a thermal pad from a chip part.
 RELIEF_PAD_AREA_MM2 = 4.0
@@ -2480,7 +2496,8 @@ def _move_reference_off_pads(
     ``bodies`` are the other parts' courtyards, and they weigh as much as a
     pad: a designator under a neighbour's shell prints fine on the bare board
     and is gone the moment that neighbour is fitted. The fuse on the motor
-    driver had its name a millimetre inside the bulk capacitor's outline.
+    driver had its name a millimetre inside the bulk capacitor's outline. The
+    part's own body weighs the same, and for the same reason.
 
     Measured on the board rather than in the footprint's own frame, because
     the two disagree the moment the part is turned: the anchor rotates with
@@ -2506,20 +2523,61 @@ def _move_reference_off_pads(
     obstacles = list(all_pads if all_pads is not None else pads) + list(printed or [])
     # the extent KiCad will actually print, rounded up (see `_text_extent`)
     half_x, half_y = _text_extent(part.ref, 1.0)
-    # How far out to look. A designator prints horizontally whatever the
-    # footprint's rotation, so on a turned part the string reaches along an
-    # axis the footprint's own frame calls the other one - and a two-terminal
-    # chip part is narrower than its own three-character name. Both local axes
-    # are tried, at increasing distance, and near beats far.
-    spread = max(box[2] - box[0] for box in pads) / 2
-    steps = [round(half_x + spread + gap, 3) for gap in (0.4, 1.0, 1.8, 2.8)]
+    # What the designator has to step clear of is the part itself. Its own body
+    # hides more of its name than any neighbour does: an electrolytic capacitor
+    # and an inductor each span their own two pads, and a module spans fifty
+    # millimetres of them, so the clear gap a library leaves between the pads is
+    # under the part and the name printed there is readable exactly until the
+    # board is assembled. The courtyard is the fallback for a footprint that
+    # draws no fabrication outline.
+    own = _body_box(design, part) or _courtyard_box(design, part)
+    if own is None:
+        own = (
+            min(box[0] for box in pads),
+            min(box[1] for box in pads),
+            max(box[2] for box in pads),
+            max(box[3] for box in pads),
+        )
+    heavy = [*(bodies or []), own]
+    # How far out to look, measured from the part's own outline rather than
+    # from one of its pads: a name has to clear the whole part. Offsets are
+    # built in board coordinates - a designator prints horizontally whatever
+    # the footprint's rotation, so the string reaches along the board's x
+    # whichever way the part is turned - then rotated back into the footprint's
+    # frame, which is what `at` states. Near beats far; ties go to the earlier
+    # candidate.
+    # Measured per direction, not as one radius: a footprint is anchored where
+    # its library chose to anchor it, which for a screw terminal is pin 1 and
+    # not the middle of its shell. One radius big enough to clear the far side
+    # puts the name three millimetres past the near side, close enough to the
+    # next part to read as its.
+    up = by - own[1] + half_y
+    down = own[3] - by + half_y
+    left = bx - own[0] + half_x
+    right = own[2] - bx + half_x
+    gaps = (0.4, 1.0, 1.8, 2.8)
+    offsets = [
+        *(
+            spot
+            for gap in gaps
+            for spot in (
+                (0.0, -(up + gap)),
+                (0.0, down + gap),
+                (-(left + gap), 0.0),
+                (right + gap, 0.0),
+            )
+        ),
+        # and the corners, for the part hemmed in on all four sides
+        *(
+            (sx * ((right if sx > 0 else left) + gap), sy * ((down if sy > 0 else up) + gap))
+            for gap in gaps
+            for sx in (-1.0, 1.0)
+            for sy in (-1.0, 1.0)
+        ),
+    ]
     candidates = (
         (float(atoms[0]), float(atoms[1])),
-        (0.0, 0.0),
-        *((0.0, sign * step) for step in steps for sign in (-1, 1)),
-        *((sign * step, 0.0) for step in steps for sign in (-1, 1)),
-        # and the corners, for the part hemmed in on all four sides
-        *((sx * step * 0.8, sy * step * 0.8) for step in steps for sx in (-1, 1) for sy in (-1, 1)),
+        *(_rotate(dx, dy, -angle) for dx, dy in offsets),
     )
 
     # Scored rather than first-fit, and every candidate is scored, so a part
@@ -2533,7 +2591,7 @@ def _move_reference_off_pads(
     def cost(spot: tuple[float, float]) -> float:
         rx, ry = _rotate(spot[0], spot[1], angle)
         box = (bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y)
-        return _silk_intrusion(design, box, obstacles, bodies)
+        return _silk_intrusion(design, box, obstacles, heavy)
 
     _rank, (cx, cy) = min(enumerate(candidates), key=lambda item: (cost(item[1]), item[0]))
     rx, ry = _rotate(cx, cy, angle)
@@ -6375,7 +6433,7 @@ def emit_board(design: Design, path: Path) -> None:
                     )
                 )
 
-    lines.extend(_board_silk(design, printed))
+    lines.extend(_board_silk(design))
 
     lines.append(")")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -6399,6 +6457,175 @@ def _silk_text_item(
         f'(layer "F.SilkS") (uuid "{stable_uuid(design.name, "silk", key)}") '
         f"(effects (font (size {size} {size}) (thickness {thickness})){where}))"
     )
+
+
+def _silk_line_item(
+    design: Design, a: tuple[float, float], b: tuple[float, float], key: object
+) -> str:
+    ox, oy = design.origin
+    return (
+        f"\t(gr_line (start {round(ox + a[0], 4)} {round(oy + a[1], 4)}) "
+        f"(end {round(ox + b[0], 4)} {round(oy + b[1], 4)}) "
+        f"(stroke (width {SILK_LINE_WIDTH}) (type default)) "
+        f'(layer "F.SilkS") (uuid "{stable_uuid(design.name, "silk", key)}"))'
+    )
+
+
+def _box_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    """How far apart two rectangles are, zero where they touch or overlap."""
+    dx = max(a[0] - b[2], b[0] - a[2], 0.0)
+    dy = max(a[1] - b[3], b[1] - a[3], 0.0)
+    return math.hypot(dx, dy)
+
+
+def _inked(
+    box: tuple[float, float, float, float], room: float
+) -> tuple[float, float, float, float]:
+    """A drawn line's box, given the width it is drawn at and its clearance.
+
+    A line's bounding box has no area in one direction, and `_silk_intrusion`
+    counts area: a leader drawn straight across a part's outline cost nothing
+    at all, so the search happily did it and KiCad reported `silk_overlap`.
+    """
+    return (box[0] - room, box[1] - room, box[2] + room, box[3] + room)
+
+
+def _names_its_pin(
+    box: tuple[float, float, float, float],
+    net: str,
+    pads: list[tuple[tuple[float, float, float, float], str]],
+) -> bool:
+    """Whether the pad nearest a legend carries the net the legend names.
+
+    This is the whole of what a pin legend has to achieve: a reader takes a
+    name to belong to the pad beside it, so a name with somebody else's pad
+    closer names that pad, however carefully it was placed against its own.
+
+    The test is the net and not the pad, because that is what a reader gets
+    right or wrong. `VIN` printed between a terminal's pin and the fuse pad
+    that pin feeds names both of them, and both are VIN; the same string
+    beside the fuse's *other* pad names the rail on the far side of the fuse,
+    which is a different net and a different thing.
+
+    Measured rectangle to rectangle rather than centre to centre, because a
+    long name anchored at its pin reaches past two other parts and its middle
+    is nowhere near either end.
+    """
+    nearest = min(_box_gap(box, pad) for pad, _net in pads)
+    return any(name == net for pad, name in pads if _box_gap(box, pad) <= nearest + GEOM_EPS)
+
+
+def _leg_points(
+    start: tuple[float, float], end: tuple[float, float]
+) -> list[list[tuple[float, float]]]:
+    """The ways from one point to another in horizontal, vertical and 45° legs.
+
+    Two of them: turn first and run straight in, or run straight out and turn
+    at the end. Both are drawing conventions for a leader; which one is clear
+    of the parts is what decides between them.
+    """
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    run = min(abs(dx), abs(dy))
+    kx = math.copysign(run, dx)
+    ky = math.copysign(run, dy)
+    corners = ((start[0] + kx, start[1] + ky), (end[0] - kx, end[1] - ky))
+    paths = []
+    for corner in corners:
+        points = [start, corner, end]
+        trimmed = [p for i, p in enumerate(points) if i == 0 or math.dist(p, points[i - 1]) > 0.01]
+        if len(trimmed) > 1:
+            paths.append(trimmed)
+    return paths
+
+
+def _face(
+    box: tuple[float, float, float, float], towards: tuple[float, float], room: float
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """The point just off the side of a rectangle that faces somewhere else,
+    and the direction that side looks in."""
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    dx, dy = towards[0] - cx, towards[1] - cy
+    if abs(dx) >= abs(dy):
+        sign = 1.0 if dx > 0 else -1.0
+        return ((box[2] + room if dx > 0 else box[0] - room, cy), (sign, 0.0))
+    sign = 1.0 if dy > 0 else -1.0
+    return ((cx, box[3] + room if dy > 0 else box[1] - room), (0.0, sign))
+
+
+def _emerges(
+    start: tuple[float, float],
+    heading: tuple[float, float],
+    hidden_by: list[tuple[float, float, float, float]],
+    over: list[tuple[float, float, float, float]],
+    bounds: tuple[float, float, float, float],
+    limit: float = 12.0,
+) -> tuple[float, float] | None:
+    """Where a line leaving a pad stops being hidden by its own part.
+
+    A screw terminal's pads are under its shell and its silkscreen outline is
+    drawn round the lot, so a leader drawn from the pad itself is ink nobody
+    can see and `silk_overlap` besides. It is drawn from the point it comes out
+    at instead, which is on the pad's own side of the part: a line leaving the
+    top edge of a terminal came from a pin at the top of it.
+
+    Which is the whole value of it, and why a run that would cross ``over`` -
+    any other pad - is no run at all, and None is returned for it. The motor
+    driver's terminal had both its legends pointing at the same spot on the
+    bottom edge of the shell: the upper pin's leader had gone down *through*
+    the lower pin to get there, and under the shell nobody could see that it
+    started higher up.
+    """
+    room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    point = start
+    for _ in range(int(limit / 0.1)):
+        box = (point[0] - room, point[1] - room, point[0] + room, point[1] + room)
+        if any(_box_gap(box, pad) <= 0.0 for pad in over):
+            return None
+        if not (
+            bounds[0] <= box[0]
+            and bounds[1] <= box[1]
+            and box[2] <= bounds[2]
+            and box[3] <= bounds[3]
+        ):
+            # off the edge of the board, where nothing is printed at all
+            return None
+        if all(_box_gap(box, other) > 0.0 for other in hidden_by):
+            return point
+        point = (point[0] + heading[0] * 0.1, point[1] + heading[1] * 0.1)
+    return None
+
+
+def _crosses(points: list[tuple[float, float]], box: tuple[float, float, float, float]) -> bool:
+    """Whether a drawn polyline runs over a rectangle anywhere along it."""
+    room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    for a, b in pairwise(points):
+        steps = max(1, math.ceil(math.dist(a, b) / SILK_LEADER_STEP))
+        for step in range(steps + 1):
+            t = step / steps
+            x = a[0] + (b[0] - a[0]) * t
+            y = a[1] + (b[1] - a[1]) * t
+            if _box_gap(box, (x - room, y - room, x + room, y + room)) <= 0.0:
+                return True
+    return False
+
+
+def _path_intrusion(
+    design: Design,
+    points: list[tuple[float, float]],
+    taken: list[tuple[float, float, float, float]],
+    heavy: list[tuple[float, float, float, float]] | None = None,
+) -> float:
+    """What a drawn polyline takes from everything else, sampled along it."""
+    room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    total = 0.0
+    for a, b in pairwise(points):
+        steps = max(1, math.ceil(math.dist(a, b) / SILK_LEADER_STEP))
+        for step in range(steps + 1):
+            t = step / steps
+            x = a[0] + (b[0] - a[0]) * t
+            y = a[1] + (b[1] - a[1]) * t
+            total += _silk_intrusion(design, (x - room, y - room, x + room, y + room), taken, heavy)
+    return total
 
 
 def _footprint_silk(design: Design, part: Part) -> list[tuple[float, float, float, float]]:
@@ -6464,8 +6691,10 @@ def _footprint_silk(design: Design, part: Part) -> list[tuple[float, float, floa
     return boxes
 
 
-def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, float] | None:
-    """The footprint's courtyard extent on the board, or None without one.
+def _graphic_extent(
+    design: Design, part: Part, token: str
+) -> tuple[float, float, float, float] | None:
+    """How far a footprint's graphics on one layer family reach on the board.
 
     Circles count. A mounting hole and a fiducial both draw their courtyard as
     one `fp_circle`, and a reader that only knows about lines and rectangles
@@ -6483,7 +6712,7 @@ def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, flo
         *node.children("fp_arc"),
     ):
         layer = shape.child("layer")
-        if not layer or "CrtYd" not in str(layer.atom(0, "")):
+        if not layer or token not in str(layer.atom(0, "")):
             continue
         if shape.name == "fp_circle":
             centre = shape.child("center")
@@ -6510,6 +6739,24 @@ def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, flo
     if not xs:
         return None
     return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, float] | None:
+    """The board a part claims: its outline plus the room to place it in."""
+    return _graphic_extent(design, part, "CrtYd")
+
+
+def _body_box(design: Design, part: Part) -> tuple[float, float, float, float] | None:
+    """What the fitted part hides, as the library's fabrication outline.
+
+    The courtyard is the room a part needs and is deliberately bigger than the
+    part; the fabrication outline is the part. The difference is where a
+    designator belongs - beside the body, inside the courtyard - and telling
+    them apart is what stops a name being printed where its own part covers it.
+    An electrolytic capacitor, an inductor and a module all span their own
+    pads, so the gap the library leaves between the pads is under the part.
+    """
+    return _graphic_extent(design, part, "Fab")
 
 
 def _place_footprint_zones(node: SNode, bx: float, by: float, angle: float) -> None:
@@ -6635,9 +6882,199 @@ def _silk_intrusion(
     return area(taken) + area(heavy or []) * 50.0 + outside * 100.0
 
 
+def _framed_legend(
+    design: Design,
+    text: str,
+    pad: tuple[float, float, float, float],
+    key: object,
+    pads: list[tuple[float, float, float, float]],
+    taken: list[tuple[float, float, float, float]],
+    heavy: list[tuple[float, float, float, float]],
+    hidden_by: list[tuple[float, float, float, float]] | None = None,
+    home: tuple[float, float, float, float] | None = None,
+    size: float = 0.8,
+    boxed: bool = True,
+) -> tuple[list[str], list[tuple[float, float, float, float]], float] | None:
+    """A pin legend for a pin that has no clear room beside it.
+
+    A two-pin screw terminal at the edge of a board has nowhere to be labelled:
+    outboard is where the wire goes in, and inboard is the fuse and the clamp
+    that every supply input carries. Pushing the name out past them is what
+    made the buck converter's terminal unreadable - `VIN` printed two
+    millimetres from the fuse's pad and eleven from the pin it named.
+
+    So the name stops trying to sit against its pin and says which pin it means
+    instead: it goes where there is room, in a frame that marks it as a label
+    rather than a part's name, and a leader in horizontal, vertical and 45°
+    legs runs from the frame to the pad. Positions are tried outward from the
+    pad, and the first one whose frame *and* leader are both clear wins, so the
+    leader stays short. Returns None where the board has no room at all, and
+    the caller keeps the placement it had.
+
+    ``hidden_by`` is what its own connector covers the pad with: its body, the
+    outline it draws round it, and the room it claims. The leader is drawn from
+    where it comes out of all that rather than from the pad, because ink under
+    a shell is ink nobody reads and `silk_overlap` besides - and the side it
+    comes out at is what says which pin it came from. Past that point it is
+    charged for everything, its own connector included, so a label on the far
+    side of a terminal is reached round it and not across it.
+    """
+    px, py = (pad[0] + pad[2]) / 2, (pad[1] + pad[3]) / 2
+    half_x, half_y = _text_extent(text, size)
+    frame_x = half_x + (SILK_FRAME_ROOM if boxed else 0.0)
+    frame_y = half_y + (SILK_FRAME_ROOM if boxed else 0.0)
+    radii = (4.0, 5.5, 7.0, 8.5, 10.0, 12.0, 14.0, 17.0, 20.0)
+    spots = [
+        (
+            px + radius * math.cos(math.radians(step * 30.0)),
+            py + radius * math.sin(math.radians(step * 30.0)),
+        )
+        for radius in radii
+        for step in range(12)
+    ]
+    # Nothing beyond the furthest spot can be reached by frame or leader, and
+    # the scoring walks these lists once per sampled point: on the FPGA board
+    # that is six hundred boxes a point, of which a couple of dozen are in
+    # range at all.
+    span = radii[-1] + frame_x + frame_y + 1.0
+    near = (px - span, py - span, px + span, py + span)
+    taken = [box for box in taken if _box_gap(near, box) <= 0.0]
+    heavy = [box for box in heavy if _box_gap(near, box) <= 0.0]
+    # Grown by the clearance the fab wants: a leader that comes out half a
+    # clearance from a pad is "silkscreen clipped by solder mask" just as one
+    # across it is, and coming out beside the fuse is not worth a direction.
+    over = [_inked(box, SILK_CLEARANCE) for box in pads if box != pad]
+    width, height = design.board_size
+    bounds = (SILK_EDGE_ROOM, SILK_EDGE_ROOM, width - SILK_EDGE_ROOM, height - SILK_EDGE_ROOM)
+    # Every way out of the pad, worked out once: the leader may leave by any
+    # side of it, not only the side its label happens to be on. Coming out of
+    # the top of a terminal and going round is how one gets past the part
+    # standing between it and the only clear strip.
+    ways = [
+        (start, heading)
+        for point, heading in (
+            ((px, pad[1] - SILK_CLEARANCE), (0.0, -1.0)),
+            ((px, pad[3] + SILK_CLEARANCE), (0.0, 1.0)),
+            ((pad[0] - SILK_CLEARANCE, py), (-1.0, 0.0)),
+            ((pad[2] + SILK_CLEARANCE, py), (1.0, 0.0)),
+        )
+        # It comes out clear of everything, not only of its own part: a leader
+        # whose first millimetre is under the neighbouring fuse's outline never
+        # had a chance of being read as coming from this pin.
+        if (start := _emerges(point, heading, [*(hidden_by or []), *heavy], over, bounds))
+        is not None
+    ]
+    if not ways:
+        return None
+    # The label first, on its own: a name printed across a designator cannot be
+    # read at all, where a leader crossing one is untidy and still points where
+    # it points. So the spots are scored for the label, the least-intruding are
+    # kept, and only those are asked what a leader to them would cost - which
+    # is also what makes trying seventy leaders per spot affordable.
+    scored = []
+    for index, (x, y) in enumerate(spots):
+        frame = (x - frame_x, y - frame_y, x + frame_x, y + frame_y)
+        room = (
+            frame[0] - SILK_CLEARANCE,
+            frame[1] - SILK_CLEARANCE,
+            frame[2] + SILK_CLEARANCE,
+            frame[3] + SILK_CLEARANCE,
+        )
+        scored.append((_silk_intrusion(design, room, taken, heavy), index, x, y, frame))
+    floor = min(entry[0] for entry in scored)
+    best: (
+        tuple[
+            tuple[float, float, int],
+            float,
+            float,
+            tuple[float, float, float, float],
+            list[tuple[float, float]],
+        ]
+        | None
+    ) = None
+    for label_cost, index, x, y, frame in scored:
+        if label_cost > floor + GEOM_EPS:
+            continue
+        routes = [
+            [start, *legs] if stub else legs
+            for start, heading in ways
+            for stub in (0.0, 1.2, 2.4, 3.6)
+            for end in (
+                (x, frame[1] - SILK_CLEARANCE),
+                (x, frame[3] + SILK_CLEARANCE),
+                (frame[0] - SILK_CLEARANCE, y),
+                (frame[2] + SILK_CLEARANCE, y),
+            )
+            for legs in _leg_points(
+                (start[0] + heading[0] * stub, start[1] + heading[1] * stub), end
+            )
+        ]
+        # Its own label counts too, shrunk so that arriving at a face does not
+        # read as crossing it: offered four faces to come in by, a leader
+        # happily took the far one and drew itself straight through the name.
+        inside = (frame[0] + 0.5, frame[1] + 0.5, frame[2] - 0.5, frame[3] - 0.5)
+        # A leader leaves its connector once. One that comes back over it to
+        # reach a label on the far side is a line across the part, and a reader
+        # following it has to guess where it went under: the Pico carrier's
+        # terminal had one out of the top, round, and back down across the
+        # shell to a label below.
+        routes = [
+            legs
+            for legs in routes
+            if all(
+                bounds[0] <= point[0] <= bounds[2] and bounds[1] <= point[1] <= bounds[3]
+                for point in legs
+            )
+            and (home is None or not _crosses(legs, home))
+        ]
+        if not routes:
+            continue
+        cost, path = min(
+            ((_path_intrusion(design, legs, taken, [*heavy, inside]), legs) for legs in routes),
+            key=lambda item: item[0],
+        )
+        # Then what the leader takes, then a leader long enough to read as a
+        # pointer rather than a tick, then the nearest spot to the pin.
+        drawn = sum(math.dist(a, b) for a, b in pairwise(path))
+        rank = (cost, max(0.0, SILK_LEADER_MIN - drawn), index)
+        if best is None or rank < best[0]:
+            best = (rank, x, y, frame, path)
+        if best[0][0] <= GEOM_EPS and best[0][1] <= 0.0:
+            break
+    if best is None:
+        return None
+    _rank, x, y, frame, path = best
+    corners = [
+        (frame[0], frame[1]),
+        (frame[2], frame[1]),
+        (frame[2], frame[3]),
+        (frame[0], frame[3]),
+    ]
+    items = [
+        _silk_text_item(design, text, x, y, key, size=size),
+        *(
+            _silk_line_item(design, a, b, (key, "frame", index))
+            for index, (a, b) in enumerate(zip(corners, corners[1:] + corners[:1], strict=False))
+            if boxed
+        ),
+        *(
+            _silk_line_item(design, a, b, (key, "leader", index))
+            for index, (a, b) in enumerate(pairwise(path))
+        ),
+    ]
+    ink_room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    boxes = [
+        frame,
+        *(
+            _inked((min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])), ink_room)
+            for a, b in pairwise(path)
+        ),
+    ]
+    return items, boxes, floor + best[0][0]
+
+
 def _board_silk(
     design: Design,
-    printed: list[tuple[float, float, float, float]] | None = None,
     legend_boxes: list[tuple[float, float, float, float]] | None = None,
 ) -> list[str]:
     """What the silkscreen says beyond the references.
@@ -6662,75 +7099,39 @@ def _board_silk(
     # Every string this function has put on the board so far, so the next one
     # measures against it as well as against the parts.
     placed: list[tuple[float, float, float, float]] = []
-    all_pads = [
-        pad_box(design, part, pad)
-        for part in design.footprints()
-        for pad in footprint_definition(part.footprint).children("pad")
-    ]
-    # Bottom centre is where a board says its own name, and on a board with
-    # room that is where it stays. A carrier whose module runs the length of
-    # it has no bottom centre to write in, so the next-best strips are offered
-    # in turn and the first clear one wins - silk over a pad is not a legend,
-    # it is a pad you cannot solder.
-    board_id = f"{design.name} rev {design.rev}"
-    lines = [(board_id, 1.2, "boardid")]
-    if design.company:
-        # the author line: a bare board also answers "whose design is this"
-        lines.append((design.company, 1.0, "boardauthor"))
-    stack = (
-        max(_text_extent(text, size)[0] * 2 for text, size, _key in lines),
-        2.4 * len(lines),
-    )
-
-    def strip(y: float) -> list[tuple[float, float]]:
-        """Positions along one horizontal band, working out from its middle."""
-        offsets = [0.0]
-        for step in range(1, int(width / 4) + 1):
-            offsets.extend((-step * 2.0, step * 2.0))
-        return [
-            (width / 2 + offset, y)
-            for offset in offsets
-            if stack[0] / 2 + SILK_EDGE_ROOM
-            <= width / 2 + offset
-            <= width - stack[0] / 2 - SILK_EDGE_ROOM
-        ]
-
-    # Bottom centre is where a board says its own name, and on a board with
-    # room that is where it stays. A carrier whose module runs the length of it
-    # has no bottom centre to write in, so the band is scanned outward from
-    # there, then the top band, then the middle - and the whole list is scored,
-    # so a crowded board gets the least bad place rather than the first.
-    spots = strip(height - 4.4) + strip(4.4) + strip(height / 2)
-
-    def stack_box(spot: tuple[float, float]) -> tuple[float, float, float, float]:
-        return (
-            spot[0] - stack[0] / 2,
-            spot[1] - 1.0,
-            spot[0] + stack[0] / 2,
-            spot[1] - 1.0 + stack[1],
-        )
-
-    # The designators are already placed by the time this runs for real, and
-    # the board's own name is the string with the most freedom about where it
-    # goes - so it is the one that moves. Scored rather than first-clear, so a
-    # crowded board still gets the least bad strip instead of the first one in
-    # the list.
-    # The parts' bodies weigh as much as their pads: a board name under a
-    # fitted part is a board with no name.
-    at = min(
-        spots,
-        key=lambda spot: (
-            _silk_intrusion(design, stack_box(spot), list(printed or []), [*all_pads, *taken]),
-            spots.index(spot),
-        ),
-    )
-    for index, (text, size, key) in enumerate(lines):
-        out.append(_silk_text_item(design, text, at[0], at[1] + index * 2.4, key, size=size))
+    # Legends that need a frame and a leader, held over until every legend that
+    # does fit beside its pin has been placed.
+    relocate: list[
+        tuple[Part, str, str, tuple[float, float, float, float], tuple[float, float, str, float]]
+    ] = []
     net_of: dict[tuple[str, str], str] = {}
     for name, nodes in design.nets.items():
         for entry in nodes:
             ref, _, number = entry.partition(".")
             net_of[(ref, number)] = name
+    landed = [
+        (pad_box(design, part, pad), net_of.get((part.ref, str(pad.atom(0, ""))), ""))
+        for part in design.footprints()
+        for pad in footprint_definition(part.footprint).children("pad")
+    ]
+    all_pads = [box for box, _net in landed]
+    # What a frame and its leader have to keep off besides the pads: the drills,
+    # which are copper the mask opens over just as a pad is, and every line the
+    # footprints draw round themselves. Ink on either is a KiCad finding -
+    # `silk_over_copper` and `silk_overlap` - and neither is in `all_pads`.
+    via_room = VIA_SIZE / 2 + SILK_CLEARANCE
+    ink_room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    obstacles = [
+        *(
+            (vx - via_room, vy - via_room, vx + via_room, vy + via_room)
+            for vx, vy in (via_position(design, via) for via in design.vias)
+        ),
+        *(
+            _inked(box, ink_room)
+            for part in design.footprints()
+            for box in _footprint_silk(design, part)
+        ),
+    ]
     for part in design.footprints():
         if part.ref.startswith("J"):
             node = footprint_definition(part.footprint)
@@ -6741,6 +7142,7 @@ def _board_silk(
             xs = [p[0] for _n, _p, p in pads]
             ys = [p[1] for _n, _p, p in pads]
             own_pads = [pad_box(design, part, pad) for _n, pad, _p in pads]
+            pad_of = {number: pad_box(design, part, pad) for number, pad, _p in pads}
             # labels go perpendicular to the pad row, on the board side, and
             # clear the whole footprint - a screw terminal's body silk would
             # swallow a pad-edge offset
@@ -6840,6 +7242,7 @@ def _board_silk(
             # its 5 V legend steps a quarter pitch up the row to clear the
             # fuse's pad rather than print across it.
             aligned = cost((anchor, justify)) <= GEOM_EPS
+            row: list[tuple[str, float, float, str, float, float, str, float]] = []
             for number, px, py, net in entries:
                 tx, ty = anchor(px, py)
                 text_justify, text_angle = justify, angle
@@ -6872,10 +7275,40 @@ def _board_silk(
                 if number in part.pin_legend_at:
                     tx, ty, text_justify = part.pin_legend_at[number]
                     text_angle = 0.0
+                row.append((number, px, py, net, tx, ty, text_justify, text_angle))
+            # Which of them came out as a column, asked of where they ended up
+            # rather than of what was attempted: one pin of a twenty-pin row
+            # with a fiducial in its strip sends the whole row to per-pin
+            # placement, and nineteen of them still land in one line.
+            offsets = [
+                (round(tx - px, 1), round(ty - py, 1)) for _n, px, py, _net, tx, ty, *_ in row
+            ]
+            column = {offset for offset in offsets if offsets.count(offset) >= LEGEND_COLUMN_MIN}
+            for index, (number, _px, _py, net, tx, ty, text_justify, text_angle) in enumerate(row):
                 box = _silk_box(net, tx, ty, 0.8, text_justify, text_angle)
+                # Last resort, and the only one that always works: a name with
+                # somebody else's pad nearer to it than its own names that pad,
+                # so it stops trying to sit against the pin and points at it
+                # instead. The supply terminals are where this happens - a
+                # fuse and a clamp stand between the terminal and the rest of
+                # the board, and the board's edge is on its other side.
+                #
+                # A name that is one of a column is exempt: the column is read
+                # by position, the third name down belongs to the third pin,
+                # and taking one out of the line to point at its pin costs more
+                # than it buys. Four of the Pico carrier's forty header names
+                # have a bypass capacitor's pad marginally nearer than their
+                # own pin, and all forty read fine.
+                #
+                # Held over to a second pass rather than done here: a leader
+                # has to miss every legend on the board, and the connectors
+                # after this one have not been laid out yet. The Pico carrier
+                # drew one across `GP28` and `AGND` that way.
+                mine = pad_of[number]
+                if offsets[index] not in column and not _names_its_pin(box, net, landed):
+                    relocate.append((part, number, net, mine, (tx, ty, text_justify, text_angle)))
+                    continue
                 placed.append(box)
-                if legend_boxes is not None:
-                    legend_boxes.append(box)
                 out.append(
                     _silk_text_item(
                         design,
@@ -6904,14 +7337,35 @@ def _board_silk(
                 (bx + 4.0, by, "left"),
                 (bx - 4.0, by, "right"),
                 (bx, by + reach * 5.4, ""),
+                # then round the part, for the indicator whose usual strips
+                # have been taken - a relocated legend's frame is 4 mm of board
+                *(
+                    (
+                        bx + radius * math.cos(math.radians(step * 45.0)),
+                        by + radius * math.sin(math.radians(step * 45.0)),
+                        "",
+                    )
+                    for radius in (5.0, 6.5, 8.0)
+                    for step in range(8)
+                ),
             ]
+            # Other parts' bodies weigh what their pads do: "3V3 OK" beside an
+            # LED is there to be read on the finished board, and a relocated
+            # legend's frame can have taken the strip it used to use.
             tx, ty, justify = min(
                 spots,
-                key=lambda spot: _silk_intrusion(
-                    design,
-                    _silk_box(part.silk_label, spot[0], spot[1], 0.8, spot[2]),
-                    [*taken, *(printed or []), *placed],
-                    all_pads,
+                key=lambda spot: (
+                    _silk_intrusion(
+                        design,
+                        _silk_box(part.silk_label, spot[0], spot[1], 0.8, spot[2]),
+                        placed,
+                        [
+                            *(_inked(box, SILK_CLEARANCE) for box in all_pads),
+                            *obstacles,
+                            *taken,
+                        ],
+                    ),
+                    math.dist((spot[0], spot[1]), (bx, by)),
                 ),
             )
             placed.append(_silk_box(part.silk_label, tx, ty, 0.8, justify))
@@ -6920,6 +7374,140 @@ def _board_silk(
                     design, part.silk_label, tx, ty, (part.ref, "label"), justify=justify
                 )
             )
+    # The names with no room beside their pin, now that every name that did
+    # have room is down. Ink on ink weighs what ink on a pad does here: the
+    # frame and its leader have a whole board to choose from, and `silk_overlap`
+    # is a real finding where a courtyard grazed is not.
+    for part, number, net, mine, plain in relocate:
+        attempts = [
+            _framed_legend(
+                design,
+                net,
+                mine,
+                (part.ref, number),
+                all_pads,
+                [],
+                [
+                    # a pad grown by the clearance the fab wants: ink that
+                    # merely grazes a mask opening is still "silkscreen clipped
+                    # by solder mask", and the graze cost so little that the
+                    # search took it
+                    *(_inked(box, SILK_CLEARANCE) for box in all_pads),
+                    *obstacles,
+                    *courtyards.values(),
+                    *placed,
+                ],
+                hidden_by=[
+                    *_footprint_silk(design, part),
+                    courtyards[part.ref],
+                    *([body] if (body := _body_box(design, part)) else []),
+                ],
+                home=courtyards[part.ref],
+                boxed=boxed,
+            )
+            # A frame says "this is a label, not a part's name", and is worth
+            # four millimetres of board where there are four to spare. Where
+            # there are not - the Pico carrier's terminal has the board's edge
+            # on two sides of it - the name goes bare and the leader still says
+            # which pin it means, which was the point.
+            for boxed in (True, False)
+        ]
+        clean = [attempt for attempt in attempts if attempt is not None]
+        framed = min(clean, key=lambda attempt: attempt[2]) if clean else None
+        if framed is None:
+            # nowhere on the board to put it; keep the placement it had
+            tx, ty, text_justify, text_angle = plain
+            box = _silk_box(net, tx, ty, 0.8, text_justify, text_angle)
+            items, boxes = (
+                [
+                    _silk_text_item(
+                        design,
+                        net,
+                        tx,
+                        ty,
+                        (part.ref, number),
+                        justify=text_justify,
+                        angle=text_angle,
+                    )
+                ],
+                [box],
+            )
+        else:
+            items, boxes, _cost = framed
+        out.extend(items)
+        placed.extend(boxes)
+    # The board's own name goes last, because it is the string with the
+    # most freedom about where it goes and so the one that moves. Placed
+    # first it had no idea the legends were coming and printed itself
+    # through `GP22`.
+    # Bottom centre is where a board says its own name, and on a board with
+    # room that is where it stays. A carrier whose module runs the length of
+    # it has no bottom centre to write in, so the next-best strips are offered
+    # in turn and the first clear one wins - silk over a pad is not a legend,
+    # it is a pad you cannot solder.
+    board_id = f"{design.name} rev {design.rev}"
+    lines = [(board_id, 1.2, "boardid")]
+    if design.company:
+        # the author line: a bare board also answers "whose design is this"
+        lines.append((design.company, 1.0, "boardauthor"))
+    stack = (
+        max(_text_extent(text, size)[0] * 2 for text, size, _key in lines),
+        2.4 * len(lines),
+    )
+
+    def strip(y: float) -> list[tuple[float, float]]:
+        """Positions along one horizontal band, working out from its middle."""
+        offsets = [0.0]
+        for step in range(1, int(width / 4) + 1):
+            offsets.extend((-step * 2.0, step * 2.0))
+        return [
+            (width / 2 + offset, y)
+            for offset in offsets
+            if stack[0] / 2 + SILK_EDGE_ROOM
+            <= width / 2 + offset
+            <= width - stack[0] / 2 - SILK_EDGE_ROOM
+        ]
+
+    # Bottom centre is where a board says its own name, and on a board with
+    # room that is where it stays. A carrier whose module runs the length of it
+    # has no bottom centre to write in, so the band is scanned outward from
+    # there, then the top band, then the middle - and the whole list is scored,
+    # so a crowded board gets the least bad place rather than the first.
+    spots = strip(height - 4.4) + strip(4.4) + strip(height / 2)
+
+    def stack_box(spot: tuple[float, float]) -> tuple[float, float, float, float]:
+        return (
+            spot[0] - stack[0] / 2,
+            spot[1] - 1.0,
+            spot[0] + stack[0] / 2,
+            spot[1] - 1.0 + stack[1],
+        )
+
+    # The designators are already placed by the time this runs for real, and
+    # the board's own name is the string with the most freedom about where it
+    # goes - so it is the one that moves. Scored rather than first-clear, so a
+    # crowded board still gets the least bad strip instead of the first one in
+    # the list.
+    # The parts' bodies weigh as much as their pads: a board name under a
+    # fitted part is a board with no name.
+    at = min(
+        spots,
+        key=lambda spot: (
+            _silk_intrusion(design, stack_box(spot), placed, [*all_pads, *taken]),
+            spots.index(spot),
+        ),
+    )
+    for index, (text, size, key) in enumerate(lines):
+        out.append(_silk_text_item(design, text, at[0], at[1] + index * 2.4, key, size=size))
+        # counted with the rest of the ink from here on: a relocated legend's
+        # frame has the run of the board and the board's name does not
+        placed.append(_silk_box(text, at[0], at[1] + index * 2.4, size))
+    if legend_boxes is not None:
+        # Everything this function put on the board, so the designators - placed
+        # after it and free to go anywhere legible - can miss all of it. It has
+        # to be everything: the two passes agree only because neither reads
+        # anything the other writes.
+        legend_boxes[:] = placed
     return out
 
 

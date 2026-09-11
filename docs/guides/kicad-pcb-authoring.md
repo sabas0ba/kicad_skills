@@ -478,6 +478,29 @@ three are visible in one glance at the `interf_u` demo:
   — a chip part in the strip at one pin's height and the board's edge on
   the other side — does a legend step along the row on its own, and then
   only as far as still names its pin.
+* **Where a name cannot sit on its pin, point at it.** A supply terminal at
+  the edge of a board has nowhere to be labelled: outboard is where the wire
+  goes in, and inboard is the fuse and the clamp every supply input carries.
+  Pushing the name out past them does not solve it — it prints two
+  millimetres from the fuse's pad and eleven from the pin, and a reader takes
+  a name to belong to the pad beside it whatever was intended. So stop
+  trying: put the label where there is room, draw a frame round it so it
+  reads as a label rather than as a part's name, and run a leader back to the
+  pad in horizontal, vertical and 45° legs. Draw the leader from where it
+  comes out of the connector rather than from the pad itself — ink under a
+  shell is ink nobody sees, and `silk_overlap` besides — because the side it
+  comes out at is what says which pin it came from. Keep it short: take the
+  nearest spot whose frame *and* leader are both clear. `silk.pin_legend`
+  reports a legend with a foreign pad nearer than its own and no leader
+  saying otherwise.
+* **A column is read by position, so leave it alone.** Where three or more of
+  a connector's names sit at one offset from their own pins, the third name
+  down belongs to the third pin whatever else is nearby — that is the whole
+  reason for lining them up. Do not pull one of them out to point at its pin:
+  four of the Pico carrier's forty header legends have a bypass capacitor's
+  pad marginally nearer than their own, and all forty read fine. Two names
+  side by side are not a column, which is why the supply terminals still get
+  leaders.
 * **Ink under a fitted part is ink nobody will read.** A designator, a
   legend or the board's own name inside a neighbour's courtyard prints on
   the bare board and disappears at assembly. Weigh other parts' courtyards
@@ -486,6 +509,19 @@ three are visible in one glance at the `interf_u` demo:
   inside the bulk capacitor's outline, and the op-amp board's name ran
   across a test point standing in the strip the name is written in — the
   test point moved.
+* **A part's own body hides more of its name than any neighbour does.** The
+  courtyard is the part plus the room to place it, so a designator in that
+  margin beside a chip resistor is read on the finished board and is the
+  convention. The fabrication outline is the part. A library puts the name
+  of anything that spans its own pads in the clear gap between them, which
+  is under the part: an electrolytic capacitor, an inductor, a module fifty
+  millimetres long. Step the name outside that outline, measuring the
+  distance needed *per direction* rather than as one radius — a footprint is
+  anchored where its library chose, which for a screw terminal is pin 1 and
+  not the middle of its shell, and one radius big enough to clear the far
+  side puts the name three millimetres past the near side and into the next
+  part. Three designators on the buck converter, one on the Pico carrier and
+  two on the FPGA board were printed under their own parts.
 * **Never draw one run on top of another.** Two runs of a net that meet at a
   point and leave it along the same line are one run drawn twice: the shorter
   carries nothing the longer does not, and on the plot it reads as a track

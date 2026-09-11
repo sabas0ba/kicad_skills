@@ -1833,6 +1833,110 @@ own estimate of a string's extent learned where its anchor is at the same
 time — a legend anchored at the end nearest its pin had been measured as if
 centred, half a string away from where it prints.
 
+### The measurement that was answering the wrong question
+
+The round above reported seventy-two legends "on their own pins" and two boards
+clean of hidden ink. Both numbers were true and neither answered the question.
+The reviewer came back with three screenshots, and what they circled was
+`VIN` printed beside the buck converter's fuse, `GND` beside the motor
+driver's clamp, `+5V` beside the Pico carrier's fuse, and `C1` printed between
+the two pads of the capacitor it names.
+
+The legend check had compared each legend against *its own connector's* pins.
+Every one of them was nearest its own pin among those — and two millimetres
+from a fuse's pad belonging to somebody else. The hidden-ink rule had exempted
+a string inside its own footprint's courtyard, on the grounds that a designator
+beside its own part is the convention. It is, but a courtyard is the part plus
+the room to place it, and the exemption was covering the case where the part
+itself stands on the name.
+
+Measured against every pad on the board, and against each part's own
+fabrication outline rather than its courtyard, all five boards were reporting:
+
+| board | legends naming another part's pad | strings under their own part |
+| --- | --- | --- |
+| buck-5v | `VIN`, `GND`, `+5V` | `C1`, `C3`, `L1` |
+| motor-driver | `GND` | `J2`, `U1` |
+| pico-carrier | `+5V`, `GND`, `3V3_EN` | `F1`, `U1` |
+| opamp-filter | `VIN`, `GND`, `OUT_AC` | `J2` |
+| fpga-audio | `GND` ×2, `OUTL`, `OUTR` | `U2`, `U4` |
+
+Two rules now ask those questions instead. `silk.under_part` keeps the
+courtyard test for a *neighbour* and adds the fabrication outline for a
+string's own part — the two differ on purpose, and the difference is exactly
+the margin a designator beside a chip resistor lives in. `silk.pin_legend`
+takes any string naming a net a connector carries, within 15 mm of a pad of
+that net, and asks whether the nearest pad on the board carries that net.
+
+### Where a name cannot sit on its pin
+
+The designators were the easy half: step the name outside its own part's
+fabrication outline, measuring what that takes per direction rather than as
+one radius. A footprint is anchored where its library chose to anchor it,
+which for a screw terminal is pin 1 and not the middle of its shell, so a
+single radius big enough to clear the far side puts the name three
+millimetres past the near side and into the next part.
+
+The legends have no such answer. A supply terminal at the edge of a board has
+nowhere to be labelled: outboard is where the wire goes in, inboard is the
+fuse and the clamp that every supply input in these examples now carries, and
+the reviewer's suggestion is the only thing left — write the name where it can
+be read, box it, and point at the pin with straight lines bent at 45°.
+
+That is what the generator does when, and only when, no placement puts the
+legend's own pad nearest to it. The label goes in a frame, so it reads as a
+label rather than as the name of whatever it is standing beside; a leader runs
+from the frame back to the pad in horizontal, vertical and 45° legs. Spots are
+tried outward from the pin and the first whose frame *and* leader are both
+clear wins, so the leader stays short.
+
+Four details decide whether it reads.
+
+The leader is drawn from where it comes out of the connector, not from the
+pad: a screw terminal's pads are under its shell, ink there is invisible and
+`silk_overlap` besides, and the side the line emerges from is what tells a
+reader which pin it came from. A direction that would take it *through*
+another pad on the way out is refused outright — the motor driver's terminal
+had both its names pointing at the same spot on the bottom edge of the shell,
+because the upper pin's leader had gone down through the lower pin to get
+there and nothing visible said so.
+
+The choice is ranked rather than summed: what the drawing takes from the rest
+of the board first, then whether the leader is long enough to read as a
+pointer rather than a tick, then nearest to the pin. Summed, a two-millimetre
+penalty for a short leader sent a label twelve millimetres away to buy one it
+could have had at four.
+
+A line has no area, and the placer scores by area. A leader drawn straight
+across another part's outline cost exactly nothing, so it did it, four times
+on the Pico carrier. Every drawn line an obstacle now has the width it is
+drawn at, plus its clearance.
+
+And the relocation happens at all only where the name is on its own. Where
+three or more of a connector's names sit at one offset from their own pins,
+they are a column: the third name down belongs to the third pin whatever else
+is nearby, which is the whole reason for lining them up, and taking one out of
+the line to point at its own pin makes the pinout worse rather than better.
+Four of the Pico carrier's forty header names have a bypass capacitor's pad
+marginally nearer than their own pin, and all forty read fine. That test is
+asked of where the names ended up rather than of what the placer attempted:
+one pin with a fiducial in its strip sends a twenty-pin row to per-pin
+placement, and nineteen of them still land in one line. Two names side by
+side are not a column, which is why the supply terminals still get leaders.
+`silk.pin_legend` carries the same three clauses, so the rule and the
+generator agree about what a readable pinout is.
+
+One more clause turned out to matter more than the mechanism: the test is the
+*net* on the nearest pad, not the pad. `VIN` printed between a terminal's pin
+and the fuse pad that pin feeds names both of them, and both are VIN - nothing
+is wrong with it, and an earlier version that compared pads rather than nets
+sent four such legends off to find leaders they did not need.
+
+Twelve of the seventy-seven pin legends across the five boards are drawn with
+a leader: three on the buck converter, four on the op-amp board, two each on
+the motor driver and the Pico carrier, one on the FPGA board. The rest sit
+against their pins, which is better and is still what is tried first.
+
 ### A loop that never existed
 
 The op-amp board's new copper also found a defect in the loop cutter. MID had a

@@ -32,6 +32,9 @@ THRESHOLDS = {
     "max_decoupling_distance_mm": 5.0,
     "max_drill_sizes": 6,
     "min_silk_text_height_mm": 0.8,
+    # How near a pad of its own net a string has to be before it is read as
+    # that pin's legend rather than as a note about the circuit.
+    "pin_legend_reach_mm": 15.0,
     # Placement conventions. A part off the grid or turned to 37 degrees costs
     # nothing electrically and makes the board unreadable and awkward to place.
     "placement_grid_mm": 0.5,
@@ -115,6 +118,27 @@ THRESHOLDS = {
 
 # Copper geometry is stored in nm; anything below this is file noise.
 GEOM_TOL = 0.001
+
+# Drawing tolerances for reading a leader - the silkscreen lines that tie a
+# relocated pin legend back to its pad. Not thresholds: they describe how a
+# leader is drawn rather than what the board is being held to. LEAVE is how
+# close to a label a line has to start to count as that label's. ARRIVE is
+# deliberately loose: a leader out of a connector cannot start at the pad,
+# because the pad is under the shell, so it starts at the edge of that shell -
+# three millimetres out on a screw terminal and more on a bigger part. Erring
+# loose errs towards accepting a leader that is a little short, which for a
+# warning about legibility is the right direction to be wrong in.
+LEADER_LEAVE_MM = 1.0
+LEADER_ARRIVE_MM = 6.0
+# How far apart two lines of the same leader may be drawn and still be one
+# chain - a leader stops a silkscreen clearance short of the frame it leaves -
+# and how finely a line is sampled when measuring any of this.
+LEADER_JOIN_MM = 0.35
+LEADER_STEP_MM = 0.4
+# How many of a connector's names have to sit at one offset from their own pins
+# before the row is a column - read by position in the line rather than by
+# which pad is nearest to each. Two names side by side are two names.
+LEGEND_COLUMN_MIN = 3
 
 # How close two corners sit before their turns read as one bend, and how long
 # the arms either side must be before the bend is legible (route.hairpin).
@@ -368,9 +392,20 @@ RULE_SPEC: dict[str, RuleSpec] = {
     ),
     "silk.under_part": RuleSpec(
         "a visible silkscreen string whose estimated extent lies inside the "
-        "courtyard of a footprint other than its own, on the same side; it prints "
-        "on the bare board and is hidden once that part is fitted",
+        "courtyard of another footprint on the same side, or inside its own "
+        "footprint's fabrication outline; it prints on the bare board and is "
+        "hidden once the part is fitted",
         "warning",
+    ),
+    "silk.pin_legend": RuleSpec(
+        "a silkscreen string naming a net a connector carries, within "
+        "`pin_legend_reach_mm` of a pad of that net, that has some other part's "
+        "pad nearer to it - so it reads as naming that pad - with neither a run "
+        "of silkscreen lines leading from it back to its own nor two more of "
+        "that connector's names at the same offset from theirs, which would "
+        "make it one of a column read by position",
+        "warning",
+        threshold="pin_legend_reach_mm",
     ),
     "silk.over_pad": RuleSpec(
         "a visible silkscreen string whose estimated extent overlaps a pad on the "
@@ -3071,6 +3106,105 @@ def _silk_bbox(text: dict[str, Any]) -> tuple[float, ...] | None:
     return (x + along[0], y - extent / 2, x + along[1], y + extent / 2)
 
 
+def _box_gap(a: tuple[float, ...], b: tuple[float, ...]) -> float:
+    """How far apart two rectangles are, zero where they touch or overlap."""
+    return math.hypot(max(a[0] - b[2], b[0] - a[2], 0.0), max(a[1] - b[3], b[1] - a[3], 0.0))
+
+
+def _net_label(name: str | None) -> str:
+    """A net's name as a silkscreen legend prints it, without its sheet path."""
+    return str(name or "").strip().rsplit("/", 1)[-1].strip()
+
+
+def _along(poly: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """A polyline as points every LEADER_STEP_MM or so, ends included.
+
+    Everything below measures a drawn line by these rather than by its two
+    ends. The side of a frame that runs along a label comes nearest to it in
+    the middle, and a leader meets that frame side in the middle too.
+    """
+    points = [poly[0]] if poly else []
+    for a, b in itertools.pairwise(poly):
+        steps = max(1, int(math.dist(a, b) / LEADER_STEP_MM) + 1)
+        points += [
+            (a[0] + (b[0] - a[0]) * step / steps, a[1] + (b[1] - a[1]) * step / steps)
+            for step in range(1, steps + 1)
+        ]
+    return points
+
+
+def _legend_columns(board: pcb.Board, least: int) -> set[int]:
+    """The silk strings that are one of a connector's names lined up in a row.
+
+    A pinout laid out as a column - every name the same distance and the same
+    side from the pin it belongs to - is read by position: the third name down
+    belongs to the third pin, whatever else the board has put nearby. So the
+    offsets from pad to string are counted per connector, and a string sharing
+    its offset with `least` - 1 others is in a column.
+
+    Identified by `id()` because a board may print the same name twice, and
+    `GND` three pins apart is three strings and not one.
+    """
+    in_column: set[int] = set()
+    for fp in board.footprints:
+        if not fp.ref.upper().startswith(("J", "P")) or len(fp.pads) < least:
+            continue
+        nets = {_net_label(pad.net) for pad in fp.pads if pad.net}
+        offsets: dict[tuple[float, float], list[int]] = defaultdict(list)
+        for text in board.silk_texts:
+            label = str(text.get("text") or "").strip()
+            if text.get("hidden") or label not in nets:
+                continue
+            here = [pad for pad in fp.pads if _net_label(pad.net) == label]
+            pad = min(here, key=lambda p: math.dist((p.x, p.y), (text["x"], text["y"])))
+            offset = (round(text["x"] - pad.x, 1), round(text["y"] - pad.y, 1))
+            offsets[offset].append(id(text))
+        for shared in offsets.values():
+            if len(shared) >= least:
+                in_column |= set(shared)
+    return in_column
+
+
+def _silk_chain_reaches(
+    strokes: list[list[tuple[float, float]]],
+    start: tuple[float, ...],
+    targets: list[tuple[float, ...]],
+    leave: float,
+    arrive: float,
+) -> bool:
+    """Whether a run of silkscreen lines ties one box to any of some others.
+
+    This is a leader: the lines that start at a relocated label and end at the
+    pad it names. They are followed as a chain because a leader bends - the
+    45° elbow that keeps it off everything in between is a second segment, and
+    the frame round the label is four more. The links in that chain do not
+    touch: a leader stops the fab's silkscreen clearance short of the frame it
+    points away from, so within a clearance is joined.
+    """
+    traced = [_along(poly) for poly in strokes]
+    linked = [
+        index
+        for index, points in enumerate(traced)
+        if any(_box_gap(start, (x, y, x, y)) <= leave for x, y in points)
+    ]
+    seen = set(linked)
+    queue = list(linked)
+    while queue:
+        points = traced[queue.pop()]
+        for index, other in enumerate(traced):
+            if index in seen:
+                continue
+            if any(math.dist(a, b) <= LEADER_JOIN_MM for a in points for b in other):
+                seen.add(index)
+                queue.append(index)
+    return any(
+        _box_gap(target, (x, y, x, y)) <= arrive
+        for index in seen
+        for x, y in traced[index]
+        for target in targets
+    )
+
+
 def _pad_layers(pad: pcb.Pad, board: pcb.Board) -> set[str]:
     layers: set[str] = set()
     for layer in pad.layers:
@@ -3245,13 +3379,20 @@ def rule_silk_over_pad(ctx: PcbContext) -> list[Finding]:
 
 @rule
 def rule_silk_under_part(ctx: PcbContext) -> list[Finding]:
-    """Silkscreen text inside another footprint's courtyard.
+    """Silkscreen text a fitted part will cover.
 
     Ink under a neighbour's body prints perfectly on the bare board and is
     gone the moment that neighbour is fitted: a designator a millimetre inside
-    the bulk capacitor's outline, a board name under a module. A string's own
-    footprint is not its neighbour - a designator sits inside its own
-    courtyard by convention - and only the side the part is on counts.
+    the bulk capacitor's outline, a board name under a module.
+
+    A string's own part is measured differently, and not exempt. A designator
+    inside its own *courtyard* is the convention - the courtyard is deliberately
+    bigger than the part, and a name in the margin beside a chip resistor is
+    read on the finished board. A designator inside its own part's *fabrication
+    outline* is the part itself standing on it, which is where a library puts
+    the name of anything that spans its own pads: an electrolytic capacitor, an
+    inductor, a module fifty millimetres long. Only the side the part is on
+    counts, either way.
     """
     board = ctx.board
     courts = [
@@ -3259,6 +3400,7 @@ def rule_silk_under_part(ctx: PcbContext) -> list[Finding]:
         for fp in board.footprints
         if (box := fp.courtyard_box()) is not None
     ]
+    bodies = {fp.ref: box for fp in board.footprints if (box := fp.body_box()) is not None}
     hidden = []
     for text in board.silk_texts:
         if text.get("hidden"):
@@ -3269,7 +3411,12 @@ def rule_silk_under_part(ctx: PcbContext) -> list[Finding]:
         side = "B." if str(text.get("layer", "")).startswith("B.") else "F."
         owner = str(text.get("footprint") or "")
         for ref, court, layer in courts:
-            if ref == owner or not str(layer).startswith(side):
+            if not str(layer).startswith(side):
+                continue
+            if ref == owner:
+                own = bodies.get(ref)
+                if own is not None and _boxes_overlap(box, own):
+                    hidden.append(f"{text['text']!r} under {ref} itself")
                 continue
             if _boxes_overlap(box, court):
                 hidden.append(f"{text['text']!r} under {ref}")
@@ -3280,9 +3427,88 @@ def rule_silk_under_part(ctx: PcbContext) -> list[Finding]:
         Finding(
             "silk.under_part",
             "warning",
-            f"{len(hidden)} silkscreen string(s) lie inside another part's courtyard - "
+            f"{len(hidden)} silkscreen string(s) lie under a part - "
             "readable on the bare board, hidden on the assembled one",
             details={"count": len(hidden), "examples": hidden[:8]},
+        )
+    ]
+
+
+@rule
+def rule_silk_pin_legend(ctx: PcbContext) -> list[Finding]:
+    """A connector pin legend with somebody else's pad nearer to it than its own.
+
+    A name on a silkscreen belongs to the pad beside it - that is the only rule
+    a person reads a board by, and it is not negotiable by intent. So a legend
+    with a foreign pad nearer than the pin it names has named that pad instead.
+    The supply terminals are where it happens: a fuse and a clamp stand between
+    the terminal and the rest of the board, the board's edge is on its other
+    side, and the name gets pushed out past the fuse - two millimetres from the
+    fuse's pad, eleven from the pin.
+
+    Two things excuse it. A leader - a label put somewhere legible and tied
+    back to its pad by silkscreen lines - is the fix where the board has no
+    room; those lines are followed from the label, so a legend that says which
+    pin it means is not reported for not sitting on it. And a column: where
+    three or more of one connector's names sit at the same offset
+    from their own pins, they are read by their place in the line rather than
+    by which pad is nearest to each, which is the whole reason for lining them
+    up. Two names side by side are not a column.
+
+    Only strings that name a net a connector carries are considered, and only
+    within `pin_legend_reach_mm` of a pad of that net: further away the string
+    is documentation about the circuit rather than a legend for a pin. Leaders
+    a footprint draws inside itself are not followed - a leader is an
+    annotation the board adds on top of its parts.
+    """
+    board = ctx.board
+    reach = float(ctx.thresholds["pin_legend_reach_mm"])
+    pads = [
+        (fp.ref, _net_label(pad.net), pad.bbox(angle_offset=fp.angle), fp.side)
+        for fp in board.footprints
+        for pad in fp.pads
+        if pad.net
+    ]
+    named = {
+        label for ref, label, _box, _side in pads if label and ref.upper().startswith(("J", "P"))
+    }
+    strokes: dict[str, list[list[tuple[float, float]]]] = {"top": [], "bottom": []}
+    for layer, poly in board.silk_strokes:
+        strokes["bottom" if str(layer).startswith("B.") else "top"].append(poly)
+    columns = _legend_columns(board, LEGEND_COLUMN_MIN)
+    stray = []
+    for text in board.silk_texts:
+        label = str(text.get("text") or "").strip()
+        if text.get("hidden") or label not in named:
+            continue
+        box = _silk_bbox(text)
+        if not box:
+            continue
+        side = "bottom" if str(text.get("layer", "")).startswith("B.") else "top"
+        here = [(ref, net, pad) for ref, net, pad, at in pads if at == side]
+        mine = [pad for _ref, net, pad in here if net == label]
+        if not mine or min(_box_gap(box, pad) for pad in mine) > reach:
+            continue
+        nearest = min(here, key=lambda entry: _box_gap(box, entry[2]))
+        if nearest[1] == label:
+            continue
+        if id(text) in columns:
+            continue
+        if _silk_chain_reaches(
+            strokes[side], box, mine, leave=LEADER_LEAVE_MM, arrive=LEADER_ARRIVE_MM
+        ):
+            continue
+        stray.append(f"{label!r} nearest {nearest[0]} rather than the pin it names")
+    stray = sorted(set(stray))
+    if not stray:
+        return []
+    return [
+        Finding(
+            "silk.pin_legend",
+            "warning",
+            f"{len(stray)} connector pin legend(s) sit nearer another part's pad "
+            "than the pin they name, with no leader saying which pin they mean",
+            details={"count": len(stray), "examples": stray[:8]},
         )
     ]
 

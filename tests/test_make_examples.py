@@ -2,6 +2,7 @@ import importlib.util
 import json
 import sys
 from dataclasses import replace
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -123,6 +124,122 @@ def test_a_header_legend_stays_on_the_pin_it_names(monkeypatch):
         legend = next(t for t in root.children("gr_text") if t.atom(0) == f"SIGNAL{n}")
         x = next(iter(legend.child("at").atoms())) - design.origin[0]
         assert x == pytest.approx(20.0 + (n - 1) * 2.54, abs=1e-6)
+
+
+_TERMINAL = (
+    '(footprint "term"'
+    ' (fp_rect (start -5 -2.5) (end 5 7.5) (layer "F.CrtYd"))'
+    ' (fp_rect (start -4.7 -2.2) (end 4.7 7.2) (layer "F.Fab"))'
+    ' (fp_rect (start -4.7 -2.2) (end 4.7 7.2) (layer "F.SilkS"))'
+    ' (pad "1" thru_hole circle (at 0 0) (size 2.2 2.2) (drill 1.2) (layers "*.Cu"))'
+    ' (pad "2" thru_hole circle (at 0 5) (size 2.2 2.2) (drill 1.2) (layers "*.Cu")))'
+)
+_FUSE = (
+    '(footprint "fuse"'
+    ' (fp_rect (start -1.6 -0.9) (end 1.6 0.9) (layer "F.CrtYd"))'
+    ' (fp_rect (start -1.3 -0.6) (end 1.3 0.6) (layer "F.Fab"))'
+    ' (pad "1" smd rect (at -1.1 0) (size 1 1.2) (layers "F.Cu"))'
+    ' (pad "2" smd rect (at 1.1 0) (size 1 1.2) (layers "F.Cu")))'
+)
+
+
+def test_a_legend_with_no_room_beside_its_pin_is_framed_and_pointed_at_it(monkeypatch):
+    """A supply terminal against the edge of a board has the fuse every supply
+    input carries standing in the only strip it could be labelled from. The
+    name used to be pushed out past the fuse, where it printed a millimetre
+    from the fuse's pad and named that instead. It goes somewhere legible now,
+    in a frame, with a leader back to the pin it means."""
+    examples = _generator()
+    shapes = {"test:term": _TERMINAL, "test:fuse": _FUSE}
+    monkeypatch.setattr(
+        examples, "footprint_definition", lambda name: examples.sexp.loads(shapes[name])
+    )
+    parts = [
+        examples.Part("J1", "test:term", "IN", "test:term", (0.0, 0.0), (6.0, 10.0, 0.0)),
+        examples.Part("F1", "test:fuse", "1A", "test:fuse", (0.0, 0.0), (14.0, 10.0, 0.0)),
+    ]
+    design = _design(
+        examples,
+        parts=parts,
+        nets={"VIN": ["J1.1"], "GND": ["J1.2"], "SIG": ["F1.1", "F1.2"]},
+        rev="A",
+        board_size=(40.0, 30.0),
+    )
+
+    root = examples.sexp.loads("(root " + "\n".join(examples._board_silk(design)) + ")")
+    legend = next(t for t in root.children("gr_text") if t.atom(0) == "VIN")
+    lines = [
+        (tuple(line.child("start").atoms()), tuple(line.child("end").atoms()))
+        for line in root.children("gr_line")
+    ]
+    # a frame is four lines; every line of it and of the leader is horizontal,
+    # vertical or at 45 degrees
+    assert len(lines) >= 5
+    for (x1, y1), (x2, y2) in lines:
+        dx, dy = abs(x2 - x1), abs(y2 - y1)
+        assert dx < 1e-6 or dy < 1e-6 or abs(dx - dy) < 1e-6
+
+    # and one end of the drawing reaches the pad the legend names
+    pin = (design.origin[0] + 6.0, design.origin[1] + 10.0)
+    reach = min(examples.math.dist(point, pin) for segment in lines for point in segment)
+    assert reach < 3.0
+    # the name itself is clear of the fuse it used to sit against
+    label = next(iter(legend.child("at").atoms()))
+    assert abs(label - (design.origin[0] + 14.0)) > 3.0
+
+
+def test_a_designator_is_not_printed_under_its_own_part(monkeypatch):
+    """A library puts the name of a part that spans its own pads in the clear
+    gap between them, which is under the part: an electrolytic capacitor, an
+    inductor, a module. The courtyard is not the test - a name in the margin
+    beside a chip resistor is read on the finished board - the part's own
+    fabrication outline is."""
+    examples = _generator()
+    node = examples.sexp.loads(
+        '(footprint "can"'
+        ' (property "Reference" "C1" (at 0 0 0))'
+        ' (fp_rect (start -4.5 -6.2) (end 4.5 6.2) (layer "F.CrtYd"))'
+        ' (fp_rect (start -4.2 -5.9) (end 4.2 5.9) (layer "F.Fab"))'
+        ' (pad "1" smd rect (at 0 -3.7) (size 3 2) (layers "F.Cu"))'
+        ' (pad "2" smd rect (at 0 3.7) (size 3 2) (layers "F.Cu")))'
+    )
+    monkeypatch.setattr(examples, "footprint_definition", lambda _name: node)
+    part = examples.Part("C1", "test:c", "100u", "test:fp", (0.0, 0.0), (20.0, 20.0, 0.0))
+    design = _design(examples, parts=[part], board_size=(40.0, 40.0))
+
+    examples._move_reference_off_pads(design, part, node)
+
+    prop = next(p for p in node.children("property") if p.atom(0) == "Reference")
+    cx, cy = (float(a) for a in list(prop.child("at").atoms())[:2])
+    half_x, half_y = examples._text_extent("C1", 1.0)
+    box = (20 + cx - half_x, 20 + cy - half_y, 20 + cx + half_x, 20 + cy + half_y)
+    assert examples._silk_intrusion(design, box, [], [examples._body_box(design, part)]) == 0
+
+
+@pytest.mark.parametrize(
+    "start,end",
+    [((0.0, 0.0), (6.0, 3.0)), ((0.0, 0.0), (3.0, 6.0)), ((0.0, 0.0), (-4.0, 4.0))],
+)
+def test_a_leader_bends_only_at_45_degrees(start, end):
+    examples = _generator()
+    paths = examples._leg_points(start, end)
+    assert paths
+    for path in paths:
+        assert path[0] == start
+        assert path[-1] == end
+        for (x1, y1), (x2, y2) in pairwise(path):
+            dx, dy = abs(x2 - x1), abs(y2 - y1)
+            assert dx < 1e-9 or dy < 1e-9 or abs(dx - dy) < 1e-9
+
+
+def test_a_legend_is_read_as_naming_the_net_on_the_pad_beside_it():
+    examples = _generator()
+    pads = [((0.0, 0.0, 1.0, 1.0), "VIN"), ((8.0, 0.0, 9.0, 1.0), "OUT")]
+    assert examples._names_its_pin((2.0, 0.0, 4.0, 1.0), "VIN", pads)
+    assert not examples._names_its_pin((6.0, 0.0, 7.5, 1.0), "VIN", pads)
+    # the fuse's near pad carries the same net as the pin, so the name between
+    # them names both of them and both are that net
+    assert examples._names_its_pin((6.0, 0.0, 7.5, 1.0), "OUT", pads)
 
 
 @pytest.mark.parametrize("reverse", [False, True])

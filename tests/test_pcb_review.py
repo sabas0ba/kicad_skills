@@ -613,10 +613,114 @@ def test_silkscreen_under_a_neighbours_body():
     assert findings[0].details["examples"] == ["'F1' under C1"]
 
 
+def _with_body(fp, x0, y0, x1, y1):
+    fp.body = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    return fp
+
+
 def test_silkscreen_inside_its_own_courtyard_is_the_convention():
-    cap = _with_courtyard(footprint("C1", 16, 10, [pad("1", 16, 10, "VIN")]), 13, 7, 19, 13)
+    # the courtyard is the part plus the room to place it, and a name in that
+    # margin is read on the finished board
+    cap = _with_body(
+        _with_courtyard(footprint("C1", 16, 10, [pad("1", 16, 10, "VIN")]), 13, 7, 19, 13),
+        14,
+        9,
+        18,
+        11,
+    )
     board = board_from(footprints=[cap], silk=[silk("C1", 16, 8, height=1.0, footprint="C1")])
     assert pcb_review.rule_silk_under_part(ctx_for(board)) == []
+
+
+def test_silkscreen_under_the_part_that_names_it():
+    # an electrolytic spans its own pads, so the clear gap between them, which
+    # is where a library puts the name, is under the can
+    cap = _with_body(
+        _with_courtyard(
+            footprint("C1", 16, 10, [pad("1", 16, 6, "VIN"), pad("2", 16, 14, "GND")]),
+            12,
+            4,
+            20,
+            16,
+        ),
+        13,
+        5,
+        19,
+        15,
+    )
+    board = board_from(footprints=[cap], silk=[silk("C1", 16, 10, height=1.0, footprint="C1")])
+    findings = pcb_review.rule_silk_under_part(ctx_for(board))
+    assert findings[0].details["examples"] == ["'C1' under C1 itself"]
+
+
+def _terminal_and_fuse():
+    """A supply terminal with a fuse between it and the rest of the board."""
+    return [
+        footprint("J1", 10, 12, [pad("1", 10, 10, "/VIN"), pad("2", 10, 15, "GND")]),
+        footprint("F1", 20, 10, [pad("1", 20, 10, "/+12V")]),
+    ]
+
+
+def test_a_pin_legend_pushed_past_the_fuse_names_the_fuse():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 21.5, 10, height=0.8)])
+    findings = pcb_review.rule_silk_pin_legend(ctx_for(board))
+    assert findings[0].details["examples"] == ["'VIN' nearest F1 rather than the pin it names"]
+
+
+def test_a_pin_legend_on_its_own_pin_is_quiet():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 12.5, 10, height=0.8)])
+    assert pcb_review.rule_silk_pin_legend(ctx_for(board)) == []
+
+
+def test_a_leader_back_to_the_pin_answers_the_question():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 21.5, 10, height=0.8)])
+    # framed label, then two legs back to the pad: the elbow is what makes the
+    # chain rather than one straight line
+    board.silk_strokes = [
+        ("F.SilkS", [(20.6, 10.0), (16.0, 6.0)]),
+        ("F.SilkS", [(16.0, 6.0), (12.0, 10.0)]),
+    ]
+    assert pcb_review.rule_silk_pin_legend(ctx_for(board)) == []
+
+
+def test_a_leader_that_stops_short_of_the_pin_does_not_answer_it():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 21.5, 10, height=0.8)])
+    board.silk_strokes = [("F.SilkS", [(20.6, 10.0), (17.0, 10.0)])]
+    findings = pcb_review.rule_silk_pin_legend(ctx_for(board))
+    assert findings[0].details["count"] == 1
+
+
+def test_a_name_in_a_lined_up_column_is_read_by_its_place_in_it():
+    # a header labelled down one side, every name the same distance out, with a
+    # bypass capacitor's pad marginally nearer to one of them than its own pin
+    header = footprint(
+        "J4",
+        10,
+        10,
+        [
+            pad(str(n), 10, 10 + 2.54 * (n - 1), net)
+            for n, net in enumerate(("A", "B", "C", "D"), 1)
+        ],
+    )
+    cap = footprint("C1", 17, 15, [pad("1", 17, 15.08, "VCC")])
+    board = board_from(
+        footprints=[header, cap],
+        silk=[
+            silk(net, 14, 10 + 2.54 * n, height=0.8) for n, net in enumerate(("A", "B", "C", "D"))
+        ],
+    )
+    assert pcb_review.rule_silk_pin_legend(ctx_for(board)) == []
+
+
+def test_two_names_side_by_side_are_not_a_column():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 21.5, 10, height=0.8)])
+    findings = pcb_review.rule_silk_pin_legend(ctx_for(board))
+    assert findings[0].details["count"] == 1
+
+
+def test_a_net_name_printed_across_the_board_is_not_a_pin_legend():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 45, 35, height=0.8)])
+    assert pcb_review.rule_silk_pin_legend(ctx_for(board)) == []
 
 
 def test_back_silkscreen_is_not_under_a_front_part():

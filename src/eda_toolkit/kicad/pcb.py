@@ -144,10 +144,27 @@ class Footprint:
     # pads - so anything asking "how much room does this take" wants this and
     # not the pad extent.
     courtyard: list[tuple[float, float]] = field(default_factory=list)
+    # The fabrication outline in board coordinates, as points: the part itself,
+    # where the courtyard is the part plus the room to place it. The difference
+    # decides whether a string printed there survives assembly - a designator
+    # beside a chip resistor, inside its courtyard, is read on the finished
+    # board; one between the pads of an electrolytic is under the can.
+    body: list[tuple[float, float]] = field(default_factory=list)
 
     @property
     def side(self) -> str:
         return "bottom" if self.layer.startswith("B.") else "top"
+
+    def body_box(self) -> tuple[float, float, float, float] | None:
+        """The fabrication outline's bounding box, or None where none is drawn."""
+        if not self.body:
+            return None
+        return (
+            min(p[0] for p in self.body),
+            min(p[1] for p in self.body),
+            max(p[0] for p in self.body),
+            max(p[1] for p in self.body),
+        )
 
     def courtyard_box(self) -> tuple[float, float, float, float] | None:
         """The courtyard's bounding box, or the pads' when it has none."""
@@ -270,6 +287,11 @@ class Board:
     # artwork - as (layer, polyline, stroke width). The ink is the copper.
     copper_strokes: list[tuple[str, list[tuple[float, float]], float]] = field(default_factory=list)
     silk_texts: list[dict[str, Any]] = field(default_factory=list)
+    # Board-level silkscreen graphics, as (layer, polyline). What a footprint
+    # draws round itself is its own business and is not collected here; these
+    # are the lines a board adds on top - a frame round a label, and the leader
+    # that ties one to the pin it names.
+    silk_strokes: list[tuple[str, list[tuple[float, float]]]] = field(default_factory=list)
     stackup: list[dict[str, Any]] = field(default_factory=list)
     _segments: list[tuple[tuple[float, float], tuple[float, float]]] | None = field(
         default=None, repr=False, compare=False
@@ -495,9 +517,13 @@ def parse(path: str | os.PathLike[str]) -> Board:
             uuid=str(fp_node.value("uuid", default="")),
         )
         courtyard_segs: list[tuple[tuple[float, float], tuple[float, float]]] = []
+        body_points: list[tuple[float, float]] = []
         for shape in ("fp_line", "fp_rect", "fp_poly", "fp_circle", "fp_arc", "fp_curve"):
             for node in fp_node.children(shape):
-                if not str(node.value("layer", default="")).endswith(".CrtYd"):
+                shape_layer = str(node.value("layer", default=""))
+                # The same points serve two questions: how much board the part
+                # claims, and how much of it the part itself covers.
+                if not shape_layer.endswith((".CrtYd", ".Fab")):
                     continue
                 raw: list[tuple[float, float]] = []
                 if shape == "fp_rect":
@@ -559,6 +585,11 @@ def parse(path: str | os.PathLike[str]) -> Board:
                 for cx, cy in raw:
                     gx, gy = _rotate(cx, cy, angle)
                     placed.append((gx + fp.x, gy + fp.y))
+                if shape_layer.endswith(".Fab"):
+                    # only ever asked for its extent, so the points are enough
+                    # and none of the chaining below applies
+                    body_points += placed
+                    continue
                 # each primitive is a chain of edges; a lone fp_line is one
                 courtyard_segs += [
                     (placed[i], placed[i + 1])
@@ -581,6 +612,7 @@ def parse(path: str | os.PathLike[str]) -> Board:
                 fp.courtyard = [seg[0] for seg in loop]
             else:
                 fp.courtyard = [pt for seg in courtyard_segs for pt in seg]
+        fp.body = body_points
 
         # shapes a footprint draws on copper are copper too - the same rules
         # the board-level graphics get, turned and placed with the part
@@ -928,7 +960,8 @@ def parse(path: str | os.PathLike[str]) -> Board:
     for tag in ("gr_rect", "gr_circle", "gr_poly", "gr_line", "gr_arc", "gr_curve"):
         for node in root.children(tag):
             layer_name = str(node.value("layer", default=""))
-            if not layer_name.endswith(".Cu"):
+            on_copper = layer_name.endswith(".Cu")
+            if not on_copper and not is_silk_layer(layer_name):
                 continue
             poly: list[tuple[float, float]] = []
             closed = tag in ("gr_rect", "gr_circle", "gr_poly")
@@ -976,6 +1009,11 @@ def parse(path: str | os.PathLike[str]) -> Board:
                     aex, aey, _ = _xy(end)
                     poly = outline_geom.arc_points((asx, asy), (amx, amy), (aex, aey))
             if len(poly) < 2:
+                continue
+            if not on_copper:
+                board.silk_strokes.append(
+                    (layer_name, [*poly, poly[0]] if closed and poly[-1] != poly[0] else poly)
+                )
                 continue
             if closed and len(poly) >= 3 and _graphic_is_filled(node):
                 board.copper_shapes.append((layer_name, poly))
