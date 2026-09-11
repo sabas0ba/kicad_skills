@@ -1937,6 +1937,14 @@ a leader: three on the buck converter, four on the op-amp board, two each on
 the motor driver and the Pico carrier, one on the FPGA board. The rest sit
 against their pins, which is better and is still what is tried first.
 
+Graded against KiCad's own demo boards, `silk.pin_legend` fires seven times on
+three of the eighteen, which is what a rule about one specific mistake should
+look like. `silk.under_part` fires 277 times on twelve of them, up from eleven
+before the own-outline clause, and nearly every one of those is a designator
+left where its library drew it. That is a habit on a hand-laid board and a
+defect on a generated one, so it stays a warning that the `ai-generated`
+policy promotes rather than an error everybody trips over.
+
 ### A loop that never existed
 
 The op-amp board's new copper also found a defect in the loop cutter. MID had a
