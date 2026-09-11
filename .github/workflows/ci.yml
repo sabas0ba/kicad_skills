@@ -58,7 +58,14 @@ jobs:
   golden-examples:
     name: golden (${{ matrix.example }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # Four of the five finish in two to six minutes. The fifth is the FPGA
+    # board, and this job routes it cold, twice: 71 minutes on one run and
+    # over 90 on the next, for the same board - the search is deterministic,
+    # so that spread is the runner rather than the work. At 90 the margin was
+    # eighteen minutes on a job that needs seventy, which is not a margin. The
+    # limit is here to kill a hung job, not to time a known one, so it is set
+    # at about twice the route.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
