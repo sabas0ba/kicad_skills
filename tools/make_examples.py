@@ -6595,7 +6595,7 @@ def _emerges(
     return None
 
 
-def _crosses(points: list[tuple[float, float]], box: tuple[float, float, float, float]) -> bool:
+def _runs_over(points: list[tuple[float, float]], box: tuple[float, float, float, float]) -> bool:
     """Whether a drawn polyline runs over a rectangle anywhere along it."""
     room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
     for a, b in pairwise(points):
@@ -7025,7 +7025,7 @@ def _framed_legend(
                 bounds[0] <= point[0] <= bounds[2] and bounds[1] <= point[1] <= bounds[3]
                 for point in legs
             )
-            and (home is None or not _crosses(legs, home))
+            and (home is None or not _runs_over(legs, home))
         ]
         if not routes:
             continue

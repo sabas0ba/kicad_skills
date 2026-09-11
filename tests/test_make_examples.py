@@ -1,3 +1,4 @@
+import ast
 import importlib.util
 import json
 import sys
@@ -230,6 +231,24 @@ def test_a_leader_bends_only_at_45_degrees(start, end):
         for (x1, y1), (x2, y2) in pairwise(path):
             dx, dy = abs(x2 - x1), abs(y2 - y1)
             assert dx < 1e-9 or dy < 1e-9 or abs(dx - dy) < 1e-9
+
+
+def test_no_module_defines_a_name_twice():
+    """A second `def` of a name replaces the first silently, and the first
+    one's callers then get the second one's signature. A leader-geometry helper
+    called `_crosses` took over the schematic wire planner's `_crosses`, and
+    every example stopped generating - on CI, where the wire plan is not
+    cached, which is the only place it showed."""
+    root = Path(__file__).parents[1]
+    for path in sorted([*(root / "tools").glob("*.py"), *(root / "src").rglob("*.py")]):
+        tree = ast.parse(path.read_text())
+        defined = [
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        ]
+        twice = sorted({name for name in defined if defined.count(name) > 1})
+        assert not twice, f"{path.relative_to(root)} defines {twice} more than once"
 
 
 def test_a_legend_is_read_as_naming_the_net_on_the_pad_beside_it():
