@@ -14,7 +14,7 @@ what they report converges.
 
 **Gate acceptance is not production sign-off.** These are worked examples,
 not hardware-validated reference designs. In particular, the FPGA still has
-16 decoupling-distance exceptions; multilayer signal return, application-specific
+decoupling-distance exceptions; signal return paths, application-specific
 power/thermal budgets and EMC remain engineering review and measurement work.
 
 ```bash
@@ -30,15 +30,14 @@ docker run --rm -u $(id -u):$(id -g) -v "$PWD:/work" -w /work \
   --entrypoint python3 eda-toolkit:9.0.9 tools/make_examples.py examples/
 ```
 
-and the images below with:
+and the images below with
+[`tools/example_images.py`](https://github.com/sabas0ba/kicad_skills/blob/main/tools/example_images.py),
+which runs the same two renders for every variant and writes them as JPEG:
 
 ```bash
-KICAD_VERSION=9.0.9 ./bin/eda.sh sch render examples/buck-5v/reviewed \
-    -o build/render/reviewed/schematic --dpi 150
-KICAD_VERSION=9.0.9 ./bin/eda.sh pcb render examples/buck-5v/reviewed \
-    -o build/render/reviewed/pcb --dpi 300 --views front back --per-layer --no-3d --no-sheet
-uv run --frozen python tools/update_example_images.py \
-    build/render/reviewed examples/buck-5v/images reviewed
+docker run --rm -u $(id -u):$(id -g) -v "$PWD:/work" -w /work \
+  -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+  --entrypoint python3 eda-toolkit:9.0.9 tools/example_images.py examples/
 ```
 
 The generator reads KiCad's own symbol and footprint libraries, so these are the
@@ -78,14 +77,26 @@ historical walkthrough, are the authority for each revision.
 What each of them still carries is a waiver, and a waiver here is a decision
 with the argument attached rather than a finding hidden. Package escape necks,
 board-only decoupling heuristics and deliberately exposed module rails remain
-visible there. The former FPGA and motor return-path waivers do not. Both
-rebuilt baselines reserve In1 for GND; the FPGA puts +3V3 on In2, and the motor
-driver puts VM there. **This is not a multilayer return-path sign-off.**
-`route.return_path` only evaluates two-layer boards. In2, not In1, is adjacent
-to B.Cu, and the FPGA also routes one SPI clock through the In2 pour. CI checks
-the four-layer structure, absence of foreign routing on In1 and a dominant
-filled GND region, and publishes individual copper layers for inspection.
-Reference transitions, actual dielectric stack-up and EMC still need review.
+visible there.
+
+**All five are two-layer boards, and that is a requirement rather than an
+outcome.** Layer count is the one board parameter that changes the price of a
+prototype run outright, so a design that will not close on two layers grows a
+few millimetres of FR4 before it grows a stack. The motor driver pays for that
+with one waiver — `route.return_path`, measured at 12.8 mm and 10.4 mm against
+a 10 mm limit, on two logic lanes crossing under the bridge outputs — and the
+waiver says what a faster design should do instead. CI checks the two-layer
+stack and that the ground pour on B.Cu is still mostly one piece.
+
+Two rules keep the rest of it honest. `layout.pour_edge_cut` reports copper
+that eats through the outermost millimetre of the ground pour: the rim is what
+the board radiates into and what every edge-hugging track returns through, and
+a mounting hole may interrupt it where a route may not. `route.under_package`
+and `route.via_under_package` keep other nets' tracks and vias out from under
+the integrated circuits and connectors, where nothing can be probed, inspected
+or reworked once the part is down. All three are warnings that the
+`ai-generated` policy blocks on: a shipped board may carry them and be right,
+a generated one has no argument for them.
 
 All five carry what a board needs to be *made* as well as to work: the ground
 pour is filled by KiCad's own filler against the board's own rules, every
@@ -105,7 +116,7 @@ Both variants carry it in their title block, in the comment fields, on the
 schematic and on the board:
 
 ```
-(comment 1 "generated 2026-09-05 by OpenAI Codex")
+(comment 1 "generated 2026-09-05 by Claude Code")
 (comment 2 "from tools/make_examples.py in sabas0ba/kicad_skills")
 ```
 
@@ -122,7 +133,8 @@ findings, and the stamp deliberately does not paper over it.
 
 ## buck-5v — 12 V to 5 V at 2 A
 
-LM2596S-5, catch diode, output inductor, screw terminals in and out.
+LM2596S-5, catch diode, output inductor, screw terminals in and out, and a fuse
+and a TVS between the input terminal and everything else.
 
 Under KiCad's own ERC and DRC, and the `ai-generated` policy:
 
@@ -182,6 +194,7 @@ What separates them, and which check finds it:
 | no title block, no design notes | `readability.title_block`, `spec.no_design_notes` |
 | no tolerance / voltage / current rating, no MPN | `spec.missing_rating`, `spec.missing_part_number` |
 | capacitors chosen without derating the rail | `spec.voltage_derating` |
+| no ESR stated on the output capacitor the regulator's loop depends on | `spec.missing_esr` |
 | no ground pour | `layout.no_ground_plane` |
 | parts off the placement grid, turned to 37 degrees | `layout.off_grid_placement`, `layout.odd_rotation` |
 | power routed at signal width | `track.thin_power` |
@@ -207,10 +220,11 @@ Laying out a real board found four things the rules and the parser had wrong:
 
 ## motor-driver — dual H-bridge, DRV8833PW, 2 × 0.5 A RMS
 
-Two brushed DC motors, screw terminals out, an eight pin logic header, and the
-charge pump and bypass capacitors. The PW package is rated at 0.5 A RMS per
-bridge at VM = 5 V and 25 °C, not the 1.5 A of the thermally enhanced PWP/RTY
-packages. Confirm temperature and motor stall current for the actual load.
+Two brushed DC motors, screw terminals out, an eight pin logic header, the
+charge pump and bypass capacitors, and a fuse and a TVS on the motor supply.
+The PW package is rated at 0.5 A RMS per bridge at VM = 5 V and 25 °C, not the
+1.5 A of the thermally enhanced PWP/RTY packages. Confirm temperature and motor
+stall current for the actual load.
 [TI DRV8833 datasheet](https://www.ti.com/lit/ds/symlink/drv8833.pdf).
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
@@ -232,20 +246,19 @@ regulation; overcurrent fault shutdown is not a 0.5 A current regulator.
 | ![board front, first edition](motor-driver/images/board-front-first.jpg) | ![board front, as generated](motor-driver/images/board-front-as-generated.jpg) | ![board front, reviewed](motor-driver/images/board-front-reviewed.jpg) |
 | ![board back, first edition](motor-driver/images/board-back-first.jpg) | ![board back, as generated](motor-driver/images/board-back-as-generated.jpg) | ![board back, reviewed](motor-driver/images/board-back-reviewed.jpg) |
 
-The back layer carries logic crossings, leaving room for local supply bypass
-on the front. Its adjacent inner layer is In2 (VM), not In1 (GND); inspect the
-inner-layer images and reference transitions as well as the outer tracks.
-
-| In1: GND | In2: VM |
-| --- | --- |
-| ![Motor inner ground](motor-driver/images/board-in1-reviewed.jpg) | ![Motor inner supply](motor-driver/images/board-in2-reviewed.jpg) |
+The back layer is the ground pour and the four logic lanes that cross under
+the bridge outputs, which leaves the front free for the supply row and the
+local bypass. VM reaches the driver down a stated front-side spine rather than
+through a plane: the board is two-layer on purpose, and the spine is what that
+decision looks like in copper.
 
 ### What this one is honest about
 
 The first rebuild still placed C2/C3/C4 about 12 mm from their IC pins. That
 was a consequence of the chosen long escape fan, not an unavoidable TSSOP
 constraint. The follow-up puts all three capacitors beside the supply row,
-drops the logic locally to B.Cu, and connects the IC grounds directly to In1.
+drops the logic locally to B.Cu, and takes the IC grounds straight into the
+back-layer pour through their own vias.
 The decoupling-distance waiver is removed; the normal 5 mm limit applies.
 The generated board measures 2.69 mm from VM to C2, 2.88 mm from VINT to C4,
 and 3.37 mm from VCP to C3 (pad centres, not complete current-loop lengths).
@@ -273,7 +286,8 @@ protection or EMC; those remain application-specific design work.
 ## pico-carrier — Raspberry Pi Pico, every pin broken out
 
 A carrier board: the module, two twenty-pin headers beside it, and a 5 V input
-that reaches VSYS the way the Pico datasheet asks for.
+that reaches VSYS through a resettable fuse and then the Schottky the Pico
+datasheet asks for.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
@@ -334,7 +348,9 @@ few places where it is not:
 ## opamp-filter — 1 kHz Sallen-Key low pass, single 5 V
 
 Two MCP6001 singles: one is the filter, the other buffers the half-rail the
-filter is referenced to.
+filter is referenced to. The supply comes in through a fuse and a TVS, and the
+output leaves through a 100 ohm isolation resistor before its coupling
+capacitor.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
@@ -382,7 +398,9 @@ new `analog.no_dc_path` rule now catches from the netlist alone.
 ## fpga-audio — iCE40UP5K to PCM5102A, I2S out
 
 An FPGA, an I2S DAC, the SPI flash the FPGA boots from, a 12 MHz oscillator and
-a 1.2 V regulator for the core — on four layers.
+a 1.2 V regulator for the core — on two layers. The 3.3 V input is fused and
+clamped, the clock leaves the oscillator through a series resistor, and the
+DAC's mute is held by a pull-down until the configured FPGA releases it.
 
 | | verdict | schematic (e/w/i) | board (e/w/i) |
 | --- | --- | --- | --- |
@@ -391,15 +409,14 @@ a 1.2 V regulator for the core — on four layers.
 | first edition | **FAIL**, 34 blocking | — | — |
 
 Under KiCad's own checks `reviewed` is clean: no DRC errors, nothing
-unconnected, no schematic-parity findings. The rebuilt floorplan is 76 x 58 mm
-instead of 100 x 84 mm. The FPGA, codec, flash and regulator form one compact
-signal-flow block; the line-out and configuration headers sit on the edges they
-serve. Four ordered I2S runs cross on B.Cu; In2 power, not In1 GND, is adjacent
-to those tracks. The +3V3 distribution uses an In2 plane instead of a long
-outer-layer trunk. The short +1V2 spine remains on B.Cu beneath its own FPGA
-block. No two-layer return-path finding is evidence of multilayer signal
-integrity: that rule skips this stack. The inner-layer renders and structural
-GND-plane check are regression evidence, not an impedance/EMC assessment.
+unconnected, no schematic-parity findings. This is the board that pays for the
+two-layer rule in area: a 48-pin QFN, a codec, a boot flash and an oscillator
+escaped on two layers need 100 x 84 mm, where four layers fitted the same
+circuit into 76 x 58 mm. Area is the cheaper currency. The FPGA, codec, flash
+and regulator still form one signal-flow block; the line-out and configuration
+headers sit on the edges they serve, and the +3V3 distribution is outer-layer
+copper rather than a plane. Four ordered I2S runs cross on B.Cu, and the short
++1V2 spine runs there under its own FPGA block.
 
 The earlier engineering pass also fixed four electrical faults that the new
 floorplan retains: the PCM5102A charge pump is CAPP–CAPM with a VNEG reservoir,
@@ -412,19 +429,16 @@ pull-up, and the LDO reservoir is 2.2 uF.
 | ![board front, first edition](fpga-audio/images/board-front-first.jpg) | ![board front, as generated](fpga-audio/images/board-front-as-generated.jpg) | ![board front, reviewed](fpga-audio/images/board-front-reviewed.jpg) |
 | ![board back, first edition](fpga-audio/images/board-back-first.jpg) | ![board back, as generated](fpga-audio/images/board-back-as-generated.jpg) | ![board back, reviewed](fpga-audio/images/board-back-reviewed.jpg) |
 
-| In1: GND | In2: +3V3 and SPI clock lane |
-| --- | --- |
-| ![FPGA inner ground](fpga-audio/images/board-in1-reviewed.jpg) | ![FPGA inner power](fpga-audio/images/board-in2-reviewed.jpg) |
-
 These are actual KiCad copper renders. The image utility only removes the
 empty page margin and converts the format; it does not redraw or rescale copper.
 
 ### What this one is honest about
 
-**Four layers are this example's design choice, not a law imposed by QFN pitch.**
-The earlier two-layer version paid in plane cuts, routing tours and board area.
-The present design separates an inner GND layer from signal routing, but its
-long fan and capacitor placement still have room for improvement.
+**Two layers are this example's design choice, and the area is what it costs.**
+A four-layer stack fits the same circuit into 76 x 58 mm and gives the return
+path an uncut plane; this board buys neither, and pays in plane cuts, routing
+tours and 100 x 84 mm of laminate. The trade is stated rather than engineered
+away, and its long fan and capacitor placement still have room for improvement.
 
 The findings that follow from it, at the scale a 48-pin part gives them:
 

@@ -6,17 +6,18 @@ extends = "ai-generated"
 [[waivers]]
 rule = "layout.decoupling_distance"
 reason = """This demonstration floorplan retains 16 supply-pin distances over \
-the 5 mm heuristic. Local capacitor ground vias and the inner GND plane do \
-not prove that the full bypass loop is adequate. The existing top-side fan \
+the 5 mm heuristic. Local capacitor ground vias and the back-side GND pour \
+do not prove that the full bypass loop is adequate. The existing top-side fan \
 is a baseline limitation, not a demonstrated minimum imposed by QFN pitch \
 or single-sided assembly. Closer placement and supply-loop verification \
 remain open work before treating this as a production reference layout."""
 
 [[waivers]]
 rule = "track.thin_power"
-reason = """The QFN escape uses 0.2 mm copper; +3V3 distribution uses In2 and \
-the +1V2 back-side spine remains narrow. The IPC-2221 estimate of 0.745 A at \
-a 10 C rise assumes 1 oz external copper and is a screening estimate, not \
+reason = """The QFN escape uses 0.2 mm copper, and both the +3V3 distribution \
+and the +1V2 back-side spine remain narrow on two layers. The IPC-2221 \
+estimate of 0.745 A at a 10 C rise assumes 1 oz external copper and is a \
+screening estimate, not \
 a validated power budget. FPGA consumption depends on the bitstream and \
 IO activity, which this example does not specify. This demonstration \
 exception requires actual rail-current, voltage-drop and thermal checks \
@@ -32,3 +33,71 @@ externally supplied rail is driven. A flag is an assertion, not a driver, so \
 any IO tied to a flagged rail produces this pair. The alternative is a pull-up \
 resistor on each pin, which buys the ability to drive them from a fabric this \
 design does not wire to them."""
+
+[[waivers]]
+rule = "layout.connection_span"
+reason = """The four I2S runs between the FPGA and the codec measure 25.7 mm \
+against a 25 mm limit, and the 0.7 mm is the two packages, not the placement. \
+U1 is a QFN-48 and U2 a TSSOP-20; each needs its escape fan and its bypass \
+bank on the side facing the other, and the pads the rule measures are on the \
+outer rows of two parts already as close as their own escapes allow. The bus \
+is four parallel ordered runs that cross nothing, which is the shape this \
+rule exists to produce. Everything else the rule found on this board was a \
+placement fault and was fixed by moving the part: the boot flash came up ten \
+millimetres to meet the FPGA's SPI port, the configuration header came eight \
+west along the bottom edge, and CRESET's pull-up now stands between its two \
+ends instead of beside CDONE's."""
+
+[[waivers]]
+rule = "route.return_path"
+reason = """The price of two layers on the hardest board in the set, measured \
+and accepted. A QFN-48, a codec, a boot flash and an oscillator escaped on two \
+faces leave the back carrying the SPI bus, XSMT and one I2S run as well as the \
+ground pour, and where those cross the front-side supply fan the pour is in \
+pieces. The rule measures /SPI_SS running 24.9 mm over them, /SPI_SCK 19.4 mm, \
+/SPI_SI 16.2 mm, /SPI_SO 15.9 mm, /XSMT 13.4 mm and /I2S_BCK 11.5 mm, against \
+a 10 mm limit. What removes it outright is an inner ground plane, and the \
+whole point of this revision is that a four-layer stack is a price paid per \
+board for the life of the design. These are a boot bus that runs once at \
+power-up, a mute line that changes state twice, and one bit clock. A design \
+clocking that bus fast, or one already paying for four layers, should not copy \
+this waiver. The board's outer ring is intact - `layout.pour_edge_cut` is \
+clean - so the return that does cross a cut still has the rim to come home on."""
+
+[[waivers]]
+rule = "route.detour"
+reason = """XSMT, and the reason is R6's only possible seat. The mute line runs \
+from the FPGA's east side through its pull-down to the codec's west side, and \
+the strip between those two packages is the corridor five other nets cross. \
+R6 was tried in it, at (55, 40): the router could not seat the resistor's own \
+ground stub there, and +3V3, GND and XSMT each failed to find a lane - the \
+generator gave up on the board. North of the corridor it routes, and XSMT pays \
+123 mm of copper for 29.5 mm of net. One net's detour against five nets' worth \
+of blocked lanes is the trade, and it is the pull-down on a mute line that \
+changes state twice per power cycle."""
+
+[[waivers]]
+rule = "route.wander"
+reason = """The same XSMT run measured per-run rather than per-net (95.6 mm \
+between two points 9.9 mm apart), and CLK12 at 3.2x. Both are the congestion \
+between the FPGA and the codec on two layers: the oscillator's damped clock \
+enters that corridor from the west and the mute line crosses it. Neither is \
+fixable by routing - the corridor is full - and both were measured against the \
+alternative, which is a board that does not route at all."""
+
+[[waivers]]
+rule = "route.width_step"
+reason = """One step, 0.20 to 0.40 mm, where the core rail's link from C4 meets \
+the stated +1V2 spine at (25.5, 42.25). The spine is power copper and the link \
+is asked for at power width; what steps is the last stretch of C4's own escape, \
+which leaves a 0603 pad at the width the escape fan uses. Widening the escape \
+means widening the fan, and the fan's width is set by the pitch it walks out \
+of, not by this rail's current."""
+
+[[waivers]]
+rule = "route.acute_angle"
+reason = """One corner at 88 degrees, two under the 90 the convention asks for, \
+on the +1V2 escape at (25.01, 99.26). It is reported as `info` by the rule \
+itself and promoted here by the `ai-generated` policy. Two degrees on one \
+corner of a 0.2 mm escape is not an acid trap and not an impedance step; it is \
+the geometry of a fan leaving a pad row at the angle the pitch allows."""

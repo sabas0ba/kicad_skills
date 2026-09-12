@@ -596,6 +596,139 @@ def test_silkscreen_clear_of_the_pad_is_quiet():
     assert pcb_review.rule_silk_over_pad(ctx_for(board)) == []
 
 
+def _with_courtyard(fp, x0, y0, x1, y1):
+    fp.courtyard = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    return fp
+
+
+def test_silkscreen_under_a_neighbours_body():
+    fuse = footprint("F1", 10, 10, [pad("1", 10, 10, "VIN")])
+    cap = _with_courtyard(footprint("C1", 16, 10, [pad("1", 16, 10, "VIN")]), 13, 7, 19, 13)
+    board = board_from(
+        footprints=[fuse, cap],
+        # F1's designator, a millimetre inside C1's outline
+        silk=[silk("F1", 14, 10, height=1.0, footprint="F1")],
+    )
+    findings = pcb_review.rule_silk_under_part(ctx_for(board))
+    assert findings[0].details["examples"] == ["'F1' under C1"]
+
+
+def _with_body(fp, x0, y0, x1, y1):
+    fp.body = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    return fp
+
+
+def test_silkscreen_inside_its_own_courtyard_is_the_convention():
+    # the courtyard is the part plus the room to place it, and a name in that
+    # margin is read on the finished board
+    cap = _with_body(
+        _with_courtyard(footprint("C1", 16, 10, [pad("1", 16, 10, "VIN")]), 13, 7, 19, 13),
+        14,
+        9,
+        18,
+        11,
+    )
+    board = board_from(footprints=[cap], silk=[silk("C1", 16, 8, height=1.0, footprint="C1")])
+    assert pcb_review.rule_silk_under_part(ctx_for(board)) == []
+
+
+def test_silkscreen_under_the_part_that_names_it():
+    # an electrolytic spans its own pads, so the clear gap between them, which
+    # is where a library puts the name, is under the can
+    cap = _with_body(
+        _with_courtyard(
+            footprint("C1", 16, 10, [pad("1", 16, 6, "VIN"), pad("2", 16, 14, "GND")]),
+            12,
+            4,
+            20,
+            16,
+        ),
+        13,
+        5,
+        19,
+        15,
+    )
+    board = board_from(footprints=[cap], silk=[silk("C1", 16, 10, height=1.0, footprint="C1")])
+    findings = pcb_review.rule_silk_under_part(ctx_for(board))
+    assert findings[0].details["examples"] == ["'C1' under C1 itself"]
+
+
+def _terminal_and_fuse():
+    """A supply terminal with a fuse between it and the rest of the board."""
+    return [
+        footprint("J1", 10, 12, [pad("1", 10, 10, "/VIN"), pad("2", 10, 15, "GND")]),
+        footprint("F1", 20, 10, [pad("1", 20, 10, "/+12V")]),
+    ]
+
+
+def test_a_pin_legend_pushed_past_the_fuse_names_the_fuse():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 21.5, 10, height=0.8)])
+    findings = pcb_review.rule_silk_pin_legend(ctx_for(board))
+    assert findings[0].details["examples"] == ["'VIN' nearest F1 rather than the pin it names"]
+
+
+def test_a_pin_legend_on_its_own_pin_is_quiet():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 12.5, 10, height=0.8)])
+    assert pcb_review.rule_silk_pin_legend(ctx_for(board)) == []
+
+
+def test_a_leader_back_to_the_pin_answers_the_question():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 21.5, 10, height=0.8)])
+    # framed label, then two legs back to the pad: the elbow is what makes the
+    # chain rather than one straight line
+    board.silk_strokes = [
+        ("F.SilkS", [(20.6, 10.0), (16.0, 6.0)]),
+        ("F.SilkS", [(16.0, 6.0), (12.0, 10.0)]),
+    ]
+    assert pcb_review.rule_silk_pin_legend(ctx_for(board)) == []
+
+
+def test_a_leader_that_stops_short_of_the_pin_does_not_answer_it():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 21.5, 10, height=0.8)])
+    board.silk_strokes = [("F.SilkS", [(20.6, 10.0), (17.0, 10.0)])]
+    findings = pcb_review.rule_silk_pin_legend(ctx_for(board))
+    assert findings[0].details["count"] == 1
+
+
+def test_a_name_in_a_lined_up_column_is_read_by_its_place_in_it():
+    # a header labelled down one side, every name the same distance out, with a
+    # bypass capacitor's pad marginally nearer to one of them than its own pin
+    header = footprint(
+        "J4",
+        10,
+        10,
+        [
+            pad(str(n), 10, 10 + 2.54 * (n - 1), net)
+            for n, net in enumerate(("A", "B", "C", "D"), 1)
+        ],
+    )
+    cap = footprint("C1", 17, 15, [pad("1", 17, 15.08, "VCC")])
+    board = board_from(
+        footprints=[header, cap],
+        silk=[
+            silk(net, 14, 10 + 2.54 * n, height=0.8) for n, net in enumerate(("A", "B", "C", "D"))
+        ],
+    )
+    assert pcb_review.rule_silk_pin_legend(ctx_for(board)) == []
+
+
+def test_two_names_side_by_side_are_not_a_column():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 21.5, 10, height=0.8)])
+    findings = pcb_review.rule_silk_pin_legend(ctx_for(board))
+    assert findings[0].details["count"] == 1
+
+
+def test_a_net_name_printed_across_the_board_is_not_a_pin_legend():
+    board = board_from(footprints=_terminal_and_fuse(), silk=[silk("VIN", 45, 35, height=0.8)])
+    assert pcb_review.rule_silk_pin_legend(ctx_for(board)) == []
+
+
+def test_back_silkscreen_is_not_under_a_front_part():
+    cap = _with_courtyard(footprint("C1", 16, 10, [pad("1", 16, 10, "VIN")]), 13, 7, 19, 13)
+    board = board_from(footprints=[cap], silk=[silk("R9", 16, 10, layer="B.SilkS")])
+    assert pcb_review.rule_silk_under_part(ctx_for(board)) == []
+
+
 def test_back_silkscreen_is_not_matched_against_front_pads():
     board = board_from(
         footprints=[footprint("R1", 10, 10, [pad("1", 10, 10, "SIG", size=(2.0, 2.0))])],
@@ -1039,6 +1172,135 @@ def test_a_foreign_track_under_a_package_is_reported():
     ]
     around = board_from(footprints=[ic], tracks=[track(10, 32, 30, 32, net="OTHER")])
     assert pcb_review.rule_route_under_package(ctx_for(around)) == []
+
+
+def two_pin_connector(ref="J1", x=10.0, y=10.0):
+    """A screw terminal: two pads, and a body that reaches well past them."""
+    part = footprint(ref, x, y, [pad("1", x, y, "VIN"), pad("2", x + 5, y, "GND")])
+    part.courtyard = [(x - 3, y - 5), (x + 8, y - 5), (x + 8, y + 5), (x - 3, y + 5)]
+    return part
+
+
+def test_a_foreign_track_under_a_connector_is_reported():
+    """Two pads, but a body a cable plugs into: the copper under it is hidden."""
+    terminal = two_pin_connector()
+    under = board_from(footprints=[terminal], tracks=[track(0, 12, 30, 12, net="OTHER")])
+    assert [f.rule for f in pcb_review.rule_route_under_package(ctx_for(under))] == [
+        "route.under_package"
+    ]
+    # its own nets belong there - that is what a pad escape is
+    own = board_from(footprints=[terminal], tracks=[track(0, 12, 30, 12, net="VIN")])
+    assert pcb_review.rule_route_under_package(ctx_for(own)) == []
+    clear = board_from(footprints=[terminal], tracks=[track(0, 20, 30, 20, net="OTHER")])
+    assert pcb_review.rule_route_under_package(ctx_for(clear)) == []
+
+
+def test_a_foreign_via_under_a_package_is_reported():
+    ic = footprint("U1", 20, 20, [pad(str(i), 16 + i, 16, "OWN") for i in range(1, 9)])
+    ic.pads += [pad(str(i + 8), 16 + i, 24, "OWN") for i in range(1, 9)]
+    foreign = pcb.Via(20, 20, 0.8, 0.4, ["F.Cu", "B.Cu"], 1, "OTHER")
+    board = board_from(footprints=[ic], vias=[foreign])
+    assert [f.rule for f in pcb_review.rule_via_under_package(ctx_for(board))] == [
+        "route.via_under_package"
+    ]
+    # the part's own net under its own body is the stitching it wants
+    mine = pcb.Via(20, 20, 0.8, 0.4, ["F.Cu", "B.Cu"], 1, "OWN")
+    assert pcb_review.rule_via_under_package(ctx_for(board_from([ic], vias=[mine]))) == []
+    # and so is a thermal via inside one of its pads, whatever the net
+    exposed = footprint("U2", 20, 20, [pad("1", 20, 20, "OWN", size=(4.0, 4.0))])
+    exposed.pads += [pad(str(i + 1), 16 + i, 26, "OWN") for i in range(1, 9)]
+    thermal = pcb.Via(20, 20, 0.4, 0.2, ["F.Cu", "B.Cu"], 1, "GND")
+    assert pcb_review.rule_via_under_package(ctx_for(board_from([exposed], vias=[thermal]))) == []
+
+
+def ring_zone(net="GND", layer="B.Cu", gap=None):
+    """A square pour, optionally with a stretch of its rim missing."""
+    outline = [(2.0, 2.0), (48.0, 2.0), (48.0, 38.0), (2.0, 38.0)]
+    if gap is None:
+        fill = list(outline)
+    else:
+        # the fill stops short of the left edge between the two gap heights,
+        # which is what a track laid up that edge leaves behind
+        low, high = gap
+        fill = [
+            (2.0, 2.0),
+            (48.0, 2.0),
+            (48.0, 38.0),
+            (2.0, 38.0),
+            (2.0, high),
+            (6.0, high),
+            (6.0, low),
+            (2.0, low),
+        ]
+    return pcb.Zone(net=net, layers=[layer], filled=True, outline=outline, fills=[(layer, fill)])
+
+
+def test_a_route_that_eats_the_pours_outer_ring_is_reported():
+    intact = board_from(zones=[ring_zone()])
+    assert pcb_review.rule_pour_edge_cut(ctx_for(intact)) == []
+    # a bite with nothing in it is a mounting hole's business, not this rule's
+    bitten = board_from(zones=[ring_zone(gap=(10.0, 30.0))])
+    assert pcb_review.rule_pour_edge_cut(ctx_for(bitten)) == []
+    # the same bite with a foreign track standing in it is the finding
+    cut = board_from(
+        zones=[ring_zone(gap=(10.0, 30.0))],
+        tracks=[track(3.0, 10.0, 3.0, 30.0, width=0.5, net="SIG", layer="B.Cu")],
+    )
+    findings = pcb_review.rule_pour_edge_cut(ctx_for(cut))
+    assert [f.rule for f in findings] == ["layout.pour_edge_cut"]
+    assert findings[0].severity == "warning"
+    assert findings[0].details["longest_gap_mm"] >= 20.0
+    # a track on the other face removes no copper from this one
+    other_face = board_from(
+        zones=[ring_zone(gap=(10.0, 30.0))],
+        tracks=[track(3.0, 10.0, 3.0, 30.0, width=0.5, net="SIG", layer="F.Cu")],
+    )
+    assert pcb_review.rule_pour_edge_cut(ctx_for(other_face)) == []
+
+
+def test_a_cut_sitting_on_the_outlines_first_vertex_is_measured_whole():
+    """The rim is a loop; the sample list is that loop cut open somewhere.
+
+    The missing copper here is 2 mm along the top edge and 2 mm down the left,
+    meeting at the corner the outline starts from. Measured as two runs both
+    clear the 3 mm limit; measured as the one gap it is, it does not.
+    """
+    outline = [(2.0, 2.0), (48.0, 2.0), (48.0, 38.0), (2.0, 38.0)]
+    fill = [(4.0, 2.0), (48.0, 2.0), (48.0, 38.0), (2.0, 38.0), (2.0, 4.0), (4.0, 4.0)]
+    board = board_from(
+        zones=[
+            pcb.Zone(
+                net="GND",
+                layers=["B.Cu"],
+                filled=True,
+                outline=outline,
+                fills=[("B.Cu", fill)],
+            )
+        ],
+        tracks=[track(2.5, 2.5, 3.9, 2.5, width=0.5, net="SIG", layer="B.Cu")],
+    )
+    findings = pcb_review.rule_pour_edge_cut(ctx_for(board))
+    assert [f.rule for f in findings] == ["layout.pour_edge_cut"]
+    assert findings[0].details["longest_gap_mm"] > 3.0
+
+
+def test_a_via_that_does_not_reach_the_pours_layer_is_not_blamed():
+    """A blind via drilled between two other faces removes no copper here."""
+    zone = ring_zone(gap=(10.0, 30.0))
+    blind = pcb.Via(3.0, 20.0, 0.8, 0.4, ["F.Cu", "In1.Cu"], 1, "SIG")
+    assert pcb_review.rule_pour_edge_cut(ctx_for(board_from(zones=[zone], vias=[blind]))) == []
+    through = pcb.Via(3.0, 20.0, 0.8, 0.4, ["F.Cu", "B.Cu"], 1, "SIG")
+    findings = pcb_review.rule_pour_edge_cut(ctx_for(board_from(zones=[zone], vias=[through])))
+    assert [f.rule for f in findings] == ["layout.pour_edge_cut"]
+
+
+def test_a_short_bite_out_of_the_rim_is_not_a_cut():
+    """A through-hole land at the edge interrupts the ring and is allowed to."""
+    nibbled = board_from(
+        zones=[ring_zone(gap=(20.0, 22.0))],
+        tracks=[track(3.0, 20.0, 3.0, 22.0, width=0.5, net="SIG", layer="B.Cu")],
+    )
+    assert pcb_review.rule_pour_edge_cut(ctx_for(nibbled)) == []
 
 
 def test_a_keepout_left_at_the_origin_is_reported():

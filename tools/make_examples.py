@@ -36,9 +36,9 @@ import re
 import sys
 import uuid
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from itertools import pairwise
+from itertools import combinations, pairwise
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -71,11 +71,16 @@ NAMESPACE = uuid.UUID("6f1a0f3e-0000-4000-8000-000000000000")
 # of what a generator of this vintage actually wrote, and a year from now that
 # is the only thing that dates it.
 GENERATED_ON = "2026-09-05"
-GENERATED_BY = "OpenAI Codex"
+GENERATED_BY = "Claude Code"
 
 GEOM_EPS = 1e-6
 GEOM_TOL = 0.001  # two points this close on the sheet are the same point
 VIA_SIZE = 0.8  # what the router drops when it has to change layer
+# How near two drilled holes may be, centre to centre. KiCad's own constraint
+# on these boards is 0.2495 mm between the barrels, which for the 0.4 mm drills
+# here is 0.65 mm between centres; the round number above it is what the
+# generator places to.
+HOLE_TO_HOLE_MM = 0.7
 POUR_NET = "GND"  # the net every ground pour in these examples belongs to
 
 
@@ -128,6 +133,11 @@ class Part:
     # needs, and one more string to collide with a wire. The libraries leave
     # both visible, so this is the design's call rather than theirs.
     show_value: bool = True
+    # Whether the designator prints on the board's silkscreen. A fiducial's
+    # does not: it names a target the assembly machine finds optically, nobody
+    # reads it on a bare board, and on a small board it competes for the same
+    # edge strip the board's own name needs.
+    show_reference: bool = True
     # Which unit of a multi-unit symbol this is. A design lists the same
     # reference once per unit, each with its own place on the sheet; the board
     # only ever sees the first of them, because there is one footprint.
@@ -197,6 +207,22 @@ SILK_CLEARANCE = 0.2
 
 SILK_EDGE_ROOM = 1.0
 SILK_EDGE_MARGIN = 0.5
+
+# The generator's own silk graphics: the frame round a relocated pin legend and
+# the leader that ties it back to its pad. 0.12 is what KiCad's own libraries
+# draw their outlines at.
+SILK_LINE_WIDTH = 0.12
+# The air between a framed label's text and its frame.
+SILK_FRAME_ROOM = 0.3
+# How finely a leader is sampled when asking whether it crosses anything, and
+# how long it has to be drawn before it reads as a pointer rather than a tick.
+SILK_LEADER_STEP = 0.3
+SILK_LEADER_MIN = 1.5
+# How many of a connector's legends have to sit at one offset from their own
+# pins before the row is a column a person reads by position rather than by
+# proximity. Two names are two names; three in a line are a pinout, and taking
+# one of them out of the line to point at its pin makes the pinout worse.
+LEGEND_COLUMN_MIN = 3
 
 # When a surface pad is a heat sink rather than a land: the same two numbers
 # the review rules use to tell a thermal pad from a chip part.
@@ -281,6 +307,22 @@ class Design:
     # space between the pad rows is closed to everything but the pads' own
     # entries.
     route_keepout: tuple[str, ...] = ()
+    # Footprints whose whole courtyard is closed to copper of any net but their
+    # own. `route_keepout` fences the strip *between* two rows of pads, which a
+    # single-row part does not have: a 1xN header's body is one column of pads
+    # and the board either side of it, and a rail crossing it is exactly the
+    # `route.under_package` a connector reports - under the shell, where nobody
+    # can probe it and the housing has to come off to see it. The part's own
+    # escapes still leave, which is why this is not a plain rectangle in
+    # `keepouts`.
+    body_keepout: tuple[str, ...] = ()
+    # Nets the rest of the board is routed around, beyond the ones the widths
+    # already say. A track wider than the board's thinnest carries current and
+    # has first pick by that alone; a clock, a bus that must arrive together,
+    # a pair that has to stay a pair, carry nothing extra and have to be named.
+    # See `_route_rank`: a net in this class is routed first and is never moved
+    # behind a plain one to make room, so the plain one goes round instead.
+    priority_nets: tuple[str, ...] = ()
     # Rectangles of board, in board coordinates, closed to the router on both
     # faces. A part at the edge of a board leaves a strip behind it that is
     # routable and never the right answer: a search that finds it comes at the
@@ -2441,6 +2483,7 @@ def _move_reference_off_pads(
     node: SNode,
     all_pads: list[tuple[float, float, float, float]] | None = None,
     printed: list[tuple[float, float, float, float]] | None = None,
+    bodies: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
     """Put the designator somewhere it can still be read after assembly.
 
@@ -2449,6 +2492,12 @@ def _move_reference_off_pads(
     bottom is the middle of a pad. Silk over a pad is not a designator: the
     mask opens there, the ink is scraped off in fabrication, and what is left
     is a pad that will not wet.
+
+    ``bodies`` are the other parts' courtyards, and they weigh as much as a
+    pad: a designator under a neighbour's shell prints fine on the bare board
+    and is gone the moment that neighbour is fitted. The fuse on the motor
+    driver had its name a millimetre inside the bulk capacitor's outline. The
+    part's own body weighs the same, and for the same reason.
 
     Measured on the board rather than in the footprint's own frame, because
     the two disagree the moment the part is turned: the anchor rotates with
@@ -2474,20 +2523,61 @@ def _move_reference_off_pads(
     obstacles = list(all_pads if all_pads is not None else pads) + list(printed or [])
     # the extent KiCad will actually print, rounded up (see `_text_extent`)
     half_x, half_y = _text_extent(part.ref, 1.0)
-    # How far out to look. A designator prints horizontally whatever the
-    # footprint's rotation, so on a turned part the string reaches along an
-    # axis the footprint's own frame calls the other one - and a two-terminal
-    # chip part is narrower than its own three-character name. Both local axes
-    # are tried, at increasing distance, and near beats far.
-    spread = max(box[2] - box[0] for box in pads) / 2
-    steps = [round(half_x + spread + gap, 3) for gap in (0.4, 1.0, 1.8, 2.8)]
+    # What the designator has to step clear of is the part itself. Its own body
+    # hides more of its name than any neighbour does: an electrolytic capacitor
+    # and an inductor each span their own two pads, and a module spans fifty
+    # millimetres of them, so the clear gap a library leaves between the pads is
+    # under the part and the name printed there is readable exactly until the
+    # board is assembled. The courtyard is the fallback for a footprint that
+    # draws no fabrication outline.
+    own = _body_box(design, part) or _courtyard_box(design, part)
+    if own is None:
+        own = (
+            min(box[0] for box in pads),
+            min(box[1] for box in pads),
+            max(box[2] for box in pads),
+            max(box[3] for box in pads),
+        )
+    heavy = [*(bodies or []), own]
+    # How far out to look, measured from the part's own outline rather than
+    # from one of its pads: a name has to clear the whole part. Offsets are
+    # built in board coordinates - a designator prints horizontally whatever
+    # the footprint's rotation, so the string reaches along the board's x
+    # whichever way the part is turned - then rotated back into the footprint's
+    # frame, which is what `at` states. Near beats far; ties go to the earlier
+    # candidate.
+    # Measured per direction, not as one radius: a footprint is anchored where
+    # its library chose to anchor it, which for a screw terminal is pin 1 and
+    # not the middle of its shell. One radius big enough to clear the far side
+    # puts the name three millimetres past the near side, close enough to the
+    # next part to read as its.
+    up = by - own[1] + half_y
+    down = own[3] - by + half_y
+    left = bx - own[0] + half_x
+    right = own[2] - bx + half_x
+    gaps = (0.4, 1.0, 1.8, 2.8)
+    offsets = [
+        *(
+            spot
+            for gap in gaps
+            for spot in (
+                (0.0, -(up + gap)),
+                (0.0, down + gap),
+                (-(left + gap), 0.0),
+                (right + gap, 0.0),
+            )
+        ),
+        # and the corners, for the part hemmed in on all four sides
+        *(
+            (sx * ((right if sx > 0 else left) + gap), sy * ((down if sy > 0 else up) + gap))
+            for gap in gaps
+            for sx in (-1.0, 1.0)
+            for sy in (-1.0, 1.0)
+        ),
+    ]
     candidates = (
         (float(atoms[0]), float(atoms[1])),
-        (0.0, 0.0),
-        *((0.0, sign * step) for step in steps for sign in (-1, 1)),
-        *((sign * step, 0.0) for step in steps for sign in (-1, 1)),
-        # and the corners, for the part hemmed in on all four sides
-        *((sx * step * 0.8, sy * step * 0.8) for step in steps for sx in (-1, 1) for sy in (-1, 1)),
+        *(_rotate(dx, dy, -angle) for dx, dy in offsets),
     )
 
     # Scored rather than first-fit, and every candidate is scored, so a part
@@ -2501,7 +2591,7 @@ def _move_reference_off_pads(
     def cost(spot: tuple[float, float]) -> float:
         rx, ry = _rotate(spot[0], spot[1], angle)
         box = (bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y)
-        return _silk_intrusion(design, box, obstacles)
+        return _silk_intrusion(design, box, obstacles, heavy)
 
     _rank, (cx, cy) = min(enumerate(candidates), key=lambda item: (cost(item[1]), item[0]))
     rx, ry = _rotate(cx, cy, angle)
@@ -2509,6 +2599,21 @@ def _move_reference_off_pads(
     if printed is not None:
         printed.append((bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y))
     return
+
+
+def _hide_property(node: SNode, name: str) -> None:
+    """Keep a footprint property in the file but off the silkscreen.
+
+    KiCad's parity check compares the symbol's fields with the footprint's, so
+    the property has to stay; only its `hide` flag changes.
+    """
+    for prop in node.children("property"):
+        if str(prop.atom(0, "")) != name:
+            continue
+        for child in list(prop.children("hide")):
+            prop.args.remove(child)
+        prop.args.append(SNode("hide", [Bare("yes")]))
+        return
 
 
 def _set_property(node: SNode, name: str, value: str, *, add: bool = False) -> None:
@@ -3218,6 +3323,19 @@ def _route_all(
         y0 = min(b[1] for b in boxes)
         y1 = max(b[3] for b in boxes)
         router.add(autoroute.Obstacle(left + 0.4, y0, right - 0.4, y1, "", None))
+    # The courtyard of a part nothing else may cross, open to the nets the part
+    # itself is on so its own escapes still leave.
+    for ref in design.body_keepout:
+        part = next(p for p in design.footprints() if p.ref == ref)
+        box = _courtyard_box(design, part)
+        if box is None:
+            continue
+        own = frozenset(
+            name
+            for name, nodes in design.nets.items()
+            if any(node.split(".")[0] == ref for node in nodes)
+        )
+        router.add(autoroute.Obstacle(*box, "", None, open_to=own))
     for x0, y0, x1, y1 in design.keepouts:
         router.add(autoroute.Obstacle(x0, y0, x1, y1, "", None))
     for via in design.vias:
@@ -3316,7 +3434,18 @@ def _route_all(
             # plane under the same net's own front copper, and
             # `route.return_path` picks that up instead. Thirty is where
             # neither fires. GND is not charged: its own copper is the plane.
-            back_cost=None if track.net == POUR_NET else 30.0,
+            #
+            # Nor is a link the design has put on the back itself - declared
+            # on B.Cu, asked to finish there, and kept there. That is the
+            # floorplan's decision, made where the front is full: the motor
+            # driver's logic drops leave a via column on the package's east
+            # side for a header ten millimetres south, and at thirty the
+            # search preferred a seventy-five millimetre tour of the front
+            # over seventeen on the back, round both motor terminals and
+            # across every bridge output on the way.
+            back_cost=None
+            if track.net == POUR_NET or (track.keep_layer and track.layer != "F.Cu")
+            else 30.0,
             follow=bus_paths.get(_bus_of(track.net) or ""),
             tee=[(layer, points) for layer, points, _index in component] or None,
             # ...and the rest of the net's copper - laid but not joined to
@@ -3396,6 +3525,8 @@ def _routing_digest(design: Design) -> str:
         repr(design.board_size),
         repr(design.keepouts),
         repr(design.route_keepout),
+        repr(design.body_keepout),
+        repr(design.priority_nets),
         repr((VIA_SIZE, POUR_NET)),
     ]
     for part in sorted(design.footprints(), key=lambda p: p.ref):
@@ -3414,6 +3545,11 @@ def _routing_digest(design: Design) -> str:
         lines.append(f"V {via.net}|{via_position(design, via)}|{via.size}|{via.drill}")
     lines.append(Path(autoroute.__file__).read_text())
     lines.append(inspect.getsource(_route_all))
+    # The order the links are offered in is as much the question as the
+    # search: the classes and how a failure or a tour moves a link live here.
+    lines.append(inspect.getsource(resolve_routes))
+    lines.append(inspect.getsource(_route_rank))
+    lines.append(inspect.getsource(_promoted))
     lines.append(inspect.getsource(_tee_component))
     lines.append(inspect.getsource(_absorb_tee))
     return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:32]
@@ -3519,6 +3655,42 @@ def _learned_order(design: Design, order: list[Track]) -> list[Track]:
     return sorted(order, key=lambda t: rank.get(_track_signature(design, t), len(rank)))
 
 
+def _route_rank(design: Design, track: Track, thinnest: float) -> int:
+    """Which class a link is routed in: 0 goes first, 1 goes round it.
+
+    The board is routed around the nets that have something to lose - the
+    ones carrying current, a clock, a bus, a pair - and the rest go wherever
+    is left. Width says most of it: a link wider than the thinnest on the
+    board is wide because of what it carries, and the widths here are stated
+    on purpose. What width cannot say, `Design.priority_nets` does.
+
+    The motor driver is why the classes exist. Its four 0.4 mm bridge outputs
+    run a clear corridor west to the terminals; one 0.3 mm logic input with
+    both ends on the east side found its straight lane taken and toured the
+    whole west end of the board instead, and the chase for tidiness put it
+    *first* - so the outputs then hopped under it, two vias apiece, ten
+    barrels in a column. A logic input that has to tour tours; the outputs
+    it tours across are not the ones that pay for it.
+    """
+    if track.net in design.priority_nets or track.width > thinnest + GEOM_EPS:
+        return 0
+    return 1
+
+
+def _promoted(order: list[Track], track: Track, rank: Callable[[Track], int]) -> list[Track]:
+    """`order` with `track` moved to the front of its own class.
+
+    The front of its class, not of the board: a plain link that failed or
+    toured is given first pick among the plain links, and still routes after
+    every link with a claim on the board. Where the classes meet is the only
+    place the two orders touch.
+    """
+    rest = [t for t in order if t is not track]
+    at = next((i for i, t in enumerate(rest) if rank(t) >= rank(track)), len(rest))
+    rest.insert(at, track)
+    return rest
+
+
 def resolve_routes(
     design: Design, use_cache: bool = True, *, require_cache: bool = False
 ) -> Design:
@@ -3550,18 +3722,33 @@ def resolve_routes(
     move copper and the FPGA board takes the better part of an hour to route.
     """
     design = _straighten(design)
-    # Shortest first. A thirteen millimetre connection has few ways to be made
-    # and a forty millimetre one has many, so the short ones are the ones that
-    # have to choose while there is still room - and a short net forced into a
-    # long path is exactly the ratio `route.wander` measures. (The learned
-    # order below overrides this where it applies; this is what a fresh clone,
-    # which has no learned order, starts from.)
-    order = sorted(
-        (track for track in design.tracks if track.auto),
-        key=lambda t: math.dist(*(resolve(design, point) for point in t.points)),
-    )
-    if not order:
+    auto = [track for track in design.tracks if track.auto]
+    if not auto:
         return _pipeline(design)
+    # Two classes, and shortest first within each. The nets with something
+    # to lose - current, a clock, a bus - are routed while the board is empty
+    # and nothing routed later may push them aside (see `_route_rank`); the
+    # rest go round them. A thirteen millimetre connection has few ways to be
+    # made and a forty millimetre one has many, so within a class the short
+    # ones are the ones that have to choose while there is still room - and a
+    # short net forced into a long path is exactly the ratio `route.wander`
+    # measures. (The learned order below overrides this where it applies;
+    # this is what a fresh clone, which has no learned order, starts from.)
+    thinnest = min(track.width for track in auto)
+    # Plain links the board turned out to have no lane for behind the nets
+    # with first pick. Feasibility is the hard constraint and the classes are
+    # not: such a link is lifted ahead of them, once, and the log says so -
+    # that is a floorplan with no room for it, which is the placement's
+    # problem to fix and not something to hide by declaring the net special.
+    lifted: set[int] = set()
+
+    def rank(track: Track) -> int:
+        return 0 if id(track) in lifted else _route_rank(design, track, thinnest)
+
+    order = sorted(
+        auto,
+        key=lambda t: (rank(t), math.dist(*(resolve(design, point) for point in t.points))),
+    )
     digest = _routing_digest(design)
     if use_cache:
         cached = _cache_read(design.name, digest)
@@ -3571,7 +3758,9 @@ def resolve_routes(
             return _pipeline(done)
         if require_cache:
             raise SystemExit(f"{design.name}: required route cache is missing for {digest}")
-        order = _learned_order(design, order)
+        # What was learned holds within a class; it does not put a plain
+        # link ahead of one with a claim. A stable sort keeps the rest.
+        order = sorted(_learned_order(design, order), key=rank)
     ripped: list[Track] = []
     relaid: list[Track] = []
     # An order that routed everything, and whether tours may still be chased.
@@ -3593,6 +3782,18 @@ def resolve_routes(
             # and an order to be found, not a floorplan with no lane. What
             # is not cheap is doing this forever, so it is counted.
             if ripped.count(blocked.track) >= RIPUP_TRIES:
+                if rank(blocked.track) > 0:
+                    lifted.add(id(blocked.track))
+                    ripped = [t for t in ripped if t is not blocked.track]
+                    order = _promoted(order, blocked.track, rank)
+                    _save_order(design, order)
+                    print(
+                        f"{design.name}: {blocked.track.net} {blocked.track.points} has no "
+                        "lane behind the nets with first pick - lifting it ahead of them; "
+                        "the floorplan leaves it no other room",
+                        file=sys.stderr,
+                    )
+                    continue
                 if safe_order is not None:
                     print(
                         f"{design.name}: re-ordering for tidiness left {blocked.track.net} "
@@ -3608,8 +3809,7 @@ def resolve_routes(
                     "the floorplan has no lane for it"
                 ) from None
             ripped.append(blocked.track)
-            order.remove(blocked.track)
-            order.insert(0, blocked.track)
+            order = _promoted(order, blocked.track, rank)
             _save_order(design, order)
             print(
                 f"{design.name}: ripping up for {blocked.track.net} "
@@ -3629,8 +3829,7 @@ def resolve_routes(
         if chase and worst is not None and len(relaid) < WANDER_ATTEMPTS:
             ratio, track = worst
             relaid.append(track)
-            order.remove(track)
-            order.insert(0, track)
+            order = _promoted(order, track, rank)
             print(
                 f"{design.name}: {track.net} {track.points} came out {ratio:.1f}x "
                 f"the straight line - routing it first (attempt {len(relaid)})",
@@ -3753,7 +3952,7 @@ def _unlooped(design: Design) -> Design:
             if owner:
                 centre = pad_position_of(design, part, pad)
                 pad_nodes[owner].add(key(centre))
-                pad_geometry[owner].append((centre, pad_box(design, part, pad)))
+                pad_geometry[owner].append((centre, pad_box(design, part, pad), pad_layer(pad)))
 
     # A segment that passes *over* a pad of its own net feeds that pad by the
     # overlap - KiCad's connectivity is geometric, this graph is endpoint
@@ -3761,6 +3960,14 @@ def _unlooped(design: Design) -> Design:
     # cutter ran: the only chain feeding R1 crossed the pad mid-run, the graph
     # had no node there, and the chain looked redundant. Split the segment at
     # the pad and the feed becomes an anchor the cut has to respect.
+    #
+    # Over it on the pad's own layer. A run on the back passing under a
+    # front-side land touches nothing, and splitting it there manufactures a
+    # node the front-side copper ending on that land then shares - which is
+    # a cycle that never existed. The cutter closed one on the op-amp board:
+    # a stub from a pad up to a via and the back-side run coming down from
+    # that via read as a loop, the stub and the via went, and the run was
+    # left starting at the pad on the wrong layer with no way up to it.
     for net, geometry in pad_geometry.items():
         index = 0
         while index < len(segs):
@@ -3771,9 +3978,11 @@ def _unlooped(design: Design) -> Design:
             a, b = seg["a"], seg["b"]
             length = math.dist(a, b)
             split_at = None
-            for centre, box in geometry:
+            for centre, box, layer in geometry:
                 if length < GEOM_EPS:
                     break
+                if layer is not None and layer != seg["layer"]:
+                    continue
                 t = ((centre[0] - a[0]) * (b[0] - a[0]) + (centre[1] - a[1]) * (b[1] - a[1])) / (
                     length * length
                 )
@@ -3804,7 +4013,7 @@ def _unlooped(design: Design) -> Design:
         The first version of this cutter read one of those hooks as a
         dangling loop and amputated a pad's only feed with it.
         """
-        for _centre, box in pad_geometry.get(net, ()):
+        for _centre, box, _layer in pad_geometry.get(net, ()):
             if box[0] - 0.05 <= node[0] <= box[2] + 0.05 and (
                 box[1] - 0.05 <= node[1] <= box[3] + 0.05
             ):
@@ -4569,6 +4778,7 @@ def _pipeline(design: Design) -> Design:
     design = _unspiked(design)
     design = _welded(design)
     design = _surfaced(design)
+    design = _uncrowded(design)
     design = _teardrops(design)
     return _stitched(design)
 
@@ -4873,20 +5083,23 @@ def _surfaced(design: Design) -> Design:
                 break
     if not lifted:
         return design
-    # A via joins two faces, and a face with nothing left on it needs no join.
-    non_front: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    # A via joins two faces, and a face with nothing left under it needs no
+    # join. Under it, not only at a run's end: a tap dropped into the middle of
+    # a stated back-layer spine has no run ending at it and is still the only
+    # way that tap reaches the spine.
+    non_front: dict[str, list[tuple[tuple[float, float], tuple[float, float]]]] = defaultdict(list)
     for track in tracks:
         if track.layer == "F.Cu":
             continue
         points = [resolve(design, point) for point in track.points]
-        non_front[track.net].extend((points[0], points[-1]))
+        non_front[track.net].extend(pairwise(points))
     vias = [
         via
         for via in design.vias
         if via.net in {POUR_NET, design.power_plane}
         or any(
-            math.dist(via_position(design, via), end) <= via.size / 2 + GEOM_EPS
-            for end in non_front.get(via.net, ())
+            _segment_to_point(a, b, via_position(design, via)) <= via.size / 2 + GEOM_EPS
+            for a, b in non_front.get(via.net, ())
         )
     ]
     print(
@@ -4895,6 +5108,73 @@ def _surfaced(design: Design) -> Design:
         file=sys.stderr,
     )
     return replace(design, tracks=tracks, vias=vias)
+
+
+def _uncrowded(design: Design) -> Design:
+    """Merge same-net vias drilled closer than a fabricator will place them.
+
+    Two barrels 0.5 mm apart is `drc.hole_to_hole`, and the FPGA board's +3V3
+    came back with a pair: the search spends a via at each end of a hop, and two
+    hops that turn round within half a millimetre of each other each get one.
+    The reshaping passes then slide the copper without ever bringing the holes
+    back together.
+
+    They are the same net and their copper already overlaps, so the pair is
+    electrically one hole drilled twice. This replaces it with one via at the
+    centre of everything the two were serving - the track ends whose copper each
+    of them covers - and only if that one still covers all of it. A via anchored
+    to a pad is left alone: it was placed beside that pad on purpose.
+    """
+    ends: dict[str, list[tuple[float, float]]] = defaultdict(list)
+    for track in design.tracks:
+        points = [resolve(design, point) for point in track.points]
+        for end in (points[0], points[-1]):
+            ends[track.net].append((round(end[0], 3), round(end[1], 3)))
+
+    def serving(via: Via) -> list[tuple[float, float]]:
+        centre = via_position(design, via)
+        return [
+            end
+            for end in ends.get(via.net, ())
+            if math.dist(end, centre) <= via.size / 2 + GEOM_EPS
+        ]
+
+    vias = list(design.vias)
+    merged = 0
+    while True:
+        for left, right in combinations(range(len(vias)), 2):
+            one, two = vias[left], vias[right]
+            if one.net != two.net or one.pad or two.pad:
+                continue
+            if math.dist(via_position(design, one), via_position(design, two)) >= HOLE_TO_HOLE_MM:
+                continue
+            wanted = [*serving(one), *serving(two)] or [
+                via_position(design, one),
+                via_position(design, two),
+            ]
+            middle = (
+                round(sum(p[0] for p in wanted) / len(wanted), 3),
+                round(sum(p[1] for p in wanted) / len(wanted), 3),
+            )
+            size = min(one.size, two.size)
+            if any(math.dist(p, middle) > size / 2 + GEOM_EPS for p in wanted):
+                continue
+            vias[left] = replace(
+                one, x=middle[0], y=middle[1], size=size, drill=min(one.drill, two.drill)
+            )
+            del vias[right]
+            merged += 1
+            break
+        else:
+            break
+    if not merged:
+        return design
+    print(
+        f"{design.name}: {merged} pair(s) of same-net vias were drilled too close "
+        "to each other, merged",
+        file=sys.stderr,
+    )
+    return replace(design, vias=vias)
 
 
 def _stitched(design: Design) -> Design:
@@ -5459,6 +5739,13 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
     # corner. All three have to be asked, and the answer for all three is the
     # same: leave the corner square rather than build a short.
     foreign_vias = [(via.net, _via_box(design, via)) for via in design.vias]
+    # And the net's own vias: a via the router dropped a fraction off a corner
+    # sits under the leg, not on the corner point, so nothing pins it - and a
+    # cut that shortens that leg past the via leaves the via joined to one
+    # face. The FPGA board's 3.3 V rail lost a via that way.
+    own_vias: dict[str, list[tuple[tuple[float, float], float]]] = defaultdict(list)
+    for via in design.vias:
+        own_vias[via.net].append((via_position(design, via), via.size))
     # Bucketed by a coarse grid: a board this size carries thousands of
     # segments and a corner only cares about the ones beside it, so asking all
     # of them turns a minute into an hour.
@@ -5524,6 +5811,10 @@ def _chamfer_tracks(design: Design, cut: float = 1.5) -> Design:
                 )
                 blocked = (
                     any(
+                        math.dist(corner, centre) <= c + size / 2 + GEOM_EPS
+                        for centre, size in own_vias[track.net]
+                    )
+                    or any(
                         net != track.net and _segment_to_box(p1, p2, box) < track.width / 2 + 0.25
                         for net, box in foreign_vias
                     )
@@ -5680,7 +5971,7 @@ def _stitch_vias(design: Design) -> list[Via]:
     for track in design.tracks:
         points = [resolve(design, point) for point in track.points]
         segments.extend((track.net, track.width, a, b) for a, b in pairwise(points))
-    holes = [via_position(design, via) for via in design.vias]
+    holes = [(via_position(design, via), via.size) for via in design.vias]
 
     def clears(vx: float, vy: float) -> bool:
         radius = 0.4
@@ -5707,7 +5998,27 @@ def _stitch_vias(design: Design) -> list[Via]:
             pad = (vx - radius, vy - radius, vx + radius, vy + radius)
             if _segment_to_box(a, b, pad) < width / 2 + 0.45:
                 return False
-        return all(math.dist((vx, vy), hole) >= 1.2 for hole in holes)
+        # Two rules, and a via has to satisfy both, because they measure
+        # different things in different metrics.
+        #
+        # The copper is square to `check_board`, so it is square here as well,
+        # and it is measured against each existing via's own size: a stitching
+        # via 1.25 mm from a 0.8 mm routing via clears any centre-to-centre
+        # rule written for two 0.8 mm holes and still shorts, because what has
+        # to clear is the gap between their edges along whichever axis is
+        # tighter, and on the diagonal that is not the distance between their
+        # centres.
+        #
+        # The drills are round, and hole-to-hole is the fabricator's rule
+        # rather than the artwork's: two barrels that clear each other's copper
+        # on the diagonal can still be nearer than a drill bit may be placed to
+        # its neighbour. Replacing this radial check with the square one above
+        # is what put `drc.hole_to_hole` on the FPGA board.
+        return all(
+            max(abs(vx - hx), abs(vy - hy)) >= (size + 2 * radius) / 2 + 0.25
+            and math.dist((vx, vy), (hx, hy)) >= 1.2
+            for (hx, hy), size in holes
+        )
 
     kept: list[Via] = []
 
@@ -5736,7 +6047,7 @@ def _stitch_vias(design: Design) -> list[Via]:
     for vx, vy, along, inward in ring:
         placed = _room_on_the_rim(vx, vy, along, inward)
         if placed is not None:
-            holes.append(placed)
+            holes.append((placed, VIA_SIZE))
             seated.append(placed)
             kept.append(Via(POUR_NET, x=placed[0], y=placed[1]))
 
@@ -5792,7 +6103,7 @@ def _stitch_vias(design: Design) -> list[Via]:
             middle = (start + end) / 2
             placed = _room_on_the_rim(*_station_at(middle), reach=(end - start) / 2)
             if placed is not None:
-                holes.append(placed)
+                holes.append((placed, VIA_SIZE))
                 kept.append(Via(POUR_NET, x=placed[0], y=placed[1]))
                 added.append(_arc_of(*placed))
         if not added:
@@ -5801,7 +6112,7 @@ def _stitch_vias(design: Design) -> list[Via]:
 
     for vx, vy in rim:
         if clears(vx, vy):
-            holes.append((vx, vy))
+            holes.append(((vx, vy), VIA_SIZE))
             kept.append(Via(POUR_NET, x=vx, y=vy))
 
     # Then the guarantee the mesh cannot give: every piece of the front pour
@@ -5864,7 +6175,7 @@ def _stitch_vias(design: Design) -> list[Via]:
                     continue
                 vx, vy = round(vx, 2), round(vy, 2)
                 if clears(vx, vy):
-                    holes.append((vx, vy))
+                    holes.append(((vx, vy), VIA_SIZE))
                     kept.append(Via(POUR_NET, x=vx, y=vy))
                     ground.append((vx, vy))
                     placed = True
@@ -6015,6 +6326,9 @@ def emit_board(design: Design, path: Path) -> None:
     legend_boxes: list[tuple[float, float, float, float]] = []
     _board_silk(design, legend_boxes=legend_boxes)
     printed: list[tuple[float, float, float, float]] = list(legend_boxes)
+    # Where every part's body will be, so no designator is put under a
+    # neighbour's: readable on the bare board, hidden on the assembled one.
+    extents = {part.ref: _part_extent(design, part) for part in design.footprints()}
     for part in design.footprints():
         node = footprint_definition(part.footprint)
         bx, by, angle = part.board
@@ -6025,7 +6339,11 @@ def emit_board(design: Design, path: Path) -> None:
         node.args.insert(2, _uuid_node(stable_uuid(design.name, "fp", part.ref)))
         _place_footprint_zones(node, ox + bx, oy + by, angle)
         _set_property(node, "Reference", part.ref)
-        _move_reference_off_pads(design, part, node, all_pads, printed)
+        if part.show_reference:
+            bodies = [box for ref, box in extents.items() if ref != part.ref]
+            _move_reference_off_pads(design, part, node, all_pads, printed, bodies)
+        else:
+            _hide_property(node, "Reference")
         _set_property(node, "Value", part.value)
         for key, value in part.fields.items():
             _set_property(node, key, value, add=True)
@@ -6115,7 +6433,7 @@ def emit_board(design: Design, path: Path) -> None:
                     )
                 )
 
-    lines.extend(_board_silk(design, printed))
+    lines.extend(_board_silk(design))
 
     lines.append(")")
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -6129,15 +6447,185 @@ def _silk_text_item(
     key: object,
     size: float = 0.8,
     justify: str = "",
+    angle: float = 0.0,
 ) -> str:
     ox, oy = design.origin
     thickness = round(size * 0.15, 3)
     where = f" (justify {justify})" if justify else ""
     return (
-        f'\t(gr_text "{text}" (at {round(ox + x, 4)} {round(oy + y, 4)} 0) '
+        f'\t(gr_text "{text}" (at {round(ox + x, 4)} {round(oy + y, 4)} {round(angle, 1):g}) '
         f'(layer "F.SilkS") (uuid "{stable_uuid(design.name, "silk", key)}") '
         f"(effects (font (size {size} {size}) (thickness {thickness})){where}))"
     )
+
+
+def _silk_line_item(
+    design: Design, a: tuple[float, float], b: tuple[float, float], key: object
+) -> str:
+    ox, oy = design.origin
+    return (
+        f"\t(gr_line (start {round(ox + a[0], 4)} {round(oy + a[1], 4)}) "
+        f"(end {round(ox + b[0], 4)} {round(oy + b[1], 4)}) "
+        f"(stroke (width {SILK_LINE_WIDTH}) (type default)) "
+        f'(layer "F.SilkS") (uuid "{stable_uuid(design.name, "silk", key)}"))'
+    )
+
+
+def _box_gap(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> float:
+    """How far apart two rectangles are, zero where they touch or overlap."""
+    dx = max(a[0] - b[2], b[0] - a[2], 0.0)
+    dy = max(a[1] - b[3], b[1] - a[3], 0.0)
+    return math.hypot(dx, dy)
+
+
+def _inked(
+    box: tuple[float, float, float, float], room: float
+) -> tuple[float, float, float, float]:
+    """A drawn line's box, given the width it is drawn at and its clearance.
+
+    A line's bounding box has no area in one direction, and `_silk_intrusion`
+    counts area: a leader drawn straight across a part's outline cost nothing
+    at all, so the search happily did it and KiCad reported `silk_overlap`.
+    """
+    return (box[0] - room, box[1] - room, box[2] + room, box[3] + room)
+
+
+def _names_its_pin(
+    box: tuple[float, float, float, float],
+    net: str,
+    pads: list[tuple[tuple[float, float, float, float], str]],
+) -> bool:
+    """Whether the pad nearest a legend carries the net the legend names.
+
+    This is the whole of what a pin legend has to achieve: a reader takes a
+    name to belong to the pad beside it, so a name with somebody else's pad
+    closer names that pad, however carefully it was placed against its own.
+
+    The test is the net and not the pad, because that is what a reader gets
+    right or wrong. `VIN` printed between a terminal's pin and the fuse pad
+    that pin feeds names both of them, and both are VIN; the same string
+    beside the fuse's *other* pad names the rail on the far side of the fuse,
+    which is a different net and a different thing.
+
+    Measured rectangle to rectangle rather than centre to centre, because a
+    long name anchored at its pin reaches past two other parts and its middle
+    is nowhere near either end.
+    """
+    nearest = min(_box_gap(box, pad) for pad, _net in pads)
+    return any(name == net for pad, name in pads if _box_gap(box, pad) <= nearest + GEOM_EPS)
+
+
+def _leg_points(
+    start: tuple[float, float], end: tuple[float, float]
+) -> list[list[tuple[float, float]]]:
+    """The ways from one point to another in horizontal, vertical and 45° legs.
+
+    Two of them: turn first and run straight in, or run straight out and turn
+    at the end. Both are drawing conventions for a leader; which one is clear
+    of the parts is what decides between them.
+    """
+    dx, dy = end[0] - start[0], end[1] - start[1]
+    run = min(abs(dx), abs(dy))
+    kx = math.copysign(run, dx)
+    ky = math.copysign(run, dy)
+    corners = ((start[0] + kx, start[1] + ky), (end[0] - kx, end[1] - ky))
+    paths = []
+    for corner in corners:
+        points = [start, corner, end]
+        trimmed = [p for i, p in enumerate(points) if i == 0 or math.dist(p, points[i - 1]) > 0.01]
+        if len(trimmed) > 1:
+            paths.append(trimmed)
+    return paths
+
+
+def _face(
+    box: tuple[float, float, float, float], towards: tuple[float, float], room: float
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """The point just off the side of a rectangle that faces somewhere else,
+    and the direction that side looks in."""
+    cx, cy = (box[0] + box[2]) / 2, (box[1] + box[3]) / 2
+    dx, dy = towards[0] - cx, towards[1] - cy
+    if abs(dx) >= abs(dy):
+        sign = 1.0 if dx > 0 else -1.0
+        return ((box[2] + room if dx > 0 else box[0] - room, cy), (sign, 0.0))
+    sign = 1.0 if dy > 0 else -1.0
+    return ((cx, box[3] + room if dy > 0 else box[1] - room), (0.0, sign))
+
+
+def _emerges(
+    start: tuple[float, float],
+    heading: tuple[float, float],
+    hidden_by: list[tuple[float, float, float, float]],
+    over: list[tuple[float, float, float, float]],
+    bounds: tuple[float, float, float, float],
+    limit: float = 12.0,
+) -> tuple[float, float] | None:
+    """Where a line leaving a pad stops being hidden by its own part.
+
+    A screw terminal's pads are under its shell and its silkscreen outline is
+    drawn round the lot, so a leader drawn from the pad itself is ink nobody
+    can see and `silk_overlap` besides. It is drawn from the point it comes out
+    at instead, which is on the pad's own side of the part: a line leaving the
+    top edge of a terminal came from a pin at the top of it.
+
+    Which is the whole value of it, and why a run that would cross ``over`` -
+    any other pad - is no run at all, and None is returned for it. The motor
+    driver's terminal had both its legends pointing at the same spot on the
+    bottom edge of the shell: the upper pin's leader had gone down *through*
+    the lower pin to get there, and under the shell nobody could see that it
+    started higher up.
+    """
+    room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    point = start
+    for _ in range(int(limit / 0.1)):
+        box = (point[0] - room, point[1] - room, point[0] + room, point[1] + room)
+        if any(_box_gap(box, pad) <= 0.0 for pad in over):
+            return None
+        if not (
+            bounds[0] <= box[0]
+            and bounds[1] <= box[1]
+            and box[2] <= bounds[2]
+            and box[3] <= bounds[3]
+        ):
+            # off the edge of the board, where nothing is printed at all
+            return None
+        if all(_box_gap(box, other) > 0.0 for other in hidden_by):
+            return point
+        point = (point[0] + heading[0] * 0.1, point[1] + heading[1] * 0.1)
+    return None
+
+
+def _runs_over(points: list[tuple[float, float]], box: tuple[float, float, float, float]) -> bool:
+    """Whether a drawn polyline runs over a rectangle anywhere along it."""
+    room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    for a, b in pairwise(points):
+        steps = max(1, math.ceil(math.dist(a, b) / SILK_LEADER_STEP))
+        for step in range(steps + 1):
+            t = step / steps
+            x = a[0] + (b[0] - a[0]) * t
+            y = a[1] + (b[1] - a[1]) * t
+            if _box_gap(box, (x - room, y - room, x + room, y + room)) <= 0.0:
+                return True
+    return False
+
+
+def _path_intrusion(
+    design: Design,
+    points: list[tuple[float, float]],
+    taken: list[tuple[float, float, float, float]],
+    heavy: list[tuple[float, float, float, float]] | None = None,
+) -> float:
+    """What a drawn polyline takes from everything else, sampled along it."""
+    room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    total = 0.0
+    for a, b in pairwise(points):
+        steps = max(1, math.ceil(math.dist(a, b) / SILK_LEADER_STEP))
+        for step in range(steps + 1):
+            t = step / steps
+            x = a[0] + (b[0] - a[0]) * t
+            y = a[1] + (b[1] - a[1]) * t
+            total += _silk_intrusion(design, (x - room, y - room, x + room, y + room), taken, heavy)
+    return total
 
 
 def _footprint_silk(design: Design, part: Part) -> list[tuple[float, float, float, float]]:
@@ -6203,8 +6691,10 @@ def _footprint_silk(design: Design, part: Part) -> list[tuple[float, float, floa
     return boxes
 
 
-def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, float] | None:
-    """The footprint's courtyard extent on the board, or None without one.
+def _graphic_extent(
+    design: Design, part: Part, token: str
+) -> tuple[float, float, float, float] | None:
+    """How far a footprint's graphics on one layer family reach on the board.
 
     Circles count. A mounting hole and a fiducial both draw their courtyard as
     one `fp_circle`, and a reader that only knows about lines and rectangles
@@ -6222,7 +6712,7 @@ def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, flo
         *node.children("fp_arc"),
     ):
         layer = shape.child("layer")
-        if not layer or "CrtYd" not in str(layer.atom(0, "")):
+        if not layer or token not in str(layer.atom(0, "")):
             continue
         if shape.name == "fp_circle":
             centre = shape.child("center")
@@ -6249,6 +6739,24 @@ def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, flo
     if not xs:
         return None
     return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _courtyard_box(design: Design, part: Part) -> tuple[float, float, float, float] | None:
+    """The board a part claims: its outline plus the room to place it in."""
+    return _graphic_extent(design, part, "CrtYd")
+
+
+def _body_box(design: Design, part: Part) -> tuple[float, float, float, float] | None:
+    """What the fitted part hides, as the library's fabrication outline.
+
+    The courtyard is the room a part needs and is deliberately bigger than the
+    part; the fabrication outline is the part. The difference is where a
+    designator belongs - beside the body, inside the courtyard - and telling
+    them apart is what stops a name being printed where its own part covers it.
+    An electrolytic capacitor, an inductor and a module all span their own
+    pads, so the gap the library leaves between the pads is under the part.
+    """
+    return _graphic_extent(design, part, "Fab")
 
 
 def _place_footprint_zones(node: SNode, bx: float, by: float, angle: float) -> None:
@@ -6298,17 +6806,24 @@ def _text_extent(text: str, size: float, thickness: float = 0.0) -> tuple[float,
 
 
 def _silk_box(
-    text: str, x: float, y: float, size: float, justify: str = ""
+    text: str, x: float, y: float, size: float, justify: str = "", angle: float = 0.0
 ) -> tuple[float, float, float, float]:
-    """What a silk string covers on the board, for keeping it off things."""
+    """What a silk string covers on the board, for keeping it off things.
+
+    Turned a quarter (``angle`` 90) the string runs up the board: KiCad reads
+    it bottom to top, so left-justified text starts at the anchor and extends
+    upward, right-justified text ends there and extends downward.
+    """
     half_x, half_y = _text_extent(text, size)
     if justify == "left":
-        x0, x1 = x - SILK_CLEARANCE, x + 2 * half_x - SILK_CLEARANCE
+        along = (-SILK_CLEARANCE, 2 * half_x - SILK_CLEARANCE)
     elif justify == "right":
-        x0, x1 = x - 2 * half_x + SILK_CLEARANCE, x + SILK_CLEARANCE
+        along = (-2 * half_x + SILK_CLEARANCE, SILK_CLEARANCE)
     else:
-        x0, x1 = x - half_x, x + half_x
-    return (x0, y - half_y, x1, y + half_y)
+        along = (-half_x, half_x)
+    if abs(angle) % 180 == 90:
+        return (x - half_y, y - along[1], x + half_y, y - along[0])
+    return (x + along[0], y - half_y, x + along[1], y + half_y)
 
 
 def _part_extent(design: Design, part: Part) -> tuple[float, float, float, float]:
@@ -6367,9 +6882,199 @@ def _silk_intrusion(
     return area(taken) + area(heavy or []) * 50.0 + outside * 100.0
 
 
+def _framed_legend(
+    design: Design,
+    text: str,
+    pad: tuple[float, float, float, float],
+    key: object,
+    pads: list[tuple[float, float, float, float]],
+    taken: list[tuple[float, float, float, float]],
+    heavy: list[tuple[float, float, float, float]],
+    hidden_by: list[tuple[float, float, float, float]] | None = None,
+    home: tuple[float, float, float, float] | None = None,
+    size: float = 0.8,
+    boxed: bool = True,
+) -> tuple[list[str], list[tuple[float, float, float, float]], float] | None:
+    """A pin legend for a pin that has no clear room beside it.
+
+    A two-pin screw terminal at the edge of a board has nowhere to be labelled:
+    outboard is where the wire goes in, and inboard is the fuse and the clamp
+    that every supply input carries. Pushing the name out past them is what
+    made the buck converter's terminal unreadable - `VIN` printed two
+    millimetres from the fuse's pad and eleven from the pin it named.
+
+    So the name stops trying to sit against its pin and says which pin it means
+    instead: it goes where there is room, in a frame that marks it as a label
+    rather than a part's name, and a leader in horizontal, vertical and 45°
+    legs runs from the frame to the pad. Positions are tried outward from the
+    pad, and the first one whose frame *and* leader are both clear wins, so the
+    leader stays short. Returns None where the board has no room at all, and
+    the caller keeps the placement it had.
+
+    ``hidden_by`` is what its own connector covers the pad with: its body, the
+    outline it draws round it, and the room it claims. The leader is drawn from
+    where it comes out of all that rather than from the pad, because ink under
+    a shell is ink nobody reads and `silk_overlap` besides - and the side it
+    comes out at is what says which pin it came from. Past that point it is
+    charged for everything, its own connector included, so a label on the far
+    side of a terminal is reached round it and not across it.
+    """
+    px, py = (pad[0] + pad[2]) / 2, (pad[1] + pad[3]) / 2
+    half_x, half_y = _text_extent(text, size)
+    frame_x = half_x + (SILK_FRAME_ROOM if boxed else 0.0)
+    frame_y = half_y + (SILK_FRAME_ROOM if boxed else 0.0)
+    radii = (4.0, 5.5, 7.0, 8.5, 10.0, 12.0, 14.0, 17.0, 20.0)
+    spots = [
+        (
+            px + radius * math.cos(math.radians(step * 30.0)),
+            py + radius * math.sin(math.radians(step * 30.0)),
+        )
+        for radius in radii
+        for step in range(12)
+    ]
+    # Nothing beyond the furthest spot can be reached by frame or leader, and
+    # the scoring walks these lists once per sampled point: on the FPGA board
+    # that is six hundred boxes a point, of which a couple of dozen are in
+    # range at all.
+    span = radii[-1] + frame_x + frame_y + 1.0
+    near = (px - span, py - span, px + span, py + span)
+    taken = [box for box in taken if _box_gap(near, box) <= 0.0]
+    heavy = [box for box in heavy if _box_gap(near, box) <= 0.0]
+    # Grown by the clearance the fab wants: a leader that comes out half a
+    # clearance from a pad is "silkscreen clipped by solder mask" just as one
+    # across it is, and coming out beside the fuse is not worth a direction.
+    over = [_inked(box, SILK_CLEARANCE) for box in pads if box != pad]
+    width, height = design.board_size
+    bounds = (SILK_EDGE_ROOM, SILK_EDGE_ROOM, width - SILK_EDGE_ROOM, height - SILK_EDGE_ROOM)
+    # Every way out of the pad, worked out once: the leader may leave by any
+    # side of it, not only the side its label happens to be on. Coming out of
+    # the top of a terminal and going round is how one gets past the part
+    # standing between it and the only clear strip.
+    ways = [
+        (start, heading)
+        for point, heading in (
+            ((px, pad[1] - SILK_CLEARANCE), (0.0, -1.0)),
+            ((px, pad[3] + SILK_CLEARANCE), (0.0, 1.0)),
+            ((pad[0] - SILK_CLEARANCE, py), (-1.0, 0.0)),
+            ((pad[2] + SILK_CLEARANCE, py), (1.0, 0.0)),
+        )
+        # It comes out clear of everything, not only of its own part: a leader
+        # whose first millimetre is under the neighbouring fuse's outline never
+        # had a chance of being read as coming from this pin.
+        if (start := _emerges(point, heading, [*(hidden_by or []), *heavy], over, bounds))
+        is not None
+    ]
+    if not ways:
+        return None
+    # The label first, on its own: a name printed across a designator cannot be
+    # read at all, where a leader crossing one is untidy and still points where
+    # it points. So the spots are scored for the label, the least-intruding are
+    # kept, and only those are asked what a leader to them would cost - which
+    # is also what makes trying seventy leaders per spot affordable.
+    scored = []
+    for index, (x, y) in enumerate(spots):
+        frame = (x - frame_x, y - frame_y, x + frame_x, y + frame_y)
+        room = (
+            frame[0] - SILK_CLEARANCE,
+            frame[1] - SILK_CLEARANCE,
+            frame[2] + SILK_CLEARANCE,
+            frame[3] + SILK_CLEARANCE,
+        )
+        scored.append((_silk_intrusion(design, room, taken, heavy), index, x, y, frame))
+    floor = min(entry[0] for entry in scored)
+    best: (
+        tuple[
+            tuple[float, float, int],
+            float,
+            float,
+            tuple[float, float, float, float],
+            list[tuple[float, float]],
+        ]
+        | None
+    ) = None
+    for label_cost, index, x, y, frame in scored:
+        if label_cost > floor + GEOM_EPS:
+            continue
+        routes = [
+            [start, *legs] if stub else legs
+            for start, heading in ways
+            for stub in (0.0, 1.2, 2.4, 3.6)
+            for end in (
+                (x, frame[1] - SILK_CLEARANCE),
+                (x, frame[3] + SILK_CLEARANCE),
+                (frame[0] - SILK_CLEARANCE, y),
+                (frame[2] + SILK_CLEARANCE, y),
+            )
+            for legs in _leg_points(
+                (start[0] + heading[0] * stub, start[1] + heading[1] * stub), end
+            )
+        ]
+        # Its own label counts too, shrunk so that arriving at a face does not
+        # read as crossing it: offered four faces to come in by, a leader
+        # happily took the far one and drew itself straight through the name.
+        inside = (frame[0] + 0.5, frame[1] + 0.5, frame[2] - 0.5, frame[3] - 0.5)
+        # A leader leaves its connector once. One that comes back over it to
+        # reach a label on the far side is a line across the part, and a reader
+        # following it has to guess where it went under: the Pico carrier's
+        # terminal had one out of the top, round, and back down across the
+        # shell to a label below.
+        routes = [
+            legs
+            for legs in routes
+            if all(
+                bounds[0] <= point[0] <= bounds[2] and bounds[1] <= point[1] <= bounds[3]
+                for point in legs
+            )
+            and (home is None or not _runs_over(legs, home))
+        ]
+        if not routes:
+            continue
+        cost, path = min(
+            ((_path_intrusion(design, legs, taken, [*heavy, inside]), legs) for legs in routes),
+            key=lambda item: item[0],
+        )
+        # Then what the leader takes, then a leader long enough to read as a
+        # pointer rather than a tick, then the nearest spot to the pin.
+        drawn = sum(math.dist(a, b) for a, b in pairwise(path))
+        rank = (cost, max(0.0, SILK_LEADER_MIN - drawn), index)
+        if best is None or rank < best[0]:
+            best = (rank, x, y, frame, path)
+        if best[0][0] <= GEOM_EPS and best[0][1] <= 0.0:
+            break
+    if best is None:
+        return None
+    _rank, x, y, frame, path = best
+    corners = [
+        (frame[0], frame[1]),
+        (frame[2], frame[1]),
+        (frame[2], frame[3]),
+        (frame[0], frame[3]),
+    ]
+    items = [
+        _silk_text_item(design, text, x, y, key, size=size),
+        *(
+            _silk_line_item(design, a, b, (key, "frame", index))
+            for index, (a, b) in enumerate(zip(corners, corners[1:] + corners[:1], strict=False))
+            if boxed
+        ),
+        *(
+            _silk_line_item(design, a, b, (key, "leader", index))
+            for index, (a, b) in enumerate(pairwise(path))
+        ),
+    ]
+    ink_room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    boxes = [
+        frame,
+        *(
+            _inked((min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])), ink_room)
+            for a, b in pairwise(path)
+        ),
+    ]
+    return items, boxes, floor + best[0][0]
+
+
 def _board_silk(
     design: Design,
-    printed: list[tuple[float, float, float, float]] | None = None,
     legend_boxes: list[tuple[float, float, float, float]] | None = None,
 ) -> list[str]:
     """What the silkscreen says beyond the references.
@@ -6394,11 +7099,347 @@ def _board_silk(
     # Every string this function has put on the board so far, so the next one
     # measures against it as well as against the parts.
     placed: list[tuple[float, float, float, float]] = []
-    all_pads = [
-        pad_box(design, part, pad)
+    # Legends that need a frame and a leader, held over until every legend that
+    # does fit beside its pin has been placed.
+    relocate: list[
+        tuple[Part, str, str, tuple[float, float, float, float], tuple[float, float, str, float]]
+    ] = []
+    net_of: dict[tuple[str, str], str] = {}
+    for name, nodes in design.nets.items():
+        for entry in nodes:
+            ref, _, number = entry.partition(".")
+            net_of[(ref, number)] = name
+    landed = [
+        (pad_box(design, part, pad), net_of.get((part.ref, str(pad.atom(0, ""))), ""))
         for part in design.footprints()
         for pad in footprint_definition(part.footprint).children("pad")
     ]
+    all_pads = [box for box, _net in landed]
+    # What a frame and its leader have to keep off besides the pads: the drills,
+    # which are copper the mask opens over just as a pad is, and every line the
+    # footprints draw round themselves. Ink on either is a KiCad finding -
+    # `silk_over_copper` and `silk_overlap` - and neither is in `all_pads`.
+    via_room = VIA_SIZE / 2 + SILK_CLEARANCE
+    ink_room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    obstacles = [
+        *(
+            (vx - via_room, vy - via_room, vx + via_room, vy + via_room)
+            for vx, vy in (via_position(design, via) for via in design.vias)
+        ),
+        *(
+            _inked(box, ink_room)
+            for part in design.footprints()
+            for box in _footprint_silk(design, part)
+        ),
+    ]
+    for part in design.footprints():
+        if part.ref.startswith("J"):
+            node = footprint_definition(part.footprint)
+            pads = [
+                (str(pad.atom(0, "")), pad, pad_position_of(design, part, pad))
+                for pad in node.children("pad")
+            ]
+            xs = [p[0] for _n, _p, p in pads]
+            ys = [p[1] for _n, _p, p in pads]
+            own_pads = [pad_box(design, part, pad) for _n, pad, _p in pads]
+            pad_of = {number: pad_box(design, part, pad) for number, pad, _p in pads}
+            # labels go perpendicular to the pad row, on the board side, and
+            # clear the whole footprint - a screw terminal's body silk would
+            # swallow a pad-edge offset
+            row_along_x = (max(xs) - min(xs)) >= (max(ys) - min(ys))
+            bx0, by0, bx1, by1 = courtyards[part.ref]
+            # One pin, one name. A connector that brings a pin out twice
+            # (a shield, a mounting tab) names it once.
+            seen: set[str] = set()
+            entries: list[tuple[str, float, float, str]] = []
+            for number, _pad, (px, py) in pads:
+                net = net_of.get((part.ref, number))
+                if not net or number in seen:
+                    continue
+                seen.add(number)
+                entries.append((number, px, py, net))
+            if not entries:
+                continue
+            along = sorted(px if row_along_x else py for _n, px, py, _net in entries)
+            pitch = min((b - a for a, b in pairwise(along) if b - a > GEOM_EPS), default=2.54)
+            # The whole row is laid out at once, and every legend of it gets
+            # the same side and the same distance from the row: a column of
+            # names that line up is a pinout a person can read down, and one
+            # that staggers to dodge its neighbours is not. Across the row a
+            # name has to fit within the pitch, so on a 2.54 mm header the
+            # names turn a quarter and stand up from their pins; along a
+            # vertical row they lie flat beside it, one per pin, and a name
+            # that does not fit the pitch there is a name that has to turn.
+            # Each legend is anchored on its own pin and never slides along
+            # the row: the pin it names is the nearest one by construction.
+            widest = max(2 * _text_extent(net, 0.8)[0] for _n, _px, _py, net in entries)
+            # Flat names beside a vertical row stack by their height, and
+            # 1.24 mm fits any pitch a connector has.
+            angle = 90.0 if row_along_x and widest > pitch - GEOM_EPS else 0.0
+            # Either side of the pad row will do; which one is a question
+            # of what is already there. A connector at an edge has an empty
+            # strip on the outboard side and the rest of the board on the
+            # other, so the measurement picks outboard on its own - and on a
+            # carrier, where the module is inboard, it has to, because
+            # inboard is a pad and silk over a pad is a pad that will not
+            # wet. Then further out, for the row with a chip part standing
+            # in the strip beside it.
+            if row_along_x:
+                # above the row the names hang up from the anchor (left-
+                # justified when turned), below it down from the anchor
+                above = [
+                    (lambda px, py, g=gap, y=by0: (px, y - g), "left" if angle else "")
+                    for gap in (1.2, 2.6, 4.0, 5.4, 6.8)
+                ]
+                below = [
+                    (lambda px, py, g=gap, y=by1: (px, y + g), "right" if angle else "")
+                    for gap in (1.2, 2.6, 4.0, 5.4, 6.8)
+                ]
+                outboard_first = height / 2 - (by0 + by1) / 2 > 0
+                layouts = above + below if outboard_first else below + above
+            else:
+                left = [
+                    (lambda px, py, g=gap, x=bx0: (x - g, py), "right")
+                    for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
+                ]
+                right = [
+                    (lambda px, py, g=gap, x=bx1: (x + g, py), "left")
+                    for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
+                ]
+                outboard_first = width / 2 - (bx0 + bx1) / 2 < 0
+                layouts = right + left if outboard_first else left + right
+            # Deliberately *not* the designators. A legend names one pin of
+            # one connector and has to sit against it; a designator can go
+            # anywhere legible. So the legend is placed first and the
+            # designator gets out of its way - the same order the schematic
+            # side uses for a label and a field. The other parts' bodies
+            # weigh as much as a pad: a name under a neighbour's shell is
+            # readable on the bare board and gone on the assembled one. This
+            # connector's own pads count too - "against" is not "on".
+            bodies = [box for ref, box in courtyards.items() if ref != part.ref]
+
+            def cost(
+                layout, entries=entries, bodies=bodies, angle=angle, own_pads=own_pads
+            ) -> float:
+                anchor, justify = layout
+                return sum(
+                    _silk_intrusion(
+                        design,
+                        _silk_box(net, *anchor(px, py), 0.8, justify, angle),
+                        [*own_pads, *placed],
+                        [*all_pads, *bodies],
+                    )
+                    for _n, px, py, net in entries
+                )
+
+            anchor, justify = min(layouts, key=cost)
+            # A row that cannot be lined up clean - a chip part standing in
+            # the strip at one pin's height, with the board's edge on the
+            # other side - falls back to naming each pin on its own: the
+            # same sides and distances, and a slide along the row that
+            # stops while the pin it names is still the nearest one. The
+            # Pico carrier's supply terminal has the fuse in its strip, and
+            # its 5 V legend steps a quarter pitch up the row to clear the
+            # fuse's pad rather than print across it.
+            aligned = cost((anchor, justify)) <= GEOM_EPS
+            row: list[tuple[str, float, float, str, float, float, str, float]] = []
+            for number, px, py, net in entries:
+                tx, ty = anchor(px, py)
+                text_justify, text_angle = justify, angle
+                if not aligned:
+                    here = px if row_along_x else py
+                    elsewhere = [q for q in along if abs(q - here) > GEOM_EPS]
+                    slides = [
+                        s
+                        for s in (0.0, -1.27, 1.27, -2.54, 2.54)
+                        if not elsewhere
+                        or abs(s) < min(abs(q - (here + s)) for q in elsewhere) - GEOM_EPS
+                    ]
+                    spots = [
+                        (
+                            (lambda px, py, a=a, s=s: (a(px, py)[0] + s, a(px, py)[1]))
+                            if row_along_x
+                            else (lambda px, py, a=a, s=s: (a(px, py)[0], a(px, py)[1] + s)),
+                            j,
+                        )
+                        for a, j in layouts
+                        for s in slides
+                    ]
+                    spot_anchor, text_justify = min(
+                        spots,
+                        key=lambda spot, n=number, px=px, py=py, net=net: cost(
+                            spot, entries=[(n, px, py, net)]
+                        ),
+                    )
+                    tx, ty = spot_anchor(px, py)
+                if number in part.pin_legend_at:
+                    tx, ty, text_justify = part.pin_legend_at[number]
+                    text_angle = 0.0
+                row.append((number, px, py, net, tx, ty, text_justify, text_angle))
+            # Which of them came out as a column, asked of where they ended up
+            # rather than of what was attempted: one pin of a twenty-pin row
+            # with a fiducial in its strip sends the whole row to per-pin
+            # placement, and nineteen of them still land in one line.
+            offsets = [
+                (round(tx - px, 1), round(ty - py, 1)) for _n, px, py, _net, tx, ty, *_ in row
+            ]
+            column = {offset for offset in offsets if offsets.count(offset) >= LEGEND_COLUMN_MIN}
+            for index, (number, _px, _py, net, tx, ty, text_justify, text_angle) in enumerate(row):
+                box = _silk_box(net, tx, ty, 0.8, text_justify, text_angle)
+                # Last resort, and the only one that always works: a name with
+                # somebody else's pad nearer to it than its own names that pad,
+                # so it stops trying to sit against the pin and points at it
+                # instead. The supply terminals are where this happens - a
+                # fuse and a clamp stand between the terminal and the rest of
+                # the board, and the board's edge is on its other side.
+                #
+                # A name that is one of a column is exempt: the column is read
+                # by position, the third name down belongs to the third pin,
+                # and taking one out of the line to point at its pin costs more
+                # than it buys. Four of the Pico carrier's forty header names
+                # have a bypass capacitor's pad marginally nearer than their
+                # own pin, and all forty read fine.
+                #
+                # Held over to a second pass rather than done here: a leader
+                # has to miss every legend on the board, and the connectors
+                # after this one have not been laid out yet. The Pico carrier
+                # drew one across `GP28` and `AGND` that way.
+                mine = pad_of[number]
+                if offsets[index] not in column and not _names_its_pin(box, net, landed):
+                    relocate.append((part, number, net, mine, (tx, ty, text_justify, text_angle)))
+                    continue
+                placed.append(box)
+                out.append(
+                    _silk_text_item(
+                        design,
+                        net,
+                        tx,
+                        ty,
+                        (part.ref, number),
+                        justify=text_justify,
+                        angle=text_angle,
+                    )
+                )
+    for part in design.footprints():
+        if part.silk_label:
+            bx, by, _angle = part.board
+            dy = height / 2 - by
+            # Inboard of the part first - a label at the board edge is a label
+            # half off it - then further out, then either side. The designator
+            # is already on the board by now and is the thing this collides
+            # with: both want the clear millimetre next to a two-pad part.
+            reach = math.copysign(1.0, dy)
+            spots = [
+                (bx, by + reach * 2.6, ""),
+                (bx, by + reach * 4.0, ""),
+                (bx, by - reach * 2.6, ""),
+                (bx, by - reach * 4.0, ""),
+                (bx + 4.0, by, "left"),
+                (bx - 4.0, by, "right"),
+                (bx, by + reach * 5.4, ""),
+                # then round the part, for the indicator whose usual strips
+                # have been taken - a relocated legend's frame is 4 mm of board
+                *(
+                    (
+                        bx + radius * math.cos(math.radians(step * 45.0)),
+                        by + radius * math.sin(math.radians(step * 45.0)),
+                        "",
+                    )
+                    for radius in (5.0, 6.5, 8.0)
+                    for step in range(8)
+                ),
+            ]
+            # Other parts' bodies weigh what their pads do: "3V3 OK" beside an
+            # LED is there to be read on the finished board, and a relocated
+            # legend's frame can have taken the strip it used to use.
+            tx, ty, justify = min(
+                spots,
+                key=lambda spot: (
+                    _silk_intrusion(
+                        design,
+                        _silk_box(part.silk_label, spot[0], spot[1], 0.8, spot[2]),
+                        placed,
+                        [
+                            *(_inked(box, SILK_CLEARANCE) for box in all_pads),
+                            *obstacles,
+                            *taken,
+                        ],
+                    ),
+                    math.dist((spot[0], spot[1]), (bx, by)),
+                ),
+            )
+            placed.append(_silk_box(part.silk_label, tx, ty, 0.8, justify))
+            out.append(
+                _silk_text_item(
+                    design, part.silk_label, tx, ty, (part.ref, "label"), justify=justify
+                )
+            )
+    # The names with no room beside their pin, now that every name that did
+    # have room is down. Ink on ink weighs what ink on a pad does here: the
+    # frame and its leader have a whole board to choose from, and `silk_overlap`
+    # is a real finding where a courtyard grazed is not.
+    for part, number, net, mine, plain in relocate:
+        attempts = [
+            _framed_legend(
+                design,
+                net,
+                mine,
+                (part.ref, number),
+                all_pads,
+                [],
+                [
+                    # a pad grown by the clearance the fab wants: ink that
+                    # merely grazes a mask opening is still "silkscreen clipped
+                    # by solder mask", and the graze cost so little that the
+                    # search took it
+                    *(_inked(box, SILK_CLEARANCE) for box in all_pads),
+                    *obstacles,
+                    *courtyards.values(),
+                    *placed,
+                ],
+                hidden_by=[
+                    *_footprint_silk(design, part),
+                    courtyards[part.ref],
+                    *([body] if (body := _body_box(design, part)) else []),
+                ],
+                home=courtyards[part.ref],
+                boxed=boxed,
+            )
+            # A frame says "this is a label, not a part's name", and is worth
+            # four millimetres of board where there are four to spare. Where
+            # there are not - the Pico carrier's terminal has the board's edge
+            # on two sides of it - the name goes bare and the leader still says
+            # which pin it means, which was the point.
+            for boxed in (True, False)
+        ]
+        clean = [attempt for attempt in attempts if attempt is not None]
+        framed = min(clean, key=lambda attempt: attempt[2]) if clean else None
+        if framed is None:
+            # nowhere on the board to put it; keep the placement it had
+            tx, ty, text_justify, text_angle = plain
+            box = _silk_box(net, tx, ty, 0.8, text_justify, text_angle)
+            items, boxes = (
+                [
+                    _silk_text_item(
+                        design,
+                        net,
+                        tx,
+                        ty,
+                        (part.ref, number),
+                        justify=text_justify,
+                        angle=text_angle,
+                    )
+                ],
+                [box],
+            )
+        else:
+            items, boxes, _cost = framed
+        out.extend(items)
+        placed.extend(boxes)
+    # The board's own name goes last, because it is the string with the
+    # most freedom about where it goes and so the one that moves. Placed
+    # first it had no idea the legends were coming and printed itself
+    # through `GP22`.
     # Bottom centre is where a board says its own name, and on a board with
     # room that is where it stays. A carrier whose module runs the length of
     # it has no bottom centre to write in, so the next-best strips are offered
@@ -6447,144 +7488,26 @@ def _board_silk(
     # goes - so it is the one that moves. Scored rather than first-clear, so a
     # crowded board still gets the least bad strip instead of the first one in
     # the list.
+    # The parts' bodies weigh as much as their pads: a board name under a
+    # fitted part is a board with no name.
     at = min(
         spots,
         key=lambda spot: (
-            _silk_intrusion(design, stack_box(spot), [*taken, *(printed or [])], all_pads),
+            _silk_intrusion(design, stack_box(spot), placed, [*all_pads, *taken]),
             spots.index(spot),
         ),
     )
     for index, (text, size, key) in enumerate(lines):
         out.append(_silk_text_item(design, text, at[0], at[1] + index * 2.4, key, size=size))
-    net_of: dict[tuple[str, str], str] = {}
-    for name, nodes in design.nets.items():
-        for entry in nodes:
-            ref, _, number = entry.partition(".")
-            net_of[(ref, number)] = name
-    for part in design.footprints():
-        if part.ref.startswith("J"):
-            node = footprint_definition(part.footprint)
-            pads = [
-                (str(pad.atom(0, "")), pad, pad_position_of(design, part, pad))
-                for pad in node.children("pad")
-            ]
-            xs = [p[0] for _n, _p, p in pads]
-            ys = [p[1] for _n, _p, p in pads]
-            own_pads = [pad_box(design, part, pad) for _n, pad, _p in pads]
-            # labels go perpendicular to the pad row, on the board side, and
-            # clear the whole footprint - a screw terminal's body silk would
-            # swallow a pad-edge offset
-            row_along_x = (max(xs) - min(xs)) >= (max(ys) - min(ys))
-            clear = courtyards[part.ref]
-            seen: set[str] = set()
-            for number, _pad, (px, py) in pads:
-                net = net_of.get((part.ref, number))
-                if not net or number in seen:
-                    continue
-                seen.add(number)
-                bx0, by0, bx1, by1 = clear
-                # Either side of the pad row will do; which one is a question
-                # of what is already there. A connector at an edge has an
-                # empty strip on the outboard side and the rest of the board
-                # on the other, so the measurement picks outboard on its own -
-                # and on a carrier, where the module is inboard, it has to,
-                # because inboard is a pad and silk over a pad is a pad that
-                # will not wet.
-                # Either side of the pad row, and then further out along it.
-                # Two spots is not a choice when a chip part sits in the strip
-                # beside the connector: both are occupied and the legend takes
-                # the least bad one, which is still ink on ink.
-                if row_along_x:
-                    sides = [
-                        (px + slide, by0 - gap, "")
-                        for gap in (1.2, 2.6, 4.0, 5.4, 6.8)
-                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
-                    ] + [
-                        (px + slide, by1 + gap, "")
-                        for gap in (1.2, 2.6, 4.0, 5.4, 6.8)
-                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
-                    ]
-                    if height / 2 - py > 0:
-                        sides = sides[3:] + sides[:3]
-                else:
-                    # Along the row as well as away from it: a legend has to
-                    # sit against the pin it names, and half a pin pitch either
-                    # way is still against it - which is the difference between
-                    # a legend beside a capacitor and one printed across its
-                    # land.
-                    sides = [
-                        (bx0 - gap, py + slide, "right")
-                        for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
-                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
-                    ] + [
-                        (bx1 + gap, py + slide, "left")
-                        for gap in (1.6, 3.0, 4.4, 5.8, 7.2)
-                        for slide in (0.0, -1.27, 1.27, -2.54, 2.54)
-                    ]
-                    if width / 2 - px < 0:
-                        sides = sides[25:] + sides[:25]
-                # Deliberately *not* the designators. A legend names one pin
-                # of one connector and has to sit against it; a designator can
-                # go anywhere legible. So the legend is placed first and the
-                # designator gets out of its way - the same order the schematic
-                # side uses for a label and a field.
-                others = [
-                    *(box for ref, box in courtyards.items() if ref != part.ref),
-                    # ...and this connector's *own* pads. Its courtyard is left
-                    # out because the legend has to sit against the part it
-                    # names, but "against" is not "on": ink on a pad is a pad
-                    # that will not wet, which is what reaching further out
-                    # along the row started doing.
-                    *own_pads,
-                    *placed,
-                ]
-                tx, ty, justify = min(
-                    sides,
-                    key=lambda side: _silk_intrusion(
-                        design, _silk_box(net, side[0], side[1], 0.8, side[2]), others, all_pads
-                    ),
-                )
-                if number in part.pin_legend_at:
-                    tx, ty, justify = part.pin_legend_at[number]
-                placed.append(_silk_box(net, tx, ty, 0.8, justify))
-                if legend_boxes is not None:
-                    legend_boxes.append(_silk_box(net, tx, ty, 0.8, justify))
-                out.append(
-                    _silk_text_item(design, net, tx, ty, (part.ref, number), justify=justify)
-                )
-    for part in design.footprints():
-        if part.silk_label:
-            bx, by, _angle = part.board
-            dy = height / 2 - by
-            # Inboard of the part first - a label at the board edge is a label
-            # half off it - then further out, then either side. The designator
-            # is already on the board by now and is the thing this collides
-            # with: both want the clear millimetre next to a two-pad part.
-            reach = math.copysign(1.0, dy)
-            spots = [
-                (bx, by + reach * 2.6, ""),
-                (bx, by + reach * 4.0, ""),
-                (bx, by - reach * 2.6, ""),
-                (bx, by - reach * 4.0, ""),
-                (bx + 4.0, by, "left"),
-                (bx - 4.0, by, "right"),
-                (bx, by + reach * 5.4, ""),
-            ]
-            tx, ty, justify = min(
-                spots,
-                key=lambda spot: _silk_intrusion(
-                    design,
-                    _silk_box(part.silk_label, spot[0], spot[1], 0.8, spot[2]),
-                    [*taken, *(printed or []), *placed],
-                    all_pads,
-                ),
-            )
-            placed.append(_silk_box(part.silk_label, tx, ty, 0.8, justify))
-            out.append(
-                _silk_text_item(
-                    design, part.silk_label, tx, ty, (part.ref, "label"), justify=justify
-                )
-            )
+        # counted with the rest of the ink from here on: a relocated legend's
+        # frame has the run of the board and the board's name does not
+        placed.append(_silk_box(text, at[0], at[1] + index * 2.4, size))
+    if legend_boxes is not None:
+        # Everything this function put on the board, so the designators - placed
+        # after it and free to go anywhere legible - can miss all of it. It has
+        # to be everything: the two passes agree only because neither reads
+        # anything the other writes.
+        legend_boxes[:] = placed
     return out
 
 
@@ -6896,6 +7819,7 @@ two symbols are placed on top of each other       -> readability.overlapping_sym
 no title block, no design notes                   -> readability.title_block, spec.no_design_notes
 no tolerance / voltage / power ratings, no MPN    -> spec.missing_rating, spec.missing_part_number
 capacitors picked without derating the rail       -> spec.voltage_derating
+no ESR stated on the regulator's output capacitor -> spec.missing_esr
 no PWR_FLAG on the externally supplied rails      -> erc.power_pin_not_driven
 footprints off the placement grid, odd rotations  -> layout.off_grid_placement, layout.odd_rotation
 power routed at signal width                      -> track.thin_power
@@ -6957,6 +7881,14 @@ def degrade(design: Design) -> Design:
 # Values a generator picks by capacitance alone, ignoring the rail they sit on.
 UNDERRATED = {"C1": "220u", "C3": "220u"}
 
+# The parts every board's power input carries, and where their datasheets are.
+# The TVS link is the one KiCad's own Diode library states for the SMAJ series.
+LITTELFUSE_466 = "https://www.littelfuse.com/products/fuses/surface-mount-fuses/thin-film-fuses/466"
+LITTELFUSE_SMAJ = (
+    "https://www.littelfuse.com/media?resourcetype=datasheets"
+    "&itemid=75e32973-b177-4ee3-a0ff-cedaf1abdb93&filename=smaj-datasheet"
+)
+
 
 # ---------------------------------------------------------------------------
 # the designs
@@ -6987,7 +7919,9 @@ def buck_5v() -> Design:
             "Connector:Screw_Terminal_01x02",
             "12V IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            sheet=(38.1, 63.5),
+            # Far enough left of the fuse that the two pin stubs between them
+            # do not overlap: each pin runs 2.54 mm before its wire.
+            sheet=(30.48, 63.5),
             mirror="y",
             board=(6.0, 20.0, 270.0),
             fields={
@@ -6996,12 +7930,53 @@ def buck_5v() -> Design:
                 "Datasheet": "https://www.phoenixcontact.com/product/1729128",
             },
         ),
+        # The input is protected before anything else sees it: a fuse in
+        # series, then a TVS across the fused rail. Reversed leads forward-bias
+        # the TVS and the fuse opens; a transient above the regulator's rating
+        # is clamped. Neither exists on a bench, both exist in a box.
+        #
+        # On the board they take the corridor between the terminal and the
+        # regulator's tab via ring - the one strip the rebuilt floorplan left
+        # empty, and the strip the input rail crosses anyway.
+        Part(
+            "F1",
+            "Device:Fuse",
+            "3A",
+            "Fuse:Fuse_1206_3216Metric",
+            sheet=(46.99, 63.5),
+            angle=90.0,
+            board=(15.0, 20.0, 0.0),
+            fields={
+                "Current": "3A",
+                "MPN": "0466003.NR",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_466,
+            },
+        ),
+        Part(
+            "D3",
+            "Device:D_Zener",
+            "SMAJ18A",
+            "Diode_SMD:D_SMA",
+            sheet=(60.96, 69.85),
+            angle=270.0,
+            # Cathode up to the fused rail, anode down to its own via: the
+            # clamp's return is the shortest one on the board.
+            board=(15.0, 27.0, 270.0),
+            fields={
+                "Voltage": "18V",
+                "Power": "400W",
+                "MPN": "SMAJ18A",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_SMAJ,
+            },
+        ),
         Part(
             "C1",
             "Device:C_Polarized",
             "220u",
             "Capacitor_SMD:CP_Elec_8x10.5",
-            sheet=(63.5, 69.85),
+            sheet=(73.66, 69.85),
             board=(30.0, 29.0, 270.0),
             fields={
                 "Voltage": "35V",
@@ -7096,6 +8071,12 @@ def buck_5v() -> Design:
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
+                # The output capacitor's ESR is a design value here, not an
+                # accident of the part picked: the LM2596's loop is designed
+                # around it (SNVS124G section 9.1.3 gives it both an upper and
+                # a lower limit), so a substitute has to meet it as surely as
+                # the voltage rating.
+                "ESR": "150mR max @100kHz",
                 "MPN": "EEE-FK1C221P",
                 "Manufacturer": "Panasonic",
                 "Datasheet": "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf",
@@ -7152,8 +8133,21 @@ def buck_5v() -> Design:
     ]
 
     nets = {
-        "+12V": ["J1.1", "C1.1", "C2.1", "U1.1"],
-        "GND": ["J1.2", "C1.2", "C2.2", "U1.3", "U1.5", "D1.2", "C3.2", "C4.2", "J2.2", "D2.1"],
+        "VIN": ["J1.1", "F1.1"],
+        "+12V": ["F1.2", "D3.1", "C1.1", "C2.1", "U1.1"],
+        "GND": [
+            "J1.2",
+            "D3.2",
+            "C1.2",
+            "C2.2",
+            "U1.3",
+            "U1.5",
+            "D1.2",
+            "C3.2",
+            "C4.2",
+            "J2.2",
+            "D2.1",
+        ],
         "SW": ["U1.2", "D1.1", "L1.1"],
         "+5V": ["L1.2", "U1.4", "C3.1", "C4.1", "J2.1", "R1.1"],
         "LED_A": ["R1.2", "D2.2"],
@@ -7166,8 +8160,11 @@ def buck_5v() -> Design:
     W, SIG = 1.0, 0.4
     tracks = [
         # The input connector may be remote; the energy-storage parts may not.
-        # C1, C2 and VIN form one compact branch at the regulator pin.
-        Track("+12V", "F.Cu", W, ["J1.1", (11.3, 25.3), "C1.1"]),
+        # C1, C2 and VIN form one compact branch at the regulator pin - now
+        # with the fuse in the way of it and the clamp hanging off it.
+        Track("VIN", "F.Cu", W, ["J1.1", "F1.1"]),
+        Track("+12V", "F.Cu", W, ["F1.2", (16.4, 23.0), "D3.1"]),
+        Track("+12V", "F.Cu", W, ["F1.2", (18.0, 20.0), (18.0, 25.3), "C1.1"]),
         Track("+12V", "F.Cu", W, ["C1.1", (30.0, 24.0), "C2.1"]),
         Track("+12V", "F.Cu", W, ["C2.1", (35.05, 20.8), (34.65, 20.4), "U1.1"]),
         # Turning the TO-263 puts its pin field toward D1 and L1. The hot switch
@@ -7203,6 +8200,7 @@ def buck_5v() -> Design:
         Track("GND", "F.Cu", W, ["U1.3", (39.5, 15.0)]),
         Track("GND", "F.Cu", W, ["U1.5", (37.5, 11.6)]),
         Track("GND", "F.Cu", W, [(25.5, 15.0), (25.5, 21.8)]),  # the TO-263 tab
+        Track("GND", "F.Cu", W, ["D3.2", (15.0, 31.0)]),
         Track("GND", "F.Cu", W, ["C1.2", (30.0, 34.0)]),
         Track("GND", "F.Cu", W, ["C2.2", (38.5, 22.0)]),
         Track("GND", "F.Cu", W, ["D1.2", (42.0, 26.5)]),
@@ -7226,6 +8224,7 @@ def buck_5v() -> Design:
         Via("GND", x=39.5, y=15.0),
         Via("GND", x=37.5, y=11.6),
         Via("GND", x=25.5, y=21.8),
+        Via("GND", x=15.0, y=31.0),
         Via("GND", x=30.0, y=34.0),
         Via("GND", x=38.5, y=22.0),
         Via("GND", x=42.0, y=26.5),
@@ -7244,8 +8243,9 @@ def buck_5v() -> Design:
             (
                 (30.48, 87.63),
                 [
-                    "Input: C1 220u/35V bulk, C2 100n/50V bypass -",
-                    "both above 1.5x the 12 V they sit on.",
+                    "Input: F1 3 A opens on a fault or reversed leads; D3 clamps",
+                    "above 18 V and is the diode the reversed supply flows through.",
+                    "C1 220u/35V bulk, C2 100n/50V bypass - both above 1.5x the 12 V.",
                 ],
             ),
             (
@@ -7261,6 +8261,9 @@ def buck_5v() -> Design:
                     "D1 SS34 (3 A / 40 V) catches the inductor current.",
                     "L1 33 uH, 3 A saturation: ripple 0.6 A pk-pk at 2 A out.",
                     "C3 220u/16V bulk, C4 100n/25V bypass on the 5 V rail.",
+                    "C3's ESR is part of the design: 0.6 A x 150 mR = 90 mV",
+                    "ripple, and the LM2596 loop needs ESR in the output",
+                    "capacitor - an all-ceramic substitute rings.",
                 ],
             ),
             (
@@ -7274,7 +8277,7 @@ def buck_5v() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=[("+12V", "J1.1"), ("GND", "J1.2"), ("+5V", "L1.2")],
+        power_flags=[("+12V", "F1.2"), ("GND", "J1.2"), ("+5V", "L1.2")],
         board_size=(92.0, 38.0),
         tracks=tracks,
         vias=vias,
@@ -7314,13 +8317,13 @@ def motor_driver() -> Design:
             "Connector:Screw_Terminal_01x02",
             "VM 2.7-10.8V",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            # 38, not 30: mirrored, the connector prints its long value to the
+            # 33, not 30: mirrored, the connector prints its long value to the
             # left, and at 30 that string reached the sheet frame's ruler strip.
-            sheet=(38.0, 80.0),
+            # Not further right either: the fuse and its pin stubs want the
+            # room between the terminal and the bulk capacitor.
+            sheet=(33.02, 80.01),
             board=(62.0, 7.0, 270.0),
             mirror="y",
-            # Keep the supply legend above the nearby bulk capacitor's silk.
-            pin_legend_at={"1": (58.0, 3.0, "right")},
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -7332,8 +8335,14 @@ def motor_driver() -> Design:
             "Device:C_Polarized",
             "100u",
             "Capacitor_SMD:CP_Elec_6.3x7.7",
-            sheet=(55.88, 86.36),
-            board=(52.0, 8.0, 0.0),
+            sheet=(66.04, 86.36),
+            # 46 and turned round, not 52: the fuse and the clamp want the
+            # column between this and the terminal, and the supply pad has to
+            # be the one facing them so the rail does not cross the bulk
+            # capacitor's own ground to get in. Not further left than 46
+            # either - the board writes its own name in the strip this
+            # capacitor's courtyard bounds, and it needs the width.
+            board=(46.0, 8.0, 180.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "20%",
@@ -7342,12 +8351,51 @@ def motor_driver() -> Design:
                 "Datasheet": "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf",
             },
         ),
+        # Fuse and TVS between the terminal and the rail. VM may reach 10.8 V,
+        # so the TVS stands off 12 V; reversed leads flow through it as a
+        # diode and open the fuse. Both stand in the column between the
+        # terminal's courtyard and the bulk capacitor's, which is the strip
+        # the input rail crosses anyway.
+        Part(
+            "F1",
+            "Device:Fuse",
+            "3A",
+            "Fuse:Fuse_1206_3216Metric",
+            sheet=(49.53, 80.01),
+            angle=90.0,
+            board=(53.7, 8.0, 180.0),
+            fields={
+                "Current": "3A",
+                "MPN": "0466003.NR",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_466,
+            },
+        ),
+        Part(
+            "D3",
+            "Device:D_Zener",
+            "SMAJ12A",
+            "Diode_SMD:D_SMA",
+            sheet=(57.15, 91.44),
+            angle=270.0,
+            # Cathode up to the fused rail, anode down to its own via: below
+            # the fuse, in the same column, with the whole strip to the right
+            # of the capacitor free.
+            board=(53.7, 14.0, 270.0),
+            fields={
+                "Voltage": "12V",
+                "Power": "400W",
+                "MPN": "SMAJ12A",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_SMAJ,
+            },
+        ),
         Part(
             "C2",
             "Device:C",
             "10u",
             "Capacitor_SMD:C_0805_2012Metric",
-            sheet=(68.58, 86.36),
+            sheet=(78.74, 86.36),
             board=(43.0, 26.0, 0.0),
             fields={
                 "Voltage": "25V",
@@ -7406,8 +8454,10 @@ def motor_driver() -> Design:
             "Device:R",
             "4k7",
             "Resistor_SMD:R_0805_2012Metric",
-            sheet=(81.28, 107.95),
-            board=(41.0, 6.0, 0.0),
+            sheet=(96.52, 107.95),
+            # Out of the supply row: the fuse and the clamp took it, and the
+            # strip below the terminal was the board's largest free area.
+            board=(58.0, 20.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -7421,8 +8471,8 @@ def motor_driver() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(81.28, 121.92),
-            board=(45.0, 6.0, 180.0),
+            sheet=(96.52, 121.92),
+            board=(62.0, 20.0, 180.0),
             silk_label="VM OK",
             fields={
                 "Voltage": "2.1V",
@@ -7474,12 +8524,20 @@ def motor_driver() -> Design:
     ]
 
     nets = {
-        "VM": ["J1.1", "C1.1", "C2.1", "C3.1", "U1.12", "R2.1"],
+        "VIN": ["J1.1", "F1.1"],
+        "VM": ["F1.2", "D3.1", "C1.1", "C2.1", "C3.1", "U1.12", "R2.1"],
         # J4 is in the order the tracks arrive, so that nothing has to cross to
         # reach it: ground at both ends, then the two signals that come round
         # the outside of the package and the four that come straight out of it.
+        # The four leave the package's east side from two columns of vias, at
+        # x = 40.2-40.75 and at x = 38.2, and drop south on the back: the east
+        # column lands first, the west column after it, and within a column
+        # the upper via lands nearer. Any other order has two drops crossing,
+        # and the one that loses has to go round the whole west end of the
+        # board - which is what AIN1 did when it was on pin 3.
         "GND": [
             "J1.2",
+            "D3.2",
             "C1.2",
             "C2.2",
             "U1.13",
@@ -7494,10 +8552,10 @@ def motor_driver() -> Design:
         "VINT": ["U1.14", "C4.1"],
         "nFAULT": ["U1.8", "J4.7"],
         "nSLEEP": ["U1.1", "J4.2"],
-        "AIN1": ["U1.16", "J4.3"],
-        "AIN2": ["U1.15", "J4.4"],
-        "BIN2": ["U1.10", "J4.5"],
-        "BIN1": ["U1.9", "J4.6"],
+        "AIN2": ["U1.15", "J4.3"],
+        "BIN1": ["U1.9", "J4.4"],
+        "AIN1": ["U1.16", "J4.5"],
+        "BIN2": ["U1.10", "J4.6"],
         # The package brings A out 1-then-2 down the row and B out 2-then-1, so
         # a fan that does not cross itself lands them on opposite terminals.
         "AOUT1": ["U1.2", "J2.2"],
@@ -7515,7 +8573,7 @@ def motor_driver() -> Design:
         notes=[],
         note_blocks=[
             (
-                (17.78, 115.57),
+                (17.78, 118.11),
                 [
                     "PW package: 0.5 A RMS per bridge at VM=5 V, 25 C.",
                     "Not the 1.5 A thermally enhanced PWP/RTY versions.",
@@ -7524,14 +8582,14 @@ def motor_driver() -> Design:
                 ],
             ),
             (
-                (17.78, 102.87),
+                (17.78, 106.68),
                 [
                     "C1 100 uF / 25 V bulk on a rail that can reach 10.8 V -",
                     "C2 10 uF / 25 V ceramic is the local VM bypass.",
                 ],
             ),
             (
-                (93.98, 115.57),
+                (109.22, 115.57),
                 ["VM indicator: about 1.5 mA at VM=9 V."],
             ),
             (
@@ -7564,10 +8622,8 @@ def motor_driver() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=[("VM", "J1.1"), ("GND", "J1.2"), ("VINT", "C4.1")],
+        power_flags=[("VM", "F1.2"), ("GND", "J1.2"), ("VINT", "C4.1")],
         board_size=(68.0, 46.0),
-        copper_layers=4,
-        power_plane="VM",
         tracks=[],
         vias=[],
         pour=(1.2, 1.2, 66.8, 44.8),
@@ -7602,9 +8658,10 @@ def motor_driver() -> Design:
         widths={"2": POWER, "4": POWER, "5": POWER, "7": POWER, "3": POWER, "6": POWER},
     )
     left = [track for track in left if track.net not in {"nSLEEP", "GND"}]
-    # A four-layer board need not fan every supply pin out to a common distant
-    # column. Drop GND into In1 under the non-exposed-pad body, and keep VINT,
-    # VM and VCP on short front-side connections to the three capacitors.
+    # The east side does not fan: the three supply pins reach their
+    # capacitors on short front-side runs, GND drops to the back pour through
+    # its own via, and the four logic inputs each get a via of their own at
+    # the land's edge and go south on the back from there.
     # The east lands begin at x=38.625. A 0.58 mm via at x=38.2 leaves
     # 0.135 mm copper gap to its own land, so it does not require via-in-pad.
     east = {"16": (38.2, 23.225), "15": (40.75, 23.625), "10": (38.2, 27.125), "9": (40.2, 28.3)}
@@ -7633,40 +8690,53 @@ def motor_driver() -> Design:
     ]
 
     # -- the supply, placed by hand ----------------------------------------
-    # The input feeds In2; C2 and C3 each pick it up locally. No redundant
-    # outer-layer supply trunk, and no logic escape between IC and bypass.
-    feed, vm_bypass, pump_supply = (57.5, 13.0), (42.05, 24.75), (45.15, 28.5)
-    vias += [
-        *(Via("VM", x=p[0], y=p[1]) for p in (feed, pump_supply)),
-        Via("VM", x=vm_bypass[0], y=vm_bypass[1], size=0.58, drill=0.3),
-    ]
+    # On two layers the supply has no plane to disappear into, so it is a
+    # stated front-side spine: down the free column right of the capacitors,
+    # then two short arms west into the bypass pair. The spine passes between
+    # the two ground vias at x = 45.15, which is why they sit 2.5 mm apart -
+    # the gap between their barrels is 1.7 mm and the arm needs 0.9 of it.
+    #
+    # The back of the board stays what it was on four layers: ground, and the
+    # short logic lanes. Putting the rail there instead would have cut the
+    # only reference plane the signals have, and the cut would have run the
+    # length of the board.
+    SPINE_X = 48.7
+    vm_bypass, pump_supply = (42.05, 24.75), (43.95, 28.5)
     tracks += [
         Track("VM", "F.Cu", POWER, ["U1.12", (41.875, 25.825), "C2.1"]),
         Track("VM", "F.Cu", POWER, [vm_bypass, "C2.1"]),
-        Track("VM", "F.Cu", POWER, ["J1.1", "C1.1"], auto=True),
-        Track("VM", "F.Cu", POWER, ["C1.1", feed], auto=True),
-        Track("VM", "F.Cu", POWER, ["C3.1", pump_supply]),
-        Track("VM", "F.Cu", POWER, ["C1.1", "R2.1"], auto=True),
+        # terminal, fuse, clamp, bulk: one row, left to right as it flows
+        Track("VIN", "F.Cu", POWER, ["J1.1", "F1.1"], auto=True),
+        Track("VM", "F.Cu", POWER, ["F1.2", (52.3, 10.0), "D3.1"]),
+        Track("GND", "F.Cu", POWER, ["D3.2", (53.7, 19.0)]),
+        Track("VM", "F.Cu", POWER, ["F1.2", "C1.1"], auto=True),
+        # the spine, and its two arms
+        Track("VM", "F.Cu", POWER, ["C1.1", (SPINE_X, 8.0), (SPINE_X, 28.5)]),
+        Track("VM", "F.Cu", POWER, [(SPINE_X, 24.75), vm_bypass]),
+        Track("VM", "F.Cu", POWER, [(SPINE_X, 28.5), pump_supply]),
+        Track("VM", "F.Cu", POWER, ["F1.2", "R2.1"], auto=True),
         Track("VCP", "F.Cu", POWER, ["U1.11", (40.6, 26.475), (42.05, 27.925), "C3.2"]),
         Track("VINT", "F.Cu", POWER, ["U1.14", (41.025, 24.525), "C4.1"]),
         Track("LED_A", "F.Cu", SIG, ["R2.2", "D2.2"], auto=True),
     ]
+    vias += [Via("GND", x=53.7, y=19.0)]
     # The four logic inputs are boxed in by the supply fan on the front. A
     # short, ordered row of drops is clearer than four tours around that fan.
     for net, pin, header in (
-        ("AIN1", "16", "J4.3"),
-        ("AIN2", "15", "J4.4"),
-        ("BIN2", "10", "J4.5"),
-        ("BIN1", "9", "J4.6"),
+        ("AIN2", "15", "J4.3"),
+        ("BIN1", "9", "J4.4"),
+        ("AIN1", "16", "J4.5"),
+        ("BIN2", "10", "J4.6"),
     ):
         site = east[pin]
         vias.append(Via(net, x=site[0], y=site[1], size=0.58, drill=0.3))
         if net == "AIN2":
             # One declared back-side lane avoids the router's expensive-front
-            # preference turning this connection into a 42 mm tour.
+            # preference turning this connection into a 42 mm tour. It turns
+            # at 35.72 so the last leg to pin 3 is a 45.
             tracks.append(
                 Track(
-                    net, "B.Cu", SIG, [site, (41.2, 24.075), (41.2, 33.18), header], keep_layer=True
+                    net, "B.Cu", SIG, [site, (41.2, 24.075), (41.2, 35.72), header], keep_layer=True
                 )
             )
             continue
@@ -7690,11 +8760,11 @@ def motor_driver() -> Design:
     tracks += [
         Track("GND", "F.Cu", POWER, ["C2.2", local_ground]),
         Track("GND", "F.Cu", POWER, ["C4.2", vint_ground]),
-        Track("GND", "F.Cu", POWER, ["C1.2", (56.0, 12.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["C1.2", (40.0, 12.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J1.2", (60.0, 15.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J4.1", (44.0, 42.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J4.8", (22.0, 42.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", POWER, ["D2.1", (49.0, 9.5)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["D2.1", (65.0, 24.0)], auto=True, goal_layer="B.Cu"),
     ]
 
     # -- everything that simply has to arrive ------------------------------
@@ -7823,7 +8893,9 @@ def pico_carrier() -> Design:
             "Connector:Screw_Terminal_01x02",
             "5V IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
+            # Mirrored so the pins face the fuse to the right of it.
             sheet=(60.0, 40.0),
+            mirror="y",
             board=(72.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
@@ -7831,14 +8903,44 @@ def pico_carrier() -> Design:
                 "Datasheet": "https://www.phoenixcontact.com/product/1729128",
             },
         ),
+        # The resettable fuse between the terminal and the diode: a short on
+        # the carrier trips it instead of the bench supply, and it comes back
+        # by itself. D1 already blocks a reversed supply, so this board gets a
+        # fuse and no clamp.
+        Part(
+            "F1",
+            "Device:Polyfuse",
+            "0.75A",
+            "Fuse:Fuse_1812_4532Metric",
+            # 7.62 mm pin to pin on either side: each pin runs a 2.54 mm stub
+            # before its wire, and two stubs closer than that draw over each
+            # other.
+            sheet=(76.2, 39.37),
+            # Pin 2 towards the terminal on both the sheet and the board: the
+            # footprint's pad 2 is the right-hand one, the symbol's pin 2 at
+            # 270 degrees is the left-hand one, and the terminal is right of
+            # the fuse on the board and left of it on the sheet.
+            angle=270.0,
+            board=(62.0, 8.0, 0.0),
+            fields={
+                "Current": "0.75A",
+                "MPN": "MF-MSMF075-2",
+                "Manufacturer": "Bourns",
+                "Datasheet": "https://www.bourns.com/docs/product-datasheets/mfmsmf.pdf",
+            },
+        ),
         Part(
             "D1",
             "Device:D_Schottky",
             "SS14",
             "Diode_SMD:D_SMA",
-            sheet=(90.17, 39.37),
+            sheet=(91.44, 39.37),
             mirror="y",
-            board=(58.0, 8.0, 180.0),
+            # Anode towards the fuse, cathode towards the module: the supply
+            # enters from the right, so the diode faces the way the current
+            # flows and nothing has to loop round it. At 180 degrees it faced
+            # the other way and the rail crossed its own body to get there.
+            board=(54.0, 8.0, 0.0),
             fields={
                 "Voltage": "40V",
                 "Current": "1A",
@@ -7853,12 +8955,15 @@ def pico_carrier() -> Design:
             "22u",
             "Capacitor_SMD:C_1210_3225Metric",
             sheet=(127.0, 45.72),
-            # 8.52, not 9.54: VSYS runs along y = 10, and at 9.54 the pad sat
-            # a millimetre south of it - the line passed straight by and fed
-            # the capacitor through a stub, which on a rail that is really a
-            # transmission line is a tap, not a bypass. At 8.52 the supply pad
-            # is *on* the line: current flows in one side and out the other.
-            board=(48.0, 10.02, 90.0),
+            # Out of the header's legend strip. Every one of J4's twenty pins
+            # carries its net name in the strip to its right, and at x=48
+            # this capacitor stood across the rows of pins 3 and 4, so those
+            # two legends had nowhere to print but on it - or, before the
+            # placer was told a legend has to name the nearest pin, one pin
+            # along, where they named the wrong one. Below the diode at
+            # 53.5, its supply pad is the one nearest the diode's, three and
+            # a half millimetres straight up.
+            board=(53.5, 11.5, 0.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
@@ -7873,7 +8978,9 @@ def pico_carrier() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(180.34, 60.96),
-            board=(48.0, 17.0, 0.0),
+            # 54.5, not 48: pin 6's legend is ADC_VREF, the longest name on
+            # the header, and it needs the strip clear to x=52.4 on its row.
+            board=(54.5, 17.0, 0.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "10%",
@@ -7888,7 +8995,9 @@ def pico_carrier() -> Design:
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(203.2, 60.96),
-            board=(58.0, 17.0, 0.0),
+            # 60, not 58: two millimetres east with the capacitor, so the two
+            # courtyards keep their gap.
+            board=(60.0, 17.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -7925,7 +9034,8 @@ def pico_carrier() -> Design:
     for index, number in enumerate(right, start=1):
         nets.setdefault(pico_net(pins[number]), []).extend([f"U1.{number}", f"J4.{index}"])
 
-    nets["+5V"] = ["J1.1", "D1.2"]
+    nets["+5V"] = ["J1.1", "F1.2"]
+    nets["5V_FUSED"] = ["F1.1", "D1.2"]
     nets["VSYS"] += ["D1.1", "C1.1"]
     nets["+3V3"] += ["C2.1", "R1.1"]
     nets["GND"] += ["J1.2", "C1.2", "C2.2", "D3.1"]
@@ -7939,11 +9049,15 @@ def pico_carrier() -> Design:
         notes=[],
         note_blocks=[
             (
-                (71.12, 17.78),
+                # Right of the fuse's own flag and symbol, which want the room
+                # above the supply row.
+                (104.14, 17.78),
                 [
-                    "5 V in feeds VSYS through D1 - the datasheet's own arrangement:",
-                    "it keeps USB and the external supply from fighting when both are",
-                    "plugged in. C1 22 uF / 16 V is the bulk that goes with it.",
+                    "5 V in feeds VSYS through F1 and D1. D1 is the datasheet's own",
+                    "arrangement: it keeps USB and the external supply from fighting",
+                    "when both are plugged in, and blocks a reversed supply. F1 is a",
+                    "0.75 A resettable fuse: a short on the carrier trips it, not the",
+                    "bench supply. C1 22 uF / 16 V is the bulk that goes with them.",
                 ],
             ),
             (
@@ -7986,6 +9100,10 @@ def pico_carrier() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("+5V", "J1.1"), ("VSYS", "D1.1"), ("ADC_VREF", "U1.35")],
+        # The input rail is two pins facing each other across the fuse: drawn
+        # as the wire it is, not as two supply symbols whose taps would run
+        # into each other along the same line.
+        wired_power=("+5V",),
         board_size=(80.0, 60.0),
         tracks=[],
         vias=[],
@@ -8018,7 +9136,16 @@ def pico_carrier() -> Design:
 
     # The supply, placed by hand.
     tracks += [
-        Track("+5V", "F.Cu", POWER, ["J1.1", "D1.2"], auto=True),
+        # Terminal, fuse and diode sit in one line at y = 8 with a few
+        # millimetres between pads - less than the search wants to leave a
+        # 3.4 mm pad by - so both links are stated rather than searched for.
+        Track("+5V", "F.Cu", POWER, ["J1.1", "F1.2"]),
+        Track("5V_FUSED", "F.Cu", POWER, ["F1.1", "D1.2"]),
+        # The capacitor hangs off the diode's pad, three and a half
+        # millimetres straight down. Not diode-to-capacitor-to-header: a
+        # 1210's pad sits 0.02 mm off the routing grid, and two links landing
+        # on it from opposite sides meet in a 0.02 mm zigzag at the pad
+        # centre that `route.odd_angle` reads as a 92 degree corner.
         Track("VSYS", "F.Cu", POWER, ["D1.1", "J4.2"], auto=True),
         Track("VSYS", "F.Cu", POWER, ["C1.1", "D1.1"], auto=True),
         Track("+3V3", "F.Cu", POWER, ["C2.1", "J4.5"], auto=True),
@@ -8201,13 +9328,33 @@ def opamp_filter() -> Design:
             Manufacturer="Samsung",
             Datasheet=SAMSUNG.format("CL21B104KBCNNNC"),
         ),
+        # The amplifier does not meet the cable directly: R8 isolates its
+        # output from whatever capacitance hangs on the far side of J3, and
+        # from a short there. 100 ohms against C6's 1 uF is nothing at 1 kHz
+        # and against the 100k bleed it is not a divider.
+        _passive(
+            "R8",
+            "Device:R",
+            "100R",
+            "Resistor_SMD:R_0805_2012Metric",
+            # U1 draws a 6.35 mm stub off its output pin; R8's own stub has
+            # to start clear of the end of it.
+            (182.88, 100.33),
+            (41.0, 17.0, 270.0),
+            angle=90.0,
+            Tolerance="1%",
+            Power="0.125W",
+            MPN="RC0805FR-07100RL",
+            Manufacturer="Yageo",
+            Datasheet=YAGEO,
+        ),
         _passive(
             "C6",
             "Device:C",
             "1u",
             "Capacitor_SMD:C_0805_2012Metric",
-            (195.0, 100.0),
-            (41.0, 17.0, 90.0),
+            (199.39, 100.33),
+            (44.5, 17.0, 90.0),
             angle=90.0,
             Voltage="25V",
             Tolerance="10%",
@@ -8232,11 +9379,45 @@ def opamp_filter() -> Design:
             "Connector:Screw_Terminal_01x02",
             "5V",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            (205.0, 35.0),
+            # Far enough from the fuse that the two VIN labels between them
+            # do not print over each other.
+            (210.82, 35.56),
             (9.0, 7.0, 0.0),
             MPN="1729128",
             Manufacturer="Phoenix Contact",
             Datasheet="https://www.phoenixcontact.com/product/1729128",
+        ),
+        # Fuse and TVS on the supply. The op-amps draw microamps, so 500 mA is
+        # already generous; the TVS stands off 5 V and is what a reversed
+        # supply flows through on its way to opening the fuse. It does not
+        # hold the rail under the MCP6001's 7 V maximum against a sustained
+        # overvoltage - nothing this small does - and the sheet says so.
+        _passive(
+            "F1",
+            "Device:Fuse",
+            "500mA",
+            "Fuse:Fuse_1206_3216Metric",
+            (185.42, 35.56),
+            (20.0, 5.0, 0.0),
+            angle=270.0,
+            Current="500mA",
+            MPN="0466.500NR",
+            Manufacturer="Littelfuse",
+            Datasheet=LITTELFUSE_466,
+        ),
+        _passive(
+            "D3",
+            "Device:D_Zener",
+            "SMAJ5.0A",
+            "Diode_SMD:D_SMA",
+            (168.91, 41.91),
+            (26.5, 5.0, 0.0),
+            angle=270.0,
+            Voltage="5V",
+            Power="400W",
+            MPN="SMAJ5.0A",
+            Manufacturer="Littelfuse",
+            Datasheet=LITTELFUSE_SMAJ,
         ),
         _passive(
             "R3",
@@ -8347,7 +9528,10 @@ def opamp_filter() -> Design:
             "Connector:TestPoint",
             "TP",
             "TestPoint:TestPoint_Pad_D1.5mm",
-            sheet=(186.69, 87.63),
+            # Between the amplifier and R8 on the sheet, so it reads what the
+            # amplifier makes rather than what the cable sees; on the wire
+            # between the two pins' stubs, not on either stub.
+            sheet=(175.26, 87.63),
             board=(44.0, 12.0, 0.0),
             no_connect=False,
         ),
@@ -8357,15 +9541,22 @@ def opamp_filter() -> Design:
             "TP",
             "TestPoint:TestPoint_Pad_D1.5mm",
             sheet=(168.91, 168.91),
-            board=(31.0, 36.0, 0.0),
+            # Beside the reference buffer, not in the strip along the bottom
+            # edge: that strip is where the board writes its own name, and at
+            # (31, 36) the test point stood in the middle of it, so the name
+            # printed across the pad - readable on the bare board, and under
+            # the probe the moment anyone used it.
+            board=(36.0, 30.0, 0.0),
             no_connect=False,
         ),
     ]
 
     nets = {
-        "+5V": ["J2.1", "R3.1", "C5.1", "C7.1", "U1.2", "U2.2"],
+        "VIN": ["J2.1", "F1.1"],
+        "+5V": ["F1.2", "D3.1", "R3.1", "C5.1", "C7.1", "U1.2", "U2.2"],
         "GND": [
             "J2.2",
+            "D3.2",
             "J1.2",
             "J3.2",
             "R4.2",
@@ -8381,7 +9572,8 @@ def opamp_filter() -> Design:
         "IN_DC": ["C3.2", "R5.1", "R1.1"],
         "X": ["R1.2", "R2.1", "C1.1"],
         "FILT_IN": ["R2.2", "C2.1", "U1.3", "TP1.1"],
-        "OUT": ["U1.1", "U1.4", "C1.2", "C6.1", "TP2.1"],
+        "OUT": ["U1.1", "U1.4", "C1.2", "R8.1", "TP2.1"],
+        "OUT_R": ["R8.2", "C6.1"],
         "OUT_AC": ["C6.2", "J3.1", "R6.1"],
         "MID": ["R3.2", "R4.1", "C4.1", "U2.3"],
         "VREF": ["U2.1", "U2.4", "R5.2", "C2.2", "TP3.1"],
@@ -8417,6 +9609,16 @@ def opamp_filter() -> Design:
                     "C3/C6 couple in and out: the header sees no DC.",
                     "R5 sets the input's operating point at VREF;",
                     "R7/R6 bleed the coupling caps so nothing pops.",
+                    "R8 100R keeps the cable's capacitance, and a short",
+                    "at J3, off U1's output.",
+                ],
+            ),
+            (
+                (150.0, 25.4),
+                [
+                    "F1 500 mA and D3 (5 V standoff): reversed leads flow",
+                    "through D3 and open F1. D3 does not hold the rail under",
+                    "the op-amps' 7 V maximum against a sustained overvoltage.",
                 ],
             ),
             (
@@ -8429,8 +9631,27 @@ def opamp_filter() -> Design:
         ],
         parts=parts,
         nets=nets,
-        power_flags=[("+5V", "J2.1"), ("GND", "J2.2")],
+        power_flags=[("+5V", "F1.2"), ("GND", "J2.2")],
         board_size=(58.0, 42.0),
+        # The strip under the supply terminal's body, below its own pads. The
+        # rail to the second amplifier reaches for it every time - it is the
+        # short way across - and copper under a screw terminal cannot be
+        # probed or reworked without taking the terminal off the board.
+        keepouts=((6.0, 8.5, 17.0, 12.1),),
+        # The three connectors, whole, closed to every net but their own.
+        # With the rail routed first it took the short way under the input
+        # terminal's shell to reach the regulator side - one segment of
+        # `route.under_package`, and the reason the rule measures a
+        # connector against its courtyard.
+        body_keepout=("J1", "J2", "J3"),
+        # First pick of the board, beyond the rail the widths already give
+        # it: the signal path. On a filter that is what the board is for -
+        # the input, the two filter nodes, the output and the reference it
+        # is all measured against. Routed after the rail's own links the
+        # two filter nodes toured, 6.5x and 7.7x, under both terminals. The
+        # bias divider's midpoint and the output coupling are the plain
+        # links and go round.
+        priority_nets=("IN", "IN_DC", "X", "FILT_IN", "OUT", "VREF"),
         tracks=[],
         vias=[
             # mid-board ties between the faces: the signal row slices the
@@ -8499,7 +9720,7 @@ def opamp_filter() -> Design:
         Track("X", "F.Cu", SIG, ["R2.1", "C1.1"], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["R2.2", u1w["3"]], auto=True),
         Track("FILT_IN", "F.Cu", SIG, ["TP1.1", "R2.2"], auto=True),
-        Track("OUT", "F.Cu", SIG, ["TP2.1", "C6.1"], auto=True),
+        Track("OUT", "F.Cu", SIG, ["TP2.1", "R8.1"], auto=True),
         # VREF and its taps run at signal width end to end: the escape from
         # the SOT-23-5 is 0.3 mm whatever the link says, and a run that steps
         # to 0.5 at the first corner past it is a step nobody chose. The
@@ -8513,7 +9734,8 @@ def opamp_filter() -> Design:
         # asked for between the columns there, the wrap went round the board.
         Track("OUT", "F.Cu", SIG, [u1w["1"], u1e["4"]], auto=True),
         Track("OUT", "F.Cu", SIG, [u1w["1"], "C1.2"], auto=True),
-        Track("OUT", "F.Cu", SIG, [u1e["4"], "C6.1"], auto=True),
+        Track("OUT", "F.Cu", SIG, [u1e["4"], "R8.1"], auto=True),
+        Track("OUT_R", "F.Cu", SIG, ["R8.2", "C6.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["C6.2", "J3.1"], auto=True),
         Track("OUT_AC", "F.Cu", SIG, ["J3.1", "R6.1"], auto=True),
         Track("VREF", "F.Cu", SIG, ["U2.1", "U2.4"], auto=True),
@@ -8522,8 +9744,14 @@ def opamp_filter() -> Design:
         Track("MID", "F.Cu", SIG, ["R3.2", "R4.1"], auto=True),
         Track("MID", "F.Cu", SIG, ["R4.1", "C4.1"], auto=True),
         Track("MID", "F.Cu", SIG, ["C4.1", u2w["3"]], auto=True),
-        Track("+5V", "F.Cu", POWER, ["J2.1", "C5.1"], auto=True),
+        Track("VIN", "F.Cu", POWER, ["J2.1", "F1.1"], auto=True),
+        Track("+5V", "F.Cu", POWER, ["F1.2", "D3.1"], auto=True),
+        Track("+5V", "F.Cu", POWER, ["F1.2", "C5.1"], auto=True),
         Track("+5V", "F.Cu", POWER, ["C5.1", u1w["2"]], auto=True),
+        # Down the corridor between the terminal's body and the filter's first
+        # row, then left. Sent straight at C7 the rail cuts the corner off J2's
+        # courtyard, and copper under a screw terminal cannot be probed or
+        # reworked without taking the terminal off - `route.under_package`.
         Track("+5V", "F.Cu", POWER, ["C5.1", "C7.1"], auto=True),
         Track("+5V", "F.Cu", POWER, ["C7.1", u2w["2"]], auto=True),
         # ...and the divider's feed keeps the rail's width to the junction:
@@ -8538,6 +9766,7 @@ def opamp_filter() -> Design:
     # 0.65 mm row it left is what set the width in the first place.
     for pad, target, width in (
         ("J1.2", (8.0, 22.0), POWER),
+        ("D3.2", (31.0, 5.0), POWER),
         ("J3.2", (49.0, 22.0), POWER),
         ("R6.2", (46.0, 20.0), POWER),
         ("R7.2", (9.0, 30.0), POWER),
@@ -8558,14 +9787,21 @@ TI = "https://www.ti.com/lit/ds/symlink/pcm5102a.pdf"
 
 
 def fpga_audio() -> Design:
-    """An iCE40UP5K driving a PCM5102A over I2S, on four layers.
+    """An iCE40UP5K driving a PCM5102A over I2S, on two layers.
 
-    A 0.5 mm pitch QFN with pads on four sides is the point where a two-layer
-    baseline stops being honest. This design therefore uses the normal answer:
-    two outer signal layers, an uninterrupted inner ground plane and a +3.3 V
-    inner power plane. The top escape still walks the 0.5 mm row to 0.8 mm at
-    0.2 mm track and clearance, but it no longer forces every bottom-layer hop
-    to cut the return plane.
+    This one is here to be difficult, and the difficulty is worth stating
+    plainly: a 0.5 mm pitch QFN with pads on four sides is not a two layer
+    board. Real iCE40 designs are four layer, with the escape dropping straight
+    into an inner layer through via-in-pad or a dogbone per pin. This generator
+    knows two layers, so the escape has to be a fan out on the top - twelve pins
+    a side walked from 0.5 mm to 0.8 mm, at 0.2 mm track and 0.2 mm clearance,
+    which is a fine-line process and says so in the fabrication notes.
+
+    What that costs is visible in the plot: a 7 mm chip needs a 25 mm square of
+    board around it before anything else can be placed, and the parts that talk
+    to it are pushed to the edges. That is the honest answer to "can this be
+    done on two layers", and it is worth having as an example precisely because
+    the answer is "yes, and you would not want to".
 
     The rest is a normal small digital board. The FPGA boots from U4 over its
     own SPI port, runs from a 12 MHz oscillator, and clocks I2S out to U2. Two
@@ -8582,7 +9818,7 @@ def fpga_audio() -> Design:
                 "iCE40UP5K",
                 "Package_DFN_QFN:QFN-48-1EP_7x7mm_P0.5mm_EP3.5x3.5mm",
                 sheet=where,
-                board=(32.0, 28.0, 0.0),
+                board=(40.0, 40.0, 0.0),
                 stub=6.35,
                 no_connect=True,
                 unit=unit,
@@ -8604,7 +9840,7 @@ def fpga_audio() -> Design:
             "PCM5102A",
             "Package_SO:TSSOP-20_4.4x6.5mm_P0.65mm",
             sheet=(330.0, 110.0),
-            board=(52.0, 28.0, 180.0),
+            board=(72.0, 40.0, 180.0),
             stub=6.35,
             fields={
                 "MPN": "PCM5102APWR",
@@ -8617,8 +9853,11 @@ def fpga_audio() -> Design:
             "Regulator_Linear:AP2112K-1.2",
             "AP2112K-1.2",
             "Package_TO_SOT_SMD:SOT-23-5",
-            sheet=(56.0, 40.0),
-            board=(14.0, 20.0, 0.0),
+            # Right of the fuse's own supply bus and below the terminal's
+            # ground bus: J1, F1 and U3 read left to right as the supply
+            # flows, and nothing of theirs lands on anybody else's row.
+            sheet=(68.58, 46.99),
+            board=(14.0, 24.0, 0.0),
             fields={
                 "Voltage": "1.2V",
                 "Current": "600mA",
@@ -8633,7 +9872,10 @@ def fpga_audio() -> Design:
             "W25Q32JV",
             "Package_SO:SOIC-8_3.9x4.9mm_P1.27mm",
             sheet=(196.0, 258.0),
-            board=(32.0, 44.0, 0.0),
+            # 62, not 72: the SPI port is on the FPGA's south edge, and at
+            # 72 the bus needed 29 mm to reach it - `layout.connection_span`
+            # before a single track was drawn.
+            board=(40.0, 62.0, 0.0),
             fields={
                 "MPN": "W25Q32JVSSIQ",
                 "Manufacturer": "Winbond",
@@ -8646,7 +9888,7 @@ def fpga_audio() -> Design:
             "12MHz",
             "Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm",
             sheet=(56.0, 150.0),
-            board=(28.0, 12.0, 0.0),
+            board=(30.0, 14.0, 0.0),
             fields={
                 "Tolerance": "50ppm",
                 "MPN": "ASE-12.000MHZ-L-C-T",
@@ -8659,15 +9901,58 @@ def fpga_audio() -> Design:
             "Connector:Screw_Terminal_01x02",
             "3V3 IN",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
-            # 42, not 30: the PWR_FLAG pair lands to the connector's left with
-            # its name printed left of that again, and anywhere nearer the edge
-            # the name reaches into the sheet frame's ruler strip.
-            sheet=(42.0, 40.0),
-            board=(6.0, 8.0, 270.0),
+            # Mirrored so its pins face the fuse to its right, the way the
+            # other boards draw their input. Its ground runs out along a bus
+            # past the fuse before it turns, so nothing else may sit on that
+            # row for the next thirty millimetres.
+            sheet=(27.94, 39.37),
+            mirror="y",
+            board=(8.0, 8.0, 270.0),
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
                 "Datasheet": "https://www.phoenixcontact.com/product/1729128",
+            },
+        ),
+        # Fuse and TVS on the 3.3 V input. The whole board draws well under
+        # 100 mA, so 500 mA is the fuse; the TVS is the lowest standoff the
+        # SMAJ series comes in, which leaves a 3.3 V rail well inside it. It
+        # is what reversed leads flow through, and it does not hold the rail
+        # under the FPGA's 3.6 V maximum - the sheet says so.
+        Part(
+            "F1",
+            "Device:Fuse",
+            "500mA",
+            "Fuse:Fuse_1206_3216Metric",
+            # 10.16 mm pin to pin from the terminal: each pin runs a 2.54 mm
+            # stub, and the VIN label between them wants room of its own.
+            sheet=(46.99, 39.37),
+            angle=90.0,
+            board=(17.0, 10.0, 0.0),
+            fields={
+                "Current": "500mA",
+                "MPN": "0466.500NR",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_466,
+            },
+        ),
+        Part(
+            "D3",
+            "Device:D_Zener",
+            "SMAJ5.0A",
+            "Diode_SMD:D_SMA",
+            # Well below the fuse: the terminal's ground bus and its flag own
+            # the rows right under it, and the regulator prints its value into
+            # the space to the fuse's lower right.
+            sheet=(39.37, 60.96),
+            angle=270.0,
+            board=(23.5, 10.0, 0.0),
+            fields={
+                "Voltage": "5V",
+                "Power": "400W",
+                "MPN": "SMAJ5.0A",
+                "Manufacturer": "Littelfuse",
+                "Datasheet": LITTELFUSE_SMAJ,
             },
         ),
         Part(
@@ -8678,7 +9963,7 @@ def fpga_audio() -> Design:
             # 388, not 395: the GND symbol lands to the connector's right, and
             # at 395 its printed name crossed the right frame strip of the A3.
             sheet=(388.0, 110.0),
-            board=(70.0, 26.0, 0.0),
+            board=(95.0, 38.0, 0.0),
             fields={
                 "MPN": "61300311121",
                 "Manufacturer": "Wurth Elektronik",
@@ -8692,7 +9977,10 @@ def fpga_audio() -> Design:
             "Connector_PinHeader_2.54mm:PinHeader_1x06_P2.54mm_Vertical",
             # Clear of the title block, which owns the bottom right corner.
             sheet=(268.0, 240.0),
-            board=(28.0, 52.0, 90.0),
+            # 66, not 74: eight millimetres west, still at the bottom edge
+            # the cable arrives from, and it is eight millimetres off every
+            # span this header is one end of.
+            board=(66.0, 66.0, 0.0),
             mirror="y",
             fields={
                 "MPN": "61300611121",
@@ -8739,34 +10027,51 @@ def fpga_audio() -> Design:
         )
 
     parts += [
-        # Supply lands face U3; with the default orientation their ground
-        # lands stood between the regulator and the rail they were bypassing.
-        cap("C1", "10u", (84.0, 48.0), (7.5, 17.5, 180.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C2", "100n", (100.0, 48.0), (7.5, 21.0, 180.0), "25V", "CL10B104KB8NNNC"),
-        cap("C3", "10u", (56.0, 62.0), (20.0, 22.0, 0.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C4", "100n", (72.0, 62.0), (22.0, 26.0, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C5", "100n", (196.0, 48.0), (43.0, 38.0, 270.0), "25V", "CL10B104KB8NNNC"),
-        cap("C17", "10u", (180.0, 48.0), (46.0, 38.0, 270.0), "16V", "CL10A106MQ8NNNC"),
-        res("R3", "100R", (164.0, 48.0), (43.0, 34.0, 90.0), "RC0603FR-07100RL"),
-        res("R4", "10k", (276.0, 232.0), (18.0, 48.0, 0.0), "RC0603FR-0710KL"),
-        cap("C6", "100n", (244.0, 84.0), (38.0, 18.0, 180.0), "25V", "CL10B104KB8NNNC"),
-        cap("C7", "100n", (244.0, 108.0), (42.0, 18.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C8", "100n", (236.0, 258.0), (43.0, 41.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C9", "100n", (84.0, 150.0), (34.0, 12.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C10", "100n", (244.0, 132.0), (40.0, 31.0, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C11", "100n", (300.0, 62.0), (62.0, 23.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C16", "100n", (328.0, 62.0), (60.0, 39.0, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C12", "2u2", (296.0, 158.0), (48.0, 34.0, 90.0), "16V", "CL10A225KO8NNNC"),
-        cap("C13", "2u2", (324.0, 158.0), (63.0, 32.0, 90.0), "16V", "CL10A225KO8NNNC"),
-        cap("C14", "2u2", (352.0, 158.0), (66.0, 36.0, 0.0), "16V", "CL10A225KO8NNNC"),
-        res("R1", "10k", (112.0, 232.0), (18.0, 29.2, 0.0), "RC0603FR-0710KL"),
-        res("R2", "10k", (140.0, 232.0), (18.0, 27.0, 0.0), "RC0603FR-0710KL"),
-        cap("C15", "100n", (148.0, 62.0), (40.0, 34.0, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C1", "10u", (84.0, 48.0), (7.5, 17.5, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C2", "100n", (100.0, 48.0), (7.5, 21.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C3", "10u", (63.5, 62.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C4", "100n", (87.63, 62.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C5", "100n", (196.0, 48.0), (56.0, 47.0, 270.0), "25V", "CL10B104KB8NNNC"),
+        cap("C17", "10u", (180.0, 48.0), (59.0, 47.0, 270.0), "16V", "CL10A106MQ8NNNC"),
+        res("R3", "100R", (164.0, 48.0), (63.0, 54.0, 90.0), "RC0603FR-07100RL"),
+        res("R4", "10k", (276.0, 232.0), (56.0, 74.0, 0.0), "RC0603FR-0710KL"),
+        cap("C6", "100n", (244.0, 84.0), (57.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C7", "100n", (244.0, 108.0), (61.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C8", "100n", (236.0, 258.0), (46.0, 66.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        # C9 sits clear of R5's label on the sheet; on the board it stays
+        # against the oscillator's supply pin.
+        cap("C9", "100n", (96.52, 150.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        # The oscillator's output leaves through R5: 33 ohms at the source
+        # damps the edge into the 30 mm of track to the FPGA, so the clock
+        # arrives once rather than ringing. R6 holds the codec muted until
+        # the FPGA is configured and drives XSMT high itself.
+        res("R5", "33R", (71.12, 149.86), (31.0, 18.5, 0.0), "RC0603FR-0733RL"),
+        # R6 stays north of the corridor between the FPGA and the codec.
+        # In the corridor it is nearer XSMT's own escape and blocks the lane
+        # four other nets use to cross - the router could not seat its own
+        # ground stub there, let alone the rest. The distance costs XSMT a
+        # `route.wander`; the corridor would cost five nets a detour each.
+        res("R6", "10k", (287.02, 127.0), (61.0, 33.5, 0.0), "RC0603FR-0710KL"),
+        cap("C10", "100n", (244.0, 132.0), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C11", "100n", (300.0, 62.0), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C16", "100n", (328.0, 62.0), (89.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C12", "2u2", (296.0, 158.0), (60.0, 54.0, 0.0), "16V", "CL10A225KO8NNNC"),
+        cap("C13", "2u2", (324.0, 158.0), (89.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC"),
+        cap("C14", "2u2", (352.0, 158.0), (89.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
+        # CRESET runs from the header to the FPGA, and on a board this wide
+        # that is one 46 mm hop however the two are placed. Its pull-up is
+        # the third node on the net, so standing it between them makes the
+        # hop two, and a 10k pull-up does not care where it sits.
+        res("R1", "10k", (112.0, 232.0), (52.0, 58.0, 0.0), "RC0603FR-0710KL"),
+        res("R2", "10k", (140.0, 232.0), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
+        cap("C15", "100n", (148.0, 62.0), (57.0, 54.0, 180.0), "25V", "CL10B104KB8NNNC"),
     ]
 
     nets = {
+        "VIN": ["J1.1", "F1.1"],
         "+3V3": [
-            "J1.1",
+            "F1.2",
+            "D3.1",
             "C1.1",
             "C2.1",
             "U3.1",
@@ -8796,6 +10101,8 @@ def fpga_audio() -> Design:
         "VCCPLL": ["R3.2", "C5.1", "C17.1", "U1.29"],
         "GND": [
             "J1.2",
+            "D3.2",
+            "R6.2",
             "C1.2",
             "C2.2",
             "U3.2",
@@ -8819,25 +10126,31 @@ def fpga_audio() -> Design:
             "C16.2",
             "C12.2",
             "C14.2",
-            "J2.3",
+            "J2.2",
             "J3.6",
         ],
         # R4 holds the flash deselected while the FPGA is in reset and its
         # pins are still floating - without it the boot bus is a lottery
         "SPI_SS": ["U1.16", "U4.1", "J3.1", "R4.2"],
-        "SPI_SCK": ["U1.15", "U4.6", "J3.4"],
-        "SPI_SI": ["U1.17", "U4.5", "J3.5"],
-        "SPI_SO": ["U1.14", "U4.2", "J3.2"],
-        "CRESET": ["U1.8", "R1.2", "J3.3"],
+        "SPI_SCK": ["U1.15", "U4.6", "J3.2"],
+        "SPI_SI": ["U1.17", "U4.5", "J3.3"],
+        "SPI_SO": ["U1.14", "U4.2", "J3.4"],
+        "CRESET": ["U1.8", "R1.2", "J3.5"],
         "CDONE": ["U1.7", "R2.2"],
-        "CLK12": ["X1.3", "U1.37"],
+        # the clock leaves the oscillator through its series resistor
+        "OSC_OUT": ["X1.3", "R5.1"],
+        "CLK12": ["R5.2", "U1.37"],
+        # Soft mute under the FPGA's control: R6 holds it low - muted - until
+        # the configured design drives it, so the DAC comes up silent instead
+        # of with the rail.
+        "XSMT": ["U1.31", "U2.17", "R6.1"],
         # On the east side, in the order the codec wants them: a bus that
         # leaves the package already in the right order does not cross itself.
         "I2S_SCK": ["U1.36", "U2.12"],
         "I2S_BCK": ["U1.35", "U2.13"],
         "I2S_DIN": ["U1.34", "U2.14"],
         "I2S_LRCK": ["U1.32", "U2.15"],
-        "OUTL": ["U2.6", "J2.2"],
+        "OUTL": ["U2.6", "J2.3"],
         "OUTR": ["U2.7", "J2.1"],
         "LDOO": ["U2.18", "C12.1"],
         # the flying capacitor sits between CAPP and CAPM; the reservoir from
@@ -8846,11 +10159,10 @@ def fpga_audio() -> Design:
         "CAPM": ["U2.4", "C13.2"],
         "VNEG": ["U2.5", "C14.1"],
         # The codec's mode pins are strapped rather than driven: 16-bit I2S,
-        # no de-emphasis, normal filter, un-muted.
+        # no de-emphasis, normal filter. The mute is the exception, above.
         "FMT": ["U2.16"],
         "DEMP": ["U2.10"],
         "FLT": ["U2.11"],
-        "XSMT": ["U2.17"],
         "WP": ["U4.3"],
         "HOLD": ["U4.7"],
         "OSC_EN": ["X1.1"],
@@ -8861,13 +10173,12 @@ def fpga_audio() -> Design:
         ("U2.16", "GND"),
         ("U2.10", "GND"),
         ("U2.11", "GND"),
-        ("U2.17", "+3V3"),
         ("U4.3", "+3V3"),
         ("U4.7", "+3V3"),
         ("X1.1", "+3V3"),
     ):
         nets[rail].append(pin)
-    for name in ("FMT", "DEMP", "FLT", "XSMT", "WP", "HOLD", "OSC_EN"):
+    for name in ("FMT", "DEMP", "FLT", "WP", "HOLD", "OSC_EN"):
         del nets[name]
 
     design = Design(
@@ -8880,20 +10191,31 @@ def fpga_audio() -> Design:
             (
                 (17.78, 232.0),
                 [
-                    "The 0.5 mm QFN uses a four-layer stack: outer signal layers,",
-                    "an uninterrupted In1 ground plane and a +3V3 In2 power plane.",
-                    "Its 0.2 mm top escape spreads to 0.8 mm before routing; bottom",
-                    "signal hops no longer cut the reference plane beneath it.",
+                    "A 0.5 mm pitch QFN with pads on four sides is not a two layer",
+                    "board. A real iCE40 design drops each pin into an inner layer;",
+                    "this one has no inner layer, so all 48 escape on the top at",
+                    "0.2 mm track and 0.2 mm clearance - a fine-line process, and",
+                    "the reason a 7 mm chip needs 25 mm of board around it.",
                 ],
             ),
             (
                 (100.0, 78.0),
                 [
+                    "F1 500 mA and D3 (5 V standoff) guard the input:",
+                    "reversed leads flow through D3 and open F1. D3 does",
+                    "not hold the rail under the FPGA's 3.6 V maximum.",
                     "C1 10u + C2 100n: the 3.3 V input, at U3.",
                     "C3/C4: the 1.2 V core rail it makes. C15 sits",
                     "on U1's VCC pins; VCCPLL is filtered from the",
                     "core rail through R3, C17 and C5 at the pin -",
                     "core switching noise stays out of the PLL.",
+                ],
+            ),
+            (
+                (17.78, 170.0),
+                [
+                    "R5 33R at X1's output damps the 12 MHz edge into",
+                    "the 30 mm run to the FPGA: the clock arrives once.",
                 ],
             ),
             (
@@ -8907,9 +10229,11 @@ def fpga_audio() -> Design:
                 (296.0, 186.0),
                 [
                     "U2's mode pins are strapped, not driven: 16-bit I2S,",
-                    "no de-emphasis, normal filter, un-muted. C11/C16",
-                    "bypass its supplies; C12-C14 are the charge pump",
-                    "and LDO reservoirs the datasheet asks for.",
+                    "no de-emphasis, normal filter. XSMT is the exception:",
+                    "R6 holds it low so the DAC comes up muted, and the",
+                    "configured FPGA un-mutes it - no power-up pop.",
+                    "C11/C16 bypass its supplies; C12-C14 are the charge",
+                    "pump and LDO reservoirs the datasheet asks for.",
                 ],
             ),
             (
@@ -8926,20 +10250,58 @@ def fpga_audio() -> Design:
         nets=nets,
         # GND has no power-output pin on it either: every ground here is a
         # power *input*, and without a flag ERC says so.
-        power_flags=[("+3V3", "J1.1"), ("GND", "J1.2")],
-        board_size=(76.0, 58.0),
-        label_nets=("I2S_SCK", "I2S_BCK", "I2S_DIN", "I2S_LRCK"),
+        power_flags=[("+3V3", "F1.2"), ("GND", "J1.2")],
+        board_size=(100.0, 84.0),
+        label_nets=("I2S_SCK", "I2S_BCK", "I2S_DIN", "I2S_LRCK", "XSMT"),
         # No foreign copper under the boot flash or the DAC: their bellies
         # are the strips a rail sneaks through when everything else is full,
-        # and a rail under a part it does not feed is `route.under_package`.
-        # Fencing U4 alone moved the 1.2 V rail under U2, which is the worse
-        # place: the DAC is the one analogue part on the board.
+        # and a rail under a part it does not feed is `route.under_package` -
+        # the plane cannot get between them on two layers. Fencing U4 alone
+        # just moved the 1.2 V rail under U2, which is the worse place: the
+        # DAC is the one analogue part on the board.
         route_keepout=("U4", "U2"),
+        # The two headers, whole. Both are 1x0N verticals, so there is no strip
+        # between pad rows for `route_keepout` to close, and the cold route put
+        # +3V3 under J3's shell on its way south and across J2's on its way to
+        # the audio pins - nine segments of `route.under_package`. The rail goes
+        # round them now.
+        body_keepout=("J2", "J3"),
+        # First pick of the board. The three rails have to be named: on this
+        # board +3V3 and +1V2 are distributed at signal width (the
+        # `track.thin_power` waiver says why), so the width alone does not
+        # mark them, and routed after the clocks and the bus the codec's own
+        # supply pickup found no lane left between the package and the jack.
+        # Then the 12 MHz clock and its buffered copy, and the four I2S lines
+        # that have to arrive together. The boot bus is not among them - it
+        # runs once at power-up, and the return-path waiver says so - and
+        # neither are the line outputs, which are audio-rate analogue.
+        priority_nets=(
+            "+3V3",
+            "+1V2",
+            "VCCPLL",
+            "CLK12",
+            "OSC_OUT",
+            "I2S_SCK",
+            "I2S_BCK",
+            "I2S_DIN",
+            "I2S_LRCK",
+        ),
+        # The outer ring of the pour, closed to the router. On the widest
+        # board in the set the perimeter is the emptiest lane there is, and
+        # the router took it twice - 20.5 mm of the bottom edge for SPI_SS
+        # and 11.5 mm of the right for SPI_SO, which is `layout.pour_edge_cut`
+        # and the reason that rule exists. Reporting it after the fact is the
+        # review's job; not building it is this file's. 1.7 mm so a track of
+        # any width these boards use still leaves the ring its millimetre.
+        keepouts=(
+            (1.2, 1.2, 2.9, 82.8),
+            (97.1, 1.2, 98.8, 82.8),
+            (1.2, 1.2, 98.8, 2.9),
+            (1.2, 81.1, 98.8, 82.8),
+        ),
         tracks=[],
-        copper_layers=4,
-        power_plane="+3V3",
         vias=[],
-        pour=(1.2, 1.2, 74.8, 56.8),
+        pour=(1.2, 1.2, 98.8, 82.8),
         mounting=Mounting(),
         fiducials=3,
         # Four units of one symbol and twenty-odd parts do not fit on A4.
@@ -8951,17 +10313,17 @@ def fpga_audio() -> Design:
     # to squeeze between two of its neighbours. Only the input, which never goes
     # near the chip, is wider.
     FINE, SIG, POWER = 0.2, 0.2, 0.4
-    cx, cy = 32.0, 28.0
+    cx, cy = 40.0, 40.0
     sides = {
         # Each row runs the way the pads do, not the way the numbers do: a QFN
         # counts anticlockwise, so its east and north rows are bottom-to-top and
         # right-to-left. Handing them over the other way round makes every
         # escape on that side cross every other one, and the fan is legal
         # nowhere.
-        "west": ([str(n) for n in range(1, 13)], "x", 27.55, 24.0),
-        "south": ([str(n) for n in range(13, 25)], "y", 32.45, 36.0),
-        "east": ([str(n) for n in range(36, 24, -1)], "x", 36.45, 40.0),
-        "north": ([str(n) for n in range(48, 36, -1)], "y", 23.55, 20.0),
+        "west": ([str(n) for n in range(1, 13)], "x", 35.55, 27.0),
+        "south": ([str(n) for n in range(13, 25)], "y", 44.45, 53.0),
+        "east": ([str(n) for n in range(36, 24, -1)], "x", 44.45, 53.0),
+        "north": ([str(n) for n in range(48, 36, -1)], "y", 35.55, 27.0),
     }
     escapes: list[Track] = []
     pad_of: dict[str, tuple[float, float]] = {}
@@ -8980,7 +10342,7 @@ def fpga_audio() -> Design:
             pins,
             lead=lead,
             column=column,
-            pitch=0.8,
+            pitch=1.0,
             centre=cy if axis == "x" else cx,
             axis=axis,
             width=FINE,
@@ -8993,39 +10355,39 @@ def fpga_audio() -> Design:
     escape(
         "U2",
         [str(n) for n in range(11, 21)],
-        lead=47.6,
-        column=44.0,
-        pitch=0.8,
-        centre=28.0,
+        lead=67.6,
+        column=64.0,
+        pitch=1.0,
+        centre=40.0,
         width=SIG,
     )
     escape(
         "U2",
         [str(n) for n in range(10, 0, -1)],
-        lead=56.4,
-        column=60.0,
-        pitch=0.8,
-        centre=28.0,
+        lead=76.4,
+        column=82.5,
+        pitch=1.0,
+        centre=40.0,
         width=SIG,
     )
-    escape("U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=20.0, width=SIG)
-    escape("U3", ["5", "4"], lead=16.6, column=19.0, pitch=2.8, centre=20.0, width=SIG)
+    escape("U3", ["1", "2", "3"], lead=11.4, column=9.0, pitch=1.9, centre=24.0, width=SIG)
+    escape("U3", ["5", "4"], lead=16.6, column=19.0, pitch=2.8, centre=24.0, width=SIG)
     escape(
         "U4",
         ["1", "2", "3", "4"],
-        lead=28.1,
-        column=25.5,
+        lead=36.1,
+        column=33.5,
         pitch=2.0,
-        centre=44.0,
+        centre=62.0,
         width=SIG,
     )
     escape(
         "U4",
         ["8", "7", "6", "5"],
-        lead=35.9,
-        column=38.5,
+        lead=43.9,
+        column=46.5,
         pitch=2.0,
-        centre=44.0,
+        centre=62.0,
         width=SIG,
     )
 
@@ -9076,321 +10438,80 @@ def fpga_audio() -> Design:
         anchored.append(Track("GND", "F.Cu", 0.4, [f"{cref}.2", site]))
         placed.add(cref)
 
-    # The 1.2 V rail gets a stated back-side spine. Its west bend sits outside
-    # the FPGA escape comb, while the east end stops before the exposed-pad
-    # via field. Local consumers tap this short trunk instead of touring the
-    # board edge around the SPI fanout.
-    SPINE_1V2 = ((24.0, 30.25), (34.2, 30.25))
-    # Both ends join B.Cu runs: neither needs a layer-change via. A via on
-    # the west bend was redundant once the feed's fixed-layer intent survived
-    # cleanup (KiCad 9 reports it as via_dangling).
-    anchored.append(Track("+1V2", "B.Cu", SIG, [SPINE_1V2[0], SPINE_1V2[1]]))
+    # The 1.2 V rail gets a stated spine, the way the motor board states its
+    # VM link. Its consumers sit on both sides of the FPGA, and every
+    # east-west lane south of the package is a comb of SPI escapes - routed
+    # link by link the rail toured the south edge of the board to get
+    # across (122 mm for 39). The one corridor nothing else can use is under
+    # the FPGA's own die: the QFN's pads are surface copper, the strip
+    # between its south pad row and its ground-via grid is empty on the
+    # back, and the rail is the package's own supply, so nothing foreign
+    # runs under anything. One straight stroke, back side, a via at each
+    # end; the links then tap it wherever is nearest.
+    # The west via sits west of the escape column (x = 27), because the
+    # column is a comb of horizontal escape lines at every half-millimetre
+    # of y and a through via parked in the comb lands on whichever line owns
+    # that lane. The east via stops short of the east pad row by its own
+    # clearance, and the whole stroke sits at 42.25 - a quarter-millimetre
+    # off the south pad row's reach (their inner ends are at y = 43.01, and
+    # at 42.5 the via missed them by a tenth), and still on the router's
+    # grid, which is what lets a tee land on the stroke at all.
+    SPINE_1V2 = ((25.5, 42.25), (42.2, 42.25))
+    vias.append(Via("+1V2", x=SPINE_1V2[0][0], y=SPINE_1V2[0][1]))
+    # No via on the east end: the exposed pad owns the die centre on the
+    # front - a through via there is a short against U1's ground paddle -
+    # and none is needed, because the east tap is a back-side link that
+    # starts exactly where the stroke ends.
+    anchored.append(Track("+1V2", "B.Cu", POWER, [SPINE_1V2[0], SPINE_1V2[1]]))
 
     # Every endpoint goes through `end`, which returns the far end of a pin's
     # escape when it has one and the pad itself when it does not.
     tracks = [*escapes, *anchored]
-    core_feed = (20.525, 26.775)
-    tracks += [
-        Track("+1V2", "F.Cu", SIG, ["C4.1", core_feed]),
-        Track("+1V2", "B.Cu", SIG, [core_feed, SPINE_1V2[0]], keep_layer=True),
-    ]
-    vias.append(Via("+1V2", x=core_feed[0], y=core_feed[1]))
-    tracks.append(Track("+1V2", "F.Cu", SIG, ["C4.1", end("U1.5")]))
-    # The inner 3.3 V plane replaces the long outer-layer trunk. Each local
-    # island reaches it through a via beside (never inside) its bypass land.
-    for pad, site in (("C1.1", (8.275, 15.75)), ("C10.1", (42.0, 31.775))):
-        tracks.append(Track("+3V3", "F.Cu", POWER, [pad, site]))
-        vias.append(Via("+3V3", x=site[0], y=site[1]))
-    for pad, site in (("C6.1", (38.775, 16.75)), ("C7.1", (41.225, 16.75))):
-        tracks.append(Track("+3V3", "F.Cu", SIG, [pad, site]))
-        vias.append(Via("+3V3", x=site[0], y=site[1]))
-    tracks.append(Track("+3V3", "F.Cu", SIG, ["C8.1", (42.225, 42.25)]))
-    vias.append(Via("+3V3", x=42.225, y=42.25))
-    for pad, site in (("R1.1", (16.0, 29.2)), ("R2.1", (16.0, 27.0))):
-        tracks.append(Track("+3V3", "F.Cu", SIG, [pad, site]))
-        vias.append(Via("+3V3", x=site[0], y=site[1]))
-    reset_bank_site = end("U1.1")
-    vias.append(
-        Via(
-            "+3V3",
-            x=reset_bank_site[0],
-            y=reset_bank_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    tracks += [
-        Track("+3V3", "F.Cu", SIG, ["C8.1", end("U4.8")]),
-        Track("+3V3", "F.Cu", SIG, ["C8.1", end("U4.7")]),
-    ]
-    for pad, site in (
-        ("C9.1", (33.225, 10.75)),
-        ("R4.1", (17.225, 46.75)),
-        ("C16.1", (60.0, 41.025)),
-    ):
-        tracks.append(Track("+3V3", "F.Cu", SIG, [pad, site]))
-        vias.append(Via("+3V3", x=site[0], y=site[1]))
-    bank_plane_site = (42.5, 29.2)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.17"), bank_plane_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=bank_plane_site[0],
-            y=bank_plane_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    fpga_bank_site = (37.2, 36.0)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U1.24"), fpga_bank_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=fpga_bank_site[0],
-            y=fpga_bank_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    south_bank_site = (34.8, 36.8)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U1.22"), south_bank_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=south_bank_site[0],
-            y=south_bank_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    # Stay west of the diagonal I2S bundle on B.Cu. At x=40.8 this through
-    # via had only 0.20 mm clearance once fixed-layer intent was preserved.
-    east_bank_site = (40.0, 26.0)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U1.33"), east_bank_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=east_bank_site[0],
-            y=east_bank_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    codec_bank_site = (58.8, 32.8)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.1"), codec_bank_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=codec_bank_site[0],
-            y=codec_bank_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    flash_hold_site = (24.7, 45.0)
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U4.3"), flash_hold_site]))
-    vias.append(
-        Via(
-            "+3V3",
-            x=flash_hold_site[0],
-            y=flash_hold_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    codec_supply_site = end("U2.8")
-    vias.append(
-        Via(
-            "+3V3",
-            x=codec_supply_site[0],
-            y=codec_supply_site[1],
-            size=0.58,
-            drill=0.3,
-        )
-    )
-    codec_bypass_site = (61.225, 21.5)
-    tracks.append(Track("+3V3", "F.Cu", SIG, ["C11.1", codec_bypass_site]))
-    vias.append(Via("+3V3", x=codec_bypass_site[0], y=codec_bypass_site[1]))
-    ldo_link = ((42.5, 30.0), (46.75, 34.775))
-    vias += [
-        Via("LDOO", x=ldo_link[0][0], y=ldo_link[0][1], size=0.58, drill=0.3),
-        Via("LDOO", x=ldo_link[1][0], y=ldo_link[1][1]),
-    ]
-    tracks += [
-        Track("LDOO", "F.Cu", SIG, [end("U2.18"), ldo_link[0]]),
-        Track(
-            "LDOO",
-            "B.Cu",
-            SIG,
-            [ldo_link[0], (46.75, 34.25), ldo_link[1]],
-            keep_layer=True,
-        ),
-        Track("LDOO", "F.Cu", SIG, [ldo_link[1], "C12.1"]),
-    ]
-    # The PLL bypass is directly below its east-side pin but the intervening
-    # outer-layer corridor carries the codec bus. A short back-side link uses
-    # the new inner reference plane instead of cutting the return path.
-    pll_link = ((40.8, 29.2), (41.75, 37.225))
-    vias += [
-        Via("VCCPLL", x=pll_link[0][0], y=pll_link[0][1], size=0.58, drill=0.3),
-        Via("VCCPLL", x=pll_link[1][0], y=pll_link[1][1]),
-    ]
-    tracks += [
-        Track("VCCPLL", "F.Cu", SIG, [end("U1.29"), pll_link[0]]),
-        Track(
-            "VCCPLL",
-            "B.Cu",
-            SIG,
-            [pll_link[0], (39.0, 31.0), (39.0, 34.475), pll_link[1]],
-            keep_layer=True,
-        ),
-        Track("VCCPLL", "F.Cu", SIG, [pll_link[1], "C5.1"]),
-    ]
-    # C10's lands follow the neighbouring codec pins: supply above, ground
-    # below.  These two short parallel entries are the bypass loop; leaving
-    # them to a grid search made the ground land look like a wall in front of
-    # the supply land.
-    tracks.append(Track("+3V3", "F.Cu", SIG, [end("U2.20"), (40.175, 31.6), "C10.1"]))
-    # The I2S pins face each other in the same order. They drop at the ends of
-    # their two escape fans and cross on B.Cu as four parallel 45-degree runs;
-    # In2 power is the adjacent inner layer, not In1 GND. Multilayer reference
-    # continuity still needs stack-up/return-transition review; the two-layer
-    # return-path heuristic does not certify these lanes.
-    for net, source, sink, knee in (
-        ("I2S_SCK", "U1.36", "U2.12", ((41.0, 23.6), (42.6, 25.2))),
-        ("I2S_BCK", "U1.35", "U2.13", ((41.0, 24.4), (42.6, 26.0))),
-        ("I2S_DIN", "U1.34", "U2.14", ((41.0, 25.2), (42.6, 26.8))),
-        ("I2S_LRCK", "U1.32", "U2.15", ((41.0, 26.8), (41.8, 27.6))),
-    ):
-        source_site, sink_site = end(source), end(sink)
-        vias += [
-            Via(net, x=source_site[0], y=source_site[1], size=0.58, drill=0.3),
-            Via(net, x=sink_site[0], y=sink_site[1], size=0.58, drill=0.3),
-        ]
-        tracks.append(
-            Track(
-                net,
-                "B.Cu",
-                SIG,
-                [source_site, *knee, sink_site],
-                keep_layer=True,
-            )
-        )
-    tracks.append(
-        Track(
-            "VNEG",
-            "F.Cu",
-            SIG,
-            [end("U2.5"), (62.0, 28.4), (65.225, 31.625), "C14.1"],
-        )
-    )
-    tracks += [
-        Track("OUTR", "F.Cu", SIG, [end("U2.7"), (69.2, 26.8), "J2.1"]),
-        Track("OUTL", "F.Cu", SIG, [end("U2.6"), (68.5, 27.6), (69.44, 28.54), "J2.2"]),
-        Track(
-            "CAPP",
-            "F.Cu",
-            SIG,
-            [end("U2.2"), (61.025, 30.8), "C13.1"],
-        ),
-        Track(
-            "CAPM",
-            "F.Cu",
-            SIG,
-            [end("U2.4"), (60.975, 29.2), "C13.2"],
-        ),
-    ]
-    # The boot bus has to swap sides between the FPGA and flash. SS and SO have
-    # independent front-layer lanes. SI crosses the fan on the back; SCK uses
-    # a narrow In2 lane through the +3V3 pour, both referenced to solid In1.
-    tracks += [
-        Track(
-            "SPI_SS",
-            "F.Cu",
-            SIG,
-            [end("U1.16"), (25.0, 41.0), end("U4.1")],
-        ),
-        Track(
-            "SPI_SO",
-            "F.Cu",
-            SIG,
-            [end("U1.14"), (23.0, 41.4), (23.0, 43.0), end("U4.2")],
-        ),
-        Track(
-            "SPI_SO",
-            "F.Cu",
-            SIG,
-            [
-                end("U4.2"),
-                (24.0, 44.5),
-                (24.0, 45.0),
-                (22.5, 46.5),
-                (25.5, 49.5),
-                (30.54, 49.5),
-                "J3.2",
-            ],
-        ),
-    ]
-    sck_source = (29.2, 35.2)
-    sck_destination = (40.5, 45.0)
-    vias += [
-        Via("SPI_SCK", x=sck_source[0], y=sck_source[1], size=0.58, drill=0.3),
-        Via("SPI_SCK", x=sck_destination[0], y=sck_destination[1]),
-    ]
-    tracks += [
-        Track("SPI_SCK", "F.Cu", SIG, [end("U1.15"), sck_source]),
-        Track(
-            "SPI_SCK",
-            "In2.Cu",
-            SIG,
-            [sck_source, (39.0, 35.2), (39.0, 43.5), sck_destination],
-            keep_layer=True,
-        ),
-        Track("SPI_SCK", "F.Cu", SIG, [sck_destination, end("U4.6")]),
-        Track(
-            "SPI_SCK",
-            "In2.Cu",
-            SIG,
-            [sck_destination, (35.62, 49.88), (35.62, 50.5)],
-            keep_layer=True,
-        ),
-        Track("SPI_SCK", "F.Cu", SIG, [(35.62, 50.5), "J3.4"]),
-    ]
-    vias.append(Via("SPI_SCK", x=35.62, y=50.5))
-    si_source = end("U1.17")
-    si_destination = (40.5, 47.0)
-    vias += [
-        Via("SPI_SI", x=si_source[0], y=si_source[1], size=0.58, drill=0.3),
-        Via("SPI_SI", x=si_destination[0], y=si_destination[1]),
-    ]
-    tracks += [
-        Track(
-            "SPI_SI",
-            "B.Cu",
-            SIG,
-            [si_source, (30.8, 37.3), si_destination],
-            keep_layer=True,
-        ),
-        Track("SPI_SI", "F.Cu", SIG, [si_destination, end("U4.5")]),
-        Track(
-            "CRESET",
-            "F.Cu",
-            SIG,
-            [end("U1.8"), "R1.2"],
-        ),
-        Track(
-            "CDONE",
-            "F.Cu",
-            SIG,
-            [end("U1.7"), (20.225, 28.4), "R2.2"],
-        ),
-    ]
     routes = [
-        ("+3V3", POWER, [("J1.1", "C1.1"), ("C1.1", "U3.1"), ("C1.1", "C2.1"), ("C2.1", "U3.3")]),
+        ("VIN", POWER, [("J1.1", "F1.1")]),
+        # The input rail is wide as far as the capacitors; into the regulator
+        # it goes at the SOT-23-5's own escape width, because a 0.4 mm run
+        # landing on a 0.2 mm neck steps down in the open, and the neck is
+        # what sets the current anyway. The whole board draws under 100 mA.
+        # Down the right of the terminal and in from below: sent straight at
+        # C1 the rail crosses J1's own body, and a screw terminal has to come
+        # off the board before anyone can see the copper under it.
+        # Round the terminal's right-hand side and in from below. The short
+        # way from the fuse to the bulk capacitor is under J1's body, and a
+        # screw terminal has to come off the board before anyone can see the
+        # copper under it - `route.under_package`. The waypoint is what makes
+        # the search go round rather than through.
+        (
+            "+3V3",
+            POWER,
+            [("F1.2", "D3.1"), ("F1.2", (18.4, 20.0)), ((18.4, 20.0), "C1.1"), ("C1.1", "C2.1")],
+        ),
+        ("+3V3", SIG, [("C1.1", "U3.1"), ("C2.1", "U3.3")]),
         (
             "+3V3",
             SIG,
             [
+                ("C2.1", "R2.1"),
+                ("R2.1", "U1.1"),
+                ("U1.22", "C6.1"),
+                ("C6.1", "U1.33"),
+                ("U1.33", "C7.1"),
+                ("C7.1", "U1.24"),
+                ("C7.1", "C10.1"),
+                ("C10.1", "U2.20"),
+                ("C10.1", "C11.1"),
+                ("C11.1", "U2.8"),
+                ("C11.1", "C16.1"),
+                ("C16.1", "U2.1"),
+                ("R2.1", "C8.1"),
+                # ...and this is what joins the input side to the bank supplies.
+                # Without it +3V3 is two islands that the schematic calls one net.
+                ("C8.1", "U1.22"),
+                ("C8.1", "U4.8"),
+                ("C8.1", "U4.3"),
+                ("C8.1", "R1.1"),
+                ("U4.3", "U4.7"),
+                ("R2.1", "C9.1"),
                 ("C9.1", "X1.4"),
                 ("C9.1", "X1.1"),
             ],
@@ -9401,19 +10522,39 @@ def fpga_audio() -> Design:
             [
                 ("U3.5", "C3.1"),
                 ("C3.1", "C4.1"),
-                # ...one link into each end of the stated spine, in place of
-                # the C4-to-C15 haul that had to cross the SPI comb. (The
-                # east tap is stated separately below: it has to leave on
-                # the back.)
+                ("C4.1", "U1.5"),
                 ("C15.1", "U1.30"),
                 ("C15.1", "R3.1"),
             ],
         ),
-        ("VCCPLL", SIG, [("R3.2", "C17.1"), ("C17.1", "C5.1")]),
-        ("SPI_SS", SIG, [("U4.1", "J3.1"), ("J3.1", "R4.2")]),
-        ("SPI_SI", SIG, [("U4.5", "J3.5")]),
-        ("CRESET", SIG, [("R1.2", "J3.3")]),
-        ("CLK12", SIG, [("X1.3", "U1.37")]),
+        # One link into each end of the stated spine, in place of the
+        # C4-to-C15 haul that had to cross the SPI comb. (The east tap is
+        # stated separately above: it has to leave on the back.) At power
+        # width, because that is what it lands on - routed at signal width it
+        # stepped 0.20 to 0.40 mm four millimetres short of the spine, which
+        # is `route.width_step`: a change nobody chose, in the open.
+        ("+1V2", POWER, [("C4.1", SPINE_1V2[0])]),
+        ("VCCPLL", SIG, [("R3.2", "C17.1"), ("C17.1", "C5.1"), ("C5.1", "U1.29")]),
+        ("SPI_SS", SIG, [("U1.16", "U4.1"), ("U4.1", "J3.1"), ("J3.1", "R4.2")]),
+        ("+3V3", SIG, [("C8.1", "R4.1")]),
+        ("SPI_SCK", SIG, [("U1.15", "U4.6"), ("U4.6", "J3.2")]),
+        ("SPI_SI", SIG, [("U1.17", "U4.5"), ("U4.5", "J3.3")]),
+        ("SPI_SO", SIG, [("U1.14", "U4.2"), ("U4.2", "J3.4")]),
+        ("CRESET", SIG, [("U1.8", "R1.2"), ("R1.2", "J3.5")]),
+        ("CDONE", SIG, [("U1.7", "R2.2")]),
+        ("OSC_OUT", SIG, [("X1.3", "R5.1")]),
+        ("CLK12", SIG, [("R5.2", "U1.37")]),
+        ("XSMT", SIG, [("U1.31", "R6.1"), ("R6.1", "U2.17")]),
+        ("I2S_SCK", SIG, [("U1.36", "U2.12")]),
+        ("I2S_BCK", SIG, [("U1.35", "U2.13")]),
+        ("I2S_DIN", SIG, [("U1.34", "U2.14")]),
+        ("I2S_LRCK", SIG, [("U1.32", "U2.15")]),
+        ("OUTL", SIG, [("U2.6", "J2.3")]),
+        ("OUTR", SIG, [("U2.7", "J2.1")]),
+        ("LDOO", SIG, [("U2.18", "C12.1")]),
+        ("CAPP", SIG, [("U2.2", "C13.1")]),
+        ("CAPM", SIG, [("U2.4", "C13.2")]),
+        ("VNEG", SIG, [("U2.5", "C14.1")]),
     ]
     for net, width, pairs in routes:
         for a, b in pairs:
@@ -9423,83 +10564,43 @@ def fpga_audio() -> Design:
     # the pocket between the QFN's own pad rows, and on the front the rows
     # are the wall - the first regeneration proved there is no lane. The
     # goal stays on the front because C15's pad is front copper.
-    tracks.append(
-        Track(
-            "+1V2",
-            "B.Cu",
-            SIG,
-            [SPINE_1V2[1], "C15.1"],
-            auto=True,
-            goal_layer="F.Cu",
-        )
-    )
+    tracks.append(Track("+1V2", "B.Cu", SIG, [SPINE_1V2[1], "C15.1"], auto=True, goal_layer="F.Cu"))
 
     # A capacitor appears here only if nothing legal stood beside its ground
     # pad: normally its via is placed against the pad above, which is the loop
     # the part exists to close. The rest are the grounds a stub genuinely has
     # to carry - a connector pin, an oscillator can, the codec's own pads.
     for pad, target in (
-        ("C4.2", (20.0, 28.0)),
-        ("C5.2", (43.0, 40.5)),
-        ("C17.2", (46.0, 40.5)),
-        ("C6.2", (43.0, 20.0)),
-        ("C7.2", (43.0, 25.0)),
-        ("C8.2", (38.0, 47.0)),
-        ("C16.2", (60.0, 42.0)),
-        ("C12.2", (48.0, 37.0)),
-        ("C14.2", (68.0, 36.0)),
-        ("J1.2", (10.0, 12.0)),
-        ("U3.2", (6.0, 20.0)),
-        ("X1.2", (28.0, 8.0)),
-        ("U4.4", (24.0, 48.0)),
+        ("C4.2", (22.5, 36.0)),
+        ("C5.2", (56.0, 40.8)),
+        ("C17.2", (59.0, 40.8)),
+        ("C6.2", (59.0, 43.5)),
+        ("C7.2", (60.5, 46.5)),
+        ("C8.2", (46.0, 68.5)),
+        ("C16.2", (89.0, 52.0)),
+        ("C12.2", (60.0, 53.0)),
+        ("C14.2", (91.5, 47.0)),
+        ("J1.2", (12.0, 12.0)),
+        ("D3.2", (27.0, 10.0)),
+        ("R6.2", (58.5, 33.5)),
+        ("U3.2", (6.0, 24.0)),
+        ("X1.2", (30.0, 10.0)),
+        ("U4.4", (32.0, 66.0)),
         # The codec's grounds - two real ones and three mode pins strapped low -
         # drop through beside their own escapes rather than walking west into a
         # corridor that four other nets are already using.
-        ("U2.19", (42.5, 31.5)),
-        ("U2.11", (42.5, 23.5)),
-        ("U2.16", (42.5, 28.4)),
-        ("U2.10", (62.0, 21.5)),
-        ("U2.9", (62.0, 25.5)),
-        ("U2.3", (62.0, 30.5)),
-        ("J2.3", (71.0, 34.0)),
-        ("J3.6", (43.0, 54.0)),
+        ("U2.19", (62.5, 43.5)),
+        ("U2.11", (62.5, 35.5)),
+        ("U2.16", (62.5, 40.5)),
+        ("U2.10", (86.0, 33.5)),
+        ("U2.9", (86.0, 37.5)),
+        ("U2.3", (86.0, 42.5)),
+        ("J2.2", (95.5, 45.5)),
+        ("J3.6", (78.0, 70.0)),
     ):
         if pad.partition(".")[0] in placed:
             continue
-        if pad == "U2.19":
-            # The codec's digital-ground pin returns through the ground side
-            # of its nearest 3.3 V bypass.  Reusing C10's anchored plane via is
-            # both shorter and cleaner than placing a second via beside it.
-            tracks.append(Track("GND", "F.Cu", SIG, [end(pad), (40.575, 30.8), "C10.2"]))
-            continue
-        if pad == "U2.11":
-            # The low-strapped filter pin continues the 0.8 mm via row used by
-            # the I2S fan; a 0.58 mm land leaves the board's 0.2 mm clearance.
-            site = end(pad)
-            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
-            continue
-        if pad == "U2.3":
-            # The analogue ground pin sits between the flying-capacitor pins.
-            # Their two explicit lanes leave a 1.6 mm slot, just enough for a
-            # centred via and a short ground neck.
-            site = (58.8, 30.0)
-            tracks.append(Track("GND", "F.Cu", SIG, [end(pad), site]))
-            vias.append(Via("GND", x=site[0], y=site[1]))
-            continue
-        if pad == "U2.16":
-            site = end(pad)
-            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
-            continue
-        if pad in {"U2.9", "U2.10"}:
-            site = end(pad)
-            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
-            continue
-        if pad == "U4.4":
-            site = end(pad)
-            vias.append(Via("GND", x=site[0], y=site[1], size=0.58, drill=0.3))
-            continue
-        width = SIG if pad.startswith("U2.") else 0.4
-        tracks.append(Track("GND", "F.Cu", width, [end(pad), target], auto=True, goal_layer="B.Cu"))
+        tracks.append(Track("GND", "F.Cu", 0.4, [end(pad), target], auto=True, goal_layer="B.Cu"))
     return replace(design, tracks=tracks, vias=vias)
 
 
@@ -9701,6 +10802,7 @@ def place_fiducials(design: Design) -> Design:
                 sheet=(sheet_x + (index - 1) * 12.7, sheet_y),
                 board=(x, y, 0.0),
                 show_value=False,
+                show_reference=False,
                 fields={"MPN": "n/a", "Manufacturer": "n/a"},
             )
         )

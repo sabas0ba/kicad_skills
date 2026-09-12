@@ -71,27 +71,40 @@ def motor_contract(doc: schematic.SchematicDoc, board: pcb.Board) -> list[str]:
     return errors
 
 
-def plane_contract(board: pcb.Board, *, power_net: str | None = None) -> list[str]:
-    """Protect the stated inner GND layer; this does not prove signal integrity."""
+def stackup_contract(board: pcb.Board) -> list[str]:
+    """Two copper layers, and a ground pour whose rim survives the routing.
+
+    Layer count is the one board parameter that changes what a prototype run
+    costs outright, so it is a stated requirement of every example here rather
+    than something the router is allowed to decide. A design that will not
+    close on two layers grows a few millimetres of FR4 before it grows a
+    stack, and says so where it does.
+
+    The rim is the second half of it. `layout.pour_edge_cut` judges each board
+    against its own pour; this asks the cruder question the contract exists
+    for - that the back of the board is still mostly one piece of ground - so
+    that a regression shows up as a contract failure and not only as a
+    finding somebody waived.
+    """
     errors = []
-    if board.copper_layers != ["F.Cu", "In1.Cu", "In2.Cu", "B.Cu"]:
-        errors.append("expected F.Cu / In1.Cu / In2.Cu / B.Cu")
-    if any(t.layer == "In1.Cu" and t.net.lstrip("/") != "GND" for t in board.tracks):
-        errors.append("foreign routing cuts the reserved In1.Cu GND layer")
-    if power_net is not None:
-        power = [z for z in board.zones if not z.keepout and "In2.Cu" in z.layers]
-        if len(power) != 1 or power[0].net != power_net:
-            errors.append(f"In2.Cu must use the exact schematic/pad net name {power_net!r}")
-    zones = [z for z in board.zones if not z.keepout and "In1.Cu" in z.layers]
-    if len(zones) != 1 or zones[0].net.lstrip("/") != "GND":
-        return [*errors, "expected one GND zone on In1.Cu"]
+    if board.copper_layers != ["F.Cu", "B.Cu"]:
+        errors.append(f"expected F.Cu / B.Cu, got {' / '.join(board.copper_layers)}")
+    zones = [
+        zone
+        for zone in board.zones
+        if not zone.keepout and "B.Cu" in zone.layers and zone.net.lstrip("/") == "GND"
+    ]
+    if len(zones) != 1:
+        return [*errors, "expected one GND zone on B.Cu"]
     zone = zones[0]
     area = abs(_polygon_area(zone.outline)) if zone.outline else 0.0
-    fills = [points for layer, points in zone.fills if layer == "In1.Cu" and points]
+    fills = [points for layer, points in zone.fills if layer == "B.Cu" and points]
     largest = max((abs(_polygon_area(points)) for points in fills), default=0.0)
     # A baseline-regression threshold, not a universal EMI/return-path limit.
-    if not area or largest / area < 0.90:
-        errors.append("In1.Cu must retain one filled GND region covering at least 90% of its zone")
+    # Lower than the four-layer figure it replaces because this pour is a
+    # routing layer as well as a plane: the logic lanes cross it on purpose.
+    if not area or largest / area < 0.70:
+        errors.append("B.Cu must retain one filled GND region covering at least 70% of its zone")
     return errors
 
 
@@ -149,9 +162,7 @@ def main(argv=None) -> int:
         board = pcb.parse(project.with_suffix(".kicad_pcb"))
         if name == "motor-driver":
             errors.extend(motor_contract(schematic.parse(project.with_suffix(".kicad_sch")), board))
-        if name in ("motor-driver", "fpga-audio"):
-            power_net = "/VM" if name == "motor-driver" else "+3V3"
-            errors.extend(f"{name}: {e}" for e in plane_contract(board, power_net=power_net))
+        errors.extend(f"{name}: {e}" for e in stackup_contract(board))
         if args.verdicts:
             for variant in ("reviewed",) if args.reviewed_only else ("reviewed", "as-generated"):
                 verdict = json.loads((args.verdicts / f"{name}-{variant}-gate.json").read_text())
