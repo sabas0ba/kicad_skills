@@ -389,3 +389,31 @@ def test_a_chamfered_pads_cut_and_corners_are_parsed(tmp_path):
     pad = pcb.parse(path).footprints[0].pads[0]
     assert pad.chamfer_ratio == 0.25
     assert pad.chamfer_corners == ["top_left", "bottom_right"]
+
+
+def test_name_only_nets_rebuild_the_table(tmp_path):
+    """KiCad 10 drops the board-level net table and names the net on each item.
+
+    Without a table the parser used to resolve every code to nothing, so a
+    filled ground pour read as having no net at all.
+    """
+    board_file = tmp_path / "kicad10.kicad_pcb"
+    board_file.write_text(
+        "(kicad_pcb (version 20260206) (generator \"pcbnew\")\n"
+        '  (footprint "R" (at 10 10)\n'
+        '    (property "Reference" "R1" (at 0 0 0))\n'
+        '    (pad "1" smd rect (at 0 0) (size 1 1) (layers "F.Cu") (net "GND"))\n'
+        '    (pad "2" smd rect (at 2 0) (size 1 1) (layers "F.Cu") (net "/SIG"))\n'
+        "  )\n"
+        '  (segment (start 0 0) (end 1 0) (width 0.25) (layer "F.Cu") (net "/SIG"))\n'
+        '  (zone (net "GND") (layer "B.Cu") (fill yes)\n'
+        '    (polygon (pts (xy 0 0) (xy 5 0) (xy 5 5) (xy 0 5)))\n'
+        '    (filled_polygon (layer "B.Cu") (pts (xy 0 0) (xy 5 0) (xy 5 5) (xy 0 5)))\n'
+        "  )\n"
+        ")\n",
+        encoding="utf-8",
+    )
+    board = pcb.parse(board_file)
+    assert set(board.nets.values()) == {"GND", "/SIG"}
+    assert [z.net for z in board.zones] == ["GND"]
+    assert [t.net for t in board.tracks] == ["/SIG"]

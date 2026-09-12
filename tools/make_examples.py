@@ -123,6 +123,14 @@ class Part:
     # Reviewed exceptions to automatic connector legend placement, in board
     # coordinates: pin number -> (x, y, justification). Does not move copper.
     pin_legend_at: dict[str, tuple[float, float, str]] = field(default_factory=dict)
+    # Whether this connector gets the automatic per-pin net legend. The legend
+    # is reverse-connection insurance and worth its ink on a header a builder
+    # wires by hand. On a connector whose pinout the standard fixes - a USB
+    # receptacle, an SD socket - it names nothing the assembler can act on and
+    # costs a dozen strings of silk beside the board edge, so a design may
+    # decline it. Declining is per part, so the headers on the same board keep
+    # theirs.
+    pin_legend: bool = True
     # Whether to print the symbol's value on the sheet. A fiducial's value is
     # the word "Fiducial" and a screw hole's is its thread: nothing a reader
     # needs, and one more string to collide with a wire. The libraries leave
@@ -6462,7 +6470,7 @@ def _board_silk(
             ref, _, number = entry.partition(".")
             net_of[(ref, number)] = name
     for part in design.footprints():
-        if part.ref.startswith("J"):
+        if part.ref.startswith("J") and part.pin_legend:
             node = footprint_definition(part.footprint)
             pads = [
                 (str(pad.atom(0, "")), pad, pad_position_of(design, part, pad))

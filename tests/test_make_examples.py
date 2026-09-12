@@ -99,6 +99,27 @@ def test_connector_legend_can_be_placed_explicitly_without_moving_copper(monkeyp
     assert part.board == (10.0, 10.0, 0.0)
 
 
+def test_connector_legend_can_be_declined_per_part(monkeypatch):
+    """A standard receptacle states its own pinout; the legend is then noise."""
+    examples = _generator()
+    node = examples.sexp.loads("""(footprint "fp"
+      (pad "1" thru_hole circle (at 0 0) (size 2 2) (drill 1) (layers "*.Cu" "*.Mask")))""")
+    monkeypatch.setattr(examples, "footprint_definition", lambda _name: node)
+
+    def silk(**extra):
+        part = examples.Part(
+            "J1", "test:connector", "OUT", "test:fp", (0.0, 0.0), (10.0, 10.0, 0.0), **extra
+        )
+        design = _design(
+            examples, parts=[part], nets={"SIG": ["J1.1"]}, rev="A", board_size=(50.0, 40.0)
+        )
+        root = examples.sexp.loads("(root " + "\n".join(examples._board_silk(design)) + ")")
+        return [t.atom(0) for t in root.children("gr_text")]
+
+    assert "SIG" in silk()
+    assert "SIG" not in silk(pin_legend=False)
+
+
 @pytest.mark.parametrize("reverse", [False, True])
 def test_fixed_layer_survives_loop_cleanup_and_merging(reverse):
     examples = _generator()

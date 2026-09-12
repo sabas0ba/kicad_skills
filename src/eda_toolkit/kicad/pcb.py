@@ -469,6 +469,22 @@ def parse(path: str | os.PathLike[str]) -> Board:
         elif atoms:
             board.nets[int(atoms[0])] = ""
 
+    if not board.nets:
+        # KiCad 10 writes the net on each item as a bare name - (net "GND") -
+        # and no longer emits the board-level table. Without a table every
+        # lookup by code comes back empty, which is how a filled ground pour
+        # reads as `layout.no_ground_plane` and every track loses its net. So
+        # build the table from the names the file does carry, in the order they
+        # appear, and the rest of the parse is unchanged.
+        seen: list[str] = []
+        for node in root.walk("net"):
+            atoms = node.atoms()
+            if atoms and not isinstance(atoms[0], (int, float)):
+                name = str(atoms[0])
+                if name not in seen:
+                    seen.append(name)
+        board.nets = dict(enumerate(seen, start=1))
+
     for fp_node in root.children("footprint"):
         x, y, angle = _xy(fp_node.child("at"))
         props = {}
