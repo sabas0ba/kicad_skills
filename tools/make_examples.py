@@ -3555,6 +3555,23 @@ def _routing_digest(design: Design) -> str:
     return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:32]
 
 
+def route_cache_key(design: Design) -> str:
+    """The key `resolve_routes` will file this design's copper under.
+
+    Taken after `_straighten`, because that is where `resolve_routes` takes it:
+    straightening rewrites stated tracks, and the digest reads every one of
+    them. A key computed before that step names a different question the moment
+    straightening touches a track - and a GitHub Actions cache key cannot be
+    rewritten once it is populated, so the mismatch would not heal. A run would
+    restore the old copper under the stale key, ask the cache for the new
+    digest, miss, and fail; the next would do the same.
+
+    `tests/test_make_examples.py` holds the two together by checking that a
+    cold run files its answer under exactly this name.
+    """
+    return _routing_digest(_straighten(design))
+
+
 def _cache_read(name: str, digest: str) -> tuple[list[Track], list[Via]] | None:
     path = ROUTE_CACHE / f"{name}.{digest}.json"
     try:
@@ -11021,7 +11038,7 @@ def main(argv: list[str] | None = None) -> int:
         for name, builder in sorted(DESIGNS.items()):
             if args.only and args.only != name:
                 continue
-            print(f"{name} {_routing_digest(ready(builder))}")
+            print(f"{name} {route_cache_key(ready(builder))}")
         return 0
     if not args.output:
         parser.error("an output directory is required unless --route-digest is given")

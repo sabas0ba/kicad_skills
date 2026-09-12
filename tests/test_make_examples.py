@@ -323,6 +323,38 @@ def test_route_digest_includes_unconnected_library_pad_geometry(monkeypatch):
     assert examples._routing_digest(design) != first
 
 
+def test_the_printed_cache_key_is_the_name_a_cold_run_files_under(tmp_path, monkeypatch):
+    """CI keys a GitHub cache on `--route-digest` and then asks the generator
+    for that same answer by filename. `resolve_routes` takes its digest after
+    straightening the stated copper, so a key taken before that step names a
+    different question the moment straightening touches a track - and an
+    Actions cache key cannot be rewritten once populated, so the two would
+    never agree again."""
+    examples = _generator()
+    monkeypatch.setattr(examples, "ROUTE_CACHE", tmp_path)
+    monkeypatch.setattr(examples, "_pipeline", lambda d: d)
+    # A stated route that goes up, along and back down to join two points in a
+    # straight line: straightening takes it out, and the digest reads every
+    # waypoint, so this is a design whose key moves across that step. An auto
+    # link gives the router something to answer and the cache something to hold.
+    stated = examples.Track("SIG", "F.Cu", 0.3, [(2.0, 2.0), (2.0, 6.0), (8.0, 6.0), (8.0, 2.0)])
+    auto = examples.Track("SIG", "F.Cu", 0.3, [(5.0, 15.0), (8.0, 15.0)], auto=True)
+    design = _design(examples, tracks=[stated, auto])
+    monkeypatch.setattr(
+        examples, "_route_all", lambda _d, _o: ([(1, replace(auto, auto=False))], [], [])
+    )
+
+    key = examples.route_cache_key(design)
+    examples.resolve_routes(design, use_cache=False)
+
+    written = [
+        p.name.split(".")[1]
+        for p in tmp_path.glob("cache-test.*.json")
+        if p.stem != "cache-test.order"
+    ]
+    assert written == [key]
+
+
 def test_cold_run_populates_cache_and_required_hit_never_routes(tmp_path, monkeypatch):
     examples = _generator()
     monkeypatch.setattr(examples, "ROUTE_CACHE", tmp_path)
