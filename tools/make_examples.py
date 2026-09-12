@@ -3555,6 +3555,23 @@ def _routing_digest(design: Design) -> str:
     return hashlib.sha256("\n".join(lines).encode()).hexdigest()[:32]
 
 
+def route_cache_key(design: Design) -> str:
+    """The key `resolve_routes` will file this design's copper under.
+
+    Taken after `_straighten`, because that is where `resolve_routes` takes it:
+    straightening rewrites stated tracks, and the digest reads every one of
+    them. A key computed before that step names a different question the moment
+    straightening touches a track - and a GitHub Actions cache key cannot be
+    rewritten once it is populated, so the mismatch would not heal. A run would
+    restore the old copper under the stale key, ask the cache for the new
+    digest, miss, and fail; the next would do the same.
+
+    `tests/test_make_examples.py` holds the two together by checking that a
+    cold run files its answer under exactly this name.
+    """
+    return _routing_digest(_straighten(design))
+
+
 def _cache_read(name: str, digest: str) -> tuple[list[Track], list[Via]] | None:
     path = ROUTE_CACHE / f"{name}.{digest}.json"
     try:
@@ -10959,8 +10976,13 @@ def main(argv: list[str] | None = None) -> int:
     global ROUTE_CACHE
 
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("output", help="directory to write the examples into")
+    parser.add_argument("output", nargs="?", help="directory to write the examples into")
     parser.add_argument("--only", choices=sorted(DESIGNS), help="generate just this design")
+    parser.add_argument(
+        "--route-digest",
+        action="store_true",
+        help="print each selected design's route-cache key and exit, without routing",
+    )
     parser.add_argument(
         "--generated-on",
         default=GENERATED_ON,
@@ -10995,6 +11017,32 @@ def main(argv: list[str] | None = None) -> int:
         f"generated {args.generated_on} by {args.generated_by}",
         "from tools/make_examples.py in sabas0ba/kicad_skills",
     )
+
+    def ready(builder) -> Design:
+        """A design as the router will be handed it.
+
+        The screw holes and fiducials go in before the router runs, not after:
+        they are obstacles, and a hole placed into a board already full of
+        copper has nowhere left to go. The route-cache key is taken here for
+        the same reason - taken any earlier it describes a different board.
+        """
+        return place_fiducials(
+            mount_holes(replace(builder().snapped(), provenance=stamp, date=args.generated_on))
+        )
+
+    if args.route_digest:
+        # What the router will be asked, without asking it. CI uses this to
+        # decide whether it already has the answer: routing the FPGA board from
+        # scratch costs over an hour, and a round that moves no copper should
+        # not spend it.
+        for name, builder in sorted(DESIGNS.items()):
+            if args.only and args.only != name:
+                continue
+            print(f"{name} {route_cache_key(ready(builder))}")
+        return 0
+    if not args.output:
+        parser.error("an output directory is required unless --route-digest is given")
+
     out = Path(args.output)
     for name, builder in sorted(DESIGNS.items()):
         if args.only and args.only != name:
@@ -11004,12 +11052,7 @@ def main(argv: list[str] | None = None) -> int:
         # never looked at its own output leaves behind - and is also the
         # difference between a minute and half an hour on the fine-pitch board.
         design = resolve_routes(
-            # The screw holes go in before the router runs, not after: they are
-            # obstacles, and a hole placed into a board already full of copper
-            # has nowhere left to go.
-            place_fiducials(
-                mount_holes(replace(builder().snapped(), provenance=stamp, date=args.generated_on))
-            ),
+            ready(builder),
             use_cache=not args.no_route_cache,
             require_cache=args.require_route_cache,
         )

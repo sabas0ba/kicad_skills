@@ -120,14 +120,24 @@ change that does invalidate the cache: it is what an afternoon of rip-up
 attempts learned, and starting from it is usually the difference between
 seventeen attempts and none.
 
-Both the cache and that order are git-ignored, so **CI routes cold and without
-them, and the copper checked in here has to be what a cold route finds** — the
-drift check compares the two. On the FPGA board a different starting order finds
-a different valid solution, so a board regenerated from a warm local cache can
-pass every gate here and still fail CI. Before committing a change that moves
-that board's copper, reproduce the CI conditions:
-`tools/make_examples.py build/golden --no-route-cache --only fpga-audio
---route-cache-dir build/golden-cache`, and commit what that writes.
+Both the cache and that order are git-ignored, so **the copper checked in here
+has to be what a cold route finds** — the drift check compares the two. On the
+FPGA board a different starting order finds a different valid solution, so a
+board regenerated from a warm local cache can pass every gate here and still
+fail CI. Before committing a change that moves that board's copper, reproduce
+the CI conditions: `tools/make_examples.py build/golden --no-route-cache --only
+fpga-audio --route-cache-dir build/golden-cache`, and commit what that writes.
+
+CI proves that once per question rather than once per push. The golden job asks
+`--route-digest` for the route-cache key — which builds the design and hashes
+what the router reads, without routing — and keys a GitHub cache on it. A miss
+routes cold, exactly as above, and keeps the answer; a hit reuses it, because
+the entry was written by a cold route of the identical question and re-deriving
+it proves nothing. Change the router, a footprint, a part's position or a
+stated track and the key changes with it. The learned order is deleted before
+the cache is saved: a cold route that starts from one is not a cold route. This
+is what keeps a round that moves only silkscreen at minutes rather than the
+hour and a quarter the FPGA board's cold route costs.
 
 `tools/example_images.py` re-renders the pictures `examples/README.md` shows
 from the regenerated projects (sheet at 150 dpi, board at 300 dpi, as JPEG). It
