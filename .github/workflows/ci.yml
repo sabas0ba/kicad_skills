@@ -58,13 +58,12 @@ jobs:
   golden-examples:
     name: golden (${{ matrix.example }})
     runs-on: ubuntu-24.04
-    # Four of the five finish in two to six minutes. The fifth is the FPGA
-    # board, and this job routes it cold, twice: 71 minutes on one run and
-    # over 90 on the next, for the same board - the search is deterministic,
-    # so that spread is the runner rather than the work. At 90 the margin was
-    # eighteen minutes on a job that needs seventy, which is not a margin. The
-    # limit is here to kill a hung job, not to time a known one, so it is set
-    # at about twice the route.
+    # With the route cache warm every example finishes in minutes. The limit is
+    # for the run that misses it, which is the FPGA board routed cold: 71
+    # minutes on one run and over 90 on the next for byte-identical copper, so
+    # that spread is the runner rather than the work. Eighteen minutes of margin
+    # on a job that needs seventy is not a margin. This is here to kill a hung
+    # job, not to time a known one.
     timeout-minutes: 150
     strategy:
       fail-fast: false
@@ -84,15 +83,55 @@ jobs:
       - name: Build the pinned KiCad 9 image
         run: make build
 
+      # What the router is about to be asked, without asking it. The key is
+      # everything the router reads - the outline, the parts and their pads,
+      # the stated copper, and the source of the search itself - so a round
+      # that moves no copper asks the same question as the round before it.
+      - name: Work out the route-cache key
+        id: route
+        run: |
+          digest=$(docker run --rm --user "$(id -u):$(id -g)" \
+            --network none \
+            -v "$PWD:/work" -w /work \
+            -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
+            --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
+            tools/make_examples.py --route-digest --only "$EXAMPLE" | awk '{print $2}')
+          test -n "$digest"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      # A cold route of the FPGA board costs over an hour, and a round that
+      # only moves silkscreen should not spend it. The answer is kept against
+      # that key and nothing else: no restore-keys, so a near miss is a miss,
+      # and every entry was written by a cold route of this exact question.
+      # Change the router or a design and the key changes with it.
+      - name: Reuse a cold route of the same question
+        id: routes
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: build/golden-cache
+          key: golden-routes-${{ matrix.example }}-${{ steps.route.outputs.digest }}
+
       - name: Regenerate the worked examples
         run: |
+          # On a miss, route from scratch - with neither cached copper nor the
+          # rip-up order an interactive session would have learned, which is
+          # what makes the checked-in copper reproducible. On a hit, the cold
+          # answer is already here and re-deriving it proves nothing.
+          if [ "${{ steps.routes.outputs.cache-hit }}" = "true" ]; then
+            mode=--require-route-cache
+          else
+            mode=--no-route-cache
+          fi
           docker run --rm --user "$(id -u):$(id -g)" \
             --network none \
             -v "$PWD:/work" -w /work \
             -e PYTHONPATH=/work/src -e HOME=/tmp/eda-home \
             --entrypoint python3 "eda-toolkit:${KICAD_VERSION}" \
-            tools/make_examples.py build/golden --no-route-cache \
+            tools/make_examples.py build/golden "$mode" \
             --only "$EXAMPLE" --route-cache-dir build/golden-cache
+          # The learned order is deliberately not carried between runs: a cold
+          # route that starts from one is not a cold route.
+          rm -f build/golden-cache/*.order.json
 
       - name: Verify cache-hit regeneration matches the cold run
         run: |
