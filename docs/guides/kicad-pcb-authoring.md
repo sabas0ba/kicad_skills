@@ -237,6 +237,17 @@ The failures this caused, each costing a rip-up spiral or an unroutable net:
   reverse-connection insurance, and it costs silkscreen — real silkscreen,
   in the floorplan, before the parts go down. On the Pico carrier the legend
   for twenty pins is what decides where the decoupling capacitors can sit.
+* **Unless a standard already says** — and then name the connector instead.
+  A pin legend insures against reversed hookup on a header somebody wires by
+  hand. On a USB-C receptacle or an SD socket the pinout is not the builder's
+  to get wrong, and a dozen net names along the board edge buy nothing for the
+  silkscreen they spend. The generator's `Part.pin_legend = False` declines
+  them per part, so the headers on the same board keep theirs. It is not
+  permission to print nothing: an unmarked sixteen-pad receptacle is harder to
+  read than a labelled one, `silk.unlabeled_connector` says so, and the
+  `ai-generated` policy makes that an error — so the flag requires a
+  `silk_label` naming the connector, and the generator refuses the design
+  without one.
 * **Measure the area a legend takes from its neighbours, not the collisions.**
   "Half a legend across a module's pads" and "a tenth of a millimetre into a
   chip capacitor's courtyard" are both one collision; only one is a defect.

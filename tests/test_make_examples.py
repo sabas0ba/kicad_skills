@@ -101,6 +101,46 @@ def test_connector_legend_can_be_placed_explicitly_without_moving_copper(monkeyp
     assert part.board == (10.0, 10.0, 0.0)
 
 
+def test_connector_legend_can_be_declined_per_part(monkeypatch):
+    """A standard receptacle states its own pinout; the legend is then noise.
+    What replaces it is the connector's name, not nothing - `pin_legend=False`
+    with no label would leave `silk.unlabeled_connector`, which the
+    ai-generated policy makes an error, so the board would fail its own gate."""
+    examples = _generator()
+    node = examples.sexp.loads("""(footprint "fp"
+      (pad "1" thru_hole circle (at 0 0) (size 2 2) (drill 1) (layers "*.Cu" "*.Mask")))""")
+    monkeypatch.setattr(examples, "footprint_definition", lambda _name: node)
+
+    def silk(**extra):
+        part = examples.Part(
+            "J1", "test:connector", "OUT", "test:fp", (0.0, 0.0), (10.0, 10.0, 0.0), **extra
+        )
+        design = _design(
+            examples, parts=[part], nets={"SIG": ["J1.1"]}, rev="A", board_size=(50.0, 40.0)
+        )
+        root = examples.sexp.loads("(root " + "\n".join(examples._board_silk(design)) + ")")
+        return [t.atom(0) for t in root.children("gr_text")]
+
+    assert "SIG" in silk()
+    declined = silk(pin_legend=False, silk_label="USB-C")
+    assert "SIG" not in declined
+    assert "USB-C" in declined
+
+
+def test_declining_the_legend_without_naming_the_connector_is_refused():
+    examples = _generator()
+    with pytest.raises(ValueError, match="needs a silk_label"):
+        examples.Part(
+            "J1",
+            "test:connector",
+            "OUT",
+            "test:fp",
+            (0.0, 0.0),
+            (10.0, 10.0, 0.0),
+            pin_legend=False,
+        )
+
+
 def test_a_header_legend_stays_on_the_pin_it_names(monkeypatch):
     """Four long names on a 2.54 mm header cannot sit side by side on one
     side of the row. The placer once cleared them by sliding every other

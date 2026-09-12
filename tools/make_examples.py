@@ -128,6 +128,16 @@ class Part:
     # Reviewed exceptions to automatic connector legend placement, in board
     # coordinates: pin number -> (x, y, justification). Does not move copper.
     pin_legend_at: dict[str, tuple[float, float, str]] = field(default_factory=dict)
+    # Whether this connector gets the automatic per-pin net legend. The legend
+    # is reverse-connection insurance and worth its ink on a header a builder
+    # wires by hand. On a connector whose pinout the standard fixes - a USB
+    # receptacle, an SD socket - it names nothing the assembler can act on and
+    # costs a dozen strings of silk beside the board edge, so a design may
+    # decline it. Declining is per part, so the headers on the same board keep
+    # theirs - and it means "the standard names the pins", not "this connector
+    # goes unmarked": `silk_label` then has to say what the connector is. See
+    # `__post_init__`.
+    pin_legend: bool = True
     # Whether to print the symbol's value on the sheet. A fiducial's value is
     # the word "Fiducial" and a screw hole's is its thread: nothing a reader
     # needs, and one more string to collide with a wire. The libraries leave
@@ -142,6 +152,20 @@ class Part:
     # reference once per unit, each with its own place on the sheet; the board
     # only ever sees the first of them, because there is one footprint.
     unit: int = 1
+
+    def __post_init__(self) -> None:
+        # Declining the per-pin legend says the standard names the pins. It
+        # does not say the connector goes unmarked: a sixteen-pad receptacle
+        # with nothing beside it is harder to read than one with a pinout, not
+        # easier, and `silk.unlabeled_connector` reports exactly that - a
+        # finding the ai-generated policy promotes to an error, so a design
+        # that declined the legend and printed nothing would fail its own gate.
+        # So the flag requires the label that takes the legend's place.
+        if not self.pin_legend and not self.silk_label:
+            raise ValueError(
+                f"{self.ref}: pin_legend=False needs a silk_label saying what the "
+                "connector is - a standard fixes its pinout, not its identity"
+            )
 
     @property
     def library(self) -> str:
@@ -7150,7 +7174,7 @@ def _board_silk(
         ),
     ]
     for part in design.footprints():
-        if part.ref.startswith("J"):
+        if part.ref.startswith("J") and part.pin_legend:
             node = footprint_definition(part.footprint)
             pads = [
                 (str(pad.atom(0, "")), pad, pad_position_of(design, part, pad))
