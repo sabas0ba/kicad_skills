@@ -134,7 +134,9 @@ class Part:
     # receptacle, an SD socket - it names nothing the assembler can act on and
     # costs a dozen strings of silk beside the board edge, so a design may
     # decline it. Declining is per part, so the headers on the same board keep
-    # theirs.
+    # theirs - and it means "the standard names the pins", not "this connector
+    # goes unmarked": `silk_label` then has to say what the connector is. See
+    # `__post_init__`.
     pin_legend: bool = True
     # Whether to print the symbol's value on the sheet. A fiducial's value is
     # the word "Fiducial" and a screw hole's is its thread: nothing a reader
@@ -150,6 +152,20 @@ class Part:
     # reference once per unit, each with its own place on the sheet; the board
     # only ever sees the first of them, because there is one footprint.
     unit: int = 1
+
+    def __post_init__(self) -> None:
+        # Declining the per-pin legend says the standard names the pins. It
+        # does not say the connector goes unmarked: a sixteen-pad receptacle
+        # with nothing beside it is harder to read than one with a pinout, not
+        # easier, and `silk.unlabeled_connector` reports exactly that - a
+        # finding the ai-generated policy promotes to an error, so a design
+        # that declined the legend and printed nothing would fail its own gate.
+        # So the flag requires the label that takes the legend's place.
+        if not self.pin_legend and not self.silk_label:
+            raise ValueError(
+                f"{self.ref}: pin_legend=False needs a silk_label saying what the "
+                "connector is - a standard fixes its pinout, not its identity"
+            )
 
     @property
     def library(self) -> str:
