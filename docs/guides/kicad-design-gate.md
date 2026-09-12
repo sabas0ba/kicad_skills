@@ -213,6 +213,7 @@ cannot be reviewed, ordered, or built twice the same way:
 | `spec.voltage_derating` | a capacitor's voltage rating against the rail it actually sits on |
 | `spec.missing_part_number` | an active part with no orderable identity (MPN/manufacturer) |
 | `spec.no_design_notes` | nothing on any sheet records *why* the design is the way it is |
+| `spec.missing_esr` | a polarised capacitor on a switching regulator's output (a net an inductor also reaches) that states no ESR — the loop is designed around it |
 
 `spec.voltage_derating` only judges rails whose name states a voltage (`+3V3`,
 `-12V`, `VDD_1V8`, `VBUS`). Derating a part against a number nobody wrote down
@@ -226,6 +227,8 @@ rating.
 | Rule | Why it matters |
 | --- | --- |
 | `silk.over_pad` | ink on a pad keeps solder off it |
+| `silk.under_part` | a string a fitted part covers: inside a neighbour's courtyard, or inside its own part's fabrication outline |
+| `silk.pin_legend` | a connector legend with another part's pad nearer to it names that pad, unless a leader says otherwise |
 | `silk.text_too_small` | below the screen printer's limit it comes back a smudge |
 | `layout.pad_collision` | pads of two footprints sharing copper — parts placed on top of each other |
 | `layout.off_grid_placement` / `layout.odd_rotation` | free electrically, and most of why a generated layout looks generated |
@@ -287,8 +290,9 @@ For the worked examples, CI applies a stricter project contract as well:
 unavailable ERC/DRC and internally failed review rules,
 rejects unwaived native DRC warnings in reviewed designs,
 requires the intended negative-control blockers, checks the motor driver's
-datasheet-derived values/connections, and protects the two four-layer boards'
-reserved inner GND region. These are explicit project requirements, not
+datasheet-derived values/connections, and protects every board's two-layer
+stack and the ground pour on its back. These are explicit project
+requirements, not
 capabilities inferred by the generic gate. The golden job also compares cold
 generation with a required cache hit, using KiCad 9 for every stage.
 

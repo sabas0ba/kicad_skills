@@ -127,13 +127,32 @@ has its return current detoured around it: the loop grows by the detour
 * **Order is the other half of it.** Routing one net at a time means an early
   net takes the lane a later one needed, and the later one then goes round —
   the op-amp's feedback wrap had thirteen millimetres to cover and took
-  fifty-six of them, because everything nearer was already spoken for. Two
-  things fix most of it. Route **shortest first**: a thirteen millimetre
-  connection has few ways to be made and a forty millimetre one has many, so
-  the short ones should choose while there is still room. And when a track
-  does come out long, **rip it up and route it first** — the same loop that
-  handles a net with no room at all handles a net with no *sensible* room,
-  and a track that still tours from first pick has nowhere better to be.
+  fifty-six of them, because everything nearer was already spoken for. Three
+  things fix most of it. Route the nets **with something to lose first** —
+  the ones carrying current, a clock, a bus that has to arrive together, a
+  pair — while the board is empty, and never move one of them behind a
+  plain net to make room: the plain net goes round. Width says most of
+  which is which; what it cannot say, the design names in `priority_nets`.
+  Within a class route **shortest first**: a thirteen millimetre connection
+  has few ways to be made and a forty millimetre one has many, so the short
+  ones should choose while there is still room. And when a track does come
+  out long, **rip it up and route it first among its own kind** — the same
+  loop that handles a net with no room at all handles a net with no
+  *sensible* room, and a track that still tours from first pick has nowhere
+  better to be. A plain net with no lane even from the front of its class
+  is lifted ahead of the priority nets, and the log says so — read that as
+  a floorplan with no room for it, not as a net that deserved first pick.
+  The motor driver is what the classes cost without them: one
+  0.3 mm logic input toured the west end of the board, was promoted to the
+  very front for it, and the four 0.4 mm bridge outputs then hopped under
+  it — two vias apiece, ten barrels in a column, on the nets that mattered.
+* **A link the design puts on the back is not charged for being there.** The
+  search prices a millimetre on the plane side at thirty on the front, so
+  that a signal does not cut the plane casually. A link declared on B.Cu,
+  asked to finish there and kept there is the floorplan's decision, made
+  where the front is full, and pays the router's ordinary rate instead —
+  otherwise a seventeen millimetre drop to a header becomes a seventy-five
+  millimetre tour of the front.
 * **Price a wrap against going round, not through.** A run from one side of a
   package to the other cannot take the straight line, because the straight
   line is through the package: a SOT-23-5's feedback wrap is three
@@ -441,7 +460,68 @@ three are visible in one glance at the `interf_u` demo:
   designators get out of their way — the same order the schematic side uses
   for a label and a field. And weigh a pad far above a courtyard when choosing
   where a string goes: a legend a little close to a part is still readable,
-  and ink on a pad is a pad that will not wet.
+  and ink on a pad is a pad that will not wet. "Against it" means the pin it
+  names is the nearest pin: a legend may slide along the row only while that
+  stays true — not at all between the pins of a 2.54 mm header, half a pitch
+  on a 5 mm terminal, as far as it likes past the end of a row. The motor
+  driver's header once had its lower row of legends each slid one pin along
+  to clear the upper row, and a reader saw two names over every other pin. A
+  label that does not fit beside its neighbour goes to the other side of the
+  row, still on its pin; a part standing in the legend strip at that row
+  moves, as the Pico carrier's two capacitors did.
+* **A pinout is read down a column.** Lay a connector's legends out as one
+  row: the same side and the same distance from the pad row for every pin,
+  each anchored on its own pin, and turned a quarter to stand up from the
+  pins when the names are wider than the pitch — a 2.54 mm header's names
+  cannot lie flat side by side, and a row that staggers to dodge itself is
+  not a pinout anyone can follow. Only when the aligned row cannot be clean
+  — a chip part in the strip at one pin's height and the board's edge on
+  the other side — does a legend step along the row on its own, and then
+  only as far as still names its pin.
+* **Where a name cannot sit on its pin, point at it.** A supply terminal at
+  the edge of a board has nowhere to be labelled: outboard is where the wire
+  goes in, and inboard is the fuse and the clamp every supply input carries.
+  Pushing the name out past them does not solve it — it prints two
+  millimetres from the fuse's pad and eleven from the pin, and a reader takes
+  a name to belong to the pad beside it whatever was intended. So stop
+  trying: put the label where there is room, draw a frame round it so it
+  reads as a label rather than as a part's name, and run a leader back to the
+  pad in horizontal, vertical and 45° legs. Draw the leader from where it
+  comes out of the connector rather than from the pad itself — ink under a
+  shell is ink nobody sees, and `silk_overlap` besides — because the side it
+  comes out at is what says which pin it came from. Keep it short: take the
+  nearest spot whose frame *and* leader are both clear. `silk.pin_legend`
+  reports a legend with a foreign pad nearer than its own and no leader
+  saying otherwise.
+* **A column is read by position, so leave it alone.** Where three or more of
+  a connector's names sit at one offset from their own pins, the third name
+  down belongs to the third pin whatever else is nearby — that is the whole
+  reason for lining them up. Do not pull one of them out to point at its pin:
+  four of the Pico carrier's forty header legends have a bypass capacitor's
+  pad marginally nearer than their own, and all forty read fine. Two names
+  side by side are not a column, which is why the supply terminals still get
+  leaders.
+* **Ink under a fitted part is ink nobody will read.** A designator, a
+  legend or the board's own name inside a neighbour's courtyard prints on
+  the bare board and disappears at assembly. Weigh other parts' courtyards
+  as heavily as pads when placing any string; `silk.under_part` reports
+  what slips through. The motor driver's fuse had its name a millimetre
+  inside the bulk capacitor's outline, and the op-amp board's name ran
+  across a test point standing in the strip the name is written in — the
+  test point moved.
+* **A part's own body hides more of its name than any neighbour does.** The
+  courtyard is the part plus the room to place it, so a designator in that
+  margin beside a chip resistor is read on the finished board and is the
+  convention. The fabrication outline is the part. A library puts the name
+  of anything that spans its own pads in the clear gap between them, which
+  is under the part: an electrolytic capacitor, an inductor, a module fifty
+  millimetres long. Step the name outside that outline, measuring the
+  distance needed *per direction* rather than as one radius — a footprint is
+  anchored where its library chose, which for a screw terminal is pin 1 and
+  not the middle of its shell, and one radius big enough to clear the far
+  side puts the name three millimetres past the near side and into the next
+  part. Three designators on the buck converter, one on the Pico carrier and
+  two on the FPGA board were printed under their own parts.
 * **Never draw one run on top of another.** Two runs of a net that meet at a
   point and leave it along the same line are one run drawn twice: the shorter
   carries nothing the longer does not, and on the plot it reads as a track
@@ -462,9 +542,12 @@ three are visible in one glance at the `interf_u` demo:
 * **A waiver is not a place to put a review comment.** Everything a reviewer
   raised on the worked examples is fixed in the geometry, not argued away.
   The waivers that remain state package geometry, pin semantics or deliberate
-  drawing conventions with measurements a reviewer can challenge; the FPGA
-  and motor boards use the four-layer answer instead of waiving a broken
-  return path.
+  drawing conventions with measurements a reviewer can challenge. The one
+  waiver that buys something rather than explaining something is the motor
+  board's return path: an inner ground plane removes it outright, and a
+  four-layer stack costs more per prototype run than that board's whole
+  bill of materials. The waiver states the two measurements and what a
+  faster design should do instead.
 
 ## Where the rules live
 

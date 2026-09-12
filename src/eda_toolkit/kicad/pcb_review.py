@@ -32,6 +32,9 @@ THRESHOLDS = {
     "max_decoupling_distance_mm": 5.0,
     "max_drill_sizes": 6,
     "min_silk_text_height_mm": 0.8,
+    # How near a pad of its own net a string has to be before it is read as
+    # that pin's legend rather than as a note about the circuit.
+    "pin_legend_reach_mm": 15.0,
     # Placement conventions. A part off the grid or turned to 37 degrees costs
     # nothing electrically and makes the board unreadable and awkward to place.
     "placement_grid_mm": 0.5,
@@ -106,10 +109,36 @@ THRESHOLDS = {
     # What a connector wants beyond its courtyard: the mating shell, the wires
     # leaving a screw terminal, and the fingers that fit both.
     "connector_access_mm": 2.0,
+    # How long a bite out of the pour's outer ring may be before it stops being
+    # a hole and starts being a cut. A mounting hole and its clearance make a
+    # legitimate gap of a few millimetres; a track laid along the edge makes a
+    # longer one.
+    "max_pour_edge_gap_mm": 3.0,
 }
 
 # Copper geometry is stored in nm; anything below this is file noise.
 GEOM_TOL = 0.001
+
+# Drawing tolerances for reading a leader - the silkscreen lines that tie a
+# relocated pin legend back to its pad. Not thresholds: they describe how a
+# leader is drawn rather than what the board is being held to. LEAVE is how
+# close to a label a line has to start to count as that label's. ARRIVE is
+# deliberately loose: a leader out of a connector cannot start at the pad,
+# because the pad is under the shell, so it starts at the edge of that shell -
+# three millimetres out on a screw terminal and more on a bigger part. Erring
+# loose errs towards accepting a leader that is a little short, which for a
+# warning about legibility is the right direction to be wrong in.
+LEADER_LEAVE_MM = 1.0
+LEADER_ARRIVE_MM = 6.0
+# How far apart two lines of the same leader may be drawn and still be one
+# chain - a leader stops a silkscreen clearance short of the frame it leaves -
+# and how finely a line is sampled when measuring any of this.
+LEADER_JOIN_MM = 0.35
+LEADER_STEP_MM = 0.4
+# How many of a connector's names have to sit at one offset from their own pins
+# before the row is a column - read by position in the line rather than by
+# which pad is nearest to each. Two names side by side are two names.
+LEGEND_COLUMN_MIN = 3
 
 # How close two corners sit before their turns read as one bend, and how long
 # the arms either side must be before the bend is legible (route.hairpin).
@@ -361,6 +390,23 @@ RULE_SPEC: dict[str, RuleSpec] = {
         "labels printed through each other document nothing",
         "warning",
     ),
+    "silk.under_part": RuleSpec(
+        "a visible silkscreen string whose estimated extent lies inside the "
+        "courtyard of another footprint on the same side, or inside its own "
+        "footprint's fabrication outline; it prints on the bare board and is "
+        "hidden once the part is fitted",
+        "warning",
+    ),
+    "silk.pin_legend": RuleSpec(
+        "a silkscreen string naming a net a connector carries, within "
+        "`pin_legend_reach_mm` of a pad of that net, that has some other part's "
+        "pad nearer to it - so it reads as naming that pad - with neither a run "
+        "of silkscreen lines leading from it back to its own nor two more of "
+        "that connector's names at the same offset from theirs, which would "
+        "make it one of a column read by position",
+        "warning",
+        threshold="pin_legend_reach_mm",
+    ),
     "silk.over_pad": RuleSpec(
         "a visible silkscreen string whose estimated extent overlaps a pad on the "
         "same side; ink on a pad keeps solder off it",
@@ -404,9 +450,31 @@ RULE_SPEC: dict[str, RuleSpec] = {
         threshold="width_step_free_mm",
     ),
     "route.under_package": RuleSpec(
-        "a track of another net threaded under a package's body, where there "
-        "is no plane between it and the die and no way to probe or rework it",
+        "a track of another net threaded under the body of an integrated "
+        "circuit or a connector, where there is no plane between it and the "
+        "die and no way to probe or rework it",
         "warning",
+    ),
+    "route.via_under_package": RuleSpec(
+        "a via of another net under the body of an integrated circuit or a "
+        "connector. It cannot be inspected once the part is down, its barrel "
+        "sits against whatever the package's underside is, and on a part with "
+        "an exposed pad it is a solder path out of the joint. Vias on the "
+        "part's own nets, and thermal vias inside its own pads, are what that "
+        "copper is for and are not counted",
+        "warning",
+    ),
+    "layout.pour_edge_cut": RuleSpec(
+        "a track that eats through the outermost millimetre of the ground "
+        "pour, leaving a gap in that ring longer than "
+        "`max_pour_edge_gap_mm`. The rim is the copper the board radiates "
+        "into and the return every edge-hugging track leans on; a mounting "
+        "hole may interrupt it, a route may not. A warning because a shipped "
+        "board can have a nibbled rim and work - five of KiCad's own eighteen "
+        "demo boards do - and an error under `ai-generated`, where the fix is "
+        "to move the route inboard and nothing is costing anyone a respin",
+        "warning",
+        threshold="max_pour_edge_gap_mm",
     ),
     "layout.pour_coverage": RuleSpec(
         "a ground pour that fills less than `min_pour_coverage` of its own "
@@ -1400,30 +1468,56 @@ def rule_track_width_steps(ctx: PcbContext) -> list[Finding]:
     ]
 
 
+def _bodies_to_keep_clear(board) -> list[tuple]:
+    """The footprints nothing else should be routed under, and their bodies.
+
+    Two kinds qualify. An integrated circuit, where the body is the strip
+    between its pad rows - a track there has no plane between it and the die,
+    cannot be probed or reworked, and on a part with an exposed pad runs under
+    grounded metal. And a connector, where the body is the courtyard rather
+    than the pad box: a screw terminal's shell reaches well past its pads, and
+    it is the shell that has to come off before anyone can look underneath.
+
+    Yielded as ``(footprint, body, own_nets)``. A body narrower than a
+    millimetre either way is skipped - there is nothing meaningful under a
+    two-pad passive, and the inset would have inverted the box.
+    """
+    bodies = []
+    for fp in board.footprints:
+        connector = fp.ref.startswith(("J", "P")) and len(fp.pads) >= 2
+        chip = fp.ref.startswith(("U", "IC")) or len(fp.pads) >= 8
+        if not (connector or chip):
+            continue
+        if connector:
+            box = fp.courtyard_box() or _footprint_pad_box(fp)
+            body = box
+        else:
+            box = _footprint_pad_box(fp)
+            # the body between the pad rows, not the pads themselves
+            inset = 0.6
+            body = (box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset) if box else None
+        if body is None:
+            continue
+        if body[2] - body[0] < 1.0 or body[3] - body[1] < 1.0:
+            continue
+        bodies.append((fp, body, {pad.net for pad in fp.pads if pad.net}))
+    return bodies
+
+
 @rule
 def rule_route_under_package(ctx: PcbContext) -> list[Finding]:
-    """Foreign copper threaded under a package's body.
+    """Foreign copper threaded under a package's or a connector's body.
 
     Under an integrated circuit there is no plane between the track and the
     die, the track cannot be probed or reworked, and on anything with an
-    exposed pad it is running under grounded metal. Its own escapes belong
-    there; nobody else's does.
+    exposed pad it is running under grounded metal. Under a connector the
+    shell has to come off before anyone can even see it. Its own escapes
+    belong there; nobody else's does.
     """
     board = ctx.board
     findings_by_fp: dict[str, list[str]] = {}
     positions: list[tuple[float, float]] = []
-    for fp in board.footprints:
-        if len(fp.pads) < 8:
-            continue  # a package, not a passive
-        box = _footprint_pad_box(fp)
-        if box is None:
-            continue
-        # the body between the pad rows, not the pads themselves
-        inset = 0.6
-        body = (box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset)
-        if body[2] - body[0] < 1.0 or body[3] - body[1] < 1.0:
-            continue
-        own = {pad.net for pad in fp.pads if pad.net}
+    for fp, body, own in _bodies_to_keep_clear(board):
         for track in board.tracks:
             if track.net in own or not track.net:
                 continue
@@ -1446,6 +1540,57 @@ def rule_route_under_package(ctx: PcbContext) -> list[Finding]:
             f"{total} track segment(s) of another net pass under "
             f"{len(findings_by_fp)} package(s) - no plane between the track and "
             "the die, and no way to probe or rework it",
+            details={"count": total, "examples": examples, "positions": positions},
+        )
+    ]
+
+
+@rule
+def rule_via_under_package(ctx: PcbContext) -> list[Finding]:
+    """A via drilled under a package's or a connector's body.
+
+    Once the part is down nobody can see it. The barrel sits against whatever
+    the package's underside is - a plastic body, a metal shell, an exposed pad
+    - and under a part with an exposed pad it is also a path for the solder to
+    leave the joint at reflow. Where a via has to change layer near a
+    fine-pitch part, it belongs just outside the body, which is where the
+    escape fan is going anyway.
+
+    Two things under there are not this: a via on a net the part itself
+    carries - the ground stitching under a connector, the return under a
+    package's own corner - which is the part's own copper the same way its
+    escapes are, and a via inside one of the part's own pads, which is the
+    thermal array an exposed pad exists to have. What is left is somebody
+    else's net, dropped through the one gap that looked free.
+    """
+    board = ctx.board
+    by_fp: dict[str, list[str]] = {}
+    positions: list[tuple[float, float]] = []
+    for fp, body, own in _bodies_to_keep_clear(board):
+        pads = [pad.bbox(angle_offset=fp.angle) for pad in fp.pads]
+        for via in board.vias:
+            if via.net in own or not via.net:
+                continue
+            if not _point_in_box((via.x, via.y), body):
+                continue
+            if any(_point_in_box((via.x, via.y), pad) for pad in pads):
+                continue  # a thermal via in the part's own pad
+            by_fp.setdefault(fp.ref, []).append(via.net)
+            positions.append((via.x, via.y))
+    if not by_fp:
+        return []
+    examples = [
+        f"{ref}: {len(nets)} via(s) ({', '.join(sorted(set(nets))[:4])})"
+        for ref, nets in sorted(by_fp.items())
+    ]
+    total = sum(len(v) for v in by_fp.values())
+    return [
+        Finding(
+            "route.via_under_package",
+            "warning",
+            f"{total} via(s) sit under {len(by_fp)} package(s) or connector(s) - "
+            "they cannot be inspected once the part is down, and on a part with "
+            "an exposed pad they drain the joint at reflow",
             details={"count": total, "examples": examples, "positions": positions},
         )
     ]
@@ -1981,6 +2126,184 @@ def rule_pour_coverage(ctx: PcbContext) -> list[Finding]:
                 )
             )
     return findings
+
+
+# How finely the pour's rim is walked. Finer than any clearance channel a
+# track cuts, coarse enough that a whole perimeter is a few hundred points.
+RIM_STEP_MM = 0.5
+
+# The band of pour just inside its own outline that has to survive as one
+# unbroken ring: the board's outermost copper, the shield the edge radiates
+# into, and the return every edge-hugging track leans on. A constant, like the
+# hairpin window, because it and `max_pour_edge_gap_mm` tune one finding and
+# only the length of an acceptable interruption is a house decision.
+POUR_RIM_BAND_MM = 1.0
+
+
+@rule
+def rule_pour_edge_cut(ctx: PcbContext) -> list[Finding]:
+    """A route that eats through the outermost ring of the ground pour.
+
+    The band of pour just inside its own outline is the board's outermost
+    copper. It is the shield the edge radiates into, the return every
+    edge-hugging track leans on, and part of what a fabricator reads as copper
+    balance when it plates the panel. Broken, the two halves of the rim meet
+    only by going the long way round through the middle of the plane - which
+    is the loop the rim was closing.
+
+    Things are allowed to interrupt it. A mounting hole and its clearance take
+    a few millimetres; so does a through-hole land at the edge, and so does
+    the board's own outline where it steps. What is not allowed is a *track*
+    laid along the rim, taking its clearance channel with it: that is a
+    routing decision, and the fix is to move the route inboard. So a gap is
+    only reported when a track or a via of another net is standing in it.
+    """
+    band = POUR_RIM_BAND_MM
+    limit = ctx.thresholds["max_pour_edge_gap_mm"]
+    findings = []
+    for zone in ctx.board.zones:
+        if zone.keepout or not zone.filled or not netlist_helpers_is_ground(zone.net):
+            continue
+        if len(zone.outline) < 3:
+            continue
+        by_layer: dict[str, list[list[tuple[float, float]]]] = {}
+        for layer, points in zone.fills:
+            if len(points) >= 3:
+                by_layer.setdefault(layer, []).append(points)
+        for layer, polygons in sorted(by_layer.items()):
+            cuts = _rim_cuts(ctx.board, zone, layer, polygons, band, limit)
+            if not cuts:
+                continue
+            longest = max(length for length, _where, _blame in cuts)
+            findings.append(
+                Finding(
+                    "layout.pour_edge_cut",
+                    "warning",
+                    f"{len(cuts)} route(s) cut through the outer {band:.1f} mm ring "
+                    f"of the {zone.net} pour on {layer}; the longest gap is "
+                    f"{longest:.1f} mm (limit {limit:.1f} mm) - the rim stops being "
+                    "a ring and the return has to cross the board to close",
+                    details={
+                        "layer": layer,
+                        "count": len(cuts),
+                        "longest_gap_mm": round(longest, 2),
+                        "examples": sorted(
+                            f"{blame} over {length:.1f} mm" for length, _where, blame in cuts
+                        )[:8],
+                        "positions": [where for _length, where, _blame in cuts],
+                    },
+                )
+            )
+    return findings
+
+
+def _rim_samples(outline: list[tuple[float, float]], band: float) -> list[tuple[float, float]]:
+    """Points walking the pour's outline, stepped inward into the rim band.
+
+    The inward direction is the polygon's own: the interior lies to the left
+    of each edge for one winding and to the right for the other, so the sign
+    of the signed area picks it. Half the band puts the sample in the middle
+    of the ring rather than on either of its edges.
+    """
+    inward = 1.0 if _polygon_area(outline) > 0 else -1.0
+    samples: list[tuple[float, float]] = []
+    for (ax, ay), (bx, by) in zip(outline, [*outline[1:], outline[0]], strict=True):
+        dx, dy = bx - ax, by - ay
+        length = math.hypot(dx, dy)
+        if length < GEOM_TOL:
+            continue
+        nx, ny = -dy / length * inward, dx / length * inward
+        for index in range(max(1, int(length / RIM_STEP_MM))):
+            t = index * RIM_STEP_MM / length
+            samples.append((ax + dx * t + nx * band / 2.0, ay + dy * t + ny * band / 2.0))
+    return samples
+
+
+def _rim_cuts(
+    board, zone, layer: str, polygons, band: float, limit: float
+) -> list[tuple[float, tuple[float, float], str]]:
+    """Runs of missing rim that a foreign route is standing in.
+
+    Returns one entry per run: its length along the rim, where it is, and what
+    is in it. A run nothing is routed through is a mounting hole or an edge
+    land, and is not this rule's business.
+    """
+    samples = _rim_samples(zone.outline, band)
+    if not samples:
+        return []
+    covered = [any(_point_in_polygon(point, poly) for poly in polygons) for point in samples]
+    # The rim is a loop, and the sample list is a loop cut open at the outline's
+    # first vertex. A gap sitting on that cut would otherwise be measured as two
+    # short runs, one at each end of the list, and a 3.5 mm cut would pass a
+    # 3 mm limit twice over. Rotating the list to start on covered copper puts
+    # the whole of that gap in one run; a rim with no copper at all is one run
+    # by definition and needs no rotation.
+    if any(covered) and not covered[0]:
+        first = covered.index(True)
+        samples = samples[first:] + samples[:first]
+        covered = covered[first:] + covered[:first]
+    obstacles = [
+        (track.start, track.end, track.width, track.net)
+        for track in board.tracks
+        if track.layer == layer and track.net and track.net != zone.net
+    ]
+    # Only vias that actually reach this face remove copper from it. A blind
+    # via between two other layers is drilled somewhere else entirely as far as
+    # this pour is concerned, and blaming it would turn a mounting hole's own
+    # interruption into an error.
+    obstacles += [
+        ((via.x, via.y), (via.x, via.y), via.size, via.net or "an unnamed via")
+        for via in board.vias
+        if via.net != zone.net and _via_reaches(via, layer)
+    ]
+    cuts = []
+    index = 0
+    count = len(samples)
+    while index < count:
+        if covered[index]:
+            index += 1
+            continue
+        start = index
+        while index < count and not covered[index]:
+            index += 1
+        run = samples[start:index]
+        length = len(run) * RIM_STEP_MM
+        if length <= limit:
+            continue
+        blame = _what_is_in_the_gap(run, obstacles, band)
+        if blame:
+            middle = run[len(run) // 2]
+            cuts.append((length, (round(middle[0], 2), round(middle[1], 2)), blame))
+    return cuts
+
+
+def _via_reaches(via, layer: str) -> bool:
+    """Whether a via's barrel is drilled through the given copper layer.
+
+    A through via states `F.Cu` and `B.Cu` and passes everything between them,
+    so the span is read as a range over the board's layer order rather than as
+    the two names it happens to list. A via with no layers stated is a through
+    via: that is what the format's default means.
+    """
+    if not via.layers:
+        return True
+    order = ["F.Cu", "In1.Cu", "In2.Cu", "In3.Cu", "In4.Cu", "B.Cu"]
+    if layer not in order:
+        return True
+    spanned = [order.index(name) for name in via.layers if name in order]
+    if not spanned:
+        return True
+    return min(spanned) <= order.index(layer) <= max(spanned)
+
+
+def _what_is_in_the_gap(run, obstacles, band: float) -> str:
+    """Which net is sitting in a missing stretch of rim, named for the report."""
+    for start, end, width, net in obstacles:
+        reach = band / 2.0 + width / 2.0
+        for point in run:
+            if _point_to_segment(point, start, end) <= reach:
+                return net
+    return ""
 
 
 def _fill_coverage(
@@ -2767,11 +3090,119 @@ def _silk_bbox(text: dict[str, Any]) -> tuple[float, ...] | None:
     thickness = float(text.get("thickness") or 0.0)
     span = len(body) * width * 0.75 + thickness
     extent = height + thickness
-    half_x, half_y = span / 2, extent / 2
-    if round(abs(float(text.get("angle") or 0.0)) % 180) == 90:
-        half_x, half_y = half_y, half_x
     x, y = float(text["x"]), float(text["y"])
-    return (x - half_x, y - half_y, x + half_x, y + half_y)
+    justify = str(text.get("justify") or "")
+    # Where the anchor sits along the string: at its start for left-justified
+    # text, at its end for right-justified, in the middle otherwise. Turned a
+    # quarter, "along" runs up the board for left-justified text.
+    if "left" in justify:
+        along = (0.0, span)
+    elif "right" in justify:
+        along = (-span, 0.0)
+    else:
+        along = (-span / 2, span / 2)
+    if round(abs(float(text.get("angle") or 0.0)) % 180) == 90:
+        return (x - extent / 2, y - along[1], x + extent / 2, y - along[0])
+    return (x + along[0], y - extent / 2, x + along[1], y + extent / 2)
+
+
+def _box_gap(a: tuple[float, ...], b: tuple[float, ...]) -> float:
+    """How far apart two rectangles are, zero where they touch or overlap."""
+    return math.hypot(max(a[0] - b[2], b[0] - a[2], 0.0), max(a[1] - b[3], b[1] - a[3], 0.0))
+
+
+def _net_label(name: str | None) -> str:
+    """A net's name as a silkscreen legend prints it, without its sheet path."""
+    return str(name or "").strip().rsplit("/", 1)[-1].strip()
+
+
+def _along(poly: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """A polyline as points every LEADER_STEP_MM or so, ends included.
+
+    Everything below measures a drawn line by these rather than by its two
+    ends. The side of a frame that runs along a label comes nearest to it in
+    the middle, and a leader meets that frame side in the middle too.
+    """
+    points = [poly[0]] if poly else []
+    for a, b in itertools.pairwise(poly):
+        steps = max(1, int(math.dist(a, b) / LEADER_STEP_MM) + 1)
+        points += [
+            (a[0] + (b[0] - a[0]) * step / steps, a[1] + (b[1] - a[1]) * step / steps)
+            for step in range(1, steps + 1)
+        ]
+    return points
+
+
+def _legend_columns(board: pcb.Board, least: int) -> set[int]:
+    """The silk strings that are one of a connector's names lined up in a row.
+
+    A pinout laid out as a column - every name the same distance and the same
+    side from the pin it belongs to - is read by position: the third name down
+    belongs to the third pin, whatever else the board has put nearby. So the
+    offsets from pad to string are counted per connector, and a string sharing
+    its offset with `least` - 1 others is in a column.
+
+    Identified by `id()` because a board may print the same name twice, and
+    `GND` three pins apart is three strings and not one.
+    """
+    in_column: set[int] = set()
+    for fp in board.footprints:
+        if not fp.ref.upper().startswith(("J", "P")) or len(fp.pads) < least:
+            continue
+        nets = {_net_label(pad.net) for pad in fp.pads if pad.net}
+        offsets: dict[tuple[float, float], list[int]] = defaultdict(list)
+        for text in board.silk_texts:
+            label = str(text.get("text") or "").strip()
+            if text.get("hidden") or label not in nets:
+                continue
+            here = [pad for pad in fp.pads if _net_label(pad.net) == label]
+            pad = min(here, key=lambda p: math.dist((p.x, p.y), (text["x"], text["y"])))
+            offset = (round(text["x"] - pad.x, 1), round(text["y"] - pad.y, 1))
+            offsets[offset].append(id(text))
+        for shared in offsets.values():
+            if len(shared) >= least:
+                in_column |= set(shared)
+    return in_column
+
+
+def _silk_chain_reaches(
+    strokes: list[list[tuple[float, float]]],
+    start: tuple[float, ...],
+    targets: list[tuple[float, ...]],
+    leave: float,
+    arrive: float,
+) -> bool:
+    """Whether a run of silkscreen lines ties one box to any of some others.
+
+    This is a leader: the lines that start at a relocated label and end at the
+    pad it names. They are followed as a chain because a leader bends - the
+    45° elbow that keeps it off everything in between is a second segment, and
+    the frame round the label is four more. The links in that chain do not
+    touch: a leader stops the fab's silkscreen clearance short of the frame it
+    points away from, so within a clearance is joined.
+    """
+    traced = [_along(poly) for poly in strokes]
+    linked = [
+        index
+        for index, points in enumerate(traced)
+        if any(_box_gap(start, (x, y, x, y)) <= leave for x, y in points)
+    ]
+    seen = set(linked)
+    queue = list(linked)
+    while queue:
+        points = traced[queue.pop()]
+        for index, other in enumerate(traced):
+            if index in seen:
+                continue
+            if any(math.dist(a, b) <= LEADER_JOIN_MM for a in points for b in other):
+                seen.add(index)
+                queue.append(index)
+    return any(
+        _box_gap(target, (x, y, x, y)) <= arrive
+        for index in seen
+        for x, y in traced[index]
+        for target in targets
+    )
 
 
 def _pad_layers(pad: pcb.Pad, board: pcb.Board) -> set[str]:
@@ -2942,6 +3373,142 @@ def rule_silk_over_pad(ctx: PcbContext) -> list[Finding]:
             "warning",
             f"{len(collisions)} silkscreen item(s) print across a pad",
             details={"count": len(collisions), "examples": collisions[:8]},
+        )
+    ]
+
+
+@rule
+def rule_silk_under_part(ctx: PcbContext) -> list[Finding]:
+    """Silkscreen text a fitted part will cover.
+
+    Ink under a neighbour's body prints perfectly on the bare board and is
+    gone the moment that neighbour is fitted: a designator a millimetre inside
+    the bulk capacitor's outline, a board name under a module.
+
+    A string's own part is measured differently, and not exempt. A designator
+    inside its own *courtyard* is the convention - the courtyard is deliberately
+    bigger than the part, and a name in the margin beside a chip resistor is
+    read on the finished board. A designator inside its own part's *fabrication
+    outline* is the part itself standing on it, which is where a library puts
+    the name of anything that spans its own pads: an electrolytic capacitor, an
+    inductor, a module fifty millimetres long. Only the side the part is on
+    counts, either way.
+    """
+    board = ctx.board
+    courts = [
+        (fp.ref, box, fp.layer)
+        for fp in board.footprints
+        if (box := fp.courtyard_box()) is not None
+    ]
+    bodies = {fp.ref: box for fp in board.footprints if (box := fp.body_box()) is not None}
+    hidden = []
+    for text in board.silk_texts:
+        if text.get("hidden"):
+            continue
+        box = _silk_bbox(text)
+        if not box:
+            continue
+        side = "B." if str(text.get("layer", "")).startswith("B.") else "F."
+        owner = str(text.get("footprint") or "")
+        for ref, court, layer in courts:
+            if not str(layer).startswith(side):
+                continue
+            if ref == owner:
+                own = bodies.get(ref)
+                if own is not None and _boxes_overlap(box, own):
+                    hidden.append(f"{text['text']!r} under {ref} itself")
+                continue
+            if _boxes_overlap(box, court):
+                hidden.append(f"{text['text']!r} under {ref}")
+    hidden = sorted(set(hidden))
+    if not hidden:
+        return []
+    return [
+        Finding(
+            "silk.under_part",
+            "warning",
+            f"{len(hidden)} silkscreen string(s) lie under a part - "
+            "readable on the bare board, hidden on the assembled one",
+            details={"count": len(hidden), "examples": hidden[:8]},
+        )
+    ]
+
+
+@rule
+def rule_silk_pin_legend(ctx: PcbContext) -> list[Finding]:
+    """A connector pin legend with somebody else's pad nearer to it than its own.
+
+    A name on a silkscreen belongs to the pad beside it - that is the only rule
+    a person reads a board by, and it is not negotiable by intent. So a legend
+    with a foreign pad nearer than the pin it names has named that pad instead.
+    The supply terminals are where it happens: a fuse and a clamp stand between
+    the terminal and the rest of the board, the board's edge is on its other
+    side, and the name gets pushed out past the fuse - two millimetres from the
+    fuse's pad, eleven from the pin.
+
+    Two things excuse it. A leader - a label put somewhere legible and tied
+    back to its pad by silkscreen lines - is the fix where the board has no
+    room; those lines are followed from the label, so a legend that says which
+    pin it means is not reported for not sitting on it. And a column: where
+    three or more of one connector's names sit at the same offset
+    from their own pins, they are read by their place in the line rather than
+    by which pad is nearest to each, which is the whole reason for lining them
+    up. Two names side by side are not a column.
+
+    Only strings that name a net a connector carries are considered, and only
+    within `pin_legend_reach_mm` of a pad of that net: further away the string
+    is documentation about the circuit rather than a legend for a pin. Leaders
+    a footprint draws inside itself are not followed - a leader is an
+    annotation the board adds on top of its parts.
+    """
+    board = ctx.board
+    reach = float(ctx.thresholds["pin_legend_reach_mm"])
+    pads = [
+        (fp.ref, _net_label(pad.net), pad.bbox(angle_offset=fp.angle), fp.side)
+        for fp in board.footprints
+        for pad in fp.pads
+        if pad.net
+    ]
+    named = {
+        label for ref, label, _box, _side in pads if label and ref.upper().startswith(("J", "P"))
+    }
+    strokes: dict[str, list[list[tuple[float, float]]]] = {"top": [], "bottom": []}
+    for layer, poly in board.silk_strokes:
+        strokes["bottom" if str(layer).startswith("B.") else "top"].append(poly)
+    columns = _legend_columns(board, LEGEND_COLUMN_MIN)
+    stray = []
+    for text in board.silk_texts:
+        label = str(text.get("text") or "").strip()
+        if text.get("hidden") or label not in named:
+            continue
+        box = _silk_bbox(text)
+        if not box:
+            continue
+        side = "bottom" if str(text.get("layer", "")).startswith("B.") else "top"
+        here = [(ref, net, pad) for ref, net, pad, at in pads if at == side]
+        mine = [pad for _ref, net, pad in here if net == label]
+        if not mine or min(_box_gap(box, pad) for pad in mine) > reach:
+            continue
+        nearest = min(here, key=lambda entry: _box_gap(box, entry[2]))
+        if nearest[1] == label:
+            continue
+        if id(text) in columns:
+            continue
+        if _silk_chain_reaches(
+            strokes[side], box, mine, leave=LEADER_LEAVE_MM, arrive=LEADER_ARRIVE_MM
+        ):
+            continue
+        stray.append(f"{label!r} nearest {nearest[0]} rather than the pin it names")
+    stray = sorted(set(stray))
+    if not stray:
+        return []
+    return [
+        Finding(
+            "silk.pin_legend",
+            "warning",
+            f"{len(stray)} connector pin legend(s) sit nearer another part's pad "
+            "than the pin they name, with no leader saying which pin they mean",
+            details={"count": len(stray), "examples": stray[:8]},
         )
     ]
 

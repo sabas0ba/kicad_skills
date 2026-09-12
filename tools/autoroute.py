@@ -49,6 +49,11 @@ class Obstacle:
     ``pad`` marks the rectangle as a component land. A track of the same net may
     of course sit on its own pad - that is how it connects - but a *via* may
     not, whoever owns it: see :meth:`route`.
+
+    ``open_to`` names further nets the rectangle does not block, which is what a
+    package body is: closed to copper that has no business under the part, open
+    to the part's own escapes. ``net`` alone cannot say it, because a part has
+    as many nets as it has pins.
     """
 
     x0: float
@@ -58,6 +63,7 @@ class Obstacle:
     net: str
     layer: str | None = None
     pad: bool = False
+    open_to: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -175,7 +181,7 @@ class Router:
         keep = width / 2 + self.clearance
         blocked = {layer: set() for layer in self.layers}
         for obstacle in self.obstacles:
-            if obstacle.net == net:
+            if obstacle.net == net or net in obstacle.open_to:
                 continue
             targets = self.layers if obstacle.layer is None else (obstacle.layer,)
             cells = set(self._cells_in(obstacle.x0, obstacle.y0, obstacle.x1, obstacle.y1, keep))

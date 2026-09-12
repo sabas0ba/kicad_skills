@@ -24,3 +24,19 @@ not a 0.5 A motor-current limiter. The sheet states that distinction. The \
 alternative that satisfies ERC is a pair of zero-ohm links to ground, which \
 is two parts in the bill of materials to quiet a warning about a connection \
 nobody disputes."""
+
+[[waivers]]
+rule = "route.return_path"
+reason = """The price of two layers on this board, measured and accepted. \
+The three interfaces face three different edges because that is what the \
+board is for - motors left, supply top right, logic along the bottom - so the \
+four bridge outputs cross the front at power width between the driver and the \
+motor terminals, and the four logic lanes cross under them on the back. Where \
+those two families overlap, the front-side ground fill is in pieces, and the \
+rule measures /AIN1 running 12.8 mm and /BIN2 10.4 mm over them against a \
+10 mm limit. The fix that removes it outright is an inner ground plane, and a \
+four-layer stack costs more per prototype run than this board's whole bill of \
+materials. At 2.8 mm and 0.4 mm over the limit, on lanes carrying logic-level \
+PWM into a driver's own inputs, the loop is worth the money saved. A design \
+running these lanes faster, or one already paying for four layers, should not \
+copy this waiver."""

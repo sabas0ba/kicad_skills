@@ -66,18 +66,20 @@ the point of writing them down is to say which:
 
 ### Open
 
-* No input protection anywhere: no reverse-polarity device or fuse behind any
-  of the screw terminals (all five), no ESD or current-limit resistor on the
-  op-amp filter's input jack. Deliberate scope on a demonstration set, but a
-  production review would ask.
-* The buck's LM2596 wants its output capacitor's ESR inside a stated window —
-  an all-ceramic substitution would ring, and no rule reads ESR.
+Four of the five items that stood here were closed in round twenty (§25): the
+power inputs are fused and clamped, the buck's output capacitor states its ESR,
+the FPGA's clock leaves its oscillator through a series resistor, and the DAC's
+mute is under the FPGA's control. Three of the four became rules. What is still
+open:
+
 * Motor outputs leave the board unfiltered (motor-driver); fine on the bench,
   an EMC gamble on a metre of cable.
-* No series termination on CLK12 (fpga-audio) — 12 MHz over ~30 mm forgives
-  it, and a rule would need to know which nets are clocks.
-* PCM5102A XSMT is strapped high, so the DAC un-mutes with the rail rather
-  than under control: the power-up pop is accepted, not managed.
+* No ESD or current-limit resistor on the op-amp filter's input jack. The
+  op-amp sits behind 10 k and a coupling capacitor, so the part at risk is a
+  passive; a production review would still ask.
+* The fuses and clamps state the rating the design chose, and the rule checks
+  only that they exist: whether 3 A is the right fuse for a 2 A converter is a
+  judgement the sheet notes make and nothing verifies.
 
 ## 2. Electromagnetics and layout physics
 
@@ -1491,3 +1493,474 @@ edge lists on 200 seeded, randomized multi-pad/tied-distance cases. On the same
 host, a 500-footprint single-pad net took 16.557 s before and 0.288 s after.
 These are illustrative timings; CI enforces operation counts and correctness,
 not a wall-clock threshold tied to one machine.
+## 27. The reviewer's pass, round twenty-one: the parts a bench never asks for
+
+Nineteen rounds had made five boards that pass their own gate, and §1 still
+listed five things a production review would ask about that no rule did:
+nothing between any screw terminal and the circuit behind it, an output
+capacitor whose ESR the regulator's loop depends on and nothing states, a clock
+leaving its oscillator with nothing to damp it, a DAC that un-mutes with the
+rail, and motor leads that leave unfiltered. This round redesigned the circuits
+for four of them and asked, for each, the question the whole set exists to
+answer: what does the rule look like, and does the netlist carry enough to
+write it.
+
+### What changed in the designs
+
+* **Every power input is fused and clamped.** A 1206 fuse in series with the
+  terminal, then a unidirectional TVS from the fused rail to ground - SMAJ18A
+  on the 12 V buck input, SMAJ12A on the motor supply that may reach 10.8 V,
+  SMAJ5.0A on the two 5 V boards and on the 3.3 V FPGA input, where it is the
+  lowest standoff the series comes in. Reversed leads forward-bias the TVS and
+  the fuse opens; a transient above the standoff is clamped. The Pico carrier
+  gets a 0.75 A resettable fuse instead, because a short on a carrier should
+  trip something that comes back, and its Schottky already blocks a reversed
+  supply. Each sheet says what the clamp does *not* do: the SMAJ5.0A clamps at
+  9 V, which is no protection for a 7 V op-amp or a 3.6 V FPGA against a
+  sustained overvoltage, only against a reversal and a surge.
+* **The buck's output capacitor states its ESR.** The LM2596 datasheet
+  (SNVS124G §9.1.3) gives the output capacitor's ESR both an upper limit, for
+  ripple, and a lower one, for loop stability - "the ESR value is the most
+  important parameter" - and C3 said nothing about it. It now carries
+  `ESR: 150mR max @100kHz`, derived from the 0.6 A pk-pk ripple already on the
+  sheet and the 2 % of output the datasheet allows, and the note beside it says
+  why an all-ceramic substitute is the wrong part.
+* **The FPGA's clock leaves through 33 Ω.** R5 sits at X1's output; the run to
+  the QFN is 30 mm, and a packaged oscillator's edge into 30 mm of track rings
+  without something at the source to damp it.
+* **The DAC's mute is a signal, not a strap.** XSMT was tied to 3.3 V, so the
+  PCM5102A un-muted with the rail and the power-up pop was accepted. It is now
+  driven from an FPGA I/O with a 10 k pull-down, so the DAC comes up muted and
+  the configured design releases it.
+* **The op-amp does not meet the cable directly.** R8 (100 Ω) sits between U1's
+  output and the coupling capacitor: a cable's capacitance, and a short at the
+  jack, now land on a resistor rather than on the amplifier. No rule came of
+  this one - a series element on an output is right for a line driver and
+  wrong for an H-bridge, and the netlist cannot tell them apart.
+
+### What went into the tool
+
+Three rules, each written from what the netlist alone can carry:
+
+| rule | what it reads | fires on the demo corpus |
+| --- | --- | --- |
+| `analog.unprotected_power_input` | a connector of four pins or fewer with a ground and a supply and nothing else is where power comes on. From its supply pin the rule walks inward through two-terminal series parts - fuse, diode, inductor, bead - and asks whether it passed a fuse and whether a diode stands in the path or across it. A rail an `output` or `power_out` pin drives is the board's own, and a connector on it is an output | once (`multichannel`, a 12 V terminal with nothing behind it) |
+| `analog.clock_no_series_resistor` | an oscillator module's `output` pin on a net with no resistor | once (`tiny_tapeout`) |
+| `spec.missing_esr` | a polarised capacitor on a net an inductor also reaches - a switching regulator's output - with no ESR field | 18, fourteen of them one design's row of electrolytics, graded `info` and collapsed |
+
+The first needed the walk. A fuse is not *on* the rail the IC sees - it is one
+net upstream - and a Schottky in series is as much reverse-polarity protection
+as a TVS across, so the rule follows the supply through whatever two-terminal
+parts it passes and judges what it collected. The buck's own output terminal is
+what made the direction test necessary: a 5 V screw terminal with a ground and
+a supply and no fuse looks exactly like an unprotected input until the walk
+reaches, one inductor away, the pin that drives it.
+
+### What the tool then made us fix
+
+All five `as-generated` variants now carry one finding more than they did -
+`spec.missing_esr` on the buck's C3, because `degrade` strips every field - and
+the `reviewed` variants had to earn their new parts:
+
+* **Two pin stubs closer than 7.62 mm draw over each other.** Every pin runs a
+  2.54 mm stub before its wire, so a fuse placed 5 mm from the terminal it
+  feeds puts two stubs on one line and the planner's wire over both -
+  `readability.overlapping_wires` and `readability.missing_junction`, on four
+  of the five sheets. The fix is spacing, and the generator's own comments now
+  say what the spacing is for.
+* **A supply drawn as symbols, facing itself.** Two pins of one power net
+  facing each other across a fuse each get a supply symbol, and the two taps
+  run into each other along the same row. The carrier's `+5V` is drawn as the
+  wire it is (`wired_power`) instead.
+* **A tap into the middle of a back-layer spine has no run ending at it.**
+  `_surfaced` lifts a short back-layer hop to the front when the finished board
+  has room, and then drops any via that no longer has a back-layer *end*
+  beside it. The FPGA's 1.2 V spine is tapped mid-run, and the first lift on
+  this board took the tap's via with it - a 1.2 V rail in two pieces, which
+  KiCad's DRC reported and `route.stub` beside it. The via test now asks
+  whether any back-layer run of the net passes under the via, not whether one
+  ends there.
+* **A 0.4 mm run landing on a 0.2 mm neck steps down in the open.** Routing
+  the fused 3.3 V into the regulator at power width met the SOT-23-5's 0.2 mm
+  escape a quarter-millimetre short of its end - `route.width_step`. The
+  regulator's supply now arrives at the escape's own width from the
+  capacitors beside it, which is what a rail drawing 100 mA wants anyway.
+* **A chamfer can cut the copper out from under a via.** `_chamfer_tracks`
+  leaves a corner alone when something is pinned to it, and a via the router
+  dropped a quarter-millimetre along the leg is pinned to nothing: the cut
+  shortened the leg past it and KiCad's DRC reported a via joined to one face
+  (`drc.via_dangling`) on the re-routed 3.3 V rail. A corner now stays square
+  when a via of its own net sits within the cut of it.
+
+### Where the five stand
+
+| design | as-generated | reviewed |
+| --- | --- | --- |
+| buck-5v | 32 blocking | PASS |
+| motor-driver | 33 | PASS |
+| pico-carrier | 27 | PASS |
+| opamp-filter | 38 | PASS |
+| fpga-audio | 34 | PASS |
+
+The waivers are the ones the rounds before left, unchanged in number and in
+reason. The `Datasheet` fields on the new parts are the TVS link KiCad's own
+Diode library carries for the SMAJ series and the fuse makers' family pages;
+this round's network reached the TI datasheet the ESR field is derived from and
+nothing else, so those pages are cited, not read, and the ratings on the
+sheets are the ones the design asks for rather than numbers copied from a
+table.
+
+## 28. The reviewer's pass, round twenty-two: what a layer costs
+
+Rounds twenty and twenty-one were written against the same baseline by two
+different hands, and both landed. Merging them was the first half of this
+round; the second half was a question the merge exposed.
+
+Round twenty had answered two findings — the motor driver's return path and the
+FPGA's reference plane — by moving both boards to four copper layers. That is a
+real answer, and on a board that needs it, the right one. It is also the single
+most expensive change either board could have made. A two-layer prototype run
+is priced as a commodity; a four-layer run is not, and the difference on the
+motor driver exceeded its entire bill of materials. Nothing about a DRV8833 and
+five capacitors asks for an inner plane.
+
+So both boards went back to two layers, and the round is about what that cost
+and what it did not.
+
+### It cost less than the four-layer answer implied
+
+The motor driver kept round twenty's floorplan exactly — 68 × 46 mm, the bypass
+capacitors hard against the package, every `layout.connection_span` and
+`layout.decoupling_distance` finding still at zero. Only the supply changed:
+with no In2 plane to disappear into, VM is a stated front-side spine down the
+free column right of the capacitors, threaded between the two ground vias at
+x = 45.15. The gap between their barrels is 1.7 mm and the arm needs 0.9 of it.
+
+What is left is one finding, and it is now a waiver with both measurements in
+it: `route.return_path` at 12.8 mm and 10.4 mm against a 10 mm limit, where the
+four logic lanes cross under the four bridge outputs on the back. The waiver
+says what a design running those lanes faster should do instead of copying it.
+
+The FPGA board is the honest half of the trade. A 48-pin QFN, a codec, a boot
+flash and an oscillator escaped on two layers do not fit in 76 × 58 mm; the
+board is 100 × 84 mm, and that is the shape of paying in area rather than in
+layers.
+
+### Three rules came out of it
+
+Taking the planes away made two questions worth asking of every board, and the
+merge made a third overdue.
+
+`layout.pour_edge_cut` walks the ground pour's own outline,
+half a millimetre inside it, and asks whether the fill still reaches all the way
+round. The outer ring is the board's outermost copper: the shield the edge
+radiates into, the return every edge-hugging track leans on, and part of what a
+fabricator reads as copper balance when it plates the panel. Broken, the two
+halves of the rim meet only by going the long way round through the middle of
+the plane — which is the loop the rim was closing. Things are allowed to
+interrupt it: a mounting hole and its clearance, a through-hole land at the
+edge, the board's own outline where it steps. A *route* is not, so the rule only
+reports a gap with a foreign track or via standing in it.
+
+It reports as a warning and blocks under `ai-generated`. Five of KiCad's own
+eighteen demo boards trip it, and those boards ship: a nibbled rim is a thing a
+human judges, not a thing that is broken on its face. On a board this
+repository generates there is nothing to judge - the fix is to move the route
+inboard, it costs nobody a respin, and the policy makes it an error.
+
+`route.via_under_package` is a warning, and `route.under_package` grew to cover
+connectors as well as chips. Under an integrated circuit there is no plane
+between the copper and the die and no way to probe or rework it; under a
+connector the shell has to come off before anyone can even see it, which is why
+the connector case measures against the courtyard rather than the pad box. Both
+exempt the part's own nets — its escapes and its ground stitching belong there —
+and the via rule also exempts a thermal via inside the part's own pad, which is
+what an exposed pad exists to have.
+
+The connector case earned itself immediately. On opamp-filter the 5 V rail was
+cutting the corner off J2's courtyard on its way to the second amplifier: the
+short way across, and copper nobody could have probed. The strip under the
+terminal's body is now fenced and the rail goes round it.
+
+### One hole drilled twice
+
+Moving the FPGA board onto two layers put every layer change on the same pair of
+faces, and the search spends a via at each end of a hop. Two hops that turned
+round within half a millimetre of each other got a barrel apiece: 0.5 mm between
+centres, 0.1 mm between the holes, against the 0.2495 mm a fabricator here will
+place. KiCad's own DRC reported it as `hole_to_hole` — the gate did not, because
+this is a manufacturing constraint the board setup carries rather than a rule
+this toolkit writes, which is why CI checks both.
+
+The pair is one hole on one net whose copper already overlaps, so the generator
+now merges it. `_uncrowded` runs after the copper has stopped moving, finds
+same-net vias closer together than a drill will go, and puts one via at the
+centre of every track end the two were serving — but only if that one still
+reaches all of them. A via anchored to a pad never moves: it was placed beside
+that pad on purpose.
+
+### What the cold route said that the cached one did not
+
+The rule was not enough. `route.under_package` was clean on the board this
+checkout held, and the golden CI job — which routes from scratch, with none of
+the rip-up order an afternoon of attempts had learned — found a different
+solution and put +3V3 under both headers, nine segments of it. The property was
+luck, not design: the same board, routed twice, was clean once.
+
+`route_keepout` could not have caught it. It closes the strip *between* two rows
+of pads, and a 1×N header has one row, so J2 and J3 were never fenced at all.
+What a connector needs is its whole courtyard closed — to every net but its own,
+because its escapes still have to leave. An obstacle could not say that: it
+carries one net, and a part has as many nets as it has pins. So `Obstacle` grew
+`open_to`, a set of nets it does not block, and `Design.body_keepout` names the
+parts whose courtyard is fenced that way. The FPGA board fences its two headers,
+and the rail goes round them.
+
+The cold route is the one that counts. A board is only reproducible if the
+copper checked in here is what the router finds with an empty cache, because
+that is what CI regenerates and compares against — the learned order makes the
+answer arrive sooner, never differently enough to commit.
+
+### Who pays for a tour
+
+The reviewer circled a column of ten vias on the motor driver, between the
+package's escape fan and the two motor terminals, and asked for a principle:
+route the nets with something to lose first — current, a clock, a bus, a pair —
+and never let the miscellaneous routing add stubs and vias to them; place the
+parts so those routes are easy.
+
+The column was exactly that inversion. The four 0.4 mm bridge outputs run a
+clear corridor west to the terminals. One 0.3 mm logic input, AIN1, with both
+ends on the package's east side, found its straight lane taken and toured the
+whole west end of the board instead — and the chase for tidiness then promoted
+it to the *front*, so the outputs, routed after it, hopped under it: two vias
+apiece, and nFAULT the same. The tour itself had two causes. The design had put
+AIN1's drop on the back on purpose, and the search still charged it the plane
+surcharge — thirty on the front for a millimetre on the back — so seventeen
+millimetres on B.Cu cost more than seventy-five on F.Cu with two vias. And its
+header pin sat on the far side of AIN2's stated lane from its via, so it could
+not have dropped straight even for free: the header's pin order did not match
+the order the drops arrive in.
+
+Three things changed. The routing order now has two classes: a link wider than
+the board's thinnest, or on a net the design names in `priority_nets`, is
+routed while the board is empty, and a failure or a tour promotes a plain link
+only to the front of the plain links — it never moves ahead of a net with a
+claim. A link the design declares on the back and keeps there pays the router's
+ordinary rate, not the plane surcharge. And J4's pins were reordered so the
+four drops leave the via column in the order they land — GND, nSLEEP, AIN2,
+BIN1, AIN1, BIN2, nFAULT, GND — with AIN2's lane turning where its last leg to
+the new pin is a 45.
+
+Cold, under CI's conditions, the motor board now routes on the first pass with
+no rip-up and no chase. The four outputs and nFAULT: zero vias, all on the
+front. AIN1 crosses BIN2's drop and pays two vias for it, which is the plain
+net paying.
+
+The op-amp filter said what the width heuristic cannot: the filter's own signal
+path is at signal width, and routed after the rail's links its two filter
+nodes toured 6.5x and 7.7x under both terminals. On a filter that path is what
+the board is for, so the design names it — `IN`, `IN_DC`, `X`, `FILT_IN`,
+`OUT`, `VREF` — and the bias divider's midpoint and the output coupling are the
+plain links that go round. Its rail, routed first, then took the short way
+under the input terminal's shell; the three connectors are fenced whole now,
+the way the FPGA board's headers are. The FPGA board says the same of its rails: +3V3 and
++1V2 are distributed at signal width there (the `track.thin_power` waiver is
+about exactly that), and routed after the clocks and the bus the codec's own
+supply pickup had no lane left between the package and the jack. Named, they
+route first, as a rail should.
+
+That board also found the classes' limit. XSMT — the mute line, whose only
+possible seat for R6 the detour waiver already describes — has no lane at all
+behind the priority nets, and neither has LDOO, the codec's regulator output
+into its reservoir. Feasibility is the hard constraint and the classes are not:
+a plain link that fails from the front of its class is lifted ahead of the
+priority nets, and the log says so — three times on this board, both XSMT
+links and LDOO. That is a floorplan with no room for them, and the placement's
+problem to fix; it is not a reason to call the nets special.
+
+### Two names over every other pin
+
+The reviewer then read the motor driver's header silk and could not tell which
+name went with which pin. The placer had been clearing each legend of its
+neighbour by sliding it along the row, up to a whole pitch — and a whole pitch
+on a 2.54 mm header is the next pin. The lower row of legends had each moved
+one pin along, so BIN2 printed under nFAULT's pin, BIN1 under AIN1's, nSLEEP
+under AIN2's: two names over every other pin, and nothing to say which was
+whose.
+
+A legend names the pin nearest to it, so it may slide only while the pin it
+names is still that: not at all between the pins of a 2.54 mm header, half a
+pitch either way on a 5 mm terminal block, and as far as it likes past the end
+of a row, where there is no other pin to name. A label that does not fit
+beside its neighbour goes to the other side of the row instead, still on its
+pin. All 73 connector legends on the five boards now sit nearer the pin they
+name than any other.
+
+What that rule could no longer hide, it exposed. On the Pico carrier a 22 uF
+capacitor stood in the header's legend strip across the rows of pins 3 and 4,
+and a 100 nF across pin 6's — the legend `ADC_VREF`, the longest name on the
+board — so those legends had been printing one pin along to avoid them, and
+with the slide gone they printed on the capacitors' pads instead. The
+capacitors moved out of the strip; the review had been reporting the wrong
+pin's name over the right pin as clean silk.
+
+### A pinout is read down a column
+
+Two more things the reviewer asked of the silk. A connector's pin names should
+line up — the same side, the same distance, and turned to suit — so their
+positions can be read at a glance; and no designator or description should
+stand where a fitted part will hide it.
+
+The legends are now laid out a row at a time. Every pin of a connector gets
+the same side and the same distance from the pad row, anchored on its own
+pin; where the names are wider than the pitch, as on any 2.54 mm header, they
+turn a quarter and stand up from their pins in one line. Only a row that
+cannot be lined up clean — the Pico carrier's supply terminal, with the fuse
+in its strip and the board's edge on the other side — falls back to placing
+each pin on its own, and then a legend steps along the row only as far as
+still names its pin.
+
+For the hiding, the placer had been weighing another part's courtyard as
+merely close — a grazed outline cost a fraction of what a covered pad did —
+and so the motor driver's fuse had its name a millimetre inside the bulk
+capacitor's outline, and the op-amp board's own name ran across a test point
+standing in the strip the name is written in. Other parts' bodies now weigh
+as much as pads for every string the generator places, the test point moved
+out of the name's strip, and `silk.under_part` reports whatever slips
+through: a string inside a foreign courtyard on its own side. The review's
+own estimate of a string's extent learned where its anchor is at the same
+time — a legend anchored at the end nearest its pin had been measured as if
+centred, half a string away from where it prints.
+
+### The measurement that was answering the wrong question
+
+The round above reported seventy-two legends "on their own pins" and two boards
+clean of hidden ink. Both numbers were true and neither answered the question.
+The reviewer came back with three screenshots, and what they circled was
+`VIN` printed beside the buck converter's fuse, `GND` beside the motor
+driver's clamp, `+5V` beside the Pico carrier's fuse, and `C1` printed between
+the two pads of the capacitor it names.
+
+The legend check had compared each legend against *its own connector's* pins.
+Every one of them was nearest its own pin among those — and two millimetres
+from a fuse's pad belonging to somebody else. The hidden-ink rule had exempted
+a string inside its own footprint's courtyard, on the grounds that a designator
+beside its own part is the convention. It is, but a courtyard is the part plus
+the room to place it, and the exemption was covering the case where the part
+itself stands on the name.
+
+Measured against every pad on the board, and against each part's own
+fabrication outline rather than its courtyard, all five boards were reporting:
+
+| board | legends naming another part's pad | strings under their own part |
+| --- | --- | --- |
+| buck-5v | `VIN`, `GND`, `+5V` | `C1`, `C3`, `L1` |
+| motor-driver | `GND` | `J2`, `U1` |
+| pico-carrier | `+5V`, `GND`, `3V3_EN` | `F1`, `U1` |
+| opamp-filter | `VIN`, `GND`, `OUT_AC` | `J2` |
+| fpga-audio | `GND` ×2, `OUTL`, `OUTR` | `U2`, `U4` |
+
+Two rules now ask those questions instead. `silk.under_part` keeps the
+courtyard test for a *neighbour* and adds the fabrication outline for a
+string's own part — the two differ on purpose, and the difference is exactly
+the margin a designator beside a chip resistor lives in. `silk.pin_legend`
+takes any string naming a net a connector carries, within 15 mm of a pad of
+that net, and asks whether the nearest pad on the board carries that net.
+
+### Where a name cannot sit on its pin
+
+The designators were the easy half: step the name outside its own part's
+fabrication outline, measuring what that takes per direction rather than as
+one radius. A footprint is anchored where its library chose to anchor it,
+which for a screw terminal is pin 1 and not the middle of its shell, so a
+single radius big enough to clear the far side puts the name three
+millimetres past the near side and into the next part.
+
+The legends have no such answer. A supply terminal at the edge of a board has
+nowhere to be labelled: outboard is where the wire goes in, inboard is the
+fuse and the clamp that every supply input in these examples now carries, and
+the reviewer's suggestion is the only thing left — write the name where it can
+be read, box it, and point at the pin with straight lines bent at 45°.
+
+That is what the generator does when, and only when, no placement puts the
+legend's own pad nearest to it. The label goes in a frame, so it reads as a
+label rather than as the name of whatever it is standing beside; a leader runs
+from the frame back to the pad in horizontal, vertical and 45° legs. Spots are
+tried outward from the pin and the first whose frame *and* leader are both
+clear wins, so the leader stays short.
+
+Four details decide whether it reads.
+
+The leader is drawn from where it comes out of the connector, not from the
+pad: a screw terminal's pads are under its shell, ink there is invisible and
+`silk_overlap` besides, and the side the line emerges from is what tells a
+reader which pin it came from. A direction that would take it *through*
+another pad on the way out is refused outright — the motor driver's terminal
+had both its names pointing at the same spot on the bottom edge of the shell,
+because the upper pin's leader had gone down through the lower pin to get
+there and nothing visible said so.
+
+The choice is ranked rather than summed: what the drawing takes from the rest
+of the board first, then whether the leader is long enough to read as a
+pointer rather than a tick, then nearest to the pin. Summed, a two-millimetre
+penalty for a short leader sent a label twelve millimetres away to buy one it
+could have had at four.
+
+A line has no area, and the placer scores by area. A leader drawn straight
+across another part's outline cost exactly nothing, so it did it, four times
+on the Pico carrier. Every drawn line an obstacle now has the width it is
+drawn at, plus its clearance.
+
+And the relocation happens at all only where the name is on its own. Where
+three or more of a connector's names sit at one offset from their own pins,
+they are a column: the third name down belongs to the third pin whatever else
+is nearby, which is the whole reason for lining them up, and taking one out of
+the line to point at its own pin makes the pinout worse rather than better.
+Four of the Pico carrier's forty header names have a bypass capacitor's pad
+marginally nearer than their own pin, and all forty read fine. That test is
+asked of where the names ended up rather than of what the placer attempted:
+one pin with a fiducial in its strip sends a twenty-pin row to per-pin
+placement, and nineteen of them still land in one line. Two names side by
+side are not a column, which is why the supply terminals still get leaders.
+`silk.pin_legend` carries the same three clauses, so the rule and the
+generator agree about what a readable pinout is.
+
+One more clause turned out to matter more than the mechanism: the test is the
+*net* on the nearest pad, not the pad. `VIN` printed between a terminal's pin
+and the fuse pad that pin feeds names both of them, and both are VIN - nothing
+is wrong with it, and an earlier version that compared pads rather than nets
+sent four such legends off to find leaders they did not need.
+
+Twelve of the seventy-seven pin legends across the five boards are drawn with
+a leader: three on the buck converter, four on the op-amp board, two each on
+the motor driver and the Pico carrier, one on the FPGA board. The rest sit
+against their pins, which is better and is still what is tried first.
+
+Graded against KiCad's own demo boards, `silk.pin_legend` fires seven times on
+three of the eighteen, which is what a rule about one specific mistake should
+look like. `silk.under_part` fires 277 times on twelve of them, up from eleven
+before the own-outline clause, and nearly every one of those is a designator
+left where its library drew it. That is a habit on a hand-laid board and a
+defect on a generated one, so it stays a warning that the `ai-generated`
+policy promotes rather than an error everybody trips over.
+
+### A loop that never existed
+
+The op-amp board's new copper also found a defect in the loop cutter. MID had a
+stub from a pad up to a via and the back-side run coming down from that via,
+passing under the pad on its way. The cutter splits a run at a pad of its own
+net it passes over, because the overlap feeds the pad — but it split the
+*back-side* run at a *front-side* pad, manufactured a node there, and the stub
+ending on that pad then shared it: a cycle. It cut the stub and the via and
+left the run starting at the pad on the wrong layer, with no way up to it —
+two of KiCad's `unconnected_items`. The split now respects the pad's layer,
+and the test runs the same copper through the old cutter to show the via go.
+
+### The smallest change in the round
+
+Fiducial designators no longer print. A fiducial names a target the assembly
+machine finds optically; nobody reads its designator on a bare board, and on a
+68 mm board it was competing with the board's own name for the same edge strip —
+`silk.text_over_text`, on the one string that could have been deleted instead of
+moved.

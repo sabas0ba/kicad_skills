@@ -69,19 +69,33 @@ belongs in `_AI_BLOCKING` in the same file. `tests/test_gate.py` covers both.
 ## Regenerating the worked examples
 
 `tools/make_examples.py` builds both variants of every design in `examples/`.
-Routing is what it spends its time on: the FPGA board is a 48-pin QFN on four
-layers, with two outer routing layers and two inner planes. The motor-driver
-also uses four layers. Cold regeneration of the five examples takes tens of
-minutes on CI, and a net that finds no room sends the routing pass round again.
+Routing is what it spends its time on: the FPGA board is a 48-pin QFN escaped
+on two layers, which is the hardest board in the set. **All five examples are
+two-layer**, and are meant to stay that way: layer count is the one board
+parameter that changes the price of a prototype run outright, so a design that
+will not close on two layers grows a few millimetres before it grows a stack.
+Cold regeneration of the five examples takes tens of minutes on CI, and a net
+that finds no room sends the routing pass round again.
 
 So the routed copper is cached under `.cache/routes/` (git-ignored), keyed by
 everything the router reads — the outline, the parts and their pads, every
 stated track (including its fixed-layer intent) and via, the footprint library
-definitions, and the source of `tools/autoroute.py` and `_route_all`
-themselves. Editing where a designator prints or how a legend picks its side
-does not move copper, so those runs reuse the answer and finish in seconds;
-editing the router invalidates every answer it ever gave. `--no-route-cache`
-routes from scratch.
+definitions, the nets a design names in `priority_nets`, and the source of
+`tools/autoroute.py`, `_route_all` and `resolve_routes` themselves. Editing
+where a designator prints or how a legend picks its side does not move copper,
+so those runs reuse the answer and finish in seconds; editing the router, or
+the order it offers the links in, invalidates every answer it ever gave.
+`--no-route-cache` routes from scratch.
+
+That order has two classes. A link wider than the board's thinnest, or on a
+net the design names in `priority_nets`, has something to lose — current, a
+clock, a bus — and is routed while the board is empty; nothing routed later
+may push it aside, so a plain link that fails or tours is promoted only to the
+front of the plain links and goes round. Within a class it is shortest first.
+A plain link that still has no lane from the front of its class is lifted
+ahead of the priority nets and the log says so: that is a floorplan with no
+room for it, which is the placement's problem to fix, not a reason to declare
+the net special.
 
 The golden CI matrix uses KiCad 9.0.9 for generation, gates and renders. Each
 example runs independently with fail-fast disabled, so a failed or slow FPGA
@@ -105,6 +119,19 @@ The rip-up order is kept separately, in `<design>.order.json`, and survives a
 change that does invalidate the cache: it is what an afternoon of rip-up
 attempts learned, and starting from it is usually the difference between
 seventeen attempts and none.
+
+Both the cache and that order are git-ignored, so **CI routes cold and without
+them, and the copper checked in here has to be what a cold route finds** — the
+drift check compares the two. On the FPGA board a different starting order finds
+a different valid solution, so a board regenerated from a warm local cache can
+pass every gate here and still fail CI. Before committing a change that moves
+that board's copper, reproduce the CI conditions:
+`tools/make_examples.py build/golden --no-route-cache --only fpga-audio
+--route-cache-dir build/golden-cache`, and commit what that writes.
+
+`tools/example_images.py` re-renders the pictures `examples/README.md` shows
+from the regenerated projects (sheet at 150 dpi, board at 300 dpi, as JPEG). It
+leaves the `*-first.jpg` first editions alone; nothing regenerates those.
 
 ## Tuning a rule
 
