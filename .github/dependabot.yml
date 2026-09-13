@@ -6,12 +6,22 @@ version: 2
 #
 # The Dockerfile is deliberately not listed: its FROM line is
 # `kicad/kicad:${KICAD_VERSION}@${KICAD_DIGEST}`, which Dependabot cannot parse.
+#
+# Every ecosystem here carries a cooldown, because a release that is two days
+# old has been read by nobody: a compromised publish is caught in the days
+# after it, not in the minutes. Seven days is the floor, thirty for a major -
+# which is a release note to read rather than a number to bump. Cooldown
+# applies to version updates only; a security update is not delayed by it,
+# which is the one case worth taking a new release for.
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
     commit-message:
       prefix: "ci"
     groups:
@@ -23,6 +33,9 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
     commit-message:
       prefix: "deps"
     groups:
