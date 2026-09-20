@@ -572,3 +572,26 @@ def test_board_uuid_canonicalization_ignores_random_input_ids(tmp_path):
     uuids = {str(atom) for node in root.walk() if node.name == "uuid" for atom in node.atoms()}
     members = root.child("group").child("members")
     assert set(map(str, members.atoms())) <= uuids
+
+
+@pytest.mark.parametrize(
+    "angle,expected",
+    [
+        (0.0, (1.0, 0.5)),
+        (90.0, (0.5, 1.0)),
+        (45.0, (1.0607, 1.0607)),
+    ],
+)
+def test_pad_box_covers_the_rotated_pad(monkeypatch, angle, expected):
+    """A 2 x 1 pad on a part at an angle. The box has to hold the rotated
+    rectangle: at forty-five degrees its corners reach 1.06 mm from the
+    centre on both axes, further than either side of the unrotated size."""
+    examples = _generator()
+    part = examples.Part("K1", "test:sw", "sw", "test:fp", (0.0, 0.0), (10.0, 10.0, angle))
+    node = examples.sexp.loads(
+        '(footprint "fp" (pad "1" smd rect (at 0 0) (size 2 1) (layers "B.Cu")))'
+    )
+    monkeypatch.setattr(examples, "footprint_definition", lambda _name: node)
+    x0, y0, x1, y1 = examples.pad_box(_design(examples, parts=[part]), part, node.child("pad"))
+    assert (x1 - x0) / 2 == pytest.approx(expected[0], abs=1e-4)
+    assert (y1 - y0) / 2 == pytest.approx(expected[1], abs=1e-4)

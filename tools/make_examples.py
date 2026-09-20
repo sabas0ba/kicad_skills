@@ -2946,9 +2946,15 @@ def pad_box(design: Design, part: Part, pad: SNode) -> tuple[float, float, float
     atoms = [a for a in (at.atoms() if at else []) if isinstance(a, (int, float))]
     if len(atoms) > 2:
         angle += float(atoms[2])
-    if round(abs(angle) % 180) == 90:
-        w, h = h, w
-    return (cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2)
+    # The box of the *rotated* pad. A part placed at an angle that is not a
+    # multiple of ninety degrees has pads whose corners reach past the box of
+    # the unrotated size, and a via the router put against that smaller box
+    # once landed 0.13 mm from a socket pad on a board whose keys follow an
+    # arc. At ninety degrees this is the swap of width and height.
+    rad = math.radians(angle)
+    c, s = abs(math.cos(rad)), abs(math.sin(rad))
+    ew, eh = round(w * c + h * s, 4), round(w * s + h * c, 4)
+    return (cx - ew / 2, cy - eh / 2, cx + ew / 2, cy + eh / 2)
 
 
 def pad_position_of(design: Design, part: Part, pad: SNode) -> tuple[float, float]:
