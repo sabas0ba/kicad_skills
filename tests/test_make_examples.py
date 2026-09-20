@@ -343,6 +343,38 @@ def test_a_back_run_under_a_front_pad_is_not_a_loop(monkeypatch):
     assert any(t.layer == "B.Cu" and t.points == [(10.0, 8.0), (10.0, 14.0)] for t in cut.tracks)
 
 
+def test_a_back_hop_into_a_back_only_pad_is_not_lifted(monkeypatch):
+    """The lifting pass once moved a short back-layer hop up to the empty
+    front although it ended on a back-mounted part's land. The hop then ended
+    in the air above the pad, and the via that had joined it to the pad went
+    with it: the pad was left unconnected. A hop that ends on a pad with no
+    front copper is the pad's only connection and stays on the back."""
+    examples = _generator()
+    part = examples.Part("D1", "test:led", "led", "test:fp", (0.0, 0.0), (10.0, 10.0, 0.0))
+    node = examples.sexp.loads(
+        '(footprint "fp" (pad "1" smd rect (at 0 0) (size 1 1) (layers "B.Cu" "B.Mask")))'
+    )
+    monkeypatch.setattr(examples, "footprint_definition", lambda _name: node)
+    tracks = [
+        examples.Track("N", "F.Cu", 0.3, [(6.0, 10.0), (8.0, 10.0)]),
+        examples.Track("N", "B.Cu", 0.3, [(8.0, 10.0), "D1.1"]),
+    ]
+    vias = [examples.Via("N", x=8.0, y=10.0)]
+    design = _design(
+        examples,
+        parts=[part],
+        nets={"N": ["D1.1"]},
+        tracks=tracks,
+        vias=vias,
+        pour=(1.0, 1.0, 19.0, 19.0),
+    )
+
+    result = examples._surfaced(design)
+
+    assert [t.layer for t in result.tracks] == ["F.Cu", "B.Cu"]
+    assert [(v.x, v.y) for v in result.vias] == [(8.0, 10.0)]
+
+
 def test_route_digest_includes_fixed_layer_intent():
     examples = _generator()
     track = examples.Track("SIG", "B.Cu", 0.3, [(5.0, 5.0), (8.0, 5.0)])

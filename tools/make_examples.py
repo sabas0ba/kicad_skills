@@ -5066,6 +5066,21 @@ def _surfaced(design: Design) -> Design:
     def key(point: tuple[float, float]) -> tuple[float, float]:
         return (round(point[0], 3), round(point[1], 3))
 
+    # A hop that ends on a pad with no copper on the front (a back-mounted
+    # part's land) is the only copper that reaches that pad. Lifted, it would
+    # end in the air above the pad, and the via that went with it was the
+    # connection. Such a hop stays where the router put it.
+    back_only: set[tuple[float, float]] = set()
+    for part in design.footprints():
+        node = footprint_definition(part.footprint)
+        for pad in node.children("pad"):
+            layers = pad.child("layers")
+            names = [str(atom) for atom in layers.atoms()] if layers is not None else []
+            copper = [name for name in names if name.endswith(".Cu")]
+            if not copper or any(name in ("F.Cu", "*.Cu") for name in copper):
+                continue
+            back_only.add(key(pad_position_of(design, part, pad)))
+
     # What the run meets at each end, so a hop lifted between two 0.4 mm runs
     # does not arrive as 0.2 mm and leave two width steps where the via used
     # to be. A width change at a layer change is a change nobody reads; the
@@ -5082,6 +5097,8 @@ def _surfaced(design: Design) -> Design:
             continue
         points = [resolve(design, point) for point in track.points]
         if sum(math.dist(a, b) for a, b in pairwise(points)) > SURFACE_MAX_MM:
+            continue
+        if key(points[0]) in back_only or key(points[-1]) in back_only:
             continue
         abutting = {
             round(width, 3)
