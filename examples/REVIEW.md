@@ -1964,3 +1964,83 @@ machine finds optically; nobody reads its designator on a bare board, and on a
 68 mm board it was competing with the board's own name for the same edge strip —
 `silk.text_over_text`, on the one string that could have been deleted instead of
 moved.
+
+## 29. The reviewer's pass, round twenty-three: how the drawing reads
+
+Every gate here passed before this round started, and every one still passes.
+The round is about what the gates do not measure: whether the sheet and the
+silkscreen read the way a person expects them to. It changes no part, no
+value and no copper - the route-cache keys of all five boards are what they
+were, and the four boards with a cached route regenerate their copper item for
+item.
+
+### The sheets were drawn in the top third of the page
+
+The buck converter and the motor driver used the top seventy millimetres of an
+A4 sheet and left the rest empty, and the parts in that strip stood one
+capacitor-width apart. The ratings block of each capacitor had nowhere beside
+its body to go, so it went above the rail, under the designator of the next
+part: "SMAJ18A 18V 400W" read as the bulk capacitor's. Both sheets now sit in
+the middle of the page, left to right in the order the current flows, with a
+ratings block's width between neighbours.
+
+The FPGA sheet had the opposite problem. Its decoupling capacitors stood in a
+column of their own, joined to the circuit by power symbols alone, so nothing
+on the page said which capacitor served which bank; the codec's charge-pump
+and LDO capacitors were sixty millimetres from the pins they hang on, joined
+by wires that toured the sheet; and the core rail ran over the top of the page
+to reach the PLL filter. Each capacitor now stands beside the pin it serves,
+the supply runs regulator, core capacitors, filter resistor, PLL capacitors,
+FPGA, in that order, and the configuration bus is named at each pin, the way
+the I2S lines already were, instead of four wires crossing the pull-ups.
+
+### The textbook drawing needed the planner to allow it
+
+The Sallen-Key's feedback capacitor stood on end above the first resistor, and
+its far plate had to come back down under the signal line to reach the output,
+crossing FILT_IN on the way. Laid across the second resistor, the way every
+text draws the topology, it still arrived by label: the wire planner reserves
+a runway past every pin tip, and it kept the reservation after the pin had
+been wired into its own net. An output, the resistor it drives and the
+capacitor fed back from it all meet at the output's tip, and the third of
+them was walled off by the first two. A runway now stops being reserved once
+its pin belongs to the tree being grown, and the memo of hopeless pairs is
+keyed by the fragments they had, since a grown fragment frees runways.
+
+### Strings printed twice, or apart
+
+* Notes were set at 5.08 mm a line, twice what a text editor uses; they now
+  run at 2.54 mm, and a block may no longer slide onto the frame's rulers -
+  one on the op-amp sheet had.
+* A lying part printed its value to one side and its ratings centred under
+  its body. Value and ratings are now one block whichever way the part lies,
+  and a lying part may put that block above itself as well as below.
+* A fuse whose value is its current printed "3A" twice; a rating equal to the
+  value is printed once.
+* `TP` beside TP1 and `PWR_FLAG` beside every rail symbol told the reader
+  nothing; both are hidden, the second as the library ships it.
+* The screw holes and fiducials went wherever the notes ended - on the FPGA
+  sheet, between two FPGA units. They now go in the strip beside the title
+  block first.
+* A turned net label was measured as straddling its wire, when KiCad draws it
+  beside the wire, so a designator was placed on the half the measurement
+  missed. Turned labels now reserve the side they print on.
+
+### A designator is read as its nearest part's
+
+On the board the designators were placed clear of every pad, courtyard and
+string, and several still read as a neighbour's name, because they stood
+nearer the neighbour. A position closer to another part's body than to the
+designator's own now costs a little - less than any overlap, more than
+nothing. Moving names exposed a second gap: the outlines footprints draw round
+themselves were not obstacles, so the first designator to move went onto a
+diode's outline. They are now.
+
+### What it did not change
+
+The electrical review that started this round found real circuit questions -
+the motor driver's TVS clamps above the DRV8833's absolute maximum, several
+fields disagree with their part numbers, the 12 MHz clock cannot make a
+standard audio rate. They are deliberately not in this round, which was asked
+to change the drawing only; they are recorded in the pull request that carries
+it.
