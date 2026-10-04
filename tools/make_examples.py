@@ -2607,7 +2607,9 @@ def _move_reference_off_pads(
     # printed across a diode's outline is two drawings on one spot, and once
     # a designator had a reason to move it moved onto exactly that.
     obstacles = (
-        list(all_pads if all_pads is not None else pads) + list(printed or []) + list(outlines or [])
+        list(all_pads if all_pads is not None else pads)
+        + list(printed or [])
+        + list(outlines or [])
     )
     # the extent KiCad will actually print, rounded up (see `_text_extent`)
     half_x, half_y = _text_extent(part.ref, 1.0)
@@ -6451,7 +6453,9 @@ def emit_board(design: Design, path: Path) -> None:
     extents = {part.ref: _part_extent(design, part) for part in design.footprints()}
     ink_room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
     outlines = [
-        _inked(box, ink_room) for part in design.footprints() for box in _footprint_silk(design, part)
+        _inked(box, ink_room)
+        for part in design.footprints()
+        for box in _footprint_silk(design, part)
     ]
     for part in design.footprints():
         node = footprint_definition(part.footprint)
@@ -10193,7 +10197,9 @@ def fpga_audio() -> Design:
         cap("C11", "100n", (309.88, 80.01), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C16", "100n", (297.18, 80.01), (89.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C12", "2u2", (364.49, 139.7), (60.0, 54.0, 0.0), "16V", "CL10A225KO8NNNC"),
-        cap("C13", "2u2", (368.3, 111.76), (89.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC", angle=90.0),
+        cap(
+            "C13", "2u2", (368.3, 111.76), (89.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC", angle=90.0
+        ),
         cap("C14", "2u2", (354.33, 129.54), (89.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
         # CRESET runs from the header to the FPGA, and on a board this wide
         # that is one 46 mm hop however the two are placed. Its pull-up is
