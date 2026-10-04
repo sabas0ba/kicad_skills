@@ -2276,9 +2276,14 @@ def _symbol_instance(
         if side_value:
             strings.append(part.value)
         width = max(len(t) for t in strings) * 1.45 + 0.5
+        # Above the part as well, one row clear of the designator there: a
+        # capacitor lying between two pin rows has a wire under it, and the
+        # rows further down belong to the parts below - the block that went
+        # looking there read as the neighbour's.
+        above = round(top - 6.35 - (rows_n - 1) * 2.54 - bottom, 4)
         options = [
             (dx, dy)
-            for dy in (5.08, 7.62, 10.16, 12.7, 15.24)
+            for dy in (5.08, above, 7.62, 10.16, 12.7, 15.24)
             for dx in (0.0, 2.54, -2.54, 5.08, -5.08, 7.62, -7.62, 10.16, -10.16)
         ]
         scored = []
@@ -9934,7 +9939,7 @@ def fpga_audio() -> Design:
             # Bank 0 faces the codec, bank 1 faces the flash, bank 2 is here for
             # its VCCIO pin alone, and the supplies are a box of their own.
             for unit, where in enumerate(
-                [(196.0, 110.0), (196.0, 200.0), (56.0, 110.0), (112.0, 40.0)], start=1
+                [(196.0, 110.0), (196.0, 200.0), (56.0, 110.0), (236.22, 80.01)], start=1
             )
         ),
         Part(
@@ -9959,7 +9964,7 @@ def fpga_audio() -> Design:
             # Right of the fuse's own supply bus and below the terminal's
             # ground bus: J1, F1 and U3 read left to right as the supply
             # flows, and nothing of theirs lands on anybody else's row.
-            sheet=(68.58, 46.99),
+            sheet=(93.98, 43.18),
             board=(14.0, 24.0, 0.0),
             fields={
                 "Voltage": "1.2V",
@@ -10065,7 +10070,7 @@ def fpga_audio() -> Design:
             "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
             # 388, not 395: the GND symbol lands to the connector's right, and
             # at 395 its printed name crossed the right frame strip of the A3.
-            sheet=(381.0, 102.87),
+            sheet=(396.24, 102.87),
             angle=180.0,
             board=(95.0, 38.0, 0.0),
             fields={
@@ -10131,20 +10136,20 @@ def fpga_audio() -> Design:
         )
 
     parts += [
-        cap("C1", "10u", (84.0, 48.0), (7.5, 17.5, 0.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C2", "100n", (100.0, 48.0), (7.5, 21.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C3", "10u", (63.5, 62.0), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
-        cap("C4", "100n", (87.63, 62.0), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
-        cap("C5", "100n", (196.0, 48.0), (56.0, 47.0, 270.0), "25V", "CL10B104KB8NNNC"),
-        cap("C17", "10u", (180.0, 48.0), (59.0, 47.0, 270.0), "16V", "CL10A106MQ8NNNC"),
-        res("R3", "100R", (164.0, 48.0), (63.0, 54.0, 90.0), "RC0603FR-07100RL"),
+        cap("C1", "10u", (60.96, 50.8), (7.5, 17.5, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C2", "100n", (73.66, 50.8), (7.5, 21.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C3", "10u", (116.84, 50.8), (22.0, 30.0, 0.0), "16V", "CL10A106MQ8NNNC"),
+        cap("C4", "100n", (129.54, 50.8), (25.0, 38.5, 90.0), "25V", "CL10B104KB8NNNC"),
+        cap("C5", "100n", (180.34, 63.5), (56.0, 47.0, 270.0), "25V", "CL10B104KB8NNNC"),
+        cap("C17", "10u", (167.64, 63.5), (59.0, 47.0, 270.0), "16V", "CL10A106MQ8NNNC"),
+        res("R3", "100R", (154.94, 50.8), (63.0, 54.0, 90.0), "RC0603FR-07100RL"),
         res("R4", "10k", (276.0, 232.0), (56.0, 74.0, 0.0), "RC0603FR-0710KL"),
         cap("C6", "100n", (208.28, 74.93), (57.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C7", "100n", (208.28, 163.83), (61.0, 50.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C8", "100n", (236.0, 258.0), (46.0, 66.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C8", "100n", (220.98, 251.46), (46.0, 66.0, 0.0), "25V", "CL10B104KB8NNNC"),
         # C9 sits clear of R5's label on the sheet; on the board it stays
         # against the oscillator's supply pin.
-        cap("C9", "100n", (96.52, 150.0), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
+        cap("C9", "100n", (83.82, 137.16), (36.0, 14.0, 0.0), "25V", "CL10B104KB8NNNC"),
         # The oscillator's output leaves through R5: 33 ohms at the source
         # damps the edge into the 30 mm of track to the FPGA, so the clock
         # arrives once rather than ringing. R6 holds the codec muted until
@@ -10159,16 +10164,16 @@ def fpga_audio() -> Design:
         cap("C10", "100n", (68.58, 85.09), (60.0, 30.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C11", "100n", (309.88, 80.01), (85.0, 35.0, 0.0), "25V", "CL10B104KB8NNNC"),
         cap("C16", "100n", (297.18, 80.01), (89.0, 49.0, 0.0), "25V", "CL10B104KB8NNNC"),
-        cap("C12", "2u2", (367.03, 127.0), (60.0, 54.0, 0.0), "16V", "CL10A225KO8NNNC"),
-        cap("C13", "2u2", (365.76, 111.76), (89.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC", angle=90.0),
-        cap("C14", "2u2", (356.87, 129.54), (89.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
+        cap("C12", "2u2", (364.49, 139.7), (60.0, 54.0, 0.0), "16V", "CL10A225KO8NNNC"),
+        cap("C13", "2u2", (368.3, 111.76), (89.0, 41.0, 90.0), "16V", "CL10A225KO8NNNC", angle=90.0),
+        cap("C14", "2u2", (354.33, 129.54), (89.0, 45.5, 90.0), "16V", "CL10A225KO8NNNC"),
         # CRESET runs from the header to the FPGA, and on a board this wide
         # that is one 46 mm hop however the two are placed. Its pull-up is
         # the third node on the net, so standing it between them makes the
         # hop two, and a 10k pull-up does not care where it sits.
         res("R1", "10k", (166.37, 175.26), (52.0, 58.0, 0.0), "RC0603FR-0710KL"),
         res("R2", "10k", (224.79, 175.26), (34.0, 22.0, 0.0), "RC0603FR-0710KL"),
-        cap("C15", "100n", (148.0, 62.0), (57.0, 54.0, 180.0), "25V", "CL10B104KB8NNNC"),
+        cap("C15", "100n", (142.24, 50.8), (57.0, 54.0, 180.0), "25V", "CL10B104KB8NNNC"),
     ]
 
     nets = {
@@ -10323,7 +10328,7 @@ def fpga_audio() -> Design:
                 ],
             ),
             (
-                (258.0, 152.0),
+                (215.9, 88.9),
                 [
                     "C6/C7, C10: one 100n per FPGA I/O-bank",
                     "supply pin, beside the bank they feed.",
