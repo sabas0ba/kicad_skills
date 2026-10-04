@@ -229,6 +229,9 @@ SILK_CHAR_ADVANCE = 1.07
 SILK_LINE_HEIGHT = 1.55
 # The gap the fab wants between ink and a mask opening or other ink.
 SILK_CLEARANCE = 0.2
+# What a designator closer to a neighbour than to its own part costs, in the
+# mm^2 `_silk_intrusion` counts: about a tenth of a 0603 courtyard grazed.
+AMBIGUOUS_DESIGNATOR = 0.3
 
 SILK_EDGE_ROOM = 1.0
 SILK_EDGE_MARGIN = 0.5
@@ -2563,6 +2566,7 @@ def _move_reference_off_pads(
     all_pads: list[tuple[float, float, float, float]] | None = None,
     printed: list[tuple[float, float, float, float]] | None = None,
     bodies: list[tuple[float, float, float, float]] | None = None,
+    outlines: list[tuple[float, float, float, float]] | None = None,
 ) -> None:
     """Put the designator somewhere it can still be read after assembly.
 
@@ -2599,7 +2603,12 @@ def _move_reference_off_pads(
         # courtyard is the extent to step clear of.
         court = _courtyard_box(design, part)
         pads = [court] if court else [(bx - 1.0, by - 1.0, bx + 1.0, by + 1.0)]
-    obstacles = list(all_pads if all_pads is not None else pads) + list(printed or [])
+    # The lines every footprint draws round itself are ink as well: a name
+    # printed across a diode's outline is two drawings on one spot, and once
+    # a designator had a reason to move it moved onto exactly that.
+    obstacles = (
+        list(all_pads if all_pads is not None else pads) + list(printed or []) + list(outlines or [])
+    )
     # the extent KiCad will actually print, rounded up (see `_text_extent`)
     half_x, half_y = _text_extent(part.ref, 1.0)
     # What the designator has to step clear of is the part itself. Its own body
@@ -2667,10 +2676,25 @@ def _move_reference_off_pads(
     # the designator leaves with the offcut), ink on a pad is a pad that will
     # not wet, and ink on a courtyard is merely close. Ties go to the earlier
     # candidate, which is how "near beats far" survives the change.
+    # A designator nearer another part than its own reads as that part's:
+    # on the FPGA board a ring of 0603s round the package each printed its
+    # name clear of every pad and courtyard, and half of them beside the
+    # wrong capacitor. Cheaper than any overlap - a name a little ambiguous
+    # is still a name - and dearer than nothing, so a clear spot that is
+    # also unambiguous wins whenever there is one.
+    others = list(bodies or [])
+
+    def ambiguity(box: tuple[float, float, float, float]) -> float:
+        if not others:
+            return 0.0
+        mine = _box_gap(box, own)
+        nearest = min(_box_gap(box, other) for other in others)
+        return AMBIGUOUS_DESIGNATOR if nearest + 0.2 < mine else 0.0
+
     def cost(spot: tuple[float, float]) -> float:
         rx, ry = _rotate(spot[0], spot[1], angle)
         box = (bx + rx - half_x, by + ry - half_y, bx + rx + half_x, by + ry + half_y)
-        return _silk_intrusion(design, box, obstacles, heavy)
+        return _silk_intrusion(design, box, obstacles, heavy) + ambiguity(box)
 
     _rank, (cx, cy) = min(enumerate(candidates), key=lambda item: (cost(item[1]), item[0]))
     rx, ry = _rotate(cx, cy, angle)
@@ -6425,6 +6449,10 @@ def emit_board(design: Design, path: Path) -> None:
     # Where every part's body will be, so no designator is put under a
     # neighbour's: readable on the bare board, hidden on the assembled one.
     extents = {part.ref: _part_extent(design, part) for part in design.footprints()}
+    ink_room = SILK_LINE_WIDTH / 2 + SILK_CLEARANCE
+    outlines = [
+        _inked(box, ink_room) for part in design.footprints() for box in _footprint_silk(design, part)
+    ]
     for part in design.footprints():
         node = footprint_definition(part.footprint)
         bx, by, angle = part.board
@@ -6437,7 +6465,7 @@ def emit_board(design: Design, path: Path) -> None:
         _set_property(node, "Reference", part.ref)
         if part.show_reference:
             bodies = [box for ref, box in extents.items() if ref != part.ref]
-            _move_reference_off_pads(design, part, node, all_pads, printed, bodies)
+            _move_reference_off_pads(design, part, node, all_pads, printed, bodies, outlines)
         else:
             _hide_property(node, "Reference")
         _set_property(node, "Value", part.value)
@@ -8567,7 +8595,7 @@ def motor_driver() -> Design:
             "Device:LED",
             "green",
             "LED_SMD:LED_0805_2012Metric",
-            sheet=(109.22, 134.62),
+            sheet=(109.22, 139.7),
             angle=90.0,
             board=(62.0, 20.0, 180.0),
             silk_label="VM OK",
