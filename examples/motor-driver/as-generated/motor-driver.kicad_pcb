@@ -101,7 +101,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C3"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.SilkS")
       (uuid "1b34c1aa-98ae-5b2a-aff7-bc57ba8c25aa")
       (effects
@@ -123,7 +123,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B103KBANNNC.do"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "b71922e4-0138-55e2-a716-8b3fe1514920")
@@ -1427,7 +1427,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R2"
-      (at -2.331832 -1.757161 0)
+      (at -3.266251 -0.517146 0)
       (layer "F.SilkS")
       (uuid "a7e1fa51-8cf7-5a05-9860-2be533a60c43")
       (effects
@@ -1449,7 +1449,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at -2.331832 -1.757161 0)
+      (at -3.266251 -0.517146 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6c7a0239-7900-5825-a7f3-9603b7ea0648")
@@ -1811,7 +1811,7 @@
     (descr "Terminal Block Phoenix MKDS-1,5-2, 2 pins, pitch 5mm, size 10x9.8mm, drill diameter 1.3mm, pad diameter 2.6mm, http://www.farnell.com/datasheets/100425.pdf, script-generated using https://gitlab.com/kicad/libraries/kicad-footprint-generator/-/tree/master/scripts/TerminalBlock_Phoenix")
     (tags "THT Terminal Block Phoenix MKDS-1,5-2 pitch 5mm size 10x9.8mm drill 1.3mm pad 2.6mm")
     (property "Reference" "J3"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.SilkS")
       (uuid "e4dba844-cf21-56e5-bb45-1b52380660aa")
       (effects
@@ -1833,7 +1833,7 @@
       )
     )
     (property "Datasheet" "https://www.phoenixcontact.com/product/1729128"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "14e8f13b-5615-5680-97c3-7b663fbb9688")
@@ -2252,7 +2252,7 @@
     (descr "Diode SMA (DO-214AC)")
     (tags "Diode SMA (DO-214AC)")
     (property "Reference" "D3"
-      (at 0 3.245 0)
+      (at 4.35 0 0)
       (layer "F.SilkS")
       (uuid "32890d8a-edd9-5c18-9cfc-4f498e003367")
       (effects
@@ -2614,7 +2614,7 @@
     (descr "SMD capacitor, aluminum electrolytic, Nichicon, 6.3x7.7mm")
     (tags "capacitor electrolytic")
     (property "Reference" "C1"
-      (at 0 4.75 0)
+      (at 0 5.35 0)
       (layer "F.SilkS")
       (uuid "5b9d9989-948c-51f8-925f-5718d0b79945")
       (effects
@@ -2636,7 +2636,7 @@
       )
     )
     (property "Datasheet" "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf"
-      (at 0 4.75 0)
+      (at 0 5.35 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "51be8168-ad70-5da8-b20d-c261ad2d352b")
@@ -3038,7 +3038,7 @@
     (descr "Terminal Block Phoenix MKDS-1,5-2, 2 pins, pitch 5mm, size 10x9.8mm, drill diameter 1.3mm, pad diameter 2.6mm, http://www.farnell.com/datasheets/100425.pdf, script-generated using https://gitlab.com/kicad/libraries/kicad-footprint-generator/-/tree/master/scripts/TerminalBlock_Phoenix")
     (tags "THT Terminal Block Phoenix MKDS-1,5-2 pitch 5mm size 10x9.8mm drill 1.3mm pad 2.6mm")
     (property "Reference" "J2"
-      (at 8.95 0 0)
+      (at 9.55 0 0)
       (layer "F.SilkS")
       (uuid "dea06e8a-6b8c-53c7-b529-c84a0b339e18")
       (effects
@@ -3060,7 +3060,7 @@
       )
     )
     (property "Datasheet" "https://www.phoenixcontact.com/product/1729128"
-      (at 8.95 0 0)
+      (at 9.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "14e8f13b-5615-5680-97c3-7b663fbb9688")
@@ -3381,7 +3381,7 @@
     (descr "Fuse SMD 1206 (3216 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: http://www.tortai-tech.com/upload/download/2011102023233369053.pdf), generated with kicad-footprint-generator")
     (tags "fuse")
     (property "Reference" "F1"
-      (at 0 2.25 0)
+      (at 0 2.85 0)
       (layer "F.SilkS")
       (uuid "abb68b6e-0d61-5e11-982b-4b15f7e578d8")
       (effects
@@ -3403,7 +3403,7 @@
       )
     )
     (property "Datasheet" "https://www.littelfuse.com/products/fuses/surface-mount-fuses/thin-film-fuses/466"
-      (at 0 2.25 0)
+      (at 0 2.85 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "4a35755b-0cfd-5b1e-9cb7-7ce91970a51e")
@@ -3700,7 +3700,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C4"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.SilkS")
       (uuid "8bdf7663-aba3-5d77-a057-bdcd37979791")
       (effects
@@ -3722,7 +3722,7 @@
       )
     )
     (property "Datasheet" "https://weblib.samsungsem.com/mlcc/mlcc-ec-data-sheet.do?partNumber=CL21A225KAFNNN"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "b71922e4-0138-55e2-a716-8b3fe1514920")

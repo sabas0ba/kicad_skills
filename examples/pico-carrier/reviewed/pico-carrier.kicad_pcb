@@ -247,7 +247,7 @@
     (descr "Fuse SMD 1812 (4532 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: https://www.nikhef.nl/pub/departments/mt/projects/detectorR_D/dtddice/ERJ2G.pdf), generated with kicad-footprint-generator")
     (tags "fuse")
     (property "Reference" "F1"
-      (at 0 -3.05 0)
+      (at -3.995 -3.05 0)
       (layer "F.SilkS")
       (uuid "898fb462-59e0-5ed1-a997-bac1c3e4a750")
       (effects
@@ -269,7 +269,7 @@
       )
     )
     (property "Datasheet" "https://www.bourns.com/docs/product-datasheets/mfmsmf.pdf"
-      (at 0 -3.05 0)
+      (at -3.995 -3.05 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "df6b7cea-51e0-5be3-9d44-355bcedb5524")
@@ -293,7 +293,7 @@
       )
     )
     (property "Current" "0.75A"
-      (at 0 -3.05 0)
+      (at -3.995 -3.05 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9445a3c4-56f1-56eb-9f2c-a41af6fe2c00")
@@ -305,7 +305,7 @@
       )
     )
     (property "MPN" "MF-MSMF075-2"
-      (at 0 -3.05 0)
+      (at -3.995 -3.05 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "3c8b6b91-c309-5f60-9da5-ccd8d6cd128d")
@@ -317,7 +317,7 @@
       )
     )
     (property "Manufacturer" "Bourns"
-      (at 0 -3.05 0)
+      (at -3.995 -3.05 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0d5d5459-e4bc-563a-9f15-1abce8be3767")
@@ -418,7 +418,7 @@
     (descr "Through hole straight pin header, 1x20, 2.54mm pitch, single row")
     (tags "Through hole pin header THT 1x20 2.54mm single row")
     (property "Reference" "J4"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.SilkS")
       (uuid "dd361f08-086a-5667-8ae9-1a815824bdc7")
       (effects
@@ -440,7 +440,7 @@
       )
     )
     (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61302011121.pdf"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "bf3e64a8-708a-5ed2-99d6-6d47a1d416e8")
@@ -464,7 +464,7 @@
       )
     )
     (property "MPN" "61302011121"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "85c8f965-1eb6-5cbf-8500-9ca97e358eeb")
@@ -476,7 +476,7 @@
       )
     )
     (property "Manufacturer" "Wurth Elektronik"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "4ca988db-a26f-5187-86bb-1bba45def3a8")
@@ -943,7 +943,7 @@
     (descr "Terminal Block Phoenix MKDS-1,5-2, 2 pins, pitch 5mm, size 10x9.8mm, drill diameter 1.3mm, pad diameter 2.6mm, http://www.farnell.com/datasheets/100425.pdf, script-generated using https://gitlab.com/kicad/libraries/kicad-footprint-generator/-/tree/master/scripts/TerminalBlock_Phoenix")
     (tags "THT Terminal Block Phoenix MKDS-1,5-2 pitch 5mm size 10x9.8mm drill 1.3mm pad 2.6mm")
     (property "Reference" "J1"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.SilkS")
       (uuid "d01c7665-b32f-5015-a9e0-dd96a797452a")
       (effects
@@ -965,7 +965,7 @@
       )
     )
     (property "Datasheet" "https://www.phoenixcontact.com/product/1729128"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "c8dee279-d188-56f7-a8eb-7b7ecc5d6629")
@@ -989,7 +989,7 @@
       )
     )
     (property "MPN" "1729128"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "7a15603d-88b2-5f93-83ba-ec043ed06845")
@@ -1001,7 +1001,7 @@
       )
     )
     (property "Manufacturer" "Phoenix Contact"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6223d5b7-b3e8-5668-9d4f-94a228d74b60")
@@ -1312,7 +1312,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C2"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.SilkS")
       (uuid "fa008dc0-620f-5496-977b-0a83a23bdeb5")
       (effects
@@ -1334,7 +1334,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "a772beab-56ef-513b-abeb-c845c4e98ed0")
@@ -1358,7 +1358,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6d628d10-98f1-50f0-aa07-919b74b9d218")
@@ -1370,7 +1370,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "f07d6c21-0206-544e-93e9-b48cfe385835")
@@ -1382,7 +1382,7 @@
       )
     )
     (property "MPN" "CL21B104KBCNNNC"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "3277bfbf-19c8-5c45-80ef-eec9edb51b5a")
@@ -1394,7 +1394,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "f62fbffe-4e99-5d8f-8269-f18d295b4312")
@@ -1495,7 +1495,7 @@
     (descr "Raspberry Pi Pico (non-W) surface-mount footprint for reflow soldering with test points and debug pads, supports Raspberry Pi Pico 2 (non-W), https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf")
     (tags "module usb pcb swd")
     (property "Reference" "U1"
-      (at 0 26.95 0)
+      (at 0 27.55 0)
       (unlocked yes)
       (layer "F.SilkS")
       (uuid "f38d4a73-40c4-524e-90ab-f4eb16a24f3d")
@@ -1544,7 +1544,7 @@
       )
     )
     (property "MPN" "SC0915"
-      (at 0 26.95 0)
+      (at 0 27.55 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "4418e088-ad85-52f2-8dc1-4c215dc582c7")
@@ -1556,7 +1556,7 @@
       )
     )
     (property "Manufacturer" "Raspberry Pi"
-      (at 0 26.95 0)
+      (at 0 27.55 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "8b1da4cd-fbe4-5309-a81a-3bde1c507778")
@@ -3762,7 +3762,7 @@
     (descr "Through hole straight pin header, 1x20, 2.54mm pitch, single row")
     (tags "Through hole pin header THT 1x20 2.54mm single row")
     (property "Reference" "J3"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.SilkS")
       (uuid "20a33f11-7a0a-5f27-95ba-974a2eb839ba")
       (effects
@@ -3784,7 +3784,7 @@
       )
     )
     (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61302011121.pdf"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "bf3e64a8-708a-5ed2-99d6-6d47a1d416e8")
@@ -3808,7 +3808,7 @@
       )
     )
     (property "MPN" "61302011121"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "85c8f965-1eb6-5cbf-8500-9ca97e358eeb")
@@ -3820,7 +3820,7 @@
       )
     )
     (property "Manufacturer" "Wurth Elektronik"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "4ca988db-a26f-5187-86bb-1bba45def3a8")
@@ -4289,7 +4289,7 @@
     (descr "Capacitor SMD 1210 (3225 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C1"
-      (at 0 2.7 0)
+      (at 3.345 2.7 0)
       (layer "F.SilkS")
       (uuid "53abf50d-0a2c-534f-b615-8decb0b75e74")
       (effects
@@ -4311,7 +4311,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL32A226KAJNNNE.do"
-      (at 0 2.7 0)
+      (at 3.345 2.7 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "c2cbb088-bac0-5ab1-a27e-1cc0137ce9c7")
@@ -4335,7 +4335,7 @@
       )
     )
     (property "Voltage" "16V"
-      (at 0 2.7 0)
+      (at 3.345 2.7 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "c31214a9-5615-5fd2-a092-143e5a7264af")
@@ -4347,7 +4347,7 @@
       )
     )
     (property "Tolerance" "20%"
-      (at 0 2.7 0)
+      (at 3.345 2.7 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "4b8bfbbb-a895-5871-a99b-801529f15abe")
@@ -4359,7 +4359,7 @@
       )
     )
     (property "MPN" "CL32A226KAJNNNE"
-      (at 0 2.7 0)
+      (at 3.345 2.7 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "629685ef-617e-53af-8bf9-eee67a9b2937")
@@ -4371,7 +4371,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 2.7 0)
+      (at 3.345 2.7 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9bc6f534-b62f-5916-90a3-548e7798ad16")
@@ -4944,7 +4944,7 @@
     (descr "Diode SMA (DO-214AC)")
     (tags "Diode SMA (DO-214AC)")
     (property "Reference" "D1"
-      (at 0 -2.95 0)
+      (at 0 -3.55 0)
       (layer "F.SilkS")
       (uuid "276d86f5-56af-5ff6-a266-ef8164269e06")
       (effects
@@ -4992,7 +4992,7 @@
       )
     )
     (property "Voltage" "40V"
-      (at 0 -2.95 0)
+      (at 0 -3.55 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "f10b480e-26d7-5c6b-97da-a4215ee842c1")
@@ -5004,7 +5004,7 @@
       )
     )
     (property "Current" "1A"
-      (at 0 -2.95 0)
+      (at 0 -3.55 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "89a175c5-a1f9-58f1-ba8d-1f1df0aab18a")
@@ -5016,7 +5016,7 @@
       )
     )
     (property "MPN" "SS14"
-      (at 0 -2.95 0)
+      (at 0 -3.55 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "ae5b479f-8ba5-551b-a743-e0d0119cb295")
@@ -5028,7 +5028,7 @@
       )
     )
     (property "Manufacturer" "Vishay"
-      (at 0 -2.95 0)
+      (at 0 -3.55 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6879f130-6877-5314-8375-34b8402722ea")
@@ -5258,7 +5258,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R1"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.SilkS")
       (uuid "c5d38020-eb17-5bed-aeb8-fe52a7d33522")
       (effects
@@ -5280,7 +5280,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "88e90a81-5a87-5b9b-bc6e-e82d1836a1f8")
@@ -5304,7 +5304,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "862525e7-7b6c-58f5-bf23-ec077dc487e6")
@@ -5316,7 +5316,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "df7a98fb-4a08-5c5b-af03-54e55a434d75")
@@ -5328,7 +5328,7 @@
       )
     )
     (property "MPN" "RC0805FR-071KL"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "cdc50609-68b0-5454-9756-d37b06388eda")
@@ -5340,7 +5340,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "07240ab1-3924-5087-8ece-c5c80215ddb1")

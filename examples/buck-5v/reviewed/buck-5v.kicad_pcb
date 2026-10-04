@@ -95,7 +95,7 @@
     (descr "SMD capacitor, aluminum electrolytic, Vishay 0810, 8.0x10.5mm, http://www.vishay.com/docs/28395/150crz.pdf")
     (tags "capacitor electrolytic")
     (property "Reference" "C1"
-      (at 0 5.995 0)
+      (at 0 6.595 0)
       (layer "F.SilkS")
       (uuid "82b38282-3536-5f97-9710-61ab632d2bba")
       (effects
@@ -117,7 +117,7 @@
       )
     )
     (property "Datasheet" "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf"
-      (at 0 5.995 0)
+      (at 0 6.595 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "a650bbb9-3ac4-59e0-b941-064ff1c3b7fc")
@@ -141,7 +141,7 @@
       )
     )
     (property "Voltage" "35V"
-      (at 0 5.995 0)
+      (at 0 6.595 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "4101dd16-2924-548d-8561-3e1e3ecff077")
@@ -153,7 +153,7 @@
       )
     )
     (property "Tolerance" "20%"
-      (at 0 5.995 0)
+      (at 0 6.595 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "bd995d96-7f61-5bf5-8f0b-83f593ea1e6e")
@@ -165,7 +165,7 @@
       )
     )
     (property "MPN" "EEE-FK1V221AP"
-      (at 0 5.995 0)
+      (at 0 6.595 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "346f109a-73be-594f-b718-05586bf92d6c")
@@ -177,7 +177,7 @@
       )
     )
     (property "Manufacturer" "Panasonic"
-      (at 0 5.995 0)
+      (at 0 6.595 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "ea4bebd6-be45-5f36-9458-4d23702e527f")
@@ -871,7 +871,7 @@
     (descr "Diode SMA (DO-214AC)")
     (tags "Diode SMA (DO-214AC)")
     (property "Reference" "D3"
-      (at 0 -3.245 0)
+      (at 4.35 0 0)
       (layer "F.SilkS")
       (uuid "c990f1df-af92-5e10-b59b-100247b2607a")
       (effects
@@ -919,7 +919,7 @@
       )
     )
     (property "Voltage" "18V"
-      (at 0 -3.245 0)
+      (at 4.35 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "3f26b570-8e91-5c68-a2fd-899320592187")
@@ -931,7 +931,7 @@
       )
     )
     (property "Power" "400W"
-      (at 0 -3.245 0)
+      (at 4.35 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "8ee4aab1-ac1b-5ec2-abd6-e802f3bbd624")
@@ -943,7 +943,7 @@
       )
     )
     (property "MPN" "SMAJ18A"
-      (at 0 -3.245 0)
+      (at 4.35 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "53b8414a-0a37-5438-bc0f-c218acb95bba")
@@ -955,7 +955,7 @@
       )
     )
     (property "Manufacturer" "Littelfuse"
-      (at 0 -3.245 0)
+      (at 4.35 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6830607f-be4d-5f81-8115-141f871ed630")
@@ -1186,7 +1186,7 @@
     (descr "Fuse SMD 1206 (3216 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: http://www.tortai-tech.com/upload/download/2011102023233369053.pdf), generated with kicad-footprint-generator")
     (tags "fuse")
     (property "Reference" "F1"
-      (at 0 2.25 0)
+      (at 3.345 -2.25 0)
       (layer "F.SilkS")
       (uuid "0ad038a8-c319-5080-9bb0-4fb16e2799f9")
       (effects
@@ -1208,7 +1208,7 @@
       )
     )
     (property "Datasheet" "https://www.littelfuse.com/products/fuses/surface-mount-fuses/thin-film-fuses/466"
-      (at 0 2.25 0)
+      (at 3.345 -2.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "3625d0fe-fbe6-5207-943b-ddc83d3ae032")
@@ -1232,7 +1232,7 @@
       )
     )
     (property "Current" "3A"
-      (at 0 2.25 0)
+      (at 3.345 -2.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "60f7fb37-61f6-5b0e-8f46-54bde57f2547")
@@ -1244,7 +1244,7 @@
       )
     )
     (property "MPN" "0466003.NR"
-      (at 0 2.25 0)
+      (at 3.345 -2.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "14cc8970-cf18-5faf-993a-68771f72199b")
@@ -1256,7 +1256,7 @@
       )
     )
     (property "Manufacturer" "Littelfuse"
-      (at 0 2.25 0)
+      (at 3.345 -2.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "b9ab8262-695e-5fa8-8352-ce8bd47dba1e")
@@ -1357,7 +1357,7 @@
     (descr "Terminal Block Phoenix MKDS-1,5-2, 2 pins, pitch 5mm, size 10x9.8mm, drill diameter 1.3mm, pad diameter 2.6mm, http://www.farnell.com/datasheets/100425.pdf, script-generated using https://gitlab.com/kicad/libraries/kicad-footprint-generator/-/tree/master/scripts/TerminalBlock_Phoenix")
     (tags "THT Terminal Block Phoenix MKDS-1,5-2 pitch 5mm size 10x9.8mm drill 1.3mm pad 2.6mm")
     (property "Reference" "J2"
-      (at 8.95 0 0)
+      (at 9.55 0 0)
       (layer "F.SilkS")
       (uuid "93a68a46-ec7a-5390-9c27-d80d8a2eb878")
       (effects
@@ -1379,7 +1379,7 @@
       )
     )
     (property "Datasheet" "https://www.phoenixcontact.com/product/1729128"
-      (at 8.95 0 0)
+      (at 9.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "8904d01c-dbfa-5c3f-b4ff-e368bd606181")
@@ -1403,7 +1403,7 @@
       )
     )
     (property "MPN" "1729128"
-      (at 8.95 0 0)
+      (at 9.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f4c704d-e3a1-5564-9f3d-28930d652592")
@@ -1415,7 +1415,7 @@
       )
     )
     (property "Manufacturer" "Phoenix Contact"
-      (at 8.95 0 0)
+      (at 9.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2df44a2b-bf2c-5a17-9e7c-eb200a2a85d4")
@@ -1958,7 +1958,7 @@
     (descr "SMD capacitor, aluminum electrolytic, Vishay 0810, 8.0x10.5mm, http://www.vishay.com/docs/28395/150crz.pdf")
     (tags "capacitor electrolytic")
     (property "Reference" "C3"
-      (at 0 -5.7 0)
+      (at 0 -6.3 0)
       (layer "F.SilkS")
       (uuid "8fd0c77a-ea47-571e-b8c6-859c4731d761")
       (effects
@@ -1980,7 +1980,7 @@
       )
     )
     (property "Datasheet" "https://industrial.panasonic.com/cdbs/www-data/pdf/RDF0000/ABA0000C1053.pdf"
-      (at 0 -5.7 0)
+      (at 0 -6.3 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "a650bbb9-3ac4-59e0-b941-064ff1c3b7fc")
@@ -2004,7 +2004,7 @@
       )
     )
     (property "Voltage" "16V"
-      (at 0 -5.7 0)
+      (at 0 -6.3 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "4101dd16-2924-548d-8561-3e1e3ecff077")
@@ -2016,7 +2016,7 @@
       )
     )
     (property "Tolerance" "20%"
-      (at 0 -5.7 0)
+      (at 0 -6.3 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "bd995d96-7f61-5bf5-8f0b-83f593ea1e6e")
@@ -2028,7 +2028,7 @@
       )
     )
     (property "ESR" "150mR max @100kHz"
-      (at 0 -5.7 0)
+      (at 0 -6.3 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "c127b842-d703-5c98-9eac-686891d996dd")
@@ -2040,7 +2040,7 @@
       )
     )
     (property "MPN" "EEE-FK1C221P"
-      (at 0 -5.7 0)
+      (at 0 -6.3 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "346f109a-73be-594f-b718-05586bf92d6c")
@@ -2052,7 +2052,7 @@
       )
     )
     (property "Manufacturer" "Panasonic"
-      (at 0 -5.7 0)
+      (at 0 -6.3 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "ea4bebd6-be45-5f36-9458-4d23702e527f")
@@ -2445,7 +2445,7 @@
     (descr "Diode SMA (DO-214AC)")
     (tags "Diode SMA (DO-214AC)")
     (property "Reference" "D1"
-      (at 0 -3.245 0)
+      (at 4.35 0 0)
       (layer "F.SilkS")
       (uuid "14619e83-7d88-5de1-bf2d-3b5d13ac642a")
       (effects
@@ -2493,7 +2493,7 @@
       )
     )
     (property "MPN" "SS34"
-      (at 0 -3.245 0)
+      (at 4.35 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "53b8414a-0a37-5438-bc0f-c218acb95bba")
@@ -2505,7 +2505,7 @@
       )
     )
     (property "Manufacturer" "Vishay"
-      (at 0 -3.245 0)
+      (at 4.35 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6830607f-be4d-5f81-8115-141f871ed630")
@@ -2857,7 +2857,7 @@
     (descr "Choke, SMD, 12x12mm 8mm height")
     (tags "Choke SMD")
     (property "Reference" "L1"
-      (at 0 7.65 0)
+      (at -7.945 0 0)
       (layer "F.SilkS")
       (uuid "2633cb72-9ed3-5eb6-be83-3334e82c3b10")
       (effects
@@ -2905,7 +2905,7 @@
       )
     )
     (property "Current" "3A"
-      (at 0 7.65 0)
+      (at -7.945 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "3b773678-afe3-5003-98e1-0c43e81776b1")
@@ -2917,7 +2917,7 @@
       )
     )
     (property "Tolerance" "20%"
-      (at 0 7.65 0)
+      (at -7.945 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "005f3275-07ad-5b26-a744-66124da8dbfa")
@@ -2929,7 +2929,7 @@
       )
     )
     (property "MPN" "SRR1260-330M"
-      (at 0 7.65 0)
+      (at -7.945 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "67b99202-83ba-593c-a8a6-6f86263ddc3f")
@@ -2941,7 +2941,7 @@
       )
     )
     (property "Manufacturer" "Bourns"
-      (at 0 7.65 0)
+      (at -7.945 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "cefa892d-63bf-5ed8-abaf-a573b6bfb203")
@@ -3723,7 +3723,7 @@
     (descr "Terminal Block Phoenix MKDS-1,5-2, 2 pins, pitch 5mm, size 10x9.8mm, drill diameter 1.3mm, pad diameter 2.6mm, http://www.farnell.com/datasheets/100425.pdf, script-generated using https://gitlab.com/kicad/libraries/kicad-footprint-generator/-/tree/master/scripts/TerminalBlock_Phoenix")
     (tags "THT Terminal Block Phoenix MKDS-1,5-2 pitch 5mm size 10x9.8mm drill 1.3mm pad 2.6mm")
     (property "Reference" "J1"
-      (at -3.95 -6.945 0)
+      (at -4.55 -7.545 0)
       (layer "F.SilkS")
       (uuid "952ac4a4-8183-57a0-9f00-d420514120cd")
       (effects
@@ -3745,7 +3745,7 @@
       )
     )
     (property "Datasheet" "https://www.phoenixcontact.com/product/1729128"
-      (at -3.95 -6.945 0)
+      (at -4.55 -7.545 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "8904d01c-dbfa-5c3f-b4ff-e368bd606181")
@@ -3769,7 +3769,7 @@
       )
     )
     (property "MPN" "1729128"
-      (at -3.95 -6.945 0)
+      (at -4.55 -7.545 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f4c704d-e3a1-5564-9f3d-28930d652592")
@@ -3781,7 +3781,7 @@
       )
     )
     (property "Manufacturer" "Phoenix Contact"
-      (at -3.95 -6.945 0)
+      (at -4.55 -7.545 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2df44a2b-bf2c-5a17-9e7c-eb200a2a85d4")
@@ -4092,7 +4092,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C2"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.SilkS")
       (uuid "beadfb51-a587-5589-8eb2-23b3ab3ce529")
       (effects
@@ -4114,7 +4114,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "dc5df515-b8fa-55ba-ac3e-5b8f2a39284b")
@@ -4138,7 +4138,7 @@
       )
     )
     (property "Voltage" "50V"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0a76b3a3-b5a4-5b82-a8dd-07cc8d14626d")
@@ -4150,7 +4150,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "4b1365c5-f852-547c-ae91-55e0ad82e1fd")
@@ -4162,7 +4162,7 @@
       )
     )
     (property "MPN" "CL21B104KBCNNNC"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "8a7e90e4-095d-5bea-bfc0-0b768aaa7596")
@@ -4174,7 +4174,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "25726dc0-86f8-514e-aefa-b41e8ab9bce8")
@@ -4275,7 +4275,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R1"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.SilkS")
       (uuid "eecf1eb7-8c05-57ac-93ac-e10998274ec4")
       (effects
@@ -4297,7 +4297,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "887e7575-661b-54dd-8316-98450f8bb11c")
@@ -4321,7 +4321,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "a0e8bdfe-1abf-5d4b-b24a-756ff2c5c75f")
@@ -4333,7 +4333,7 @@
       )
     )
     (property "Power" "0.125W"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "1fd7caf7-8004-5d11-8be2-0400237618a1")
@@ -4345,7 +4345,7 @@
       )
     )
     (property "MPN" "RC0805FR-071KL"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2c61d799-8c30-59a3-bcd6-9780387d0b53")
@@ -4357,7 +4357,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -2.075 0)
+      (at 0 -2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "b49e949b-6299-50a5-8a3d-8c7dd1a23db5")
@@ -4579,7 +4579,7 @@
     (descr "TO-263/D2PAK/DDPAK SMD package, http://www.infineon.com/cms/en/product/packages/PG-TO263/PG-TO263-5-1/")
     (tags "D2PAK DDPAK TO-263 D2PAK-5 TO-263-5 SOT-426")
     (property "Reference" "U1"
-      (at 0 -6.65 0)
+      (at 0 -6.45 0)
       (layer "F.SilkS")
       (uuid "f266b1da-be60-58a8-9e4c-d9889959ff0c")
       (effects
@@ -4601,7 +4601,7 @@
       )
     )
     (property "Datasheet" "https://www.ti.com/lit/ds/symlink/lm2596.pdf"
-      (at 0 -6.65 0)
+      (at 0 -6.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "d0906918-1238-51c0-a8d0-0e9a8368a39c")
@@ -4625,7 +4625,7 @@
       )
     )
     (property "MPN" "LM2596SX-5.0/NOPB"
-      (at 0 -6.65 0)
+      (at 0 -6.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "e077ae43-33ec-56ea-b0b0-59fdd0a00ea9")
@@ -4637,7 +4637,7 @@
       )
     )
     (property "Manufacturer" "Texas Instruments"
-      (at 0 -6.65 0)
+      (at 0 -6.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "5bf28317-ab0d-5a47-9d8b-577b448e4433")
