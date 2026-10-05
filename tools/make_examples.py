@@ -9361,7 +9361,7 @@ def opamp_filter() -> Design:
             "IN",
             "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
             (30.0, 100.0),
-            (5.0, 17.0, 0.0),
+            (3.5, 15.0, 0.0),
             MPN="61300211121",
             Manufacturer="Wurth Elektronik",
             Datasheet="https://www.we-online.com/components/products/datasheet/61300211121.pdf",
@@ -9372,7 +9372,7 @@ def opamp_filter() -> Design:
             "1u",
             "Capacitor_SMD:C_0805_2012Metric",
             (55.0, 100.0),
-            (11.0, 17.0, 90.0),
+            (8.5, 15.0, 0.0),
             angle=90.0,
             Voltage="25V",
             Tolerance="10%",
@@ -9389,7 +9389,7 @@ def opamp_filter() -> Design:
                 70.0,
                 128.27,
             ),
-            (18.0, 23.0, 0.0),
+            (11.0, 20.5, 270.0),
             Tolerance="1%",
             Power="0.125W",
             MPN="RC0805FR-07100KL",
@@ -9402,7 +9402,7 @@ def opamp_filter() -> Design:
             "10k",
             "Resistor_SMD:R_0805_2012Metric",
             (85.0, 100.0),
-            (17.0, 17.0, 0.0),
+            (13.5, 15.0, 0.0),
             angle=90.0,
             Tolerance="1%",
             Power="0.125W",
@@ -9416,7 +9416,7 @@ def opamp_filter() -> Design:
             "10k",
             "Resistor_SMD:R_0805_2012Metric",
             (115.0, 100.0),
-            (25.0, 17.0, 0.0),
+            (19.5, 15.0, 0.0),
             angle=90.0,
             Tolerance="1%",
             Power="0.125W",
@@ -9434,7 +9434,7 @@ def opamp_filter() -> Design:
             # above X its far plate had to come back down under the signal line
             # to reach the output, crossing FILT_IN on the way.
             (167.64, 71.12),
-            (21.0, 10.0, 0.0),
+            (19.5, 10.0, 0.0),
             angle=90.0,
             Voltage="50V",
             Tolerance="1%",
@@ -9449,7 +9449,7 @@ def opamp_filter() -> Design:
             "10n",
             "Capacitor_SMD:C_0805_2012Metric",
             (130.0, 130.0),
-            (26.0, 24.0, 0.0),
+            (22.5, 20.5, 270.0),
             Voltage="50V",
             Tolerance="1%",
             Dielectric="C0G",
@@ -9463,7 +9463,7 @@ def opamp_filter() -> Design:
             "MCP6001R",
             "Package_TO_SOT_SMD:SOT-23-5",
             sheet=(160.0, 100.0),
-            board=(33.0, 17.0, 0.0),
+            board=(31.0, 15.0, 0.0),
             stub=6.35,
             fields={
                 "MPN": "MCP6001RT-I/OT",
@@ -9483,7 +9483,7 @@ def opamp_filter() -> Design:
             # the only way to the column was round the east edge of the board
             # and back, 56 mm of copper for an 8 mm pin pair, which is what
             # `route.wander` reported. TP1 gave up the corner for it.
-            (29.0, 12.5, 0.0),
+            (29.0, 10.0, 0.0),
             Voltage="25V",
             Tolerance="10%",
             MPN="CL21B104KBCNNNC",
@@ -9502,7 +9502,7 @@ def opamp_filter() -> Design:
             # U1 draws a 6.35 mm stub off its output pin; R8's own stub has
             # to start clear of the end of it.
             (182.88, 100.33),
-            (41.0, 17.0, 270.0),
+            (40.0, 15.0, 270.0),
             angle=90.0,
             Tolerance="1%",
             Power="0.125W",
@@ -9516,7 +9516,7 @@ def opamp_filter() -> Design:
             "1u",
             "Capacitor_SMD:C_0805_2012Metric",
             (199.39, 100.33),
-            (44.5, 17.0, 90.0),
+            (43.5, 16.0, 0.0),
             angle=90.0,
             Voltage="25V",
             Tolerance="10%",
@@ -9530,7 +9530,7 @@ def opamp_filter() -> Design:
             "OUT",
             "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
             (225.0, 100.0),
-            (51.0, 17.0, 0.0),
+            (47.5, 16.0, 0.0),
             angle=180.0,
             MPN="61300211121",
             Manufacturer="Wurth Elektronik",
@@ -9544,7 +9544,7 @@ def opamp_filter() -> Design:
             # Far enough from the fuse that the two VIN labels between them
             # do not print over each other.
             (210.82, 35.56),
-            (9.0, 7.0, 0.0),
+            (9.5, 7.0, 0.0),
             MPN="1729128",
             Manufacturer="Phoenix Contact",
             Datasheet="https://www.phoenixcontact.com/product/1729128",
@@ -9560,7 +9560,7 @@ def opamp_filter() -> Design:
             "500mA",
             "Fuse:Fuse_1206_3216Metric",
             (185.42, 35.56),
-            (20.0, 5.0, 0.0),
+            (21.0, 4.0, 0.0),
             angle=270.0,
             Current="500mA",
             MPN="0466.500NR",
@@ -9573,7 +9573,7 @@ def opamp_filter() -> Design:
             "SMAJ5.0A",
             "Diode_SMD:D_SMA",
             (168.91, 41.91),
-            (26.5, 5.0, 0.0),
+            (27.0, 4.0, 0.0),
             angle=270.0,
             Voltage="5V",
             Power="400W",
@@ -9587,7 +9587,7 @@ def opamp_filter() -> Design:
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
             (74.93, 152.4),
-            (7.0, 30.0, 90.0),
+            (17.0, 27.0, 270.0),
             Tolerance="1%",
             Power="0.125W",
             MPN="RC0805FR-07100KL",
@@ -9600,7 +9600,7 @@ def opamp_filter() -> Design:
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
             (74.93, 175.26),
-            (7.0, 36.0, 90.0),
+            (17.0, 31.0, 270.0),
             Tolerance="1%",
             Power="0.125W",
             MPN="RC0805FR-07100KL",
@@ -9613,7 +9613,7 @@ def opamp_filter() -> Design:
             "10u",
             "Capacitor_SMD:C_0805_2012Metric",
             (104.14, 163.83),
-            (12.0, 34.0, 0.0),
+            (20.5, 29.5, 270.0),
             Voltage="16V",
             Tolerance="20%",
             MPN="CL21A106KOQNNNE",
@@ -9626,7 +9626,7 @@ def opamp_filter() -> Design:
             "MCP6001R",
             "Package_TO_SOT_SMD:SOT-23-5",
             sheet=(149.86, 160.02),
-            board=(26.0, 32.0, 0.0),
+            board=(30.0, 27.0, 0.0),
             stub=6.35,
             fields={
                 "MPN": "MCP6001RT-I/OT",
@@ -9640,7 +9640,7 @@ def opamp_filter() -> Design:
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
             (36.0, 120.0),
-            (9.0, 25.0, 90.0),
+            (6.5, 20.0, 270.0),
             Tolerance="1%",
             Power="0.125W",
             MPN="RC0805FR-07100KL",
@@ -9653,7 +9653,7 @@ def opamp_filter() -> Design:
             "100k",
             "Resistor_SMD:R_0805_2012Metric",
             (224.79, 134.62),
-            (46.0, 24.0, 90.0),
+            (44.5, 20.5, 270.0),
             Tolerance="1%",
             Power="0.125W",
             MPN="RC0805FR-07100KL",
@@ -9666,7 +9666,7 @@ def opamp_filter() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             (181.61, 152.4),
-            (14.0, 29.0, 0.0),
+            (21.0, 26.0, 270.0),
             Voltage="25V",
             Tolerance="10%",
             MPN="CL21B104KBCNNNC",
@@ -9684,7 +9684,7 @@ def opamp_filter() -> Design:
             # Moved out of the corner beside U1's west escape column so C5 can
             # have it: the supply pin needs a cap it can reach, the test point
             # only needs a probe.
-            board=(24.0, 12.0, 0.0),
+            board=(25.0, 19.5, 0.0),
             no_connect=False,
         ),
         Part(
@@ -9698,7 +9698,7 @@ def opamp_filter() -> Design:
             # amplifier makes rather than what the cable sees; on the wire
             # between the two pins' stubs, not on either stub.
             sheet=(176.53, 88.9),
-            board=(44.0, 12.0, 0.0),
+            board=(40.5, 10.0, 0.0),
             no_connect=False,
         ),
         Part(
@@ -9714,9 +9714,21 @@ def opamp_filter() -> Design:
             # (31, 36) the test point stood in the middle of it, so the name
             # printed across the pad - readable on the bare board, and under
             # the probe the moment anyone used it.
-            board=(36.0, 30.0, 0.0),
+            board=(39.0, 29.5, 0.0),
             no_connect=False,
         ),
+    ]
+    # Each connector names its pins on the pin's own column, clear of the
+    # body: left to find a spot the names went out on leaders across the
+    # board, and a leader across a signal row reads as one more track.
+    legends = {
+        "J1": {"1": (3.5, 12.6, ""), "2": (3.5, 20.0, "")},
+        "J2": {"1": (4.0, 7.0, "")},
+        "J3": {"1": (47.5, 13.0, ""), "2": (47.5, 21.0, "")},
+    }
+    parts = [
+        replace(part, pin_legend_at=legends[part.ref]) if part.ref in legends else part
+        for part in parts
     ]
 
     nets = {
@@ -9800,12 +9812,12 @@ def opamp_filter() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("+5V", "F1.2"), ("GND", "J2.2")],
-        board_size=(58.0, 42.0),
+        board_size=(54.0, 38.0),
         # The strip under the supply terminal's body, below its own pads. The
         # rail to the second amplifier reaches for it every time - it is the
         # short way across - and copper under a screw terminal cannot be
         # probed or reworked without taking the terminal off the board.
-        keepouts=((6.0, 8.5, 17.0, 12.1),),
+        keepouts=((6.5, 8.5, 17.5, 12.1),),
         # The three connectors, whole, closed to every net but their own.
         # With the rail routed first it took the short way under the input
         # terminal's shell to reach the regulator side - one segment of
@@ -9824,12 +9836,18 @@ def opamp_filter() -> Design:
         vias=[
             # mid-board ties between the faces: the signal row slices the
             # front pour, and these give its pieces a short way to the plane
-            Via("GND", x=13.0, y=21.0),
-            Via("GND", x=22.0, y=21.0),
-            Via("GND", x=33.0, y=24.0),
-            Via("GND", x=44.0, y=20.0),
+            Via("GND", x=14.5, y=22.0),
+            Via("GND", x=26.5, y=21.5),
+            Via("GND", x=34.0, y=21.0),
+            Via("GND", x=42.0, y=22.0),
+            # U1's supply crosses under its own output wrap: the middle pin
+            # of a SOT-23-5 row has a neighbour either side, and both carry
+            # signal the other way.
+            Via("+5V", x=26.4, y=10.4),
+            Via("+5V", x=25.0, y=15.0),
+            Via("+5V", x=21.0, y=23.5),
         ],
-        pour=(1.2, 1.2, 56.8, 40.8),
+        pour=(1.2, 1.2, 52.8, 36.8),
         mounting=Mounting(),
         fiducials=3,
         notes_at=(18.0, 20.0),
@@ -9849,8 +9867,8 @@ def opamp_filter() -> Design:
     # and an escape drawn out to the column for it is copper going nowhere
     # with the wrap crossing it to get back.
     for ref, (cx, cy, _), east_pins in (
-        ("U1", (33.0, 17.0, 0), ["5", "4"]),
-        ("U2", (26.0, 32.0, 0), ["5"]),
+        ("U1", (31.0, 15.0, 0), ["5", "4"]),
+        ("U2", (30.0, 27.0, 0), ["5"]),
     ):
         west, ends[f"{ref}w"] = fan(
             design,
@@ -9880,52 +9898,63 @@ def opamp_filter() -> Design:
 
     tracks = [
         *escapes,
-        Track("IN", "F.Cu", SIG, ["J1.1", "C3.1"], auto=True),
-        Track("IN", "F.Cu", SIG, ["J1.1", "R7.1"], auto=True),
-        Track("IN_DC", "F.Cu", SIG, ["C3.2", "R1.1"], auto=True),
-        Track("IN_DC", "F.Cu", SIG, ["C3.2", "R5.1"], auto=True),
-        Track("X", "F.Cu", SIG, ["R1.2", "R2.1"], auto=True),
-        Track("X", "F.Cu", SIG, ["R2.1", "C1.1"], auto=True),
-        Track("FILT_IN", "F.Cu", SIG, ["R2.2", u1w["3"]], auto=True),
-        Track("FILT_IN", "F.Cu", SIG, ["TP1.1", "R2.2"], auto=True),
-        Track("OUT", "F.Cu", SIG, ["TP2.1", "R8.1"], auto=True),
-        # VREF and its taps run at signal width end to end: the escape from
-        # the SOT-23-5 is 0.3 mm whatever the link says, and a run that steps
-        # to 0.5 at the first corner past it is a step nobody chose. The
-        # reference is a buffered half-rail carrying microamps; 0.3 is honest.
+        # The signal row is drawn, not routed: one straight line from the
+        # input pin to the output pin, each part's tap a short spur off it at
+        # a stated joint, so the filter reads on the board as it does on the
+        # sheet.
+        Track("IN", "F.Cu", SIG, ["J1.1", (6.5, 15.0), "C3.1"]),
+        Track("IN", "F.Cu", SIG, ["R7.1", (6.5, 15.0)]),
+        Track("IN_DC", "F.Cu", SIG, ["C3.2", (11.0, 15.0), "R1.1"]),
+        Track("IN_DC", "F.Cu", SIG, ["R5.1", (11.0, 15.0)]),
+        Track("X", "F.Cu", SIG, ["R1.2", "R2.1"]),
+        Track("X", "F.Cu", SIG, ["C1.1", "R2.1"]),
+        Track("FILT_IN", "F.Cu", SIG, ["R2.2", (22.5, 16.9), u1w["3"]]),
+        Track("FILT_IN", "F.Cu", SIG, ["C2.1", (22.5, 16.9)]),
+        Track("FILT_IN", "F.Cu", SIG, ["TP1.1", u1w["3"]]),
+        # The output: back to C1 over the second resistor, and round the top
+        # of the amplifier to its inverting pin and on to R8.
+        Track("OUT", "F.Cu", SIG, [u1w["1"], (23.55, 13.1), "C1.2"]),
+        Track(
+            "OUT",
+            "F.Cu",
+            SIG,
+            [u1w["1"], (26.2, 11.9), (37.5, 11.9), (38.6, 13.0), (38.6, 14.8), u1e["4"]],
+        ),
+        Track("OUT", "F.Cu", SIG, ["R8.1", (40.0, 13.0), (38.6, 13.0)]),
+        Track("OUT", "F.Cu", SIG, ["TP2.1", (40.5, 11.1), (38.6, 13.0)]),
+        Track("OUT_R", "F.Cu", SIG, ["R8.2", "C6.1"]),
+        Track("OUT_AC", "F.Cu", SIG, ["C6.2", (44.5, 16.0), "J3.1"]),
+        Track("OUT_AC", "F.Cu", SIG, ["R6.1", (44.5, 16.0)]),
+        # Supply: terminal, fuse, clamp and the first amplifier's capacitor
+        # along the top edge; the amplifier's own pin through two vias.
+        Track("VIN", "F.Cu", POWER, ["J2.1", (12.5, 4.0), "F1.1"]),
+        Track("+5V", "F.Cu", POWER, ["F1.2", (23.7, 4.0), "D3.1"]),
+        Track("+5V", "F.Cu", POWER, [(23.7, 4.0), (23.7, 6.0), (26.0, 6.0), (28.05, 8.05), "C5.1"]),
+        Track("+5V", "F.Cu", POWER, ["C5.1", (26.4, 10.4)]),
+        Track("+5V", "B.Cu", POWER, [(26.4, 10.4), (25.0, 11.8), (25.0, 15.0)], keep_layer=True),
+        # ...and on down under the row to the reference block, surfacing above
+        # its capacitor: one stated crossing, rather than a rail round the
+        # board's edge to avoid crossing at all.
+        Track(
+            "+5V",
+            "B.Cu",
+            POWER,
+            [(25.0, 15.0), (25.0, 18.0), (21.0, 22.0), (21.0, 23.5)],
+            keep_layer=True,
+        ),
+        Track("+5V", "F.Cu", POWER, [(21.0, 23.5), "C7.1"]),
+        Track("+5V", "F.Cu", POWER, [(21.0, 23.5), (24.0, 26.5), u2w["2"]]),
+        Track("+5V", "F.Cu", POWER, [(21.0, 23.5), (17.0, 23.5), "R3.1"]),
+        # The reference block below the row is left to the router: short
+        # links between neighbours, and the one run that has to reach up to
+        # the supply.
         Track("VREF", "F.Cu", SIG, ["TP3.1", "C2.2"], auto=True),
-        Track("FILT_IN", "F.Cu", SIG, ["C2.1", u1w["3"]], auto=True),
-        # U1's wrap runs escape to escape: its inverting pin has an escape
-        # anyway, because it carries the output on to C6. U2's runs pad to
-        # pad, because U2's inverting pin has nothing but the wrap and its
-        # escape would be copper the wrap then has to cross to get back -
-        # asked for between the columns there, the wrap went round the board.
-        Track("OUT", "F.Cu", SIG, [u1w["1"], u1e["4"]], auto=True),
-        Track("OUT", "F.Cu", SIG, [u1w["1"], "C1.2"], auto=True),
-        Track("OUT", "F.Cu", SIG, [u1e["4"], "R8.1"], auto=True),
-        Track("OUT_R", "F.Cu", SIG, ["R8.2", "C6.1"], auto=True),
-        Track("OUT_AC", "F.Cu", SIG, ["C6.2", "J3.1"], auto=True),
-        Track("OUT_AC", "F.Cu", SIG, ["J3.1", "R6.1"], auto=True),
         Track("VREF", "F.Cu", SIG, ["U2.1", "U2.4"], auto=True),
         Track("VREF", "F.Cu", SIG, [u2w["1"], "C2.2"], auto=True),
         Track("VREF", "F.Cu", SIG, [u2w["1"], "R5.2"], auto=True),
         Track("MID", "F.Cu", SIG, ["R3.2", "R4.1"], auto=True),
         Track("MID", "F.Cu", SIG, ["R4.1", "C4.1"], auto=True),
         Track("MID", "F.Cu", SIG, ["C4.1", u2w["3"]], auto=True),
-        Track("VIN", "F.Cu", POWER, ["J2.1", "F1.1"], auto=True),
-        Track("+5V", "F.Cu", POWER, ["F1.2", "D3.1"], auto=True),
-        Track("+5V", "F.Cu", POWER, ["F1.2", "C5.1"], auto=True),
-        Track("+5V", "F.Cu", POWER, ["C5.1", u1w["2"]], auto=True),
-        # Down the corridor between the terminal's body and the filter's first
-        # row, then left. Sent straight at C7 the rail cuts the corner off J2's
-        # courtyard, and copper under a screw terminal cannot be probed or
-        # reworked without taking the terminal off - `route.under_package`.
-        Track("+5V", "F.Cu", POWER, ["C5.1", "C7.1"], auto=True),
-        Track("+5V", "F.Cu", POWER, ["C7.1", u2w["2"]], auto=True),
-        # ...and the divider's feed keeps the rail's width to the junction:
-        # a 0.3 branch butt-joined onto 0.5 trunk mid-run is the same
-        # nobody-chose-this step, seen from the other side.
-        Track("+5V", "F.Cu", POWER, ["C7.1", "R3.1"], auto=True),
     ]
     # Each ground pad drops to the plane a couple of millimetres away, on the
     # side away from the signal it returns: the loop closes at the part. The
@@ -9933,18 +9962,18 @@ def opamp_filter() -> Design:
     # that steps from 0.3 to 0.5 halfway along is a step nobody chose, and the
     # 0.65 mm row it left is what set the width in the first place.
     for pad, target, width in (
-        ("J1.2", (8.0, 22.0), POWER),
-        ("D3.2", (31.0, 5.0), POWER),
-        ("J3.2", (49.0, 22.0), POWER),
-        ("R6.2", (46.0, 20.0), POWER),
-        ("R7.2", (9.0, 30.0), POWER),
-        ("J2.2", (14.0, 6.0), POWER),
-        ("C5.2", (31.0, 11.0), POWER),
-        ("C7.2", (14.0, 33.0), POWER),
-        ("C4.2", (15.0, 37.0), POWER),
-        ("R4.2", (11.0, 38.0), POWER),
-        (u1e["5"], (39.0, 13.0), POWER),
-        (u2e["5"], (36.0, 34.0), POWER),
+        ("J1.2", (4.0, 22.0), POWER),
+        ("D3.2", (31.5, 4.0), POWER),
+        ("J3.2", (48.0, 21.0), POWER),
+        ("R6.2", (44.5, 23.5), POWER),
+        ("R7.2", (6.5, 23.5), POWER),
+        ("J2.2", (14.5, 6.0), POWER),
+        ("C5.2", (31.5, 10.0), POWER),
+        ("C7.2", (19.3, 27.0), POWER),
+        ("C4.2", (20.5, 32.5), POWER),
+        ("R4.2", (15.0, 32.5), POWER),
+        (u1e["5"], (37.5, 11.5), POWER),
+        (u2e["5"], (38.5, 24.5), POWER),
     ):
         tracks.append(Track("GND", "F.Cu", width, [pad, target], auto=True, goal_layer="B.Cu"))
     return replace(design, tracks=tracks)
