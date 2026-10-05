@@ -230,8 +230,9 @@ SILK_LINE_HEIGHT = 1.55
 # The gap the fab wants between ink and a mask opening or other ink.
 SILK_CLEARANCE = 0.2
 # What a designator closer to a neighbour than to its own part costs, in the
-# mm^2 `_silk_intrusion` counts: about a tenth of a 0603 courtyard grazed.
-AMBIGUOUS_DESIGNATOR = 0.3
+# mm^2 `_silk_intrusion` counts: about a 0603 courtyard grazed, so a clear spot
+# beside the wrong part loses to a slightly crowded one beside the right part.
+AMBIGUOUS_DESIGNATOR = 2.0
 
 SILK_EDGE_ROOM = 1.0
 SILK_EDGE_MARGIN = 0.5
@@ -8478,7 +8479,10 @@ def motor_driver() -> Design:
             # Not further right either: the fuse and its pin stubs want the
             # room between the terminal and the bulk capacitor.
             sheet=(33.02, 93.98),
-            board=(62.0, 7.0, 270.0),
+            board=(62.0, 21.0, 270.0),
+            # Above and below the terminal on the pin's own column: beside it the
+            # names land nearer the fuse and the bulk capacitor than their pins.
+            pin_legend_at={"1": (62.0, 16.4, ""), "2": (62.0, 30.6, "")},
             mirror="y",
             fields={
                 "MPN": "1729128",
@@ -8498,7 +8502,7 @@ def motor_driver() -> Design:
             # capacitor's own ground to get in. Not further left than 46
             # either - the board writes its own name in the strip this
             # capacitor's courtyard bounds, and it needs the width.
-            board=(46.0, 8.0, 180.0),
+            board=(52.0, 26.0, 270.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "20%",
@@ -8519,7 +8523,7 @@ def motor_driver() -> Design:
             "Fuse:Fuse_1206_3216Metric",
             sheet=(50.8, 93.98),
             angle=90.0,
-            board=(53.7, 8.0, 180.0),
+            board=(53.5, 17.0, 180.0),
             fields={
                 "Current": "3A",
                 "MPN": "0466003.NR",
@@ -8537,7 +8541,7 @@ def motor_driver() -> Design:
             # Cathode up to the fused rail, anode down to its own via: below
             # the fuse, in the same column, with the whole strip to the right
             # of the capacitor free.
-            board=(53.7, 14.0, 270.0),
+            board=(47.5, 17.0, 180.0),
             fields={
                 "Voltage": "12V",
                 "Power": "400W",
@@ -8613,7 +8617,7 @@ def motor_driver() -> Design:
             sheet=(109.22, 121.92),
             # Out of the supply row: the fuse and the clamp took it, and the
             # strip below the terminal was the board's largest free area.
-            board=(58.0, 20.0, 0.0),
+            board=(47.0, 13.0, 0.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -8629,7 +8633,7 @@ def motor_driver() -> Design:
             "LED_SMD:LED_0805_2012Metric",
             sheet=(109.22, 139.7),
             angle=90.0,
-            board=(62.0, 20.0, 180.0),
+            board=(51.0, 13.0, 180.0),
             silk_label="VM OK",
             fields={
                 "Voltage": "2.1V",
@@ -8857,18 +8861,18 @@ def motor_driver() -> Design:
     # short logic lanes. Putting the rail there instead would have cut the
     # only reference plane the signals have, and the cut would have run the
     # length of the board.
-    SPINE_X = 48.7
+    SPINE_X = 47.5
     vm_bypass, pump_supply = (42.05, 24.75), (43.95, 28.5)
     tracks += [
         Track("VM", "F.Cu", POWER, ["U1.12", (41.875, 25.825), "C2.1"]),
         Track("VM", "F.Cu", POWER, [vm_bypass, "C2.1"]),
         # terminal, fuse, clamp, bulk: one row, left to right as it flows
-        Track("VIN", "F.Cu", POWER, ["J1.1", "F1.1"], auto=True),
-        Track("VM", "F.Cu", POWER, ["F1.2", (52.3, 10.0), "D3.1"]),
-        Track("GND", "F.Cu", POWER, ["D3.2", (53.7, 19.0)]),
-        Track("VM", "F.Cu", POWER, ["F1.2", "C1.1"], auto=True),
+        Track("VIN", "F.Cu", POWER, ["J1.1", (58.9, 21.0), "F1.1"]),
+        Track("VM", "F.Cu", POWER, ["F1.2", "D3.1"]),
+        Track("GND", "F.Cu", POWER, ["D3.2", (45.5, 19.5)]),
+        Track("VM", "F.Cu", POWER, ["F1.2", (52.0, 17.1), "C1.1"]),
         # the spine, and its two arms
-        Track("VM", "F.Cu", POWER, ["C1.1", (SPINE_X, 8.0), (SPINE_X, 28.5)]),
+        Track("VM", "F.Cu", POWER, ["C1.1", (SPINE_X, 23.3), (SPINE_X, 24.75), (SPINE_X, 28.5)]),
         Track("VM", "F.Cu", POWER, [(SPINE_X, 24.75), vm_bypass]),
         Track("VM", "F.Cu", POWER, [(SPINE_X, 28.5), pump_supply]),
         Track("VM", "F.Cu", POWER, ["F1.2", "R2.1"], auto=True),
@@ -8876,7 +8880,7 @@ def motor_driver() -> Design:
         Track("VINT", "F.Cu", POWER, ["U1.14", (41.025, 24.525), "C4.1"]),
         Track("LED_A", "F.Cu", SIG, ["R2.2", "D2.2"], auto=True),
     ]
-    vias += [Via("GND", x=53.7, y=19.0)]
+    vias += [Via("GND", x=45.5, y=19.5), Via("GND", x=52.0, y=31.0)]
     # The four logic inputs are boxed in by the supply fan on the front. A
     # short, ordered row of drops is clearer than four tours around that fan.
     for net, pin, header in (
@@ -8917,11 +8921,11 @@ def motor_driver() -> Design:
     tracks += [
         Track("GND", "F.Cu", POWER, ["C2.2", local_ground]),
         Track("GND", "F.Cu", POWER, ["C4.2", vint_ground]),
-        Track("GND", "F.Cu", POWER, ["C1.2", (40.0, 12.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", POWER, ["J1.2", (60.0, 15.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["C1.2", (52.0, 31.0)]),
+        Track("GND", "F.Cu", POWER, ["J1.2", (59.0, 31.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J4.1", (44.0, 42.0)], auto=True, goal_layer="B.Cu"),
         Track("GND", "F.Cu", POWER, ["J4.8", (22.0, 42.0)], auto=True, goal_layer="B.Cu"),
-        Track("GND", "F.Cu", POWER, ["D2.1", (65.0, 24.0)], auto=True, goal_layer="B.Cu"),
+        Track("GND", "F.Cu", POWER, ["D2.1", (53.5, 13.0)], auto=True, goal_layer="B.Cu"),
     ]
 
     # -- everything that simply has to arrive ------------------------------

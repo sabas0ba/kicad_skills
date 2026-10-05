@@ -83,8 +83,8 @@ visible there.
 outcome.** Layer count is the one board parameter that changes the price of a
 prototype run outright, so a design that will not close on two layers grows a
 few millimetres of FR4 before it grows a stack. The motor driver pays for that
-with one waiver — `route.return_path`, measured at 12.8 mm and 10.4 mm against
-a 10 mm limit, on two logic lanes crossing under the bridge outputs — and the
+with one waiver — `route.return_path`, measured at 12.3 mm against a 10 mm
+limit, on one logic lane crossing under the bridge outputs — and the
 waiver says what a faster design should do instead. CI checks the two-layer
 stack and that the ground pour on B.Cu is still mostly one piece.
 
