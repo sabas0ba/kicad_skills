@@ -524,7 +524,7 @@
     (descr "Through hole straight pin header, 1x02, 2.54mm pitch, single row")
     (tags "Through hole pin header THT 1x02 2.54mm single row")
     (property "Reference" "J1"
-      (at 0 -5.12 0)
+      (at 0 -4.12 0)
       (layer "F.SilkS")
       (uuid "9c146ccc-cea5-537e-905a-7046282df628")
       (effects
@@ -546,7 +546,7 @@
       )
     )
     (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61300211121.pdf"
-      (at 0 -5.12 0)
+      (at 0 -4.12 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "c737ba5c-45f4-5332-89a4-a71ff2967610")
@@ -570,7 +570,7 @@
       )
     )
     (property "MPN" "61300211121"
-      (at 0 -5.12 0)
+      (at 0 -4.12 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "f66bbc23-4d07-595d-8c9c-7fe10c9c1a5e")
@@ -582,7 +582,7 @@
       )
     )
     (property "Manufacturer" "Wurth Elektronik"
-      (at 0 -5.12 0)
+      (at 0 -4.12 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0b256722-5417-519d-a9eb-98fec01ac889")
@@ -764,7 +764,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C3"
-      (at 2.745 2.075 0)
+      (at 0 -1.68 0)
       (layer "F.SilkS")
       (uuid "253f95e7-889f-53a9-8f63-48bf96d08d25")
       (effects
@@ -786,7 +786,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B105KBFNNNE.do"
-      (at 2.745 2.075 0)
+      (at 0 -1.68 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "24d46bab-c66b-5ba7-8163-9ffc4cce5fa1")
@@ -810,7 +810,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 2.745 2.075 0)
+      (at 0 -1.68 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "26893d9c-39df-5f78-9e9f-23fbe4992492")
@@ -822,7 +822,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 2.745 2.075 0)
+      (at 0 -1.68 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "3c04cd74-5d52-5ace-b154-b8c59402f4a3")
@@ -834,7 +834,7 @@
       )
     )
     (property "MPN" "CL21B105KBFNNNE"
-      (at 2.745 2.075 0)
+      (at 0 -1.68 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "7b9bc464-a24c-55cf-8570-0e2d262163c4")
@@ -846,7 +846,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 2.745 2.075 0)
+      (at 0 -1.68 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "f7de16db-ec43-586b-b318-3f372c9914b2")
@@ -1434,7 +1434,7 @@
     (descr "Fuse SMD 1206 (3216 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: http://www.tortai-tech.com/upload/download/2011102023233369053.pdf), generated with kicad-footprint-generator")
     (tags "fuse")
     (property "Reference" "F1"
-      (at 4.745 3.65 0)
+      (at 0 2.25 0)
       (layer "F.SilkS")
       (uuid "73691505-3608-52a2-9a09-d8c8c1d0e722")
       (effects
@@ -1456,7 +1456,7 @@
       )
     )
     (property "Datasheet" "https://www.littelfuse.com/products/fuses/surface-mount-fuses/thin-film-fuses/466"
-      (at 4.745 3.65 0)
+      (at 0 2.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "e43d7779-2bc7-5331-9e94-72aafbeb5443")
@@ -1480,7 +1480,7 @@
       )
     )
     (property "Current" "500mA"
-      (at 4.745 3.65 0)
+      (at 0 2.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "788a0c44-398e-5fd4-ab84-c78ef56c8ca1")
@@ -1492,7 +1492,7 @@
       )
     )
     (property "MPN" "0466.500NR"
-      (at 4.745 3.65 0)
+      (at 0 2.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "aafb5e0f-9338-5396-84e3-dd595267691e")
@@ -1504,7 +1504,7 @@
       )
     )
     (property "Manufacturer" "Littelfuse"
-      (at 4.745 3.65 0)
+      (at 0 2.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "107be5d4-fc8d-5540-9b5a-7d4e5c52589d")

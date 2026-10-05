@@ -247,7 +247,7 @@
     (descr "Fuse SMD 1812 (4532 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: https://www.nikhef.nl/pub/departments/mt/projects/detectorR_D/dtddice/ERJ2G.pdf), generated with kicad-footprint-generator")
     (tags "fuse")
     (property "Reference" "F1"
-      (at -3.995 -3.05 0)
+      (at 0 3.05 0)
       (layer "F.SilkS")
       (uuid "898fb462-59e0-5ed1-a997-bac1c3e4a750")
       (effects
@@ -269,7 +269,7 @@
       )
     )
     (property "Datasheet" "https://www.bourns.com/docs/product-datasheets/mfmsmf.pdf"
-      (at -3.995 -3.05 0)
+      (at 0 3.05 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "df6b7cea-51e0-5be3-9d44-355bcedb5524")
@@ -293,7 +293,7 @@
       )
     )
     (property "Current" "0.75A"
-      (at -3.995 -3.05 0)
+      (at 0 3.05 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9445a3c4-56f1-56eb-9f2c-a41af6fe2c00")
@@ -305,7 +305,7 @@
       )
     )
     (property "MPN" "MF-MSMF075-2"
-      (at -3.995 -3.05 0)
+      (at 0 3.05 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "3c8b6b91-c309-5f60-9da5-ccd8d6cd128d")
@@ -317,7 +317,7 @@
       )
     )
     (property "Manufacturer" "Bourns"
-      (at -3.995 -3.05 0)
+      (at 0 3.05 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0d5d5459-e4bc-563a-9f15-1abce8be3767")
