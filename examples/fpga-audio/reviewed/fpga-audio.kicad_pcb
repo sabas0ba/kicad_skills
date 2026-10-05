@@ -143,7 +143,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C6"
-      (at 0 1.85 0)
+      (at -2.545 1.85 0)
       (layer "F.SilkS")
       (uuid "319a4763-cf35-56ad-82e1-3fa2a860c668")
       (effects
@@ -165,7 +165,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0 1.85 0)
+      (at -2.545 1.85 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -189,7 +189,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 1.85 0)
+      (at -2.545 1.85 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -201,7 +201,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 1.85 0)
+      (at -2.545 1.85 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -213,7 +213,7 @@
       )
     )
     (property "MPN" "CL10B104KB8NNNC"
-      (at 0 1.85 0)
+      (at -2.545 1.85 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -225,7 +225,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 1.85 0)
+      (at -2.545 1.85 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -326,7 +326,7 @@
     (descr "Fuse SMD 1206 (3216 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: http://www.tortai-tech.com/upload/download/2011102023233369053.pdf), generated with kicad-footprint-generator")
     (tags "fuse")
     (property "Reference" "F1"
-      (at 3.945 -2.85 0)
+      (at 4.745 -3.65 0)
       (layer "F.SilkS")
       (uuid "1cc20ec0-74fd-5d7e-aa96-c4bfca3b84b7")
       (effects
@@ -348,7 +348,7 @@
       )
     )
     (property "Datasheet" "https://www.littelfuse.com/products/fuses/surface-mount-fuses/thin-film-fuses/466"
-      (at 3.945 -2.85 0)
+      (at 4.745 -3.65 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "df53c80c-2d88-5d89-9def-c9e88621b9cd")
@@ -372,7 +372,7 @@
       )
     )
     (property "Current" "500mA"
-      (at 3.945 -2.85 0)
+      (at 4.745 -3.65 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "74386782-1b53-5b43-ba21-d123f001bd10")
@@ -384,7 +384,7 @@
       )
     )
     (property "MPN" "0466.500NR"
-      (at 3.945 -2.85 0)
+      (at 4.745 -3.65 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6142dc83-1bc7-5646-94db-d5de6bb5c9a7")
@@ -396,7 +396,7 @@
       )
     )
     (property "Manufacturer" "Littelfuse"
-      (at 3.945 -2.85 0)
+      (at 4.745 -3.65 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6c1d2f24-0767-5d15-bb1d-a7a8543ca47b")
@@ -497,7 +497,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C2"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.SilkS")
       (uuid "06882702-0aab-5d17-b7a6-4bdfdc98d576")
       (effects
@@ -519,7 +519,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -543,7 +543,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -555,7 +555,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -567,7 +567,7 @@
       )
     )
     (property "MPN" "CL10B104KB8NNNC"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -579,7 +579,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -801,7 +801,7 @@
     (descr "Through hole straight pin header, 1x06, 2.54mm pitch, single row")
     (tags "Through hole pin header THT 1x06 2.54mm single row")
     (property "Reference" "J3"
-      (at 0 -2.72 0)
+      (at 0 -3.32 0)
       (layer "F.SilkS")
       (uuid "57054de0-8d14-546e-a77e-2477f0728021")
       (effects
@@ -823,7 +823,7 @@
       )
     )
     (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61300611121.pdf"
-      (at 0 -2.72 0)
+      (at 0 -3.32 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "618d7433-a8e8-5f30-99de-e87d37789bf3")
@@ -847,7 +847,7 @@
       )
     )
     (property "MPN" "61300611121"
-      (at 0 -2.72 0)
+      (at 0 -3.32 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "af233dbd-432c-5b6b-9a9f-92ee43072371")
@@ -859,7 +859,7 @@
       )
     )
     (property "Manufacturer" "Wurth Elektronik"
-      (at 0 -2.72 0)
+      (at 0 -3.32 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "3625bd56-7b09-5dd7-bda8-391573bc3326")
@@ -1077,7 +1077,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C1"
-      (at -3.145 0 0)
+      (at -2.545 0 0)
       (layer "F.SilkS")
       (uuid "f7edda64-d8ef-5505-8959-743a762625a1")
       (effects
@@ -1099,7 +1099,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A106MQ8NNNC.do"
-      (at -3.145 0 0)
+      (at -2.545 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -1123,7 +1123,7 @@
       )
     )
     (property "Voltage" "16V"
-      (at -3.145 0 0)
+      (at -2.545 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -1135,7 +1135,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at -3.145 0 0)
+      (at -2.545 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -1147,7 +1147,7 @@
       )
     )
     (property "MPN" "CL10A106MQ8NNNC"
-      (at -3.145 0 0)
+      (at -2.545 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -1159,7 +1159,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at -3.145 0 0)
+      (at -2.545 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -1260,7 +1260,7 @@
     (descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R5"
-      (at 0 1.8625 0)
+      (at -3.145 0 0)
       (layer "F.SilkS")
       (uuid "a64ad27a-21b7-5a36-b020-ffe73c748ca4")
       (effects
@@ -1282,7 +1282,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 1.8625 0)
+      (at -3.145 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "e359b538-2cc6-5e2b-be01-41ec6b397a20")
@@ -1306,7 +1306,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 1.8625 0)
+      (at -3.145 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "d750625a-10d2-5faa-95ca-ec38e7651127")
@@ -1318,7 +1318,7 @@
       )
     )
     (property "Power" "0.1W"
-      (at 0 1.8625 0)
+      (at -3.145 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0aaa25d0-797f-5951-9cc7-9da95ff2a80f")
@@ -1330,7 +1330,7 @@
       )
     )
     (property "MPN" "RC0603FR-0733RL"
-      (at 0 1.8625 0)
+      (at -3.145 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "98faae84-4a56-5de4-a7e6-55fa10f59915")
@@ -1342,7 +1342,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 1.8625 0)
+      (at -3.145 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "271deebc-c9f3-5e82-99c1-5a645a1fd58f")
@@ -1443,7 +1443,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C3"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.SilkS")
       (uuid "2da0d279-e8d4-5cd0-8654-27080681ccde")
       (effects
@@ -1465,7 +1465,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A106MQ8NNNC.do"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -1489,7 +1489,7 @@
       )
     )
     (property "Voltage" "16V"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -1501,7 +1501,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -1513,7 +1513,7 @@
       )
     )
     (property "MPN" "CL10A106MQ8NNNC"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -1525,7 +1525,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -1745,7 +1745,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C15"
-      (at 3.68 0 0)
+      (at 5.48 4.25 0)
       (layer "F.SilkS")
       (uuid "6c5d9042-24cc-528e-8345-ae8e6f50140e")
       (effects
@@ -1767,7 +1767,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 3.68 0 0)
+      (at 5.48 4.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -1791,7 +1791,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 3.68 0 0)
+      (at 5.48 4.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -1803,7 +1803,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 3.68 0 0)
+      (at 5.48 4.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -1815,7 +1815,7 @@
       )
     )
     (property "MPN" "CL10B104KB8NNNC"
-      (at 3.68 0 0)
+      (at 5.48 4.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -1827,7 +1827,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 3.68 0 0)
+      (at 5.48 4.25 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -2795,7 +2795,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C11"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.SilkS")
       (uuid "2914383c-5b01-5b4c-8266-2adf97c2cfd2")
       (effects
@@ -2817,7 +2817,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -2841,7 +2841,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -2853,7 +2853,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -2865,7 +2865,7 @@
       )
     )
     (property "MPN" "CL10B104KB8NNNC"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -2877,7 +2877,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -3731,7 +3731,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C4"
-      (at 0 -2.145 0)
+      (at 2.85 0 0)
       (layer "F.SilkS")
       (uuid "1717e0f9-6bc0-58be-a6f8-ccfc128f37cb")
       (effects
@@ -3753,7 +3753,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0 -2.145 0)
+      (at 2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -3777,7 +3777,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -2.145 0)
+      (at 2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -3789,7 +3789,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -2.145 0)
+      (at 2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -3801,7 +3801,7 @@
       )
     )
     (property "MPN" "CL10B104KB8NNNC"
-      (at 0 -2.145 0)
+      (at 2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -3813,7 +3813,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -2.145 0)
+      (at 2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -4035,7 +4035,7 @@
     (descr "Diode SMA (DO-214AC)")
     (tags "Diode SMA (DO-214AC)")
     (property "Reference" "D3"
-      (at 0 2.95 0)
+      (at 0 3.55 0)
       (layer "F.SilkS")
       (uuid "18471429-10a5-5892-a64c-4acab8da212c")
       (effects
@@ -4083,7 +4083,7 @@
       )
     )
     (property "Voltage" "5V"
-      (at 0 2.95 0)
+      (at 0 3.55 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6cc36f20-d69a-540a-9377-008dd7a3abd8")
@@ -4095,7 +4095,7 @@
       )
     )
     (property "Power" "400W"
-      (at 0 2.95 0)
+      (at 0 3.55 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "ababbbd7-53f0-5466-b6d1-50b25d0fc636")
@@ -4107,7 +4107,7 @@
       )
     )
     (property "MPN" "SMAJ5.0A"
-      (at 0 2.95 0)
+      (at 0 3.55 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "5ac0a582-c63d-5416-a516-82102500a2df")
@@ -4119,7 +4119,7 @@
       )
     )
     (property "Manufacturer" "Littelfuse"
-      (at 0 2.95 0)
+      (at 0 3.55 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "71c2a216-5c75-5342-891a-f521f7c5a165")
@@ -4350,7 +4350,7 @@
     (descr "Through hole straight pin header, 1x03, 2.54mm pitch, single row")
     (tags "Through hole pin header THT 1x03 2.54mm single row")
     (property "Reference" "J2"
-      (at 0 -2.72 0)
+      (at 0 -3.32 0)
       (layer "F.SilkS")
       (uuid "195cd0a2-c40e-5b6e-a516-1940ebec0fbe")
       (effects
@@ -4372,7 +4372,7 @@
       )
     )
     (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61300311121.pdf"
-      (at 0 -2.72 0)
+      (at 0 -3.32 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "204e93a7-b76b-52c0-a645-d88d0435f444")
@@ -4396,7 +4396,7 @@
       )
     )
     (property "MPN" "61300311121"
-      (at 0 -2.72 0)
+      (at 0 -3.32 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "d8075268-e673-508a-8ac3-ec1367655daa")
@@ -4408,7 +4408,7 @@
       )
     )
     (property "Manufacturer" "Wurth Elektronik"
-      (at 0 -2.72 0)
+      (at 0 -3.32 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "98bd1e08-32e8-506f-b9be-98e11fa23b64")
@@ -4782,7 +4782,7 @@
     (descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R4"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.SilkS")
       (uuid "fb54f8de-6525-557a-8c3c-87c8d9008cc6")
       (effects
@@ -4804,7 +4804,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "e359b538-2cc6-5e2b-be01-41ec6b397a20")
@@ -4828,7 +4828,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "d750625a-10d2-5faa-95ca-ec38e7651127")
@@ -4840,7 +4840,7 @@
       )
     )
     (property "Power" "0.1W"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0aaa25d0-797f-5951-9cc7-9da95ff2a80f")
@@ -4852,7 +4852,7 @@
       )
     )
     (property "MPN" "RC0603FR-0710KL"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "98faae84-4a56-5de4-a7e6-55fa10f59915")
@@ -4864,7 +4864,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "271deebc-c9f3-5e82-99c1-5a645a1fd58f")
@@ -4965,7 +4965,7 @@
     (descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R6"
-      (at 0 1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.SilkS")
       (uuid "d009ae1a-5613-53c0-af99-c2bfdb693907")
       (effects
@@ -4987,7 +4987,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "e359b538-2cc6-5e2b-be01-41ec6b397a20")
@@ -5011,7 +5011,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "d750625a-10d2-5faa-95ca-ec38e7651127")
@@ -5023,7 +5023,7 @@
       )
     )
     (property "Power" "0.1W"
-      (at 0 1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0aaa25d0-797f-5951-9cc7-9da95ff2a80f")
@@ -5035,7 +5035,7 @@
       )
     )
     (property "MPN" "RC0603FR-0710KL"
-      (at 0 1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "98faae84-4a56-5de4-a7e6-55fa10f59915")
@@ -5047,7 +5047,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "271deebc-c9f3-5e82-99c1-5a645a1fd58f")
@@ -5269,7 +5269,7 @@
     (descr "Terminal Block Phoenix MKDS-1,5-2, 2 pins, pitch 5mm, size 10x9.8mm, drill diameter 1.3mm, pad diameter 2.6mm, http://www.farnell.com/datasheets/100425.pdf, script-generated using https://gitlab.com/kicad/libraries/kicad-footprint-generator/-/tree/master/scripts/TerminalBlock_Phoenix")
     (tags "THT Terminal Block Phoenix MKDS-1,5-2 pitch 5mm size 10x9.8mm drill 1.3mm pad 2.6mm")
     (property "Reference" "J1"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.SilkS")
       (uuid "eb6766aa-6e52-5b3a-b0d8-d391f6aadc82")
       (effects
@@ -5291,7 +5291,7 @@
       )
     )
     (property "Datasheet" "https://www.phoenixcontact.com/product/1729128"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "18700b85-da5b-5d32-b727-337309783a14")
@@ -5315,7 +5315,7 @@
       )
     )
     (property "MPN" "1729128"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "a542a70c-2312-5559-8a41-2fed0d9b17d2")
@@ -5327,7 +5327,7 @@
       )
     )
     (property "Manufacturer" "Phoenix Contact"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9512074d-6e3a-5e17-80b0-6d37bdf7e8f7")
@@ -6132,7 +6132,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C8"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.SilkS")
       (uuid "d035550b-a37e-5fb9-9df7-1c23653fc47a")
       (effects
@@ -6154,7 +6154,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -6178,7 +6178,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -6190,7 +6190,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -6202,7 +6202,7 @@
       )
     )
     (property "MPN" "CL10B104KB8NNNC"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -6214,7 +6214,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -6315,7 +6315,7 @@
     (descr "SOT, 5 Pin (JEDEC MO-178 Var AA https://www.jedec.org/document_search?search_api_views_fulltext=MO-178), generated with kicad-footprint-generator ipc_gullwing_generator.py")
     (tags "SOT TO_SOT_SMD")
     (property "Reference" "U3"
-      (at 0 -3.15 0)
+      (at 0 3.15 0)
       (layer "F.SilkS")
       (uuid "12c6f841-588e-5f47-b08b-3adbeac8d0c0")
       (effects
@@ -6337,7 +6337,7 @@
       )
     )
     (property "Datasheet" "https://www.diodes.com/assets/Datasheets/AP2112.pdf"
-      (at 0 -3.15 0)
+      (at 0 3.15 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "98f9b465-d767-575e-a604-0719eff55ff0")
@@ -6361,7 +6361,7 @@
       )
     )
     (property "Voltage" "1.2V"
-      (at 0 -3.15 0)
+      (at 0 3.15 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "28a1e122-f8ea-5c3c-9beb-6fee9577ee8a")
@@ -6373,7 +6373,7 @@
       )
     )
     (property "Current" "600mA"
-      (at 0 -3.15 0)
+      (at 0 3.15 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "52e4cf82-d8d3-54cc-8012-8a15549e5073")
@@ -6385,7 +6385,7 @@
       )
     )
     (property "MPN" "AP2112K-1.2TRG1"
-      (at 0 -3.15 0)
+      (at 0 3.15 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "00ae3af5-a6bb-537b-9c6b-d0c6ee427692")
@@ -6397,7 +6397,7 @@
       )
     )
     (property "Manufacturer" "Diodes Incorporated"
-      (at 0 -3.15 0)
+      (at 0 3.15 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "8bfdde59-2485-5dd8-9e52-e1482ce0561c")
@@ -6923,7 +6923,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C17"
-      (at 0 -2.68 0)
+      (at 0 -3.28 0)
       (layer "F.SilkS")
       (uuid "31204fc8-ff59-52d6-b75f-e37392d58707")
       (effects
@@ -6945,7 +6945,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A106MQ8NNNC.do"
-      (at 0 -2.68 0)
+      (at 0 -3.28 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -6969,7 +6969,7 @@
       )
     )
     (property "Voltage" "16V"
-      (at 0 -2.68 0)
+      (at 0 -3.28 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -6981,7 +6981,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -2.68 0)
+      (at 0 -3.28 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -6993,7 +6993,7 @@
       )
     )
     (property "MPN" "CL10A106MQ8NNNC"
-      (at 0 -2.68 0)
+      (at 0 -3.28 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -7005,7 +7005,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -2.68 0)
+      (at 0 -3.28 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -7106,7 +7106,7 @@
     (descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R1"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.SilkS")
       (uuid "772a0aa6-7e40-5360-84b2-b0af58d70983")
       (effects
@@ -7128,7 +7128,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "e359b538-2cc6-5e2b-be01-41ec6b397a20")
@@ -7152,7 +7152,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "d750625a-10d2-5faa-95ca-ec38e7651127")
@@ -7164,7 +7164,7 @@
       )
     )
     (property "Power" "0.1W"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0aaa25d0-797f-5951-9cc7-9da95ff2a80f")
@@ -7176,7 +7176,7 @@
       )
     )
     (property "MPN" "RC0603FR-0710KL"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "98faae84-4a56-5de4-a7e6-55fa10f59915")
@@ -7188,7 +7188,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.8625 0)
+      (at 0 -2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "271deebc-c9f3-5e82-99c1-5a645a1fd58f")
@@ -7289,7 +7289,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C5"
-      (at 0 2.145 0)
+      (at -2.85 0 0)
       (layer "F.SilkS")
       (uuid "fec91680-3e5b-549a-a17e-5849e6c4b193")
       (effects
@@ -7311,7 +7311,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0 2.145 0)
+      (at -2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -7335,7 +7335,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 2.145 0)
+      (at -2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -7347,7 +7347,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 2.145 0)
+      (at -2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -7359,7 +7359,7 @@
       )
     )
     (property "MPN" "CL10B104KB8NNNC"
-      (at 0 2.145 0)
+      (at -2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -7371,7 +7371,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 2.145 0)
+      (at -2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -7655,7 +7655,7 @@
     (descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R3"
-      (at 0 2.1575 0)
+      (at -2.85 0 0)
       (layer "F.SilkS")
       (uuid "f48e8348-7daa-5a29-b4dd-8df8346c7092")
       (effects
@@ -7677,7 +7677,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 2.1575 0)
+      (at -2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "e359b538-2cc6-5e2b-be01-41ec6b397a20")
@@ -7701,7 +7701,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 2.1575 0)
+      (at -2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "d750625a-10d2-5faa-95ca-ec38e7651127")
@@ -7713,7 +7713,7 @@
       )
     )
     (property "Power" "0.1W"
-      (at 0 2.1575 0)
+      (at -2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0aaa25d0-797f-5951-9cc7-9da95ff2a80f")
@@ -7725,7 +7725,7 @@
       )
     )
     (property "MPN" "RC0603FR-07100RL"
-      (at 0 2.1575 0)
+      (at -2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "98faae84-4a56-5de4-a7e6-55fa10f59915")
@@ -7737,7 +7737,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 2.1575 0)
+      (at -2.85 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "271deebc-c9f3-5e82-99c1-5a645a1fd58f")
@@ -7838,7 +7838,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C16"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.SilkS")
       (uuid "187ca312-9e7b-5ca4-b448-91e4014901d0")
       (effects
@@ -7860,7 +7860,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -7884,7 +7884,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -7896,7 +7896,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -7908,7 +7908,7 @@
       )
     )
     (property "MPN" "CL10B104KB8NNNC"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -7920,7 +7920,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 1.85 0)
+      (at 0 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -8021,7 +8021,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C9"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.SilkS")
       (uuid "e02abb24-a1d0-521d-b9b9-44a4684c9895")
       (effects
@@ -8043,7 +8043,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -8067,7 +8067,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -8079,7 +8079,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -8091,7 +8091,7 @@
       )
     )
     (property "MPN" "CL10B104KB8NNNC"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -8103,7 +8103,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -8204,7 +8204,7 @@
     (descr "Resistor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R2"
-      (at 0 -1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.SilkS")
       (uuid "77b8f90d-ec95-5549-9595-9adb7c9290fe")
       (effects
@@ -8226,7 +8226,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 0 -1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "e359b538-2cc6-5e2b-be01-41ec6b397a20")
@@ -8250,7 +8250,7 @@
       )
     )
     (property "Tolerance" "1%"
-      (at 0 -1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "d750625a-10d2-5faa-95ca-ec38e7651127")
@@ -8262,7 +8262,7 @@
       )
     )
     (property "Power" "0.1W"
-      (at 0 -1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "0aaa25d0-797f-5951-9cc7-9da95ff2a80f")
@@ -8274,7 +8274,7 @@
       )
     )
     (property "MPN" "RC0603FR-0710KL"
-      (at 0 -1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "98faae84-4a56-5de4-a7e6-55fa10f59915")
@@ -8286,7 +8286,7 @@
       )
     )
     (property "Manufacturer" "Yageo"
-      (at 0 -1.8625 0)
+      (at 0 2.4625 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "271deebc-c9f3-5e82-99c1-5a645a1fd58f")
@@ -8387,7 +8387,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C12"
-      (at 0 1.85 0)
+      (at -3.68 2.45 0)
       (layer "F.SilkS")
       (uuid "7f909a58-e87a-5f28-a437-656bc527aa82")
       (effects
@@ -8409,7 +8409,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10A225KO8NNNC.do"
-      (at 0 1.85 0)
+      (at -3.68 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -8433,7 +8433,7 @@
       )
     )
     (property "Voltage" "16V"
-      (at 0 1.85 0)
+      (at -3.68 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -8445,7 +8445,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 1.85 0)
+      (at -3.68 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -8457,7 +8457,7 @@
       )
     )
     (property "MPN" "CL10A225KO8NNNC"
-      (at 0 1.85 0)
+      (at -3.68 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -8469,7 +8469,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 1.85 0)
+      (at -3.68 2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")
@@ -8689,7 +8689,7 @@
     (descr "Capacitor SMD 0603 (1608 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C10"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.SilkS")
       (uuid "8b258f38-d83b-5141-9ec2-b264b2d67c88")
       (effects
@@ -8711,7 +8711,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL10B104KB8NNNC.do"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "9b0d72a8-8cf3-5fae-adc2-c0445097554b")
@@ -8735,7 +8735,7 @@
       )
     )
     (property "Voltage" "25V"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "517ac80e-ad61-5550-a04d-cb8697108525")
@@ -8747,7 +8747,7 @@
       )
     )
     (property "Tolerance" "10%"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "17bd6c8b-ec53-56f4-b711-f5b580c5504e")
@@ -8759,7 +8759,7 @@
       )
     )
     (property "MPN" "CL10B104KB8NNNC"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "96df8a0a-80d6-551c-8e4e-1e1fd69327d2")
@@ -8771,7 +8771,7 @@
       )
     )
     (property "Manufacturer" "Samsung"
-      (at 0 -1.85 0)
+      (at 0 -2.45 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "2f31f0b2-6fdf-5a8d-8a2b-1c5bdf699cef")

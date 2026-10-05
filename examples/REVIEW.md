@@ -1991,8 +1991,14 @@ and LDO capacitors were sixty millimetres from the pins they hang on, joined
 by wires that toured the sheet; and the core rail ran over the top of the page
 to reach the PLL filter. Each capacitor now stands beside the pin it serves,
 the supply runs regulator, core capacitors, filter resistor, PLL capacitors,
-FPGA, in that order, and the configuration bus is named at each pin, the way
-the I2S lines already were, instead of four wires crossing the pull-ups.
+FPGA, in that order, and the configuration pull-ups stand at the CRESET and
+CDONE pins rather than in a row below the flash.
+
+The configuration bus itself is still the tangle it was. Named at each pin it
+read cleanly and took the sheet past `readability.label_only`'s limit, 27 of 43
+connections as labels; turned half a turn, the flash faces the FPGA's SPI pins
+in order, and then its supply symbols print across its own pin names. Neither
+was better than the drawing it replaced, so the flash stays where it was.
 
 ### The textbook drawing needed the planner to allow it
 

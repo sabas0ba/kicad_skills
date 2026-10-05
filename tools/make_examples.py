@@ -10102,7 +10102,7 @@ def fpga_audio() -> Design:
             "Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical",
             # 388, not 395: the GND symbol lands to the connector's right, and
             # at 395 its printed name crossed the right frame strip of the A3.
-            sheet=(396.24, 102.87),
+            sheet=(388.62, 102.87),
             angle=180.0,
             board=(95.0, 38.0, 0.0),
             fields={
@@ -10401,14 +10401,6 @@ def fpga_audio() -> Design:
             "I2S_DIN",
             "I2S_LRCK",
             "XSMT",
-            # The configuration bus: four wires from the FPGA to the flash and
-            # on to the header crossed each other and the pull-ups between them.
-            # Named at each pin, the three parts read as one bus.
-            "SPI_SS",
-            "SPI_SCK",
-            "SPI_SI",
-            "SPI_SO",
-            "CRESET",
         ),
         # No foreign copper under the boot flash or the DAC: their bellies
         # are the strips a rail sneaks through when everything else is full,
