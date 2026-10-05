@@ -4372,6 +4372,33 @@ def _copper_oracle(design: Design):
     return others, clear, pinned, update
 
 
+def _body_crossings(design: Design):
+    """A test for whether a redrawn stretch passes under a part the old one did not.
+
+    The clean-up passes judge a shorter shape by copper alone, and copper is
+    not all a route goes round: a feedback trace stated over the top of an
+    inductor is going round its field, and the straight line under the
+    winding is clear of every pad and exactly what the detour avoided. The
+    rule is relative, so it never forbids what the route already did - a run
+    the router laid under a chip resistor may still be tidied - but a tidy
+    may not newly put copper under a body.
+    """
+    bodies = [box for part in design.footprints() if (box := _body_box(design, part)) is not None]
+
+    def crossed(path) -> set[int]:
+        return {
+            index
+            for index, box in enumerate(bodies)
+            for a, b in pairwise(path)
+            if _segment_to_box(a, b, box) < GEOM_EPS
+        }
+
+    def new_bodies(old_path, new_path) -> bool:
+        return bool(crossed(new_path) - crossed(old_path))
+
+    return new_bodies
+
+
 def _straighten(design: Design) -> Design:
     """Take the corners out of a stated route that no longer needs them.
 
@@ -4386,6 +4413,7 @@ def _straighten(design: Design) -> Design:
     because something is in the way, and stays.
     """
     others, clear, pinned, update = _copper_oracle(design)
+    new_bodies = _body_crossings(design)
 
     # A waypoint another track ends on is a join, not a corner: straightening
     # through it leaves the other one in mid air, which is `route.stub` and a
@@ -4423,6 +4451,7 @@ def _straighten(design: Design) -> Design:
                 and length > direct * 1.2
                 and _on_45_grid(stretch[0], stretch[-1])
                 and clear(track, own_index, stretch[0], stretch[-1])
+                and not new_bodies(stretch, [stretch[0], stretch[-1]])
             ):
                 kept.append(track.points[last])
             else:
@@ -4452,6 +4481,7 @@ def _doglegged(design: Design) -> Design:
     reason `_straighten` pins them.
     """
     others, clear, pinned, update = _copper_oracle(design)
+    new_bodies = _body_crossings(design)
 
     tracks = []
     for own_index, (track, (_net, _layer, _width, points)) in enumerate(
@@ -4523,6 +4553,7 @@ def _doglegged(design: Design) -> Design:
                             and out
                             and clear(track, own_index, a, elbow)
                             and clear(track, own_index, elbow, b)
+                            and not new_bodies(points[lo : hi + 1], [a, elbow, b])
                         ):
                             return [elbow]
             if hi - lo >= 6:
@@ -8051,7 +8082,10 @@ def buck_5v() -> Design:
             # do not overlap: each pin runs 2.54 mm before its wire.
             sheet=(33.02, 101.6),
             mirror="y",
-            board=(6.0, 20.0, 270.0),
+            board=(6.0, 22.0, 270.0),
+            # Above the terminal on its own pin's column: beside the pin the
+            # name lands nearer the fuse's far pad than the pin it names.
+            pin_legend_at={"1": (6.0, 18.3, "")},
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -8073,7 +8107,7 @@ def buck_5v() -> Design:
             "Fuse:Fuse_1206_3216Metric",
             sheet=(50.8, 101.6),
             angle=90.0,
-            board=(15.0, 20.0, 0.0),
+            board=(14.0, 22.0, 0.0),
             fields={
                 "Current": "3A",
                 "MPN": "0466003.NR",
@@ -8090,7 +8124,7 @@ def buck_5v() -> Design:
             angle=270.0,
             # Cathode up to the fused rail, anode down to its own via: the
             # clamp's return is the shortest one on the board.
-            board=(15.0, 27.0, 270.0),
+            board=(18.0, 27.5, 270.0),
             fields={
                 "Voltage": "18V",
                 "Power": "400W",
@@ -8105,7 +8139,7 @@ def buck_5v() -> Design:
             "220u",
             "Capacitor_SMD:CP_Elec_8x10.5",
             sheet=(81.28, 107.95),
-            board=(30.0, 29.0, 270.0),
+            board=(32.0, 30.5, 180.0),
             fields={
                 "Voltage": "35V",
                 "Tolerance": "20%",
@@ -8122,7 +8156,7 @@ def buck_5v() -> Design:
             sheet=(93.98, 107.95),
             # stood on end beside U1's VIN pin: the input loop is the one that
             # has to be short, and this is the only spot the fan-out leaves free
-            board=(36.0, 22.0, 0.0),
+            board=(40.5, 25.0, 0.0),
             fields={
                 "Voltage": "50V",
                 "Tolerance": "10%",
@@ -8137,7 +8171,7 @@ def buck_5v() -> Design:
             "LM2596S-5",
             "Package_TO_SOT_SMD:TO-263-5_TabPin3",
             sheet=(137.16, 104.14),
-            board=(27.0, 15.0, 180.0),
+            board=(31.5, 17.8, 180.0),
             fields={
                 "MPN": "LM2596SX-5.0/NOPB",
                 "Manufacturer": "Texas Instruments",
@@ -8151,7 +8185,7 @@ def buck_5v() -> Design:
             "Diode_SMD:D_SMA",
             sheet=(162.56, 113.03),
             angle=270.0,
-            board=(42.0, 22.0, 270.0),
+            board=(45.5, 22.0, 270.0),
             fields={
                 "MPN": "SS34",
                 "Manufacturer": "Vishay",
@@ -8165,7 +8199,7 @@ def buck_5v() -> Design:
             "Inductor_SMD:L_12x12mm_H8mm",
             sheet=(182.88, 106.68),
             angle=90.0,
-            board=(53.5, 16.5, 0.0),
+            board=(56.0, 19.5, 0.0),
             fields={
                 "Current": "3A",
                 "Tolerance": "20%",
@@ -8180,7 +8214,7 @@ def buck_5v() -> Design:
             "100n",
             "Capacitor_SMD:C_0805_2012Metric",
             sheet=(200.66, 113.03),
-            board=(64.0, 14.0, 90.0),
+            board=(74.0, 20.45, 270.0),
             fields={
                 "Voltage": "25V",
                 "Tolerance": "10%",
@@ -8195,7 +8229,7 @@ def buck_5v() -> Design:
             "220u",
             "Capacitor_SMD:CP_Elec_8x10.5",
             sheet=(215.9, 113.03),
-            board=(72.5, 16.5, 0.0),
+            board=(68.0, 23.2, 270.0),
             fields={
                 "Voltage": "16V",
                 "Tolerance": "20%",
@@ -8216,7 +8250,7 @@ def buck_5v() -> Design:
             "1k",
             "Resistor_SMD:R_0805_2012Metric",
             sheet=(256.54, 130.81),
-            board=(74.0, 28.0, 0.0),
+            board=(75.5, 29.5, 180.0),
             fields={
                 "Tolerance": "1%",
                 "Power": "0.125W",
@@ -8231,7 +8265,7 @@ def buck_5v() -> Design:
             "green",
             "LED_SMD:LED_0805_2012Metric",
             sheet=(256.54, 144.78),
-            board=(80.0, 28.0, 180.0),
+            board=(71.5, 29.5, 0.0),
             angle=90.0,
             silk_label="5V OK",
             fields={
@@ -8248,10 +8282,10 @@ def buck_5v() -> Design:
             "5V OUT",
             "TerminalBlock_Phoenix:TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.00mm_Horizontal",
             sheet=(241.3, 106.68),
-            board=(85.0, 16.5, 90.0),
-            # KiCad 9 catches the automatic +5V legend on C3's body silk.
-            # Put it below the output terminal, clear of both outlines.
-            pin_legend_at={"1": (80.0, 21.8, "right")},
+            board=(81.0, 19.5, 90.0),
+            # Under the terminal, on its own pin's column: beside it the name
+            # lands nearer the output capacitor's pad than the pin it names.
+            pin_legend_at={"1": (81.0, 23.3, "")},
             fields={
                 "MPN": "1729128",
                 "Manufacturer": "Phoenix Contact",
@@ -8281,84 +8315,78 @@ def buck_5v() -> Design:
         "LED_A": ["R1.2", "D2.2"],
     }
 
-    # 2 A of output current needs copper, not a signal trace: 1.0 mm of 35 um
-    # outer-layer copper carries about 2.7 A at a 10 C rise (IPC-2221). Feedback
-    # and the LED branch carry nothing and stay narrow, but not below 0.4 mm,
-    # because they hang off a rail.
-    W, SIG = 1.0, 0.4
+    # 2 A of output current needs copper, not a signal trace: 1.5 mm of 35 um
+    # outer-layer copper carries about 3.5 A at a 10 C rise (IPC-2221), which
+    # leaves the switch node and both rails margin over the regulator's own
+    # current limit. Feedback and the LED branch carry nothing and stay narrow.
+    W, SIG = 1.5, 0.4
     tracks = [
-        # The input connector may be remote; the energy-storage parts may not.
-        # C1, C2 and VIN form one compact branch at the regulator pin - now
-        # with the fuse in the way of it and the clamp hanging off it.
+        # The input: terminal, fuse, clamp, then one rail under the regulator
+        # to the bulk capacitor, the ceramic and the VIN pin - in that order,
+        # so the ceramic is the last thing the current passes before the pin.
         Track("VIN", "F.Cu", W, ["J1.1", "F1.1"]),
-        Track("+12V", "F.Cu", W, ["F1.2", (16.4, 23.0), "D3.1"]),
-        Track("+12V", "F.Cu", W, ["F1.2", (18.0, 20.0), (18.0, 25.3), "C1.1"]),
-        Track("+12V", "F.Cu", W, ["C1.1", (30.0, 24.0), "C2.1"]),
-        Track("+12V", "F.Cu", W, ["C2.1", (35.05, 20.8), (34.65, 20.4), "U1.1"]),
-        # Turning the TO-263 puts its pin field toward D1 and L1. The hot switch
-        # loop is now a few millimetres, not a trip across half the board.
-        Track("SW", "F.Cu", W, ["U1.2", (42.0, 16.7)]),
-        Track("SW", "F.Cu", W, [(42.0, 16.7), "L1.1"]),
-        Track("SW", "F.Cu", W, [(42.0, 16.7), "D1.1"]),
-        # FB senses at the output capacitor, so it ends *on* that pad rather
-        # than at a coordinate the output rail happens to pass through: a
-        # junction that exists only because two numbers agree is one corner
-        # away from being a dangling end.
+        Track("+12V", "F.Cu", W, ["F1.2", (18.0, 22.0), "D3.1"]),
+        Track("+12V", "F.Cu", W, ["D3.1", (19.0, 26.5), (35.7, 26.5)]),
+        Track("+12V", "F.Cu", W, [(35.7, 26.5), "C1.1"]),
+        Track("+12V", "F.Cu", W, [(35.7, 26.5), (37.2, 25.0), "C2.1"]),
+        # 1.0 mm where it leaves the pin: the TO-263 pitch is 1.7 mm, and a
+        # full-width run beside the switch node would close the gap to it.
+        Track("+12V", "F.Cu", 1.0, ["U1.1", (39.15, 23.9), "C2.1"]),
+        # The switch loop. A non-synchronous buck's fast edge flows from the
+        # input ceramic through the switch into the catch diode and back to
+        # the ceramic's ground. C2's ground pad and D1's anode share one island
+        # with its own vias, so that loop closes in a few millimetres on the
+        # top layer instead of through the plane.
+        Track("SW", "F.Cu", W, ["U1.2", "D1.1"]),
+        Track("SW", "F.Cu", W, ["D1.1", "L1.1"]),
+        Track("GND", "F.Cu", W, ["C2.2", (44.5, 25.0), "D1.2"]),
+        # Output: inductor, bulk, ceramic, terminal in one straight run.
+        Track("+5V", "F.Cu", W, ["L1.2", "C3.1"]),
+        Track("+5V", "F.Cu", W, ["C3.1", "C4.1"]),
+        Track("+5V", "F.Cu", W, ["C4.1", "J2.1"]),
+        # FB senses at the output capacitor's pad and runs over the inductor's
+        # quiet end, well away from the switch node, not along it.
         Track(
             "+5V",
             "F.Cu",
             SIG,
-            ["U1.4", (37.35, 13.3), (42.35, 8.3), (65.8, 8.3), (70.3, 12.8), "C3.1"],
+            ["U1.4", (41.0, 16.3), (44.9, 12.4), (64.5, 12.4), (68.0, 15.9), "C3.1"],
         ),
-        # Output rail is one short row: switch node, inductor, capacitors, load.
-        Track("+5V", "F.Cu", W, ["L1.2", "C3.1"]),
-        Track("+5V", "F.Cu", W, [(64.0, 16.5), "C4.1"]),
-        Track("+5V", "F.Cu", W, ["C3.1", (70.3, 13.0), (81.5, 13.0), "J2.1"]),
-        Track("+5V", "F.Cu", SIG, ["C3.1", (70.3, 24.0), (73.0875, 26.7875), "R1.1"]),
+        Track("+5V", "F.Cu", SIG, ["J2.1", (78.0, 22.5), (78.0, 27.9), "R1.1"]),
         Track("LED_A", "F.Cu", SIG, ["R1.2", "D2.2"]),
-        # Ground: a stub from each pad to a via of its own, straight into the
-        # pour. Only the two through-hole terminals, outside the pour, run far.
-        Track("GND", "F.Cu", W, ["J1.2", (6.0, 30.0), (10.0, 34.0)]),
-        Track("GND", "F.Cu", W, ["J2.2", (88.0, 14.5), (88.0, 29.0), (83.0, 34.0)]),
-        # The explicit return: input ground to output ground at the same width
-        # as the forward path, so the 2 A loop does not depend on the pour
-        # alone. It rides the bottom edge, under the LED branch, crossing
-        # nothing.
-        Track("GND", "F.Cu", W, [(10.0, 34.0), (83.0, 34.0)]),
-        Track("GND", "F.Cu", W, ["U1.3", (39.5, 15.0)]),
-        Track("GND", "F.Cu", W, ["U1.5", (37.5, 11.6)]),
-        Track("GND", "F.Cu", W, [(25.5, 15.0), (25.5, 21.8)]),  # the TO-263 tab
-        Track("GND", "F.Cu", W, ["D3.2", (15.0, 31.0)]),
-        Track("GND", "F.Cu", W, ["C1.2", (30.0, 34.0)]),
-        Track("GND", "F.Cu", W, ["C2.2", (38.5, 22.0)]),
-        Track("GND", "F.Cu", W, ["D1.2", (42.0, 26.5)]),
-        Track("GND", "F.Cu", W, ["C4.2", (64.0, 11.5)]),
-        Track("GND", "F.Cu", W, ["C3.2", (77.7, 18.5)]),
-        Track("GND", "F.Cu", SIG, ["D2.1", (80.9375, 31.0)]),
+        # Ground: each pad straight into the pour through a via of its own.
+        Track("GND", "F.Cu", W, ["C2.2", (41.45, 26.6)]),
+        Track("GND", "F.Cu", W, ["C1.2", (25.8, 30.5)]),
+        Track("GND", "F.Cu", W, ["D3.2", (18.0, 31.8)]),
+        Track("GND", "F.Cu", W, ["C3.2", (68.0, 29.6)]),
+        Track("GND", "F.Cu", W, ["C4.2", (74.0, 23.0)]),
+        Track("GND", "F.Cu", SIG, ["D2.1", (70.6, 31.6)]),
+        Track("GND", "F.Cu", SIG, ["U1.5", (39.15, 12.4)]),
+        Track("GND", "F.Cu", SIG, ["U1.3", (42.6, 18.0)]),
+        Track("GND", "F.Cu", W, [(30.0, 17.8), (30.0, 24.0)]),  # the TO-263 tab
     ]
     vias = [
-        # The tab is the die's thermal path and the switch loop's return: a
-        # ring of vias just off the pad ties it straight into both pours.
-        # Off the pad, not on it - via-in-pad drinks the solder at reflow.
-        Via("GND", x=19.5, y=19.5),
-        Via("GND", x=19.5, y=15.0),
-        Via("GND", x=19.5, y=10.5),
-        Via("GND", x=28.5, y=21.8),
-        Via("GND", x=23.5, y=21.8),
-        Via("GND", x=28.5, y=8.2),
-        Via("GND", x=23.5, y=8.2),
-        Via("GND", x=10.0, y=34.0),
-        Via("GND", x=83.0, y=34.0),
-        Via("GND", x=39.5, y=15.0),
-        Via("GND", x=37.5, y=11.6),
-        Via("GND", x=25.5, y=21.8),
-        Via("GND", x=15.0, y=31.0),
-        Via("GND", x=30.0, y=34.0),
-        Via("GND", x=38.5, y=22.0),
-        Via("GND", x=42.0, y=26.5),
-        Via("GND", x=64.0, y=11.5),
-        Via("GND", x=77.7, y=18.5),
-        Via("GND", x=80.9375, y=31.0),
+        # The tab is the die's thermal path: a ring of vias just off the pad
+        # ties it into both pours. Off the pad, not on it - via-in-pad drinks
+        # the solder at reflow.
+        Via("GND", x=23.8, y=13.3),
+        Via("GND", x=23.8, y=17.8),
+        Via("GND", x=23.8, y=22.3),
+        Via("GND", x=27.5, y=11.4),
+        Via("GND", x=32.5, y=11.4),
+        Via("GND", x=27.5, y=24.0),
+        Via("GND", x=30.0, y=24.0),
+        Via("GND", x=32.5, y=24.0),
+        # the switch loop's ground island
+        Via("GND", x=43.2, y=25.0),
+        Via("GND", x=41.45, y=26.6),
+        Via("GND", x=25.8, y=30.5),
+        Via("GND", x=18.0, y=31.8),
+        Via("GND", x=68.0, y=29.6),
+        Via("GND", x=74.0, y=23.0),
+        Via("GND", x=70.6, y=31.6),
+        Via("GND", x=39.15, y=12.4),
+        Via("GND", x=42.6, y=18.0),
     ]
 
     return Design(
@@ -8406,10 +8434,10 @@ def buck_5v() -> Design:
         parts=parts,
         nets=nets,
         power_flags=[("+12V", "F1.2"), ("GND", "J1.2"), ("+5V", "L1.2")],
-        board_size=(92.0, 38.0),
+        board_size=(88.0, 38.0),
         tracks=tracks,
         vias=vias,
-        pour=(1.2, 1.2, 90.8, 36.8),
+        pour=(1.2, 1.2, 86.8, 36.8),
         mounting=Mounting(),
         fiducials=3,
         wired_power=("+12V", "+5V"),
