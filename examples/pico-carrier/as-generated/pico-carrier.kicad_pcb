@@ -219,7 +219,7 @@
     (descr "Fuse SMD 1812 (4532 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: https://www.nikhef.nl/pub/departments/mt/projects/detectorR_D/dtddice/ERJ2G.pdf), generated with kicad-footprint-generator")
     (tags "fuse")
     (property "Reference" "F1"
-      (at -2.954739 -5.890638 0)
+      (at -2.362886 3.135656 0)
       (layer "F.SilkS")
       (uuid "09a8713e-e722-5fb9-a3b1-0f3bcb13856d")
       (effects
@@ -241,7 +241,7 @@
       )
     )
     (property "Datasheet" "https://www.bourns.com/docs/product-datasheets/mfmsmf.pdf"
-      (at -2.954739 -5.890638 0)
+      (at -2.362886 3.135656 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "898fb462-59e0-5ed1-a997-bac1c3e4a750")
@@ -362,7 +362,7 @@
     (descr "Through hole straight pin header, 1x20, 2.54mm pitch, single row")
     (tags "Through hole pin header THT 1x20 2.54mm single row")
     (property "Reference" "J4"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.SilkS")
       (uuid "44983e0f-ec00-53ec-a9b7-1f615cfc63f2")
       (effects
@@ -384,7 +384,7 @@
       )
     )
     (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61302011121.pdf"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "56694fd4-3c38-5b9c-97ce-2f8e31a06326")
@@ -835,7 +835,7 @@
     (descr "Terminal Block Phoenix MKDS-1,5-2, 2 pins, pitch 5mm, size 10x9.8mm, drill diameter 1.3mm, pad diameter 2.6mm, http://www.farnell.com/datasheets/100425.pdf, script-generated using https://gitlab.com/kicad/libraries/kicad-footprint-generator/-/tree/master/scripts/TerminalBlock_Phoenix")
     (tags "THT Terminal Block Phoenix MKDS-1,5-2 pitch 5mm size 10x9.8mm drill 1.3mm pad 2.6mm")
     (property "Reference" "J1"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.SilkS")
       (uuid "948af428-7531-5adb-af60-171e7032bba1")
       (effects
@@ -857,7 +857,7 @@
       )
     )
     (property "Datasheet" "https://www.phoenixcontact.com/product/1729128"
-      (at -3.95 0 0)
+      (at -4.55 0 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "6848895c-bb0b-5a0d-bbe0-939d3962ab13")
@@ -1178,7 +1178,7 @@
     (descr "Capacitor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf, https://docs.google.com/spreadsheets/d/1BsfQQcO9C6DZCsRaXUlFlo91Tg2WpOkGARC1WS5S8t0/edit?usp=sharing), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C2"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.SilkS")
       (uuid "5ab4af99-a8a4-5ef6-8a13-0d8c59a60ee5")
       (effects
@@ -1200,7 +1200,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL21B104KBCNNNC.do"
-      (at 0 2.075 0)
+      (at 0 2.675 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "acdf019a-f49c-5e30-b4f3-d94db25bedc4")
@@ -1313,7 +1313,7 @@
     (descr "Raspberry Pi Pico (non-W) surface-mount footprint for reflow soldering with test points and debug pads, supports Raspberry Pi Pico 2 (non-W), https://datasheets.raspberrypi.com/pico/pico-datasheet.pdf")
     (tags "module usb pcb swd")
     (property "Reference" "U1"
-      (at 0 26.95 0)
+      (at 0 27.55 0)
       (unlocked yes)
       (layer "F.SilkS")
       (uuid "f0afe95c-807f-52bc-8b92-1e3cb372b9ff")
@@ -3556,7 +3556,7 @@
     (descr "Through hole straight pin header, 1x20, 2.54mm pitch, single row")
     (tags "Through hole pin header THT 1x20 2.54mm single row")
     (property "Reference" "J3"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.SilkS")
       (uuid "9217d994-820c-5767-a7cd-e37700d175a7")
       (effects
@@ -3578,7 +3578,7 @@
       )
     )
     (property "Datasheet" "https://www.we-online.com/components/products/datasheet/61302011121.pdf"
-      (at 0 50.98 0)
+      (at 0 51.58 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "56694fd4-3c38-5b9c-97ce-2f8e31a06326")
@@ -4031,7 +4031,7 @@
     (descr "Capacitor SMD 1210 (3225 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 76, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "capacitor")
     (property "Reference" "C1"
-      (at 0 2.7 0)
+      (at -3.345 2.7 0)
       (layer "F.SilkS")
       (uuid "479b9b25-8757-5c3b-8e7c-66f5b57ffd47")
       (effects
@@ -4053,7 +4053,7 @@
       )
     )
     (property "Datasheet" "https://product.samsungsem.com/mlcc/CL32A226KAJNNNE.do"
-      (at 0 2.7 0)
+      (at -3.345 2.7 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "68e603d4-7f16-5870-8d78-7c6ea3102e9f")
@@ -4542,7 +4542,7 @@
     (descr "Diode SMA (DO-214AC)")
     (tags "Diode SMA (DO-214AC)")
     (property "Reference" "D1"
-      (at -5.445 0 0)
+      (at 0 -3.55 0)
       (layer "F.SilkS")
       (uuid "c02d6c51-8304-507d-840b-ca2855cf5ed4")
       (effects
@@ -4807,7 +4807,7 @@
     (descr "Resistor SMD 0805 (2012 Metric), square (rectangular) end terminal, IPC-7351 nominal, (Body size source: IPC-SM-782 page 72, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
     (tags "resistor")
     (property "Reference" "R1"
-      (at 2.331832 1.757161 0)
+      (at 1.77696 -2.358106 0)
       (layer "F.SilkS")
       (uuid "bc72435f-58d6-5811-9f77-bdf004303439")
       (effects
@@ -4829,7 +4829,7 @@
       )
     )
     (property "Datasheet" "https://www.yageo.com/upload/media/product/productsearch/datasheet/rchip/PYu-RC_Group_51_RoHS_L_12.pdf"
-      (at 2.331832 1.757161 0)
+      (at 1.77696 -2.358106 0)
       (layer "F.Fab")
       (hide yes)
       (uuid "92ba0819-44ae-5dc5-8e3c-dcf3494f6059")

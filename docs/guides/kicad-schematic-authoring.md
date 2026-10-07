@@ -108,7 +108,9 @@ a stub and a net label — a valid netlist and an unreadable drawing.
 * **PWR_FLAG goes where the power comes onto the board**, wired in beside
   the source pin's symbol — the input terminal, the regulator output, the
   diode cathode. A flag parked in a labelled row at the sheet edge answers
-  ERC and tells the reader nothing about where the rail is made.
+  ERC and tells the reader nothing about where the rail is made. Leave its
+  name hidden, as the library ships it: the flag is ERC bookkeeping, and the
+  word PWR_FLAG beside a rail symbol is one more string to read past.
 
 ## Notes sit beside their subject
 
@@ -119,6 +121,11 @@ filter math by the filter, the indicator note by the LED. On an analog sheet,
 add test points where the simulation is meant to meet the board, and say so
 in a note beside them (`test.no_testpoints` notices when there are none).
 
+Set a block the way a text editor would: one line every 2.54 mm, twice the
+glyph height. Double that reads as a list of unrelated sentences and costs a
+third of an A4 sheet. Keep every block off the frame and its rulers, not only
+off the title block.
+
 ## Parts and their annotations
 
 * **Draw a capacitor next to the IC pin it serves**, in the order the board
@@ -127,8 +134,11 @@ in a note beside them (`test.no_testpoints` notices when there are none).
 * **Ratings go on the page, not only in fields.** "100n 50V 10%" printed at
   the part is what an engineer reads; a hidden field is what a script reads.
   Both should exist (`spec.missing_rating` checks the fields; the page is
-  yours). Keep the printed block beside an upright part and under a lying
-  one, where the ground symbol is not.
+  yours). Keep the printed block beside an upright part and under or above
+  a lying one, where the ground symbol is not, and make the value its first
+  row: "10k" to one side and "1% 0.125W" centred under the body leaves the
+  reader to work out that the three belong together. A rating that repeats
+  the value (a fuse whose value is its current) is printed once.
 * **No text on other text, and none on a net.** References, values, ratings
   and net labels each need their own clear ground; measure the neighbours
   before placing, the way the reference and value are already measured from

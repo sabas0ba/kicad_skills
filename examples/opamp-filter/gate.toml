@@ -7,14 +7,16 @@ extends = "ai-generated"
 rule = "layout.decoupling_distance"
 location = "U1.2"
 reason = """A SOT-23-5 puts its supply pin in the middle of a 0.95 mm row; the \
-escape has to clear the package before C5 can sit against it, and 7.3 mm is \
+escape has to clear the package before C5 can sit against it, and 5.3 mm is \
 what that geometry leaves on two layers."""
 
 [[waivers]]
 rule = "layout.decoupling_distance"
 location = "U2.2"
-reason = """Same package, same escape: C7 is as close to U2's supply as the \
-row allows."""
+reason = """Same package, same escape, and the escape column is shared: the \
+reference and the divider midpoint leave U2 either side of its supply, so C7 \
+stands where the supply surfaces from under the signal row, 8.1 mm from the \
+pin."""
 
 [[waivers]]
 rule = "layout.decoupling_distance"

@@ -1964,3 +1964,158 @@ machine finds optically; nobody reads its designator on a bare board, and on a
 68 mm board it was competing with the board's own name for the same edge strip —
 `silk.text_over_text`, on the one string that could have been deleted instead of
 moved.
+
+## 29. The reviewer's pass, round twenty-three: how the drawing reads
+
+Every gate here passed before this round started, and every one still passes.
+The round is about what the gates do not measure: whether the sheet and the
+silkscreen read the way a person expects them to. It changes no part, no
+value and no copper - the route-cache keys of all five boards are what they
+were, and the four boards with a cached route regenerate their copper item for
+item.
+
+### The sheets were drawn in the top third of the page
+
+The buck converter and the motor driver used the top seventy millimetres of an
+A4 sheet and left the rest empty, and the parts in that strip stood one
+capacitor-width apart. The ratings block of each capacitor had nowhere beside
+its body to go, so it went above the rail, under the designator of the next
+part: "SMAJ18A 18V 400W" read as the bulk capacitor's. Both sheets now sit in
+the middle of the page, left to right in the order the current flows, with a
+ratings block's width between neighbours.
+
+The FPGA sheet had the opposite problem. Its decoupling capacitors stood in a
+column of their own, joined to the circuit by power symbols alone, so nothing
+on the page said which capacitor served which bank; the codec's charge-pump
+and LDO capacitors were sixty millimetres from the pins they hang on, joined
+by wires that toured the sheet; and the core rail ran over the top of the page
+to reach the PLL filter. Each capacitor now stands beside the pin it serves,
+the supply runs regulator, core capacitors, filter resistor, PLL capacitors,
+FPGA, in that order, and the configuration pull-ups stand at the CRESET and
+CDONE pins rather than in a row below the flash.
+
+The configuration bus itself is still the tangle it was. Named at each pin it
+read cleanly and took the sheet past `readability.label_only`'s limit, 27 of 43
+connections as labels; turned half a turn, the flash faces the FPGA's SPI pins
+in order, and then its supply symbols print across its own pin names. Neither
+was better than the drawing it replaced, so the flash stays where it was.
+
+### The textbook drawing needed the planner to allow it
+
+The Sallen-Key's feedback capacitor stood on end above the first resistor, and
+its far plate had to come back down under the signal line to reach the output,
+crossing FILT_IN on the way. Laid across the second resistor, the way every
+text draws the topology, it still arrived by label: the wire planner reserves
+a runway past every pin tip, and it kept the reservation after the pin had
+been wired into its own net. An output, the resistor it drives and the
+capacitor fed back from it all meet at the output's tip, and the third of
+them was walled off by the first two. A runway now stops being reserved once
+its pin belongs to the tree being grown, and the memo of hopeless pairs is
+keyed by the fragments they had, since a grown fragment frees runways.
+
+### Strings printed twice, or apart
+
+* Notes were set at 5.08 mm a line, twice what a text editor uses; they now
+  run at 2.54 mm, and a block may no longer slide onto the frame's rulers -
+  one on the op-amp sheet had.
+* A lying part printed its value to one side and its ratings centred under
+  its body. Value and ratings are now one block whichever way the part lies,
+  and a lying part may put that block above itself as well as below.
+* A fuse whose value is its current printed "3A" twice; a rating equal to the
+  value is printed once.
+* `TP` beside TP1 and `PWR_FLAG` beside every rail symbol told the reader
+  nothing; both are hidden, the second as the library ships it.
+* The screw holes and fiducials went wherever the notes ended - on the FPGA
+  sheet, between two FPGA units. They now go in the strip beside the title
+  block first.
+* A turned net label was measured as straddling its wire, when KiCad draws it
+  beside the wire, so a designator was placed on the half the measurement
+  missed. Turned labels now reserve the side they print on.
+
+### A designator is read as its nearest part's
+
+On the board the designators were placed clear of every pad, courtyard and
+string, and several still read as a neighbour's name, because they stood
+nearer the neighbour. A position closer to another part's body than to the
+designator's own now costs a little - less than any overlap, more than
+nothing. Moving names exposed a second gap: the outlines footprints draw round
+themselves were not obstacles, so the first designator to move went onto a
+diode's outline. They are now.
+
+### What it did not change
+
+The electrical review that started this round found real circuit questions -
+the motor driver's TVS clamps above the DRV8833's absolute maximum, several
+fields disagree with their part numbers, the 12 MHz clock cannot make a
+standard audio rate. They are deliberately not in this round, which was asked
+to change the drawing only; they are recorded in the pull request that carries
+it.
+
+## 30. The reviewer's pass, round twenty-four: rebuilding the artwork
+
+Round twenty-three changed how the drawing reads and left every track where it
+was. This one was asked to change the layouts themselves, with two things held
+fixed: the circuit and the two-layer stack. Board outline, placement, connector
+positions and the clean-up passes were all open.
+
+| board | outline | track length | vias |
+| --- | --- | --- | --- |
+| buck-5v | 92 x 38 -> 88 x 38 mm | 289 -> 152 mm | 88 -> 86 |
+| opamp-filter | 58 x 42 -> 54 x 38 mm | 376 -> 255 mm | 70 -> 68 |
+| motor-driver | 68 x 46 mm, unchanged | 316 -> 295 mm | 88 -> 92 |
+| pico-carrier | 80 x 60 mm, unchanged | 328 mm, unchanged | 78 |
+| fpga-audio | 100 x 84 mm, unchanged | 1456 mm, unchanged | 252 |
+
+### buck-5v: the switch loop first
+
+A non-synchronous buck has one loop that matters more than every other track
+on the board: input ceramic, switch, catch diode, back to the ceramic's ground.
+The old floorplan closed it through the plane. C2 now stands at the VIN pin,
+and its ground pad shares one top-layer island with D1's anode and its own
+vias, so the loop is a few millimetres of front copper. The switch node runs
+straight from the pin through the diode's cathode to the inductor, the output
+is one straight row to the terminal, and power copper went from 1.0 to 1.5 mm.
+
+Feedback still senses at the output capacitor and still goes over the top of
+the inductor rather than along the switch node. Keeping it there needed a
+generator change: `_straighten` and `_doglegged` judged a shorter shape by
+copper alone, and the straight line under the winding is clear of every pad.
+Both now refuse a redraw that newly passes under a part body the stated route
+did not already cross. The rule is relative, so it never forbids what a route
+already did, and the other boards' copper came out identical.
+
+### opamp-filter: one row
+
+The filter is now drawn on the board as it is on the sheet: one straight line
+from the input pin to the output pin, each part's tap a short stated spur.
+The supply used to run round the board's edge to avoid crossing that row; it
+now crosses once, under it, between two stated vias, and the reference block
+sits directly below the stage it feeds. The decoupling waivers' distances
+shrank with it, 7.3 to 5.3 mm on U1 and about 12 to 8.1 mm on U2, and the text
+says so.
+
+### motor-driver: the supply beside the pin it feeds
+
+The input terminal, fuse, clamp and bulk capacitor were in the far corner, and
+VM came down to the driver on a 21 mm spine. They are now one block on the
+driver's VM side and the spine is 5 mm. The return-path waiver went down with
+it: one lane at 12.3 mm instead of two at 12.8 and 10.4.
+
+Designators also got stricter here. J1's and C1's names had each landed beside
+the other part, clear of every pad and courtyard: the cost for a spot nearer
+another part than one's own went from a tenth to a whole 0603 courtyard.
+
+### What did not move, and why
+
+The Pico carrier's outline is the module and its two headers; compacting the
+supply corner bought nothing and broke two silkscreen rules, so it was put
+back.
+
+The FPGA board was cold-routed twice with its codec side pulled in toward the
+FPGA and its header pulled up, at 94 x 78 and 97 x 78 mm. Both failed the same
+way: `no route for I2S_SCK`. Between the FPGA's east escape column and the
+codec's west one the four I2S lines, XSMT, the codec's supply pickups and three
+ground drains share one corridor, and at 5 and 8 mm instead of 11 it has no
+lane left for the last of them. On two layers that corridor sets the board's
+width; the fix the design notes already name is an inner layer, which this
+round was not allowed to add. The board keeps its placement.

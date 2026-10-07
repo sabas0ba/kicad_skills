@@ -533,6 +533,12 @@ three are visible in one glance at the `interf_u` demo:
   side puts the name three millimetres past the near side and into the next
   part. Three designators on the buck converter, one on the Pico carrier and
   two on the FPGA board were printed under their own parts.
+* **A designator is read as the name of the nearest part.** Clear of every
+  pad and courtyard is not enough in a ring of 0603s round a package: a name
+  nearer the neighbour's body than its own labels the neighbour. Prefer the
+  spot whose nearest part is the designator's own, and count the outline
+  every footprint draws round itself as ink, so the name is not moved off a
+  pad and onto a diode's outline instead.
 * **Never draw one run on top of another.** Two runs of a net that meet at a
   point and leave it along the same line are one run drawn twice: the shorter
   carries nothing the longer does not, and on the plot it reads as a track
