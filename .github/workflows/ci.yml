@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           # exactly the interpreter the container ships
           python-version: "3.13.5"
@@ -106,7 +106,7 @@ jobs:
       # Change the router or a design and the key changes with it.
       - name: Reuse a cold route of the same question
         id: routes
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: build/golden-cache
           key: golden-routes-${{ matrix.example }}-${{ steps.route.outputs.digest }}
@@ -223,7 +223,7 @@ jobs:
 
       - name: Upload golden review evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: golden-examples-${{ matrix.example }}
           path: |
@@ -286,7 +286,7 @@ jobs:
 
       - name: Upload checked-in example verdicts
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: checked-in-gates-kicad-${{ matrix.kicad }}
           path: build/checked-in-report
@@ -300,7 +300,7 @@ jobs:
 
       - name: Upload the report
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: example-report-kicad-${{ matrix.kicad }}
           path: artwork
@@ -309,7 +309,7 @@ jobs:
 
       - name: Upload the coverage report
         if: always() && matrix.kicad == '10.0.4'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage
           path: coverage.xml
